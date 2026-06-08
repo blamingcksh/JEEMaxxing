@@ -3450,7 +3450,7 @@ function setupSyncHeartbeat() {
     c.innerHTML = '';
     
     // Pull down records matching the current active core view frame
-    let errs = questionBank.filter(q => (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') && q.subject === currentErrorSubject);
+    let errs = questionBank.filter(q => (q.status === 'error' || q.status === 'wrong') && q.subject === currentErrorSubject);
     
     errs.forEach(q => {
         let col = q.errorReason === 'calculation' ? '#f59e0b' : (q.errorReason === 'conceptual' ? '#f87171' : '#a78bfa');
