@@ -5239,20 +5239,7 @@ window.deleteQuestion = deleteQuestion; // optional, but ensures clean state
 window.imageFetchCache = {};
 window.toggleStopwatchMode = toggleStopwatchMode;
 
-            // Make it global so the onclick can find it
-            // ==================== LIVE STATE CLOSURE BRIDGES ====================
-            Object.defineProperty(window, 'questionBank', {
-                get: function() { return questionBank; },
-                set: function(val) { questionBank = val; }
-            });
-            Object.defineProperty(window, 'currentSubject', {
-                get: function() { return currentSubject; },
-                set: function(val) { currentSubject = val; }
-            });
-            Object.defineProperty(window, 'currentChapter', {
-                get: function() { return currentChapter; },
-                set: function(val) { currentChapter = val; }
-            });
+           
        
                     
         })();
