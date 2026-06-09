@@ -5094,7 +5094,41 @@ if (lastCalDate === todayStr) {
                 updateUI();
                 resetPomoUI();
             });
+//=====================Missing stuff===================
+            // ========== MISSING POMODORO HELPER FUNCTIONS ==========
+function skipBreak() {
+    clearInterval(timerInterval);
+    saveAll();
+    // If more sessions remain, go to next study; otherwise finish
+    if (currentSession < totalSessions) {
+        currentSession++;
+        transitionToStudy();
+    } else {
+        finishAll();
+    }
+}
 
+function addBreakTime(extraMinutes) {
+    if (pomoState !== 'BREAK') return;
+    // Add extra minutes to the break (keep real‑time tracking)
+    const extraSeconds = extraMinutes * 60;
+    timerTotalSeconds += extraSeconds;
+    secondsLeft += extraSeconds;
+    // Update the timer display immediately
+    document.getElementById('timer-display').textContent = formatTime(secondsLeft);
+    document.getElementById('mini-time').textContent = formatTime(secondsLeft);
+    // The next tick will handle the rest
+}
+
+function finishAll() {
+    clearInterval(timerInterval);
+    saveAll();
+    document.getElementById('pomo-mini-widget').classList.add('hidden');
+    document.getElementById('timer-display').textContent = "00:00";
+    document.getElementById('timer-status').textContent = "All sessions complete!";
+    // Reset UI fully
+    resetPomoUI();
+}
             // Expose configurations globally
             window.switchTab = switchTab;
             window.toggleSidebar = toggleSidebar;
