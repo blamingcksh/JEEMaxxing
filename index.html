@@ -5133,14 +5133,7 @@ function finishAll() {
 }
             // Expose configurations globally
             window.switchTab = switchTab;
-        //========toolbar============
-            // Original function remains identical, but we ensure touch-friendliness
-function toggleSidebar() {
-    const sb = document.getElementById('sidebar');
-    sb.classList.toggle('collapsed');
-    document.querySelector('.collapse-btn').textContent = sb.classList.contains('collapsed') ? '→' : 'Collapse';
-}
-            //======================================
+       
             window.toggleSidebar = toggleSidebar;
             window.openModal = openModal;
             window.closeModal = closeModal;
@@ -5261,7 +5254,7 @@ window.toggleStopwatchMode = toggleStopwatchMode;
                 set: function(val) { currentChapter = val; }
             });
        
-
+                    
         })();
     </script>
 </body>
