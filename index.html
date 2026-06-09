@@ -2782,10 +2782,24 @@ if (localTotal === 0) {
                 });
             }
 
-            function showLoading(msg) { document.getElementById('loading-text').innerText = msg;
-                document.getElementById('loading-overlay').classList.add('active'); }
+           let loadingTimeout = null;
 
-            function hideLoading() { document.getElementById('break-actions').classList.remove('active'); }
+function showLoading(msg) {
+    document.getElementById('loading-text').innerText = msg;
+    document.getElementById('loading-overlay').classList.add('active');
+
+    // Auto-hide after 10 seconds as safety net
+    clearTimeout(loadingTimeout);
+    loadingTimeout = setTimeout(() => {
+        console.warn('⚠️ Loading overlay auto-hidden after 10s (possible hang)');
+        hideLoading();
+    }, 10000);
+}
+
+function hideLoading() {
+    clearTimeout(loadingTimeout);
+    document.getElementById('loading-overlay').classList.remove('active');
+}
 
             function readFileAsBase64(file) {
                 return new Promise((resolve, reject) => { let r = new FileReader();
