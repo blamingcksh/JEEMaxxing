@@ -2,8 +2,8 @@
 
 A single-file PWA built over a weekend to log errors, parse LaTeX questions, and track prep velocity for JEE Advanced. No backend servers, no subscription paywalls, no tracking bloat.
 
-### 🛑 Code Status: Frozen
-Targeting a sub-1000 rank for the JEE Advanced 2027 cycle. The codebase is locked and will remain exactly as it is until the exams are over. No pull requests or issues will be read, reviewed, or merged. 
+### 🍏Code Status: Live
+Updates every Sundays
 
 ### Core Mechanics
 * **Single-File Monolith:** ~5,000 lines of vanilla HTML, CSS, and JS. Zero build steps, zero npm package overhead. Just open it and run.
