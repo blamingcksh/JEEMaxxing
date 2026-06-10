@@ -2576,6 +2576,18 @@ select.pomo-select, select.pomo-input {
 
     <script>
         (function() {
+            // Global variable to keep track of active network requests
+let activeUploadsCount = 0;
+
+window.addEventListener('beforeunload', (event) => {
+    if (activeUploadsCount > 0) {
+        // Standard browser protocol to trigger a confirmation popup
+        event.preventDefault();
+        event.returnValue = `Warning: ${activeUploadsCount} questions are still uploading to Google Drive. If you leave now, these images will be lost.`;
+        return event.returnValue;
+    }
+});
+
             
             
             // ==================== GLOBAL STATE ====================
