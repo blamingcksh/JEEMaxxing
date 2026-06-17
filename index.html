@@ -6975,6 +6975,29 @@ container.querySelectorAll('.mcq-option').forEach(el => {
         toggleMcqOption(this, optionText);
     });
 });
+                // Replace each option's content: keep text, render only math segments
+container.querySelectorAll('.mcq-option').forEach(opt => {
+    const raw = opt.getAttribute('data-option');
+    if (!raw || !window.katex) return;
+
+    // Set plain text first (so we can safely replace math tokens)
+    opt.textContent = raw;
+
+    // Now replace any $...$ or $$...$$ with rendered KaTeX
+    opt.innerHTML = raw.replace(
+        /\$\$([\s\S]+?)\$\$|\$([^\$]+)\$/g,
+        (match, displayMath, inlineMath) => {
+            try {
+                return katex.renderToString(displayMath || inlineMath, {
+                    throwOnError: false,
+                    displayMode: !!displayMath
+                });
+            } catch (e) {
+                return match; // fallback to raw text if rendering fails
+            }
+        }
+    );
+});
                 if (currentQ.extractedText) renderLatexInElement();
             }
             function escapeAttribute(str) {
