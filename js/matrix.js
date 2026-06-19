@@ -585,6 +585,15 @@ export function submitPracticeLog() {
 
     const timeSpent = _drawerState.timeSpentMins > 0 ? _drawerState.timeSpentMins : _drawerState.stopwatchSeconds / 60;
 
+    // ── Lock the first-attempt result BEFORE pushing the new historyLog.
+    // Accuracy only counts the FIRST attempt of each question, so re-solving
+    // from the error matrix must NOT change it. We set firstAttemptResult only
+    // when there are no prior historyLogs AND no existing firstAttemptResult
+    // (i.e. this is truly the first time the question is being practiced).
+    if (!q.firstAttemptResult && (!Array.isArray(q.historyLogs) || q.historyLogs.length === 0)) {
+        q.firstAttemptResult = _drawerState.result;
+    }
+
     const srResult = computeSR(q, {
         result: _drawerState.result,
         autonomy: _drawerState.autonomy,

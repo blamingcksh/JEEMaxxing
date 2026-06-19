@@ -1299,6 +1299,37 @@ export function showPreviewModal() {
 }
 
 // ==================== PRACTICE: QUESTION LIST ====================
+
+/**
+ * Returns the FIRST-attempt result of a question: 'correct' | 'incorrect' | null.
+ *
+ * Accuracy is based on this value — re-solving a question (from the error
+ * matrix or question practice) must NOT change the accuracy, so only the first
+ * attempt counts. The result is resolved in priority order:
+ *   1. q.firstAttemptResult  — locked on the very first practice (never overwritten)
+ *   2. earliest historyLog    — for questions first practiced via the error matrix
+ *   3. q.status fallback      — legacy questions practiced before this tracking
+ *   4. null                   — unattempted (excluded from accuracy)
+ */
+function _firstAttemptResult(q) {
+    if (q.firstAttemptResult === 'correct' || q.firstAttemptResult === 'incorrect') {
+        return q.firstAttemptResult;
+    }
+    if (Array.isArray(q.historyLogs) && q.historyLogs.length > 0) {
+        let earliest = q.historyLogs[0];
+        for (const log of q.historyLogs) {
+            if (log && log.timestamp && new Date(log.timestamp) < new Date(earliest.timestamp)) {
+                earliest = log;
+            }
+        }
+        if (earliest.result === 'correct' || earliest.result === 'incorrect') return earliest.result;
+    }
+    // Legacy fallback: questions practiced before firstAttemptResult tracking.
+    if (q.status === 'solved') return 'correct';
+    if (q.status === 'wrong' || q.status === 'error') return 'incorrect';
+    return null;
+}
+
 export function showQuestionList() {
     let chapterQuestions = AppState.questionBank.filter(q => q.subject === AppState.currentSubject && q.chapter === AppState.currentChapter);
     if (!chapterQuestions.length) { alert("No questions in this chapter."); return; }
@@ -1327,11 +1358,17 @@ export function showQuestionList() {
 
     const total = filteredQuestions.length;
     const solvedCount = filteredQuestions.filter(q => q.status === 'solved').length;
-    // Accuracy considers ONLY questions the user has actually attempted
-    // (solved / wrong / error) — NOT the entire question bank. Unattempted
-    // questions must not drag the accuracy down.
-    const attempted = filteredQuestions.filter(q => q.status === 'solved' || q.status === 'wrong' || q.status === 'error');
-    const accuracy = attempted.length > 0 ? Math.round((solvedCount / attempted.length) * 100) : 0;
+    // ── Accuracy is based on the FIRST attempt of each question ONLY.
+    // Re-solving a question (from the error matrix or question practice) does
+    // NOT change the accuracy — only the first attempt counts. The first-attempt
+    // result is locked in `q.firstAttemptResult` on the very first practice; if
+    // that field is missing we derive it from the earliest historyLog.
+    const firstAttempted = filteredQuestions.filter(q => {
+        const r = _firstAttemptResult(q);
+        return r === 'correct' || r === 'incorrect';
+    });
+    const firstCorrect = firstAttempted.filter(q => _firstAttemptResult(q) === 'correct').length;
+    const accuracy = firstAttempted.length > 0 ? Math.round((firstCorrect / firstAttempted.length) * 100) : 0;
     // Average time is averaged only over questions that actually logged a time.
     const timedQuestions = filteredQuestions.filter(q => q.timeTaken > 0);
     const avgTime = timedQuestions.length > 0 ? Math.round(timedQuestions.reduce((sum, q) => sum + (q.timeTaken || 0), 0) / timedQuestions.length) : 0;
@@ -1531,6 +1568,8 @@ export function tryAssignDailyBounty(questionId) {
         if (AppState.bountyMode && AppState.practiceSeconds >= AppState.bounty.timeLimit && !AppState.practiceSubmittedFlags[0]) {
             AppState.currentQ = q;
             AppState.currentQ.timeTaken = AppState.practiceSeconds;
+            // Lock first-attempt result (bounty timeout = wrong first attempt).
+            if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'incorrect';
             AppState.currentQ.status = 'wrong';
             saveAllAsync().catch(console.error);
             AppState.practiceSubmittedFlags[0] = true;
@@ -1585,6 +1624,8 @@ export function evaluateBountyOutcome(wasCorrect) {
 
     if (wasCorrect) {
         window._justWonBounty = true;
+        // Lock first-attempt result — only the first attempt counts for accuracy.
+        if (!q.firstAttemptResult) q.firstAttemptResult = 'correct';
         q.status = 'solved';
         changeCount(q.subject, 1);
         AppState.bounty.payoffCount = 3;
@@ -1641,6 +1682,8 @@ export function startBountySessionFromModal() {
         if (AppState.bountyMode && AppState.practiceSeconds >= AppState.bounty.timeLimit && !AppState.practiceSubmittedFlags[0]) {
             AppState.currentQ = q;
             AppState.currentQ.timeTaken = AppState.practiceSeconds;
+            // Lock first-attempt result (bounty timeout = wrong first attempt).
+            if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'incorrect';
             AppState.currentQ.status = 'wrong';
             saveAllAsync().catch(console.error);
             AppState.practiceSubmittedFlags[0] = true;
@@ -1881,6 +1924,12 @@ export function practiceSubmit() {
     AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
     AppState.currentQ.timeTaken = AppState.practiceSeconds;
 
+    // Lock the first-attempt result — accuracy only counts the FIRST attempt,
+    // so re-solving the same question later must NOT change it.
+    if (!AppState.currentQ.firstAttemptResult) {
+        AppState.currentQ.firstAttemptResult = isCorrect ? 'correct' : 'incorrect';
+    }
+
     if (isCorrect) {
         const wasAlreadySolved = (AppState.currentQ.status === 'solved');
         AppState.currentQ.status = 'solved';
@@ -1930,6 +1979,8 @@ export function addTextQuestionFollowUp() {
 
     document.getElementById('text-correct-btn').onclick = () => {
         const wasAlreadySolved = (AppState.currentQ.status === 'solved');
+        // Lock first-attempt result — only the first attempt counts for accuracy.
+        if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'correct';
         AppState.currentQ.status = 'solved';
         saveAllAsync().catch(console.error);
         if (AppState.bountyMode) {
@@ -1948,6 +1999,8 @@ export function addTextQuestionFollowUp() {
     };
 
     document.getElementById('text-wrong-btn').onclick = () => {
+        // Lock first-attempt result — only the first attempt counts for accuracy.
+        if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'incorrect';
         AppState.currentQ.status = 'wrong';
         saveAllAsync().catch(console.error);
         if (AppState.bountyMode) {
