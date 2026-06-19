@@ -31,6 +31,12 @@ const DAILY_QUEUE_LIMITS = {
     chemistry: 10,
 };
 
+// Daily-queue snapshot — the 5 physics / 5 maths / 10 chemistry question IDs
+// are locked ONCE per local day. Solving a question marks it done but does NOT
+// pull in a replacement; the slot stays "completed" until the next day, when a
+// fresh snapshot is generated.
+let _dailyQueueSnapshot = { date: null, ids: [] };
+
 // ---------------------------------------------------------------------------
 //  Local modal helpers
 // ---------------------------------------------------------------------------
@@ -142,6 +148,7 @@ export function openPracticeDrawer(qId) {
     _drawerState.targetTimeMins = q.targetTimeMins || 5;
 
     const dueInfo = getDueStatus(q);
+    const hasImage = (q.imageDataUrl && q.imageDataUrl.length > 100) || !!q.driveImageId;
 
     const overlay = document.createElement('div');
     overlay.className = 'sr-practice-overlay';
@@ -158,7 +165,10 @@ export function openPracticeDrawer(qId) {
                     <div class="sr-drawer-title">${_esc(q.chapter || 'Unknown')} · Practice</div>
                     <div class="sr-drawer-sub">${_esc(q.subject || '')}${dueInfo.label ? ' · ' + _esc(dueInfo.label) : ''}</div>
                 </div>
-                <button class="sr-drawer-close" onclick="closePracticeDrawer()" aria-label="Close practice drawer">✕</button>
+                <div class="sr-drawer-header-actions">
+                    ${hasImage ? `<button class="sr-hide-img-btn" id="sr-hide-img-btn" type="button" onclick="srToggleImage()">👁 Hide Image</button>` : ''}
+                    <button class="sr-drawer-close" onclick="closePracticeDrawer()" aria-label="Close practice drawer">✕</button>
+                </div>
             </div>
             <div class="sr-drawer-body">
                 <!-- Question stage: full question text + image (hideable) -->
@@ -247,9 +257,10 @@ function _renderQuestionMedia(q) {
     } else {
         return ''; // no image to show → no hide button either
     }
+    // The hide-image button now lives in the drawer header (so it never
+    // overlaps the image). This wrapper just holds the image itself.
     return `
         <div class="sr-question-media" id="sr-question-media">
-            <button class="sr-hide-img-btn" id="sr-hide-img-btn" type="button" onclick="srToggleImage()">👁 Hide Image</button>
             <div class="sr-question-img-wrap" id="sr-question-img-wrap">${imgHtml}</div>
         </div>`;
 }
@@ -733,36 +744,69 @@ export function toggleDailyQueue() {
     }
 }
 
-function _renderDailyQueueCards() {
-    const c = document.getElementById('error-list-container');
-    if (!c) return;
-    c.innerHTML = '';
+// Returns the locked list of question IDs for today's daily queue.
+// The snapshot is (re)generated only when the local date changes — solving a
+// question during the day does NOT add a replacement; the slot stays done.
+function _getDailyQueueSnapshot() {
+    const today = _todayKey();
+    if (_dailyQueueSnapshot.date === today && Array.isArray(_dailyQueueSnapshot.ids)) {
+        return _dailyQueueSnapshot.ids;
+    }
 
-    // Collect ALL active friction entries across every subject
+    // (Re)generate the snapshot for the new day.
     const allErrors = AppState.questionBank.filter(q =>
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
     );
-
-    // Bucket by subject
     const bySubject = { physics: [], maths: [], chemistry: [] };
     allErrors.forEach(q => {
         const subj = (q.subject || '').toLowerCase();
         if (bySubject[subj]) bySubject[subj].push(q);
     });
-
-    // Sort each bucket by easeFactor ascending (most vulnerable = lowest EF first)
+    // Most vulnerable first (lowest easeFactor).
     Object.keys(bySubject).forEach(subj => {
         bySubject[subj].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
     });
-
-    // Slice by configured limits and merge into single target array
-    const targets = [
+    const ids = [
         ...bySubject.physics.slice(0, DAILY_QUEUE_LIMITS.physics),
         ...bySubject.maths.slice(0, DAILY_QUEUE_LIMITS.maths),
         ...bySubject.chemistry.slice(0, DAILY_QUEUE_LIMITS.chemistry),
-    ];
+    ].map(q => q.id.toString());
 
-    // Render subject dividers + cards
+    _dailyQueueSnapshot = { date: today, ids };
+    return ids;
+}
+
+// A question counts as "completed today" if it has a correct historyLog dated today.
+function _isCompletedToday(q) {
+    if (!Array.isArray(q.historyLogs)) return false;
+    const today = _todayKey();
+    return q.historyLogs.some(log =>
+        log && log.result === 'correct' && log.timestamp &&
+        _todayKey(new Date(log.timestamp)) === today
+    );
+}
+
+function _renderDailyQueueCards() {
+    const c = document.getElementById('error-list-container');
+    if (!c) return;
+    c.innerHTML = '';
+
+    // Lock the day's queue ONCE. Solving a question does NOT pull in a
+    // replacement — the solved card stays (marked done) until tomorrow.
+    const snapshotIds = _getDailyQueueSnapshot();
+
+    // Look up the live question objects (some may have been deleted).
+    const targets = snapshotIds
+        .map(id => AppState.questionBank.find(q => q.id.toString() === id))
+        .filter(Boolean);
+
+    // Group by subject for divider rendering + progress counts.
+    const bySubject = { physics: [], maths: [], chemistry: [] };
+    targets.forEach(q => {
+        const subj = (q.subject || '').toLowerCase();
+        if (bySubject[subj]) bySubject[subj].push(q);
+    });
+
     const subjectMeta = {
         physics:   { icon: '⚛️', label: 'Physics',   limit: DAILY_QUEUE_LIMITS.physics },
         maths:     { icon: '📐', label: 'Maths',     limit: DAILY_QUEUE_LIMITS.maths },
@@ -774,15 +818,29 @@ function _renderDailyQueueCards() {
         if (q.subject !== currentSubject) {
             currentSubject = q.subject;
             const meta = subjectMeta[currentSubject] || { icon: '📋', label: currentSubject, limit: 0 };
-            const total = bySubject[currentSubject] ? bySubject[currentSubject].length : 0;
+            const subjItems = bySubject[currentSubject] || [];
+            const doneCount = subjItems.filter(_isCompletedToday).length;
+            const remaining = subjItems.length - doneCount;
+            const allTracked = AppState.questionBank.filter(qq =>
+                qq.errorReason && (qq.status === 'error' || qq.status === 'solved' || qq.status === 'wrong') &&
+                (qq.subject || '').toLowerCase() === currentSubject
+            ).length;
+            const progressTxt = remaining > 0
+                ? `${doneCount}/${subjItems.length} done · ${remaining} to go`
+                : (subjItems.length > 0 ? `${doneCount}/${subjItems.length} done · ✓ complete` : '0/0');
             c.insertAdjacentHTML('beforeend', `
                 <div class="daily-queue-subject-divider">
-                    <span>${meta.icon} ${meta.label} (${targets.filter(t => t.subject === currentSubject).length}/${meta.limit})</span>
-                    <span class="daily-queue-subject-count">${total} total tracked</span>
+                    <span>${meta.icon} ${meta.label} · ${progressTxt}</span>
+                    <span class="daily-queue-subject-count">${allTracked} total tracked</span>
                 </div>
             `);
         }
         c.insertAdjacentHTML('beforeend', _buildErrorCardHTML(q));
+        // Mark completed-today cards so CSS can dim them + show a check ribbon.
+        if (_isCompletedToday(q)) {
+            const lastBlock = c.lastElementChild;
+            if (lastBlock) lastBlock.classList.add('daily-queue-done');
+        }
     });
 
     if (targets.length === 0) {

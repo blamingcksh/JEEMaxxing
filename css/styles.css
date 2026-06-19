@@ -2558,23 +2558,28 @@ body.overheat-active .practice-header .hide-toggle {
     background: #05050a;
 }
 .sr-question-img { display: block; width: 100%; max-height: 320px; object-fit: contain; }
+
+/* Header actions cluster (holds the hide-image button + close button) */
+.sr-drawer-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+/* Hide-image button — now a normal header button (no longer overlays the image) */
 .sr-hide-img-btn {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 2;
-    padding: 5px 10px;
+    padding: 6px 11px;
     font-size: 11px;
     font-weight: 600;
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(5, 5, 10, 0.85);
+    background: rgba(255, 255, 255, 0.04);
     color: #e2e8f0;
     cursor: pointer;
-    backdrop-filter: blur(4px);
     transition: all 0.15s;
+    white-space: nowrap;
 }
 .sr-hide-img-btn:hover { background: rgba(139, 92, 246, 0.25); border-color: rgba(139, 92, 246, 0.6); }
+.sr-hide-img-btn:active { transform: scale(0.96); }
 .sr-question-text {
     font-size: 14px;
     line-height: 1.6;
@@ -3266,4 +3271,28 @@ html body .erm-sparkline-box svg {
     html body .matrix-pill { font-size: 11px; padding: 6px 12px; }
     html body .daily-queue-master-btn { font-size: 11px; padding: 6px 14px; }
     html body #chapter-decay-grid svg { min-width: 520px !important; }
+}
+
+/* Completed-today cards in the Daily Core Queue — dimmed + green check ribbon.
+   The card stays in the list (so you can see your progress) but no new
+   question replaces it until tomorrow. */
+html body .error-block.daily-queue-done {
+    opacity: 0.5;
+    position: relative;
+}
+html body .error-block.daily-queue-done::after {
+    content: '\2713 Done today';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 4;
+    padding: 3px 9px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #04130a;
+    background: var(--glow-green);
+    border-radius: 6px;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.5);
 }
