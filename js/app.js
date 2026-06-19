@@ -46,6 +46,8 @@ import {
     srSetResult, srSetAutonomy, srToggleFriction,
     srToggleStopwatch, srToggleManualTime, srUpdateManualTime,
     toggleCardHistory,
+    // ── Practice drawer MCQ flow (new) ──
+    srSelectOption, srConfirmAnswer, srSelfReport, srToggleImage,
     // ── Error resolution dashboard (NEW) ──
     renderErrorResolutionDashboard,
     renderChapterDecayGrid,
@@ -1325,9 +1327,14 @@ export function showQuestionList() {
 
     const total = filteredQuestions.length;
     const solvedCount = filteredQuestions.filter(q => q.status === 'solved').length;
-    const attempted = filteredQuestions.filter(q => q.timeTaken > 0);
-    const avgTime = attempted.length > 0 ? Math.round(attempted.reduce((sum, q) => sum + (q.timeTaken || 0), 0) / attempted.length) : 0;
-    const accuracy = total > 0 ? Math.round((solvedCount / total) * 100) : 0;
+    // Accuracy considers ONLY questions the user has actually attempted
+    // (solved / wrong / error) — NOT the entire question bank. Unattempted
+    // questions must not drag the accuracy down.
+    const attempted = filteredQuestions.filter(q => q.status === 'solved' || q.status === 'wrong' || q.status === 'error');
+    const accuracy = attempted.length > 0 ? Math.round((solvedCount / attempted.length) * 100) : 0;
+    // Average time is averaged only over questions that actually logged a time.
+    const timedQuestions = filteredQuestions.filter(q => q.timeTaken > 0);
+    const avgTime = timedQuestions.length > 0 ? Math.round(timedQuestions.reduce((sum, q) => sum + (q.timeTaken || 0), 0) / timedQuestions.length) : 0;
 
     const statsRow = document.getElementById('stats-row');
     if (statsRow) {
@@ -2776,6 +2783,10 @@ window.srToggleFriction = srToggleFriction;
 window.srToggleStopwatch = srToggleStopwatch;
 window.srToggleManualTime = srToggleManualTime;
 window.srUpdateManualTime = srUpdateManualTime;
+window.srSelectOption = srSelectOption;
+window.srConfirmAnswer = srConfirmAnswer;
+window.srSelfReport = srSelfReport;
+window.srToggleImage = srToggleImage;
 window.toggleCardHistory = toggleCardHistory;
 window.renderErrorResolutionDashboard = renderErrorResolutionDashboard;
 window.renderChapterDecayGrid = renderChapterDecayGrid;

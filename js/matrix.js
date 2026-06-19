@@ -93,7 +93,19 @@ let _drawerState = {
 
 function _resetDrawerState() {
     if (_drawerState.stopwatchInterval) clearInterval(_drawerState.stopwatchInterval);
-    _drawerState = { qId: null, result: null, autonomy: null, frictionTypes: [], timeSpentMins: 0, targetTimeMins: 5, stopwatchSeconds: 0, stopwatchInterval: null };
+    _drawerState = {
+        qId: null,
+        result: null,           // 'correct' | 'incorrect'
+        resultSource: null,     // 'auto' (graded against loaded answer) | 'self' (user-reported)
+        selectedOptions: [],    // MCQ letters the user picked, e.g. ['A'] or ['A','C']
+        imageHidden: false,
+        autonomy: null,         // 'independent' | 'hint_used' | 'solution_read'
+        frictionTypes: [],      // ['PERFECT', 'CALC', ...]
+        timeSpentMins: 0,
+        targetTimeMins: 5,
+        stopwatchSeconds: 0,
+        stopwatchInterval: null,
+    };
 }
 
 function _startStopwatch() {
@@ -114,6 +126,10 @@ function _pauseStopwatch() {
 }
 
 // ── Open Practice Drawer ───────────────────────────────────────────────────
+// Full-screen blurred modal. Shows the WHOLE question (text + image, image
+// hideable), lets the user pick MCQ options, auto-grades against the loaded
+// correct answer (or asks for a self-report when no answer is on file), then
+// reveals the autonomy / friction / time tagging stage.
 
 export function openPracticeDrawer(qId) {
     const q = AppState.questionBank.find(item => item.id.toString() === qId.toString());
@@ -127,60 +143,43 @@ export function openPracticeDrawer(qId) {
 
     const dueInfo = getDueStatus(q);
 
-    const container = document.getElementById('error-list-container');
-    if (!container) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'sr-practice-overlay';
+    overlay.id = 'sr-practice-overlay';
+    // Click on the backdrop (not the drawer itself) closes the drawer.
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closePracticeDrawer();
+    });
 
-    const block = document.getElementById(`err-block-${qId}`);
-    if (!block) return;
-
-    // Build drawer HTML and inject after the card
-    const drawerHtml = `
-        <div class="sr-practice-drawer" id="sr-drawer-${qId}">
+    overlay.innerHTML = `
+        <div class="sr-practice-drawer sr-practice-modal" id="sr-drawer-${qId}" role="dialog" aria-modal="true">
             <div class="sr-drawer-header">
                 <div>
-                    <div class="sr-drawer-title">${q.chapter || 'Unknown'}</div>
-                    <div class="sr-drawer-sub">Log your practice attempt</div>
+                    <div class="sr-drawer-title">${_esc(q.chapter || 'Unknown')} · Practice</div>
+                    <div class="sr-drawer-sub">${_esc(q.subject || '')}${dueInfo.label ? ' · ' + _esc(dueInfo.label) : ''}</div>
                 </div>
-                <button class="sr-drawer-close" onclick="closePracticeDrawer()">✕</button>
+                <button class="sr-drawer-close" onclick="closePracticeDrawer()" aria-label="Close practice drawer">✕</button>
             </div>
             <div class="sr-drawer-body">
-                <!-- Row 1: Result -->
-                <div class="sr-row">
-                    <div class="sr-row-label">Result</div>
-                    <div class="sr-toggle-group">
-                        <button class="sr-toggle-btn" data-group="result" data-value="correct" onclick="srSetResult('correct')">✔ Correct</button>
-                        <button class="sr-toggle-btn" data-group="result" data-value="incorrect" onclick="srSetResult('incorrect')">✖ Incorrect</button>
-                    </div>
+                <!-- Question stage: full question text + image (hideable) -->
+                <div class="sr-question-stage" id="sr-question-stage">
+                    ${_renderQuestionMedia(q)}
+                    ${q.extractedText
+                        ? `<div class="latex sr-question-text" id="sr-question-text">${_esc(q.extractedText)}</div>`
+                        : `<div class="sr-question-text sr-muted">No question text on file — refer to the image above.</div>`}
                 </div>
-                <!-- Row 2: Autonomy -->
-                <div class="sr-row">
-                    <div class="sr-row-label">Autonomy Level</div>
-                    <div class="sr-toggle-group sr-toggle-group-3">
-                        <button class="sr-toggle-btn" data-group="autonomy" data-value="independent" onclick="srSetAutonomy('independent')">🧠 Independent</button>
-                        <button class="sr-toggle-btn" data-group="autonomy" data-value="hint_used" onclick="srSetAutonomy('hint_used')">💡 Hint Used</button>
-                        <button class="sr-toggle-btn" data-group="autonomy" data-value="solution_read" onclick="srSetAutonomy('solution_read')">📖 Soln Read</button>
-                    </div>
+
+                <!-- Answer stage: MCQ options (selectable) or self-report -->
+                <div class="sr-answer-stage" id="sr-answer-stage">
+                    ${_renderAnswerStage(q)}
                 </div>
-                <!-- Row 3: Friction Type -->
-                <div class="sr-row">
-                    <div class="sr-row-label">Friction Type</div>
-                    <div class="sr-friction-pills">
-                        ${SR_FRICTION_TYPES.map(ft => `<button class="sr-friction-pill" data-friction="${ft}" onclick="srToggleFriction('${ft}')">${SR_FRICTION_LABELS[ft]}</button>`).join('')}
-                    </div>
-                </div>
-                <!-- Row 4: Time -->
-                <div class="sr-row">
-                    <div class="sr-row-label">Time Spent</div>
-                    <div class="sr-time-row">
-                        <button class="sr-stopwatch" id="sr-stopwatch-btn" onclick="srToggleStopwatch()">
-                            <span id="sr-stopwatch-display">00:00</span>
-                            <span class="sr-pulse-dot" id="sr-pulse-dot"></span>
-                        </button>
-                        <button class="sr-manual-toggle" id="sr-manual-toggle" onclick="srToggleManualTime()">Manual</button>
-                        <input type="number" class="sr-manual-input" id="sr-manual-input" style="display:none;" min="0" step="0.5" placeholder="0" oninput="srUpdateManualTime(this.value)">
-                        <span class="sr-manual-unit" id="sr-manual-unit" style="display:none;">min</span>
-                        <span class="sr-target-ref">Target: ${_drawerState.targetTimeMins}m</span>
-                    </div>
+
+                <!-- Result banner (filled once answered) -->
+                <div class="sr-result-zone" id="sr-result-zone"></div>
+
+                <!-- Tagging stage (revealed AFTER the result is known) -->
+                <div class="sr-tag-stage" id="sr-tag-stage" style="display:none;">
+                    ${_renderTagStage()}
                 </div>
             </div>
             <div class="sr-drawer-footer">
@@ -190,15 +189,303 @@ export function openPracticeDrawer(qId) {
         </div>
     `;
 
-    block.insertAdjacentHTML('afterend', drawerHtml);
+    document.body.appendChild(overlay);
     _startStopwatch();
+    _postRenderDrawer(q);
 }
 
 export function closePracticeDrawer() {
     _pauseStopwatch();
     _resetDrawerState();
-    const drawer = document.querySelector('.sr-practice-drawer');
-    if (drawer) drawer.remove();
+    const overlay = document.getElementById('sr-practice-overlay');
+    if (overlay) overlay.remove();
+}
+
+// ── Practice drawer: helpers ───────────────────────────────────────────────
+
+function _esc(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function _currentDrawerQuestion() {
+    if (!_drawerState.qId) return null;
+    return AppState.questionBank.find(item => item.id.toString() === _drawerState.qId.toString()) || null;
+}
+
+// Pull the leading letter (A/B/C/D) out of an option string like "A) ...".
+function _optionLetter(opt, idx) {
+    if (!opt) return String.fromCharCode(65 + idx);
+    const m = String(opt).trim().match(/^([A-Za-z])[.)\s]/);
+    if (m) return m[1].toUpperCase();
+    return String.fromCharCode(65 + idx);
+}
+
+// Normalise a correctAnswer value into a sorted array of uppercase letters.
+function _normalizeAnswer(ans) {
+    if (ans == null) return [];
+    if (Array.isArray(ans)) {
+        return ans.map(a => String(a).trim().toUpperCase().charAt(0)).filter(Boolean);
+    }
+    const matches = String(ans).trim().toUpperCase().match(/[A-D]/g);
+    return matches ? matches : [];
+}
+
+function _hasLoadedAnswer(q) {
+    if (q.correctAnswer == null) return false;
+    if (Array.isArray(q.correctAnswer)) return q.correctAnswer.length > 0;
+    return String(q.correctAnswer).trim().length > 0;
+}
+
+function _renderQuestionMedia(q) {
+    let imgHtml = '';
+    if (q.imageDataUrl && q.imageDataUrl.length > 100) {
+        imgHtml = `<img class="sr-question-img" id="sr-question-img" src="${q.imageDataUrl}" alt="Question image">`;
+    } else if (q.driveImageId) {
+        imgHtml = `<img class="sr-question-img lazy-practice-img" id="sr-question-img" data-drive-id="${q.driveImageId}" data-qid="${q.id}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='180'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='12' text-anchor='middle' alignment-baseline='middle'>Loading image…</text></svg>" alt="Question image">`;
+    } else {
+        return ''; // no image to show → no hide button either
+    }
+    return `
+        <div class="sr-question-media" id="sr-question-media">
+            <button class="sr-hide-img-btn" id="sr-hide-img-btn" type="button" onclick="srToggleImage()">👁 Hide Image</button>
+            <div class="sr-question-img-wrap" id="sr-question-img-wrap">${imgHtml}</div>
+        </div>`;
+}
+
+function _renderAnswerStage(q) {
+    if (q.type === 'mcq' && Array.isArray(q.options) && q.options.length) {
+        const isMulti = Array.isArray(q.correctAnswer);
+        const optsHtml = q.options.map((opt, i) => {
+            const letter = _optionLetter(opt, i);
+            return `<div class="sr-mcq-option" data-letter="${_esc(letter)}" data-option="${_esc(opt)}" onclick="srSelectOption(this)" role="button" tabindex="0">
+                <span class="sr-mcq-letter">${_esc(letter)}</span>
+                <span class="sr-mcq-text">${_esc(opt)}</span>
+            </div>`;
+        }).join('');
+        return `
+            <div class="sr-mcq-block">
+                <div class="sr-mcq-label">${isMulti ? 'Select all that apply' : 'Select your answer'}</div>
+                <div class="sr-mcq-options">${optsHtml}</div>
+                <button class="sr-confirm-btn" id="sr-confirm-btn" type="button" onclick="srConfirmAnswer()" disabled>Confirm Answer</button>
+            </div>`;
+    }
+    // Non-MCQ: go straight to a self-report prompt (reveal the answer if on file).
+    const hasAnswer = _hasLoadedAnswer(q);
+    const correctAns = hasAnswer ? (Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer) : '';
+    if (hasAnswer) {
+        return `
+            <div class="sr-self-report sr-self-report-inline">
+                <div class="sr-self-report-label">Correct answer on file: <strong>${_esc(correctAns)}</strong>. Did you get it right?</div>
+                <div class="sr-self-report-btns">
+                    <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
+                    <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
+                </div>
+            </div>`;
+    }
+    return `
+        <div class="sr-self-report sr-self-report-inline">
+            <div class="sr-self-report-label">No answer on file — were you correct?</div>
+            <div class="sr-self-report-btns">
+                <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
+                <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
+            </div>
+        </div>`;
+}
+
+function _renderTagStage() {
+    return `
+        <div class="sr-tag-divider">Now log your attempt ↓</div>
+        <!-- Autonomy -->
+        <div class="sr-row">
+            <div class="sr-row-label">Autonomy Level</div>
+            <div class="sr-toggle-group sr-toggle-group-3">
+                <button class="sr-toggle-btn" data-group="autonomy" data-value="independent" onclick="srSetAutonomy('independent')">🧠 Independent</button>
+                <button class="sr-toggle-btn" data-group="autonomy" data-value="hint_used" onclick="srSetAutonomy('hint_used')">💡 Hint Used</button>
+                <button class="sr-toggle-btn" data-group="autonomy" data-value="solution_read" onclick="srSetAutonomy('solution_read')">📖 Soln Read</button>
+            </div>
+        </div>
+        <!-- Friction Type -->
+        <div class="sr-row">
+            <div class="sr-row-label">Friction Type</div>
+            <div class="sr-friction-pills">
+                ${SR_FRICTION_TYPES.map(ft => `<button class="sr-friction-pill" data-friction="${ft}" onclick="srToggleFriction('${ft}')">${SR_FRICTION_LABELS[ft]}</button>`).join('')}
+            </div>
+        </div>
+        <!-- Time -->
+        <div class="sr-row">
+            <div class="sr-row-label">Time Spent</div>
+            <div class="sr-time-row">
+                <button class="sr-stopwatch" id="sr-stopwatch-btn" onclick="srToggleStopwatch()" type="button">
+                    <span id="sr-stopwatch-display">00:00</span>
+                    <span class="sr-pulse-dot" id="sr-pulse-dot"></span>
+                </button>
+                <button class="sr-manual-toggle" id="sr-manual-toggle" onclick="srToggleManualTime()" type="button">Manual</button>
+                <input type="number" class="sr-manual-input" id="sr-manual-input" style="display:none;" min="0" step="0.5" placeholder="0" oninput="srUpdateManualTime(this.value)">
+                <span class="sr-manual-unit" id="sr-manual-unit" style="display:none;">min</span>
+                <span class="sr-target-ref">Target: ${_drawerState.targetTimeMins}m</span>
+            </div>
+        </div>`;
+}
+
+// Commit the result (auto-graded or self-reported) and reveal the tag stage.
+function _applyResult(result, source, q) {
+    _drawerState.result = result;
+    _drawerState.resultSource = source;
+
+    const zone = document.getElementById('sr-result-zone');
+    if (zone) {
+        const correctAns = _hasLoadedAnswer(q)
+            ? (Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer)
+            : null;
+        let suffix = '';
+        if (source === 'auto' && correctAns) {
+            suffix = (result === 'correct' ? ` — answer: ${_esc(correctAns)}` : ` — correct answer: ${_esc(correctAns)}`);
+        } else if (source === 'self') {
+            suffix = ' (self-reported)';
+        }
+        if (result === 'correct') {
+            zone.innerHTML = `<div class="sr-result-banner correct">✅ Correct${suffix}</div>`;
+        } else {
+            zone.innerHTML = `<div class="sr-result-banner incorrect">❌ Incorrect${suffix}</div>`;
+        }
+    }
+
+    // Reveal the tagging stage
+    const tagStage = document.getElementById('sr-tag-stage');
+    if (tagStage) tagStage.style.display = 'flex';
+
+    // Hide the confirm button
+    const cb = document.getElementById('sr-confirm-btn');
+    if (cb) cb.style.display = 'none';
+
+    if (source === 'auto') {
+        // Mark MCQ options: correct → green, selected-wrong → red
+        const correctSet = new Set(_normalizeAnswer(q.correctAnswer));
+        document.querySelectorAll('.sr-mcq-option').forEach(opt => {
+            opt.style.pointerEvents = 'none';
+            const letter = opt.getAttribute('data-letter');
+            const wasSelected = _drawerState.selectedOptions.includes(letter);
+            opt.classList.remove('correct-mark', 'wrong-mark');
+            if (correctSet.has(letter)) opt.classList.add('correct-mark');
+            else if (wasSelected) opt.classList.add('wrong-mark');
+        });
+    } else {
+        // Self-report: lock MCQ options if any, otherwise hide the answer stage
+        const mcqOpts = document.querySelectorAll('.sr-mcq-option');
+        if (mcqOpts.length) {
+            mcqOpts.forEach(o => { o.style.pointerEvents = 'none'; });
+        } else {
+            const as = document.getElementById('sr-answer-stage');
+            if (as) as.style.display = 'none';
+        }
+    }
+
+    _updateDrawerUI();
+}
+
+// Shown when an MCQ question has NO loaded answer — ask the user to self-report.
+function _showSelfReportPrompt(q) {
+    const zone = document.getElementById('sr-result-zone');
+    if (zone) {
+        zone.innerHTML = `
+            <div class="sr-self-report">
+                <div class="sr-self-report-label">No answer on file — were you correct?</div>
+                <div class="sr-self-report-btns">
+                    <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
+                    <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
+                </div>
+            </div>`;
+    }
+    const cb = document.getElementById('sr-confirm-btn');
+    if (cb) cb.style.display = 'none';
+    document.querySelectorAll('.sr-mcq-option').forEach(o => { o.style.pointerEvents = 'none'; });
+}
+
+function _renderKatexIn(el) {
+    if (!el || !window.katex) return;
+    const raw = el.textContent;
+    el.innerHTML = raw.replace(/\$\$([\s\S]+?)\$\$|\$([^\$]+)\$/g, (m, block, inline) => {
+        try { return window.katex.renderToString(block || inline, { throwOnError: false, displayMode: !!block }); }
+        catch (e) { return m; }
+    });
+}
+
+function _postRenderDrawer(q) {
+    // Render LaTeX inside the question text + MCQ option text
+    if (window.katex) {
+        const textEl = document.getElementById('sr-question-text');
+        if (textEl) _renderKatexIn(textEl);
+        document.querySelectorAll('.sr-mcq-text').forEach(el => _renderKatexIn(el));
+    }
+    // Lazy-load the drive image if the question only has a driveImageId
+    if (!q.imageDataUrl && q.driveImageId) {
+        const token = (typeof AppState.driveAccessToken !== 'undefined') ? AppState.driveAccessToken : null;
+        const doFetch = (tok) => {
+            if (!tok) return;
+            fetchMediaFromDrive(q.driveImageId, tok).then(b64 => {
+                if (!b64) return;
+                q.imageDataUrl = b64;
+                const img = document.getElementById('sr-question-img');
+                if (img) img.src = b64;
+            }).catch(() => {});
+        };
+        if (token) {
+            doFetch(token);
+        } else if (typeof waitForDriveToken === 'function') {
+            try { Promise.resolve(waitForDriveToken()).then(doFetch).catch(() => {}); } catch (e) {}
+        }
+    }
+}
+
+// ── Practice drawer: MCQ + image interaction handlers (exposed to window) ──
+
+export function srSelectOption(el) {
+    const q = _currentDrawerQuestion();
+    if (!q) return;
+    const isMulti = Array.isArray(q.correctAnswer);
+    const letter = el.getAttribute('data-letter');
+    if (isMulti) {
+        const idx = _drawerState.selectedOptions.indexOf(letter);
+        if (idx === -1) _drawerState.selectedOptions.push(letter);
+        else _drawerState.selectedOptions.splice(idx, 1);
+        el.classList.toggle('selected');
+    } else {
+        _drawerState.selectedOptions = [letter];
+        document.querySelectorAll('.sr-mcq-option').forEach(o => o.classList.remove('selected'));
+        el.classList.add('selected');
+    }
+    const cb = document.getElementById('sr-confirm-btn');
+    if (cb) cb.disabled = _drawerState.selectedOptions.length === 0;
+}
+
+export function srConfirmAnswer() {
+    const q = _currentDrawerQuestion();
+    if (!q) return;
+    if (_drawerState.selectedOptions.length === 0) return;
+    if (_hasLoadedAnswer(q)) {
+        const selected = [..._drawerState.selectedOptions].sort();
+        const correct = _normalizeAnswer(q.correctAnswer).sort();
+        const isCorrect = selected.length === correct.length && selected.every((l, i) => l === correct[i]);
+        _applyResult(isCorrect ? 'correct' : 'incorrect', 'auto', q);
+    } else {
+        _showSelfReportPrompt(q);
+    }
+}
+
+export function srSelfReport(result) {
+    const q = _currentDrawerQuestion();
+    if (!q) return;
+    _applyResult(result, 'self', q);
+}
+
+export function srToggleImage() {
+    _drawerState.imageHidden = !_drawerState.imageHidden;
+    const wrap = document.getElementById('sr-question-img-wrap');
+    const btn = document.getElementById('sr-hide-img-btn');
+    if (wrap) wrap.style.display = _drawerState.imageHidden ? 'none' : 'block';
+    if (btn) btn.textContent = _drawerState.imageHidden ? '👁 Show Image' : '👁 Hide Image';
 }
 
 // ── Drawer Interaction Handlers (exposed to window) ────────────────────────
@@ -264,6 +551,8 @@ function _updateDrawerUI() {
         if (_drawerState.result) parts.push(_drawerState.result === 'correct' ? '<span style="color:#10B981;">✓ Correct</span>' : '<span style="color:#EF4444;">✗ Incorrect</span>');
         if (_drawerState.autonomy) parts.push(`<span style="color:#888;">· ${_drawerState.autonomy.replace('_', ' ')}</span>`);
         if (_drawerState.frictionTypes.length > 0) parts.push(`<span style="color:#888;">· ${_drawerState.frictionTypes.length} friction${_drawerState.frictionTypes.length > 1 ? 's' : ''}</span>`);
+        const tSpent = _drawerState.timeSpentMins > 0 ? _drawerState.timeSpentMins : _drawerState.stopwatchSeconds / 60;
+        if (tSpent > 0) parts.push(`<span style="color:#888;">· ${Math.round(tSpent * 10) / 10}m</span>`);
         summary.innerHTML = parts.join(' ');
     }
 
@@ -347,6 +636,9 @@ export function submitPracticeLog() {
     closePracticeDrawer();
     renderErrorMatrixFromBank();
     filterErrors();
+    // ⚡ Refresh the error-resolution dashboard so today's count updates live
+    // the moment a practice attempt is logged (correct answers bump the count).
+    renderErrorResolutionDashboard();
 }
 
 // ── Delete ──────────────────────────────────────────────────────────────────
@@ -358,6 +650,7 @@ export function removeErrorLog(id) {
         closePracticeDrawer();
         renderErrorMatrixFromBank();
         filterErrors();
+        renderErrorResolutionDashboard();
     }
 }
 
@@ -853,14 +1146,58 @@ export function renderChapterDecayGrid() {
 
 // ==================== ERROR RESOLUTION ENGINE ====================
 
+// ── Day-rollover watcher ───────────────────────────────────────────────────
+// The dashboard's "today" count is derived dynamically from historyLogs
+// filtered by the current local date, so it resets to 0 at midnight BY DESIGN.
+// The only way it can appear "stuck" is if the dashboard is never re-rendered
+// after the date changes (e.g. the app stays open overnight). This watcher
+// detects local-date changes and re-renders automatically, so the count
+// always reflects the correct day.
+
+let _todayKeyCache = null;
+let _lastRenderedDate = null;
+let _rolloverWatchStarted = false;
+
+// Stable local YYYY-MM-DD key. Pass a Date to format that date; omit for today.
+function _todayKey(date) {
+    const d = date || new Date();
+    // en-CA → "YYYY-MM-DD" in the browser's local timezone
+    return d.toLocaleDateString('en-CA');
+}
+
+export function refreshErrorDashboardIfStale() {
+    const today = _todayKey();
+    if (_lastRenderedDate !== today) {
+        _lastRenderedDate = today;
+        renderErrorResolutionDashboard();
+    }
+}
+
+// Start the rollover watcher exactly once (auto-starts on first dashboard render).
+function _startRolloverWatcher() {
+    if (_rolloverWatchStarted) return;
+    _rolloverWatchStarted = true;
+    _lastRenderedDate = _todayKey();
+    // Poll every 60s — cheap, catches a midnight rollover within a minute.
+    setInterval(refreshErrorDashboardIfStale, 60_000);
+    // Re-check immediately when the tab becomes visible / regains focus
+    // (covers the common "leave app open overnight, come back next morning" case).
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshErrorDashboardIfStale();
+    });
+    window.addEventListener('focus', refreshErrorDashboardIfStale);
+}
+
 /**
  * Scan AppState.questionBank historyLogs to compute:
  *  1. Today's per-subject error correction counts vs baseTargets
  *  2. 15-day historical momentum sparkline
  * All computed dynamically on the fly — no persistent state changes.
+ * "Today" is the current LOCAL date, so the count resets to 0 at midnight.
  */
 export function renderErrorResolutionDashboard() {
-    const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+    _startRolloverWatcher();
+    const todayStr = _todayKey(); // YYYY-MM-DD local — resets each new day
     const subjects = ['physics', 'chemistry', 'maths'];
     const subjectGradients = {
         physics:   'linear-gradient(90deg, #3b82f6, #8b5cf6)',
@@ -880,7 +1217,7 @@ export function renderErrorResolutionDashboard() {
         if (!q.historyLogs || !Array.isArray(q.historyLogs)) return;
         q.historyLogs.forEach(log => {
             if (log.result !== 'correct' || !log.timestamp) return;
-            const logDate = new Date(log.timestamp).toLocaleDateString('en-CA');
+            const logDate = _todayKey(new Date(log.timestamp));
             if (logDate === todayStr) {
                 const subj = (q.subject || '').toLowerCase();
                 if (todayCounts[subj] !== undefined) todayCounts[subj]++;
@@ -940,7 +1277,7 @@ subjects.forEach(subj => {
         if (!q.historyLogs || !Array.isArray(q.historyLogs)) return;
         q.historyLogs.forEach(log => {
             if (log.result !== 'correct' || !log.timestamp) return;
-            const logDate = new Date(log.timestamp).toLocaleDateString('en-CA');
+            const logDate = _todayKey(new Date(log.timestamp));
             const entry = momentumData.find(m => m.date === logDate);
             if (entry) entry.count++;
         });
