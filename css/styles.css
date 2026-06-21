@@ -238,6 +238,25 @@
             color: #4ade80;
             text-shadow: 0 0 12px rgba(74, 222, 128, 0.6);
         }
+        /* High-priority vulnerability styling (STREAK_AT_RISK, CRITICAL_DECAY) */
+        .cat-text.glow-red {
+            color: #f87171;
+            text-shadow: 0 0 12px rgba(248, 113, 113, 0.6);
+            animation: catPulseRed 1.5s ease-in-out infinite;
+        }
+        @keyframes catPulseRed {
+            0%, 100% { text-shadow: 0 0 12px rgba(248, 113, 113, 0.4); }
+            50% { text-shadow: 0 0 20px rgba(248, 113, 113, 0.8); }
+        }
+        /* Fade transition for cat-text content swaps (telemetry rotation).
+           The JS adds .cat-fading to drop opacity to 0, swaps the text, then
+           removes .cat-fading to fade back to 1. */
+        .cat-text {
+            transition: opacity 0.25s ease;
+        }
+        .cat-text.cat-fading {
+            opacity: 0;
+        }
         @keyframes catBounce {
             0%,
             100% {
@@ -3318,4 +3337,45 @@ html body .error-block.daily-queue-done::after {
     background: var(--glow-green);
     border-radius: 6px;
     box-shadow: 0 0 12px rgba(34, 197, 94, 0.5);
+}
+
+/* ============================================================================
+   FULL-VIEWPORT SCRATCHPAD HUD — Visual CSS Mechanics
+   ============================================================================
+   When the scratchpad is actively capturing strokes (body.scratchpad-active),
+   the workspace beneath is dimmed + blurred so the user's pen strokes are the
+   focal point. Viewport scrolling is locked so the canvas aligns perfectly with
+   what the user sees. */
+
+/* Dim + blur the workspace when the scratchpad is active */
+body.scratchpad-active .app-container {
+    opacity: 0.75;
+    filter: blur(0.5px);
+    transition: opacity 0.25s ease;
+}
+
+/* Lock workspace viewport scrolling while drawing */
+body.scratchpad-active {
+    overflow: hidden !important;
+}
+
+/* The scratchpad canvas itself sits above the workspace but below the HUD.
+   When inactive it is pointer-events:none (set inline by app.js) so it never
+   blocks the workspace. These rules ensure it stays pinned to the viewport
+   even during scroll-locked states. */
+#scratchpad-canvas {
+    image-rendering: auto;
+}
+body.scratchpad-active #scratchpad-canvas {
+    cursor: crosshair;
+}
+
+/* The floating HUD trigger — ensure it stays above every other overlay
+   (including the SR practice drawer at z-index 999994 and practice modal). */
+#scratchpad-hud {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    z-index: 999999;
+}
+#scratchpad-hud:active {
+    cursor: grabbing;
 }

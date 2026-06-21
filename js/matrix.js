@@ -11,6 +11,8 @@ import {
     formatTime,
     waitForDriveToken,
     baseErrorTargets,
+    // ── Daily/subjective study-time tracker (shared with Pomodoro + app.js) ──
+    studySecs,
     // ── SR engine imports ──
     computeSR,
     getDueStatus,
@@ -720,7 +722,29 @@ export function submitPracticeLog() {
     // reflects the new streak on the next renderLoop tick.
     if (typeof window.updateStreakVisualizer === 'function') window.updateStreakVisualizer();
 
-    // Persist consolidated arrays to IndexedDB/Cloud Sync pipelines
+    // ⏱ Converge the SR drawer's active execution time into the daily and
+    // subjective study counters (studySecs.physics / .chemistry / .maths —
+    // the same tracker the Pomodoro deep-focus blocks write into). The raw
+    // minutes captured by the drawer stopwatch / manual input are converted
+    // into stable baseline seconds before injection.
+    const secondsToInject = Math.round(timeSpent * 60);
+    if (secondsToInject > 0 && q.subject) {
+        const subjKey = String(q.subject).toLowerCase();
+        // studySecs keys are lowercase: physics / chemistry / maths
+        if (subjKey in studySecs) {
+            studySecs[subjKey] += secondsToInject;
+            // Live HUD repaint — updateStudyTimeHeader reads studySecs and
+            // repaints the dashboard counters immediately. The function is
+            // exposed on window by app.js (which imports it from pomodoro.js).
+            if (typeof window.updateStudyTimeHeader === 'function') {
+                window.updateStudyTimeHeader();
+            }
+        }
+    }
+
+    // Persist consolidated arrays to IndexedDB/Cloud Sync pipelines — the
+    // studySecs mutation above is included in this snapshot (saveAllAsync
+    // writes studySecs to IndexedDB under the 'jeemax_study_secs' key).
     saveAllAsync().catch(console.error);
 
     // Close drawer and re-render UI matrix structures cleanly

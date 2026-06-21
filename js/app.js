@@ -26,6 +26,8 @@ import {
     waitForDriveToken, updateDailyHistory, getDailyHistory,
     executeUnifiedSync, cacheAllDriveImages,
     registerUiCallbacks, changeCount,
+    // ── SR due-status helper (used by the cat-banner vulnerability scanner) ──
+    getDueStatus,
 } from './storage.js';
 
 import {
@@ -268,6 +270,259 @@ export async function calibrateMood(mood) {
         `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+// ── Cat-Banner Progress View Helper ───────────────────────────────────────
+// Renders the "Daily Targets: X% Complete" (or "All Daily Targets Complete!
+// 🚀") view into #cat-text with the appropriate glow class. Factored out of
+// updateUI() so the telemetry loop can re-render it on the A-tick without
+// recomputing every metric.
+function _renderCatProgressView(overallPct) {
+    const catText = document.getElementById('cat-text');
+    if (!catText) return;
+    if (overallPct >= 100) {
+        catText.textContent = `All Daily Targets Complete! 🚀`;
+        catText.className = "cat-text glow-green";
+    } else {
+        catText.textContent = `Daily Targets: ${overallPct}% Complete`;
+        catText.className = "cat-text glow-orange";
+    }
+}
+
+// ── Cat-Banner Vulnerability Telemetry Scanner ────────────────────────────
+// Scans live application memory state (AppState.questionBank, solved counters,
+// mood calibration) to flag cognitive, output-based, and spaced-repetition
+// vulnerabilities. Returns the highest-priority active vulnerability, or null
+// if none are flagged. Priorities are 1 (highest) through 6 (lowest).
+//
+// This function is self-contained and reads only from already-imported state
+// (AppState, solved, getDueStatus). It does NOT import matrix.js, avoiding
+// any circular module dependency. The chapter-decay health calculation mirrors
+// the algorithm inside renderChapterDecayGrid() in matrix.js so the math
+// parameters evaluate identically without corrupting target locks or storage.
+function _scanCatBannerVulnerabilities() {
+    const vulnerabilities = [];
+
+    // ── PRIORITY 1: STREAK_AT_RISK ────────────────────────────────────────
+    // Triggered if current local time is past 18:00 (6 PM) AND combined daily
+    // solved count across physics+chemistry+maths is exactly 0.
+    {
+        const now = new Date();
+        const totalSolvedToday = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
+        if (now.getHours() >= 18 && totalSolvedToday === 0) {
+            vulnerabilities.push({
+                priority: 1,
+                className: 'glow-red',
+                text: '🚨 STREAK VOLATILITY: 0 questions logged. Current training streak vector is highly vulnerable to breaking.',
+            });
+        }
+    }
+
+    // ── PRIORITY 2: CRITICAL_DECAY ───────────────────────────────────────
+    // Triggered if any chapter stability health drops below 45%. Health is
+    // calculated using the same algorithm as renderChapterDecayGrid() in
+    // matrix.js: health = clamped((avgEF - 1.3) / 1.7 * 100, [10,100]) minus
+    // 15% per overdue (ready) question, clamped again.
+    {
+        const allErrors = AppState.questionBank.filter(q =>
+            q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
+        );
+        const chapterMap = {};
+        allErrors.forEach(q => {
+            const chapter = q.chapter || 'Uncategorized';
+            if (!chapterMap[chapter]) chapterMap[chapter] = [];
+            chapterMap[chapter].push(q);
+        });
+        let worstChapter = null;
+        let worstHealth = 100;
+        for (const [name, questions] of Object.entries(chapterMap)) {
+            const avgEF = questions.reduce((sum, q) => sum + (q.easeFactor || 2.5), 0) / questions.length;
+            const overdueCount = questions.filter(q => getDueStatus(q).status === 'ready').length;
+            let health = ((avgEF - 1.3) / 1.7) * 100;
+            health = Math.max(10, Math.min(100, health));
+            health -= overdueCount * 15;
+            health = Math.max(10, Math.min(100, health));
+            if (health < 45 && health < worstHealth) {
+                worstHealth = health;
+                worstChapter = name;
+            }
+        }
+        if (worstChapter) {
+            vulnerabilities.push({
+                priority: 2,
+                className: 'glow-red',
+                text: `⚠️ VULNERABILITY DETECTED: ${worstChapter} health dropped below 45%. Re-solve immediate.`,
+            });
+        }
+    }
+
+    // ── PRIORITY 3: BOUNTY_LOCK ───────────────────────────────────────────
+    // Triggered if any question in the bank has an active future
+    // bountyLockUntil timestamp OR its criticalDeficit property is true.
+    {
+        const now = Date.now();
+        const hasBountyLock = AppState.questionBank.some(q => {
+            if (q.criticalDeficit === true) return true;
+            if (q.bountyLockUntil) {
+                const lockTime = new Date(q.bountyLockUntil).getTime();
+                if (!isNaN(lockTime) && lockTime > now) return true;
+            }
+            return false;
+        });
+        if (hasBountyLock) {
+            vulnerabilities.push({
+                priority: 3,
+                className: 'glow-orange',
+                text: '⚔️ BOUNTY DEFICIT: Structural target penalty active. Chapter asset locked due to failure.',
+            });
+        }
+    }
+
+    // ── PRIORITY 4: SR_OVERFLOW ───────────────────────────────────────────
+    // Triggered if the count of SR items across all subjects with a due status
+    // of 'ready' exceeds 5.
+    {
+        let readyCount = 0;
+        AppState.questionBank.forEach(q => {
+            if (q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')) {
+                if (getDueStatus(q).status === 'ready') readyCount++;
+            }
+        });
+        if (readyCount > 5) {
+            vulnerabilities.push({
+                priority: 4,
+                className: 'glow-orange',
+                text: `⚡ CORE QUEUE CRITICAL: ${readyCount} friction points are highly vulnerable to memory erasure.`,
+            });
+        }
+    }
+
+    // ── PRIORITY 5: OUTPUT_LAG ────────────────────────────────────────────
+    // Triggered if one subject's daily solved completion rate is under 20%
+    // while another has advanced past 50%.
+    {
+        const subjects = ['physics', 'chemistry', 'maths'];
+        const pcts = subjects.map(sub => {
+            const tgt = AppState.activeTargets[sub];
+            return tgt > 0 ? Math.min(100, (solved[sub] / tgt) * 100) : 0;
+        });
+        const hasLagger = pcts.some(p => p < 20);
+        const hasLeader = pcts.some(p => p > 50);
+        if (hasLagger && hasLeader) {
+            // Find the lagging subject name (first one under 20%)
+            const lagIdx = pcts.findIndex(p => p < 20);
+            const lagSubject = subjects[lagIdx];
+            const displayName = lagSubject.charAt(0).toUpperCase() + lagSubject.slice(1);
+            vulnerabilities.push({
+                priority: 5,
+                className: 'glow-orange',
+                text: `📉 SYSTEM IMBALANCE: ${displayName} execution volume is severely lagging behind target matrix.`,
+            });
+        }
+    }
+
+    // ── PRIORITY 6: CNS_FRICTION ──────────────────────────────────────────
+    // Triggered if AppState.moodMultiplier === 0.70 (the 'Fried / 🥱' state).
+    {
+        if (AppState.moodMultiplier === 0.70) {
+            vulnerabilities.push({
+                priority: 6,
+                className: 'glow-orange',
+                text: '🧠 COGNITIVE FRICTION: CNS exhaustion active. Intervals scaled to 25/5; prioritize accuracy.',
+            });
+        }
+    }
+
+    // Sort by priority ascending (1 = highest) and return the top one.
+    if (vulnerabilities.length === 0) return null;
+    vulnerabilities.sort((a, b) => a.priority - b.priority);
+    return vulnerabilities[0];
+}
+
+// ── Cat-Banner Telemetry Rotation Loop ────────────────────────────────────
+// A 10-second ticker that alternates #cat-text between:
+//   • Tick A: Overall Daily Targets Progress % (existing logic)
+//   • Tick B: Highest-priority active vulnerability (evaluated dynamically)
+// If no vulnerabilities are flagged on a B-tick, the A-state progress view
+// is maintained seamlessly. Text changes are wrapped in a CSS fade transition
+// (opacity 0 → update text → opacity 1) to prevent harsh snapping.
+(function _initCatBannerTelemetry() {
+    if (window.__catTelemetryInit) return;
+    window.__catTelemetryInit = true;
+
+    let showVulnerability = false; // alternates each tick
+    let currentFadeTimer = null;
+
+    function _computeOverallPct() {
+        const pcts = ['physics', 'chemistry', 'maths'].map(sub => {
+            const tgt = AppState.activeTargets[sub];
+            return tgt > 0 ? Math.min(100, (solved[sub] / tgt) * 100) : 0;
+        });
+        return Math.floor((pcts[0] + pcts[1] + pcts[2]) / 3);
+    }
+
+    function _renderCatText(text, className) {
+        const catText = document.getElementById('cat-text');
+        if (!catText) return;
+        // Fade out → update text + class → fade back in.
+        catText.classList.add('cat-fading');
+        // Clear any pending fade-in timer from a rapid re-trigger.
+        if (currentFadeTimer) clearTimeout(currentFadeTimer);
+        currentFadeTimer = setTimeout(() => {
+            catText.textContent = text;
+            catText.className = 'cat-text ' + className + ' cat-fading';
+            // Force a reflow so the opacity transition restarts cleanly.
+            void catText.offsetHeight;
+            catText.classList.remove('cat-fading');
+            currentFadeTimer = null;
+        }, 250); // matches the CSS fade-out duration
+    }
+
+    function _tick() {
+        const catText = document.getElementById('cat-text');
+        if (!catText) return;
+
+        if (showVulnerability) {
+            // Tick B: evaluate vulnerabilities dynamically on this tick.
+            const vuln = _scanCatBannerVulnerabilities();
+            if (vuln) {
+                _renderCatText(vuln.text, vuln.className);
+            } else {
+                // No active vulnerability — maintain the progress view seamlessly.
+                _renderCatProgressView(_computeOverallPct());
+            }
+        } else {
+            // Tick A: Overall Daily Targets Progress %.
+            _renderCatProgressView(_computeOverallPct());
+        }
+        // Alternate for the next tick.
+        showVulnerability = !showVulnerability;
+    }
+
+    // Start the 10-second rotational cycle. The first tick fires immediately
+    // so the banner picks up vulnerabilities on load without a 10s delay.
+    function _start() {
+        if (!document.getElementById('cat-text')) {
+            // DOM not ready — retry shortly.
+            setTimeout(_start, 500);
+            return;
+        }
+        _tick();
+        setInterval(_tick, 10000);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _start);
+    } else {
+        _start();
+    }
+
+    // Expose a debug surface.
+    window.__catTelemetry = {
+        scan: _scanCatBannerVulnerabilities,
+        tick: _tick,
+        getShowingVulnerability: () => showVulnerability,
+    };
+})();
+
 export async function updateUI() {
     let pctP = AppState.activeTargets.physics > 0 ? Math.min(100, (solved.physics / AppState.activeTargets.physics) * 100) : 0;
     let pctC = AppState.activeTargets.chemistry > 0 ? Math.min(100, (solved.chemistry / AppState.activeTargets.chemistry) * 100) : 0;
@@ -282,14 +537,10 @@ export async function updateUI() {
     });
 
     let overallPct = Math.floor((pctP + pctC + pctM) / 3);
-    const catText = document.getElementById('cat-text');
-    if (overallPct >= 100) {
-        catText.textContent = `All Daily Targets Complete! 🚀`;
-        catText.className = "cat-text glow-green";
-    } else {
-        catText.textContent = `Daily Targets: ${overallPct}% Complete`;
-        catText.className = "cat-text glow-orange";
-    }
+    // Render the progress view into #cat-text. This is factored out so the
+    // cat-banner telemetry loop can re-render the progress view on its A-tick
+    // without recomputing every metric in updateUI().
+    _renderCatProgressView(overallPct);
 
     let totalSolved = solved.physics + solved.chemistry + solved.maths;
     let totalTgt = AppState.activeTargets.physics + AppState.activeTargets.chemistry + AppState.activeTargets.maths;
@@ -1599,6 +1850,9 @@ export function tryAssignDailyBounty(questionId) {
             AppState.currentQ.status = 'wrong';
             saveAllAsync().catch(console.error);
             AppState.practiceSubmittedFlags[0] = true;
+            // ⏱ Converge the timed-out bounty attempt's practice time into the
+            // daily/subjective study counters (runs exactly once — flag is true).
+            _injectPracticeTimeIntoStudySecs();
             clearInterval(AppState.practiceTimer);
             evaluateBountyOutcome(false);
         }
@@ -1713,6 +1967,9 @@ export function startBountySessionFromModal() {
             AppState.currentQ.status = 'wrong';
             saveAllAsync().catch(console.error);
             AppState.practiceSubmittedFlags[0] = true;
+            // ⏱ Converge the timed-out bounty attempt's practice time into the
+            // daily/subjective study counters (runs exactly once — flag is true).
+            _injectPracticeTimeIntoStudySecs();
             clearInterval(AppState.practiceTimer);
             evaluateBountyOutcome(false);
         }
@@ -1875,6 +2132,54 @@ export function toggleMcqOption(element, optionText) {
     }
 }
 
+// ── Practice Time → Daily/Subjective Study Counter Convergence ────────────
+// Injects the accumulated stopwatch seconds from the current question
+// practice attempt directly into the global studySecs tracker (the same
+// object the Pomodoro deep-focus blocks write into). This makes the time
+// spent actively executing a question count toward the user's daily study
+// total and per-subject HUD volume, with an immediate live repaint.
+//
+// GUARD: The caller MUST have just set
+//   AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true
+// immediately before invoking this, so the early-return guard at the top of
+// practiceSubmit() prevents multi-counting on re-entry. We re-check the flag
+// here as a second line of defence to guarantee the injection runs exactly
+// once per single question attempt session.
+function _injectPracticeTimeIntoStudySecs() {
+    try {
+        if (!AppState.currentQ) return;
+        // Second-line guard: only inject when this attempt session is truly
+        // finalised (flag already flipped to true by the caller).
+        if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return;
+
+        const subject = AppState.currentQ.subject
+            ? String(AppState.currentQ.subject).toLowerCase()
+            : null;
+        // studySecs keys are lowercase: physics / chemistry / maths
+        if (!subject || !(subject in studySecs)) return;
+
+        const seconds = Math.max(0, Math.floor(AppState.practiceSeconds || 0));
+        if (seconds <= 0) return;
+
+        studySecs[subject] += seconds;
+
+        // Live HUD repaint — updateStudyTimeHeader reads studySecs and
+        // repaints the dashboard counters. Lazy-import pomodoro.js to avoid
+        // any static circular-dependency edge cases.
+        import('./pomodoro.js').then(m => {
+            if (typeof m.updateStudyTimeHeader === 'function') m.updateStudyTimeHeader();
+        }).catch(() => { /* fall back to the already-imported binding */ });
+        // Fallback: the function is already imported at module load, so call
+        // it directly too (cheap — it just reads state and writes to the DOM).
+        if (typeof updateStudyTimeHeader === 'function') updateStudyTimeHeader();
+
+        // Persist the mutation to IndexedDB/Cloud sync pipelines.
+        saveAllAsync().catch(console.error);
+    } catch (e) {
+        console.error('Failed to inject practice time into studySecs:', e);
+    }
+}
+
 export function practiceSubmit() {
     if (AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return;
 
@@ -1941,6 +2246,10 @@ export function practiceSubmit() {
         AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
         AppState.currentQ.timeTaken = AppState.practiceSeconds;
         AppState.currentQ.status = 'unsolved';
+        // ⏱ Converge practice time into the daily/subjective study counters.
+        // Runs exactly once — the flag above is already true, so the guard at
+        // the top of practiceSubmit() blocks any re-entry from double-counting.
+        _injectPracticeTimeIntoStudySecs();
         saveAllAsync().catch(console.error);
         renderPracticeQuestionModal();
         addTextQuestionFollowUp();
@@ -1949,6 +2258,10 @@ export function practiceSubmit() {
 
     AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
     AppState.currentQ.timeTaken = AppState.practiceSeconds;
+    // ⏱ Converge practice time into the daily/subjective study counters.
+    // Runs exactly once — the flag above is already true, so the guard at
+    // the top of practiceSubmit() blocks any re-entry from double-counting.
+    _injectPracticeTimeIntoStudySecs();
 
     // Lock the first-attempt result — accuracy only counts the FIRST attempt,
     // so re-solving the same question later must NOT change it.
@@ -2973,4 +3286,299 @@ window._pendingBountyId = null;
 window._bountyQuestion = null;
 window._bountyTimeLimit = null;
 window.overheatChaos = false;
+
+// ============================================================================
+// FULL-VIEWPORT SCRATCHPAD HUD — Drag-and-Drop Floating Trigger
+// ============================================================================
+// A minimalist, high-performance visual scratchpad overlay that spans the entire
+// viewport. Designed for rapid calculation scratch-outs using an iPad stylus,
+// Apple Pencil, or mouse. Controlled via a single floating HUD icon with
+// multi-interaction states:
+//   • Single Click  → Toggle canvas active/inactive
+//   • Double Tap    → Cycle pen colors (Cyan → Magenta → Green → White)
+//   • Long Press + Drag → Reposition the HUD anywhere on the viewport
+//
+// Uses PointerEvents to unify desktop + iPad interactions perfectly. The canvas
+// is pointer-events:none when inactive so it never blocks the workspace; when
+// active it captures all pointer events for drawing while the workspace beneath
+// is blurred + dimmed.
+// ============================================================================
+(function _initScratchpad() {
+    // Guard against double-init (e.g. HMR re-evaluation).
+    if (window.__scratchpadInit) return;
+    window.__scratchpadInit = true;
+
+    // ── Configuration ──────────────────────────────────────────────────────
+    const PEN_COLORS = ['#00f0ff', '#ff2d95', '#22c55e', '#ffffff']; // Cyan, Magenta, Green, White
+    const PEN_WIDTH = 2.5;
+    const DRAG_THRESHOLD = 5;          // px — movement beyond this = drag, not click
+    const DOUBLE_TAP_MS = 300;         // ms — interval below which two taps = double-tap
+    const ACTIVE_BORDER = '#22c55e';   // HUD border when scratchpad is active
+    const INACTIVE_BORDER = '#3b82f6'; // HUD border when scratchpad is inactive
+    const ACTIVE_SHADOW = '0 0 15px rgba(34,195,94,0.5)';
+    const INACTIVE_SHADOW = '0 0 15px rgba(59,130,246,0.4)';
+
+    // ── State ──────────────────────────────────────────────────────────────
+    let canvas, ctx, hud, colorIndicator;
+    let isActive = false;          // master state: is the scratchpad capturing strokes?
+    let colorIndex = 0;            // current index into PEN_COLORS
+    let isDrawing = false;         // is a stroke currently in progress?
+    let lastX = 0, lastY = 0;      // last stroke point (canvas coords)
+
+    // HUD interaction state machine
+    let pointerDownTime = 0;       // timestamp of the most recent pointerdown on the HUD
+    let lastPointerDownTime = 0;   // timestamp of the previous pointerdown (for double-tap)
+    let hasMoved = false;          // did the pointer move > DRAG_THRESHOLD during this gesture?
+    let dragOffsetX = 0, dragOffsetY = 0; // offset between pointer and HUD top-left during drag
+    let activePointerId = null;    // pointerId currently driving the HUD (prevents multi-touch chaos)
+
+    // ── DOM Injection ──────────────────────────────────────────────────────
+    function injectDOM() {
+        // Canvas overlay — full viewport, pointer-events:none unless active
+        canvas = document.createElement('canvas');
+        canvas.id = 'scratchpad-canvas';
+        canvas.setAttribute('style',
+            'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; ' +
+            'z-index: 999995; pointer-events: none; display: block;'
+        );
+        document.body.appendChild(canvas);
+
+        // Floating HUD trigger
+        hud = document.createElement('div');
+        hud.id = 'scratchpad-hud';
+        hud.setAttribute('style',
+            'position: fixed; top: 20px; right: 20px; width: 44px; height: 44px; ' +
+            'border-radius: 50%; background: #12121a; border: 2px solid ' + INACTIVE_BORDER + '; ' +
+            'box-shadow: ' + INACTIVE_SHADOW + '; z-index: 999999; cursor: move; ' +
+            'touch-action: none; display: flex; align-items: center; justify-content: center; ' +
+            'font-size: 20px; user-select: none;'
+        );
+        hud.textContent = '✏️';
+        // Color indicator dot
+        colorIndicator = document.createElement('div');
+        colorIndicator.id = 'scratchpad-color-indicator';
+        colorIndicator.setAttribute('style',
+            'position: absolute; bottom: 2px; right: 2px; width: 10px; height: 10px; ' +
+            'border-radius: 50%; background: ' + PEN_COLORS[0] + '; border: 1px solid #fff;'
+        );
+        hud.appendChild(colorIndicator);
+        document.body.appendChild(hud);
+    }
+
+    // ── Canvas Sizing Context ──────────────────────────────────────────────
+    // Ensure the canvas internal resolution mirrors its device display bounding
+    // metrics perfectly across high-density retina scaling layers.
+    function resizeCanvas() {
+        if (!canvas || !ctx) return;
+        const dpr = window.devicePixelRatio || 1;
+        const cssW = window.innerWidth;
+        const cssH = window.innerHeight;
+        // Setting width/height clears the buffer — we accept this and redraw
+        // nothing (strokes are ephemeral scratch-outs, not persistent art).
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        // Scale the context so 1 drawing-unit = 1 CSS pixel regardless of DPR.
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        // Re-apply stroke style (some browsers reset it on resize).
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = PEN_WIDTH;
+        ctx.strokeStyle = PEN_COLORS[colorIndex];
+    }
+
+    // ── HUD Interaction Controller ─────────────────────────────────────────
+    function onHudPointerDown(e) {
+        // Only respond to the primary pointer (ignore secondary touches while
+        // already dragging — prevents multi-touch chaos on iPad).
+        if (activePointerId !== null) return;
+        activePointerId = e.pointerId;
+        // setPointerCapture can throw if the pointer is no longer active (e.g.
+        // synthetic events, or the pointer was cancelled between dispatch and
+        // handler). Wrap it so the rest of the state-machine initialisation
+        // (hasMoved, timestamps, drag offset) still runs cleanly.
+        try { hud.setPointerCapture(e.pointerId); } catch (_) { /* pointer already gone */ }
+
+        hasMoved = false;
+        dragOffsetX = e.clientX - hud.offsetLeft;
+        dragOffsetY = e.clientY - hud.offsetTop;
+        lastPointerDownTime = pointerDownTime;
+        pointerDownTime = Date.now();
+    }
+
+    function onHudPointerMove(e) {
+        if (e.pointerId !== activePointerId) return;
+        const newX = e.clientX - dragOffsetX;
+        const newY = e.clientY - dragOffsetY;
+
+        // Detect drag threshold: compare current pointer position against the
+        // initial press-down position (hud.offsetLeft + dragOffsetX at the
+        // time of pointerdown equals the initial clientX).
+        if (!hasMoved) {
+            const moveDx = e.clientX - (hud.offsetLeft + dragOffsetX);
+            const moveDy = e.clientY - (hud.offsetTop + dragOffsetY);
+            if (Math.abs(moveDx) > DRAG_THRESHOLD || Math.abs(moveDy) > DRAG_THRESHOLD) {
+                hasMoved = true;
+            }
+        }
+
+        if (hasMoved) {
+            // Reposition the HUD, clamped to viewport bounds.
+            const hudW = hud.offsetWidth;
+            const hudH = hud.offsetHeight;
+            const clampedX = Math.max(0, Math.min(window.innerWidth - hudW, newX));
+            const clampedY = Math.max(0, Math.min(window.innerHeight - hudH, newY));
+            hud.style.left = clampedX + 'px';
+            hud.style.top = clampedY + 'px';
+            // Clear the right anchor so left/top take effect.
+            hud.style.right = 'auto';
+        }
+    }
+
+    function onHudPointerUp(e) {
+        if (e.pointerId !== activePointerId) return;
+        try { hud.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+        activePointerId = null;
+
+        // If the pointer moved beyond the threshold, this was a drag — do NOT
+        // toggle or cycle colors.
+        if (hasMoved) return;
+
+        // Double-tap detection: compare the current pointerdown timestamp
+        // against the previous pointerdown timestamp. If the interval is below
+        // DOUBLE_TAP_MS, this is a double-tap → cycle color.
+        if (lastPointerDownTime > 0 && (pointerDownTime - lastPointerDownTime) < DOUBLE_TAP_MS) {
+            // Double-tap → cycle pen color. Reset timestamps so a third quick
+            // tap doesn't immediately re-trigger.
+            cycleColor();
+            lastPointerDownTime = 0;
+            pointerDownTime = 0;
+            return;
+        }
+
+        // Single click → toggle scratchpad active/inactive.
+        toggleActive();
+    }
+
+    // ── Color Cycle Matrix ─────────────────────────────────────────────────
+    function cycleColor() {
+        colorIndex = (colorIndex + 1) % PEN_COLORS.length;
+        if (ctx) ctx.strokeStyle = PEN_COLORS[colorIndex];
+        if (colorIndicator) colorIndicator.style.background = PEN_COLORS[colorIndex];
+    }
+
+    // ── Master Toggle ──────────────────────────────────────────────────────
+    function toggleActive() {
+        isActive = !isActive;
+        if (isActive) {
+            // Activate: canvas captures pointer events, body gets the active
+            // class (locks scroll + blurs workspace), HUD border turns green.
+            canvas.style.pointerEvents = 'auto';
+            document.body.classList.add('scratchpad-active');
+            hud.style.borderColor = ACTIVE_BORDER;
+            hud.style.boxShadow = ACTIVE_SHADOW;
+        } else {
+            // Deactivate: wipe the canvas clean to prevent old artifact residue
+            // from clogging the view workspace when reopened.
+            clearCanvas();
+            canvas.style.pointerEvents = 'none';
+            document.body.classList.remove('scratchpad-active');
+            hud.style.borderColor = INACTIVE_BORDER;
+            hud.style.boxShadow = INACTIVE_SHADOW;
+        }
+    }
+
+    function clearCanvas() {
+        if (!canvas || !ctx) return;
+        // Save/restore transform so clearRect uses the full unscaled buffer.
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+    }
+
+    // ── Drawing Coordination Pipeline ──────────────────────────────────────
+    function getCanvasPoint(e) {
+        // clientX/clientY are CSS pixels; the context is scaled by DPR via
+        // setTransform, so drawing in CSS-pixel coords maps correctly.
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    function onCanvasPointerDown(e) {
+        if (!isActive) return;
+        isDrawing = true;
+        // setPointerCapture can throw for synthetic/cancelled pointers — guard
+        // it so drawing still proceeds even if capture fails.
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* pointer gone */ }
+        const p = getCanvasPoint(e);
+        lastX = p.x;
+        lastY = p.y;
+        // Draw a single dot so a tap leaves a visible mark.
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, PEN_WIDTH / 2, 0, Math.PI * 2);
+        ctx.fillStyle = PEN_COLORS[colorIndex];
+        ctx.fill();
+    }
+
+    function onCanvasPointerMove(e) {
+        if (!isActive || !isDrawing) return;
+        const p = getCanvasPoint(e);
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        lastX = p.x;
+        lastY = p.y;
+    }
+
+    function onCanvasPointerUp(e) {
+        if (!isActive) return;
+        isDrawing = false;
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+    }
+
+    // ── Initialization ─────────────────────────────────────────────────────
+    function init() {
+        if (!document.body) {
+            // Body not ready yet — retry on the next tick.
+            requestAnimationFrame(init);
+            return;
+        }
+        injectDOM();
+        ctx = canvas.getContext('2d');
+        resizeCanvas();
+
+        // Wire HUD interactions (unified PointerEvents)
+        hud.addEventListener('pointerdown', onHudPointerDown);
+        hud.addEventListener('pointermove', onHudPointerMove);
+        hud.addEventListener('pointerup', onHudPointerUp);
+        hud.addEventListener('pointercancel', onHudPointerUp);
+
+        // Wire drawing pipeline
+        canvas.addEventListener('pointerdown', onCanvasPointerDown);
+        canvas.addEventListener('pointermove', onCanvasPointerMove);
+        canvas.addEventListener('pointerup', onCanvasPointerUp);
+        canvas.addEventListener('pointerleave', onCanvasPointerUp);
+        canvas.addEventListener('pointercancel', onCanvasPointerUp);
+
+        // Resize handling — clear the buffer + restore scales on viewport change.
+        window.addEventListener('resize', resizeCanvas);
+        // orientationchange fires on iPad rotation before resize settles.
+        window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 250));
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    // Expose a minimal debug surface (read-only state + control methods).
+    window.__scratchpad = {
+        getActive: () => isActive,
+        getColor: () => PEN_COLORS[colorIndex],
+        toggle: toggleActive,
+        cycleColor: cycleColor,
+        clear: clearCanvas,
+    };
+})();
 
