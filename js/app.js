@@ -535,6 +535,12 @@ export function goToChapterDetail() {
 
 export function openChapterDetail(ch) {
     AppState.currentChapter = ch;
+    // Sticky filter reset: whenever a fresh chapter workspace is mounted, the
+    // active filter choice is reset back to baseline. This prevents a filter
+    // selection carried over from a previous chapter (e.g. "wrong" on a
+    // chapter that had flawed questions) from showing an empty list in a newly
+    // selected chapter whose questions are all unsolved/solved.
+    AppState.currentFilter = 'all';
     document.getElementById('detail-chapter-name').innerHTML =
         `${ch} <span style="font-size:14px; color:#8a8ad3;">(${AppState.currentSubject})</span>`;
     showPracticeSubview('practice-chapter-detail-view');
@@ -1344,6 +1350,13 @@ function _firstAttemptResult(q) {
 }
 
 export function showQuestionList() {
+    // Establish a clean baseline filter configuration if the current filter
+    // is falsy/unassigned. Without this, a stale or undefined currentFilter
+    // (e.g. on very first entry, or after a state hydration edge case) would
+    // fall through every branch below and render a confusing "no questions"
+    // state even when questions exist.
+    AppState.currentFilter = AppState.currentFilter || 'all';
+
     let chapterQuestions = AppState.questionBank.filter(q => q.subject === AppState.currentSubject && q.chapter === AppState.currentChapter);
     if (!chapterQuestions.length) { alert("No questions in this chapter."); return; }
 
@@ -2863,6 +2876,11 @@ window.processAnswerKeyFromText = processAnswerKeyFromText;
 window.saveAllQuestions = saveAllQuestions;
 window.showPreviewModal = showPreviewModal;
 window.showQuestionList = showQuestionList;
+// Expose applyFilter globally so the inline `onchange="applyFilter()"`
+// attribute on #question-filter (inside #practice-question-list-view) can
+// resolve it. Without this, the function stays module-scoped and the filter
+// dropdown silently no-ops.
+window.applyFilter = applyFilter;
 window.openEditQuestionModal = openEditQuestionModal;
 window.saveEditQuestion = saveEditQuestion;
 window.startPracticeWithQuestion = startPracticeWithQuestion;
