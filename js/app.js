@@ -162,8 +162,21 @@ export function closeModalStr(id) {
 }
 
 export function triggerStreakShield() {
-    const visualizer = document.getElementById('streak-visualizer');
-    if (!visualizer) return;
+    // Resolve the VISIBLE streak visualizer. The standard practice modal
+    // (#practice-modal) keeps a permanent #streak-visualizer in the DOM (hidden
+    // via display:none when closed), while the SR practice drawer (matrix.js)
+    // injects a second one while it is open. getElementById returns the first
+    // match in document order, so we fall back to querySelectorAll and pick the
+    // first visible instance — this lets the shield 🛡️ pop inside whichever
+    // practice surface is currently on screen.
+    let visualizer = document.getElementById('streak-visualizer');
+    if (!visualizer || visualizer.offsetParent === null) {
+        const all = document.querySelectorAll('#streak-visualizer');
+        for (const v of all) {
+            if (v.offsetParent !== null) { visualizer = v; break; }
+        }
+    }
+    if (!visualizer || visualizer.offsetParent === null) return;
     const shield = document.createElement('span');
     shield.className = 'streak-shield';
     shield.textContent = '🛡️';
@@ -2233,11 +2246,23 @@ function showSupercharged() {
 
     let originX = window.innerWidth / 2;
     let originY = window.innerHeight / 2;
-    const modal = document.querySelector('#practice-modal .modal-card');
-    if (modal) {
-        const rect = modal.getBoundingClientRect();
+    // Centre the critical-hit emoji burst on whichever practice surface is
+    // currently on screen. The SR practice drawer (#sr-practice-overlay) takes
+    // priority because it is a full-screen overlay that is only ever present
+    // while actively practising; fall back to the standard practice modal
+    // (#practice-modal) card, and finally to the viewport centre.
+    const srDrawer = document.querySelector('#sr-practice-overlay .sr-practice-modal');
+    if (srDrawer && srDrawer.offsetParent !== null) {
+        const rect = srDrawer.getBoundingClientRect();
         originX = rect.left + rect.width / 2;
         originY = rect.top + rect.height / 2;
+    } else {
+        const modal = document.querySelector('#practice-modal .modal-card');
+        if (modal && modal.offsetParent !== null) {
+            const rect = modal.getBoundingClientRect();
+            originX = rect.left + rect.width / 2;
+            originY = rect.top + rect.height / 2;
+        }
     }
 
     try {
@@ -2314,8 +2339,13 @@ function playWrongSound() {
 
 // ==================== PIXEL FIRE VISUALIZER ====================
 window.overheatChaos = false;
-const streakCanvas = document.getElementById('streak-canvas');
-const streakCtx = streakCanvas ? streakCanvas.getContext('2d') : null;
+// NOTE: The streak canvas / context are NO LONGER cached globally.
+// The SR practice drawer (#sr-practice-overlay in matrix.js) dynamically
+// constructs and destroys its own #streak-canvas on every invocation, so a
+// global reference grabbed at load time would go stale the moment the drawer
+// opens or closes. renderLoop() now resolves the active canvas on every
+// animation frame (see below) and gracefully no-ops when none is visible.
+let _streakRafScheduled = false;
 
 const YELLOW_FRAMES = [
     ['        DD      ','       DRRD     ','    DD DRDODD   ','   DRRDDRROORD  ','  DRRDDRROOORD  ','  DRD DRRYOODDD ','  DDDDDRRYYOODD ',' DRDDDDDROYYYOD ',' DROOOOYYYYYOOD ',' DROOYYYYWWYODD ',' DDDRYYYWWWWYDD ','  DRDYYYYWWWYD  ','  DRDOOYYWWYOD  ','   DRDOOOOOOD   ','    DDDDDDDD    ','                '],
@@ -2436,12 +2466,13 @@ function updateParticles(config) {
     particles = particles.filter(p => p.life > 0 && p.y >= -2 && p.y < 18 && p.x >= -2 && p.x < 18 && config.palette[p.color]);
 }
 
-function drawParticles(config) {
+function drawParticles(config, ctx) {
+    if (!ctx) return;
     for (let p of particles) {
         const gx = Math.round(p.x), gy = Math.round(p.y);
         if (gx >= 0 && gx < 16 && gy >= 0 && gy < 16 && config.palette[p.color]) {
-            streakCtx.fillStyle = config.palette[p.color];
-            streakCtx.fillRect(gx, gy, 1, 1);
+            ctx.fillStyle = config.palette[p.color];
+            ctx.fillRect(gx, gy, 1, 1);
         }
     }
 }
@@ -2453,15 +2484,60 @@ function getConfigForStreak(streak) {
     return null;
 }
 
+// Resolve the currently-visible streak canvas on demand.
+//
+// The standard Question Practice modal (#practice-modal in index.html) ships a
+// permanent <canvas id="streak-canvas"> that is merely hidden via display:none
+// when the modal is closed. The SR practice drawer (matrix.js) injects a SECOND
+// element with the same id while it is open and removes it again on close.
+// getElementById() always returns the first match in document order, so we fall
+// back to querySelectorAll('#streak-canvas') and pick the first instance whose
+// layout box is actually visible (offsetParent !== null). This lets a single
+// renderLoop drive the pixel flame regardless of which practice surface is on
+// screen, with zero stale references.
+function _resolveActiveStreakCanvas() {
+    let canvas = document.getElementById('streak-canvas');
+    if (canvas && canvas.offsetParent !== null) return canvas;
+    // Either no canvas at all, or the first match is hidden — scan all matches.
+    const all = document.querySelectorAll('#streak-canvas');
+    for (const c of all) {
+        if (c.offsetParent !== null) return c;
+    }
+    // No visible canvas. Return the first match (if any) so callers can detect
+    // "element exists but hidden" vs "element missing entirely" if they need to.
+    return canvas || null;
+}
+
 function renderLoop(timestamp) {
-    if (!streakCtx) return;
+    // Dynamically resolve the streak canvas on EVERY frame. The SR practice
+    // drawer constructs/destroys its DOM on invocation, so any cached reference
+    // would go stale.
+    const streakCanvas = _resolveActiveStreakCanvas();
+    if (!streakCanvas || streakCanvas.offsetParent === null) {
+        // No visible canvas on this tick — clear old animation metrics
+        // gracefully and await the next frame execution.
+        particles = [];
+        currentFrame = 0;
+        lastTime = 0;
+        currentIntensity = 0.62;
+        _streakRafScheduled = true;
+        requestAnimationFrame(renderLoop);
+        return;
+    }
+    const streakCtx = streakCanvas.getContext('2d');
+    if (!streakCtx) {
+        _streakRafScheduled = true;
+        requestAnimationFrame(renderLoop);
+        return;
+    }
 
     const config = getConfigForStreak(AppState.practiceCorrectStreak);
     if (!config) {
-        if (streakCtx) streakCtx.clearRect(0, 0, 16, 16);
-        if (streakCanvas) streakCanvas.style.filter = 'none';
+        streakCtx.clearRect(0, 0, 16, 16);
+        streakCanvas.style.filter = 'none';
         particles = [];
         lastTime = timestamp;
+        _streakRafScheduled = true;
         requestAnimationFrame(renderLoop);
         return;
     }
@@ -2486,12 +2562,18 @@ function renderLoop(timestamp) {
         }
         spawnParticles(config);
         updateParticles(config);
-        drawParticles(config);
+        drawParticles(config, streakCtx);
     }
+    _streakRafScheduled = true;
     requestAnimationFrame(renderLoop);
 }
 
-if (streakCanvas) requestAnimationFrame(renderLoop);
+// Kick off the render loop unconditionally — it self-gates when no visible
+// canvas exists, so there is no cost to running it before any drawer/modal opens.
+if (!_streakRafScheduled) {
+    _streakRafScheduled = true;
+    requestAnimationFrame(renderLoop);
+}
 
 export function updateStreakVisualizer() {
     const numberEl = document.getElementById('streak-number');
@@ -2821,10 +2903,27 @@ window.handleDriveAuth = handleDriveAuth;
 window.updateStreakDisplay = updateStreakDisplay;
 window.executeUnifiedSync = executeUnifiedSync;
 window.toggleStopwatchMode = toggleStopwatchMode;
-window.activateOverheat = activateOverheat;
 window.toggleImmersive = toggleImmersive;
 window.confirmTimerNotification = confirmTimerNotification;
 window.toggleMiniWidget = toggleMiniWidget;
+
+// ── Gamification Suite · window-exposed helpers ───────────────────────────
+// These ten acoustic / visual / state-mutating helpers drive the dopamine
+// loops inside the standard Question Practice modal (#practice-modal). They
+// are explicitly mirrored onto `window` so the Spaced Repetition practice
+// drawer (matrix.js → submitPracticeLog) can invoke them through clean,
+// decoupled `window.<fn>()` calls without importing app.js (which would
+// create a circular module dependency: app.js imports matrix.js already).
+window.triggerRedFlash = triggerRedFlash;
+window.triggerStreakShield = triggerStreakShield;
+window.showNormalGlow = showNormalGlow;
+window.showSupercharged = showSupercharged;
+window.playCorrectSound = playCorrectSound;
+window.playWrongSound = playWrongSound;
+window.playSuperSound = playSuperSound;
+window.activateOverheat = activateOverheat;
+window.deactivateOverheat = deactivateOverheat;
+window.updateStreakVisualizer = updateStreakVisualizer;
 
 // ── SR Practice Log Drawer globals (new) ──
 window.openPracticeDrawer = openPracticeDrawer;

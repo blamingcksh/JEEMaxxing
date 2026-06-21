@@ -2580,6 +2580,29 @@ body.overheat-active .practice-header .hide-toggle {
 }
 .sr-hide-img-btn:hover { background: rgba(139, 92, 246, 0.25); border-color: rgba(139, 92, 246, 0.6); }
 .sr-hide-img-btn:active { transform: scale(0.96); }
+
+/* ── Streak Visualizer inside the SR practice drawer header ──────────────
+   The base .streak-visualizer is 48×48px (sized for the #practice-modal
+   header). Inside the SR drawer header actions cluster it would crowd the
+   hide-image / close buttons, so we shrink it to a compact 32×32px tile
+   that still leaves the 16×16 pixel-flame canvas room to breathe at 2×
+   scaling. The #streak-canvas selector is scoped under the SR overlay so
+   it never leaks into the standard practice modal's visualizer. */
+.sr-drawer-header-actions .streak-visualizer {
+    width: 32px;
+    height: 32px;
+    margin-right: 4px;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+#sr-practice-overlay #streak-canvas {
+    width: 32px;
+    height: 32px;
+}
+/* Shield pop stays anchored to the (smaller) SR visualizer */
+#sr-practice-overlay .streak-shield {
+    font-size: 20px;
+}
 .sr-question-text {
     font-size: 14px;
     line-height: 1.6;

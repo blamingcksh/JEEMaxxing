@@ -166,6 +166,7 @@ export function openPracticeDrawer(qId) {
                     <div class="sr-drawer-sub">${_esc(q.subject || '')}${dueInfo.label ? ' · ' + _esc(dueInfo.label) : ''}</div>
                 </div>
                 <div class="sr-drawer-header-actions">
+                    <div class="streak-visualizer" id="streak-visualizer"><canvas id="streak-canvas" width="16" height="16"></canvas></div>
                     ${hasImage ? `<button class="sr-hide-img-btn" id="sr-hide-img-btn" type="button" onclick="srToggleImage()">👁 Hide Image</button>` : ''}
                     <button class="sr-drawer-close" onclick="closePracticeDrawer()" aria-label="Close practice drawer">✕</button>
                 </div>
@@ -648,6 +649,76 @@ export function submitPracticeLog() {
     } else if (_drawerState.result === 'incorrect') {
         q.status = 'error';
     }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 🎮 GAMIFICATION CONVERGENCE (SR drawer ↔ standard practice modal)
+    // ════════════════════════════════════════════════════════════════════════
+    // Mirror the EXACT same dopamine loops that fire inside the patched
+    // practiceSubmit() in app.js (streaks, audio, glows, critical hits, streak
+    // shields, overheat modifiers) so the SR practice drawer inherits the full
+    // feedback suite. All calls go through the explicitly-attached `window`
+    // properties exposed at the bottom of app.js to avoid a circular module
+    // dependency (app.js already imports matrix.js, so matrix.js cannot import
+    // app.js back).
+    //
+    // The overheat-ready check uses document.body.classList.contains(
+    // 'overheat-active') as a DOM-level proxy for (overheatActive && !
+    // overheatUsed): activateOverheat() adds the class, deactivateOverheat()
+    // removes it, and the only path that calls deactivateOverheat() inside this
+    // branch is the consume-overheat flow itself — so the class is present iff
+    // overheat is active AND the double-count bonus has not yet been spent.
+    if (_drawerState.result === 'incorrect') {
+        // ❌ Wrong answer — red flash + wrong sound, 20% streak-shield roll.
+        if (typeof window.triggerRedFlash === 'function') window.triggerRedFlash();
+        if (typeof window.playWrongSound === 'function') window.playWrongSound();
+
+        if (Math.random() < 0.2) {
+            // Shield saves the combo — streak is preserved.
+            if (typeof window.triggerStreakShield === 'function') window.triggerStreakShield();
+        } else {
+            // Shield roll failed — reset the consecutive-correct streak.
+            AppState.practiceCorrectStreak = 0;
+        }
+    } else if (_drawerState.result === 'correct') {
+        // ✅ Correct answer — increment the consecutive-correct streak.
+        AppState.practiceCorrectStreak++;
+
+        if (window._justWonBounty) {
+            // Bounty just won — cash out as a normal glow (preserves streak
+            // without burning a supercharge).
+            window._justWonBounty = false;
+            if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
+        } else if (document.body.classList.contains('overheat-active')) {
+            // 🔥 Overheat is active and not yet depleted — apply the double-
+            // count bonus (an extra +2 on top of the +1 already awarded above
+            // for the status flip), supercharge, mark depleted, deactivate.
+            changeCount(q.subject, 2);
+            if (typeof window.showSupercharged === 'function') window.showSupercharged();
+            // deactivateOverheat() resets overheatActive / overheatUsed / the
+            // body class and clears the auto-deactivate timeout.
+            if (typeof window.deactivateOverheat === 'function') window.deactivateOverheat();
+        } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
+            // 💰 Active bounty payoff window — decrement remaining payoffs,
+            // persist immediately, and supercharge.
+            AppState.bounty.payoffCount--;
+            saveAllAsync().catch(console.error);
+            if (typeof window.showSupercharged === 'function') window.showSupercharged();
+        } else {
+            // 🎯 Standard routing — normal green glow + correct sound, with a
+            // 15% random roll to upgrade the execution to a critical hit.
+            // showSupercharged() itself contains a secondary 15% evaluation
+            // that may switch on activateOverheat(), matching app.js.
+            if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
+            if (typeof window.playCorrectSound === 'function') window.playCorrectSound();
+            if (Math.random() < 0.15) {
+                if (typeof window.showSupercharged === 'function') window.showSupercharged();
+            }
+        }
+    }
+
+    // Sync the streak visualizer number + flame intensity so the pixel fire
+    // reflects the new streak on the next renderLoop tick.
+    if (typeof window.updateStreakVisualizer === 'function') window.updateStreakVisualizer();
 
     // Persist consolidated arrays to IndexedDB/Cloud Sync pipelines
     saveAllAsync().catch(console.error);
