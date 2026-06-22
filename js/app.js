@@ -3288,39 +3288,43 @@ window._bountyTimeLimit = null;
 window.overheatChaos = false;
 
 // ============================================================================
-// FULL-VIEWPORT SCRATCHPAD HUD — Apple-Pencil-optimized floating toolbar
+// FULL-VIEWPORT SCRATCHPAD HUD — Perfect-Freehand + Apple Pencil optimized
 // ============================================================================
-// A minimalist, high-performance visual scratchpad overlay that spans the
-// entire viewport. Designed for rapid calculation scratch-outs using an iPad
-// stylus, Apple Pencil, or mouse.
+// Drawing engine: perfect-freehand (the library Excalidraw / tldraw use) for
+// smooth, tapered, pressure-sensitive stroke outlines. Loaded dynamically from
+// CDN with a graceful fallback to simple line drawing if unreachable, so the
+// app NEVER crashes if the CDN is down.
 //
-// WHY THIS FIXES THE APPLE-PENCIL "GAP":
-//   1. `touch-action: none` on the canvas. Without it, iPadOS Safari treats the
-//      first pencil contact as a potential scroll/pan gesture and *withholds*
-//      the initial pointer events (and shifts their coordinates) while its
-//      gesture recognizer decides what the user is doing. That withheld segment
-//      is exactly the "big gap" between where the pencil lands and where the
-//      ink appears. `touch-action: none` forces immediate, tip-accurate events.
-//   2. `getCoalescedEvents()` — Apple Pencil samples at up to 240 Hz; reading
-//      the coalesced queue gives every intermediate point for silky strokes.
-//   3. Pressure-sensitive line width (`e.pressure`).
-//   4. Quadratic-Bézier midpoint smoothing — no jagged edges.
-//   5. Palm rejection: a pen stroke in progress ignores stray touches.
+// FIXES for the three reported iPad/Apple-Pencil issues:
 //
-// COLOR UX (replaces the old double-tap-to-cycle):
-//   • Toolbar pencil button  → single tap toggles canvas active/inactive.
-//   • Toolbar color swatch   → tap drops down a row of up to 8 quick colors + "+".
-//   • "+" tile               → opens a small square palette to pick ANY color
-//                              and manage (add/remove) the quick-color list.
-//   • Quick colors + selected color persist in localStorage (survive refresh).
-//   • Long-press + drag      → reposition the toolbar anywhere on the viewport.
+//  1. "Gap gets bigger the more I write" — ROOT CAUSE: the canvas was sized
+//     with CSS `100vw/100vh`, which on iPadOS Safari does NOT equal
+//     `window.innerWidth/innerHeight` (Safari's dynamic browser chrome makes
+//     100vh taller than the visible area). That mismatch meant the canvas
+//     rendered taller than its internal drawable buffer, so the coordinate
+//     error grew LINEARLY with distance from the top-left corner — exactly the
+//     "grows as I write" symptom.
+//     FIX: size the canvas with JS using `window.innerWidth/innerHeight` for
+//     BOTH the CSS size and the DPR-scaled internal resolution → 1:1 match.
 //
-// Uses PointerEvents to unify desktop + iPad interactions. The canvas is
-// pointer-events:none when inactive so it never blocks the workspace; when
-// active it captures all pointer events while the workspace is blurred + dimmed.
+//  2. "Sometimes selects text" — FIX: `user-select:none` +
+//     `-webkit-touch-callout:none` on body while active, plus document-level
+//     `selectstart`/`dragstart` blockers.
+//
+//  3. "Sometimes zooms the page" — iPadOS Safari IGNORES `user-scalable=no`
+//     since iOS 10. FIX: block `gesturestart`/`gesturechange`/`gestureend`
+//     (Safari pinch-zoom) + `dblclick` (double-tap zoom) at the document level
+//     while active.
+//
+// Plus: coalesced events for full 240 Hz Pencil sampling, palm rejection,
+// getBoundingClientRect() coordinate mapping (robust to any offset), and
+// perfect-freehand for gorgeous pressure-variable strokes.
+//
+// Color UX: toolbar color swatch → dropdown of up to 8 quick colors + "+" →
+// square palette to pick any color and manage the quick list (add/remove ×).
+// Persisted in localStorage.
 // ============================================================================
 (function _initScratchpad() {
-    // Guard against double-init (e.g. HMR re-evaluation).
     if (window.__scratchpadInit) return;
     window.__scratchpadInit = true;
 
@@ -3337,10 +3341,29 @@ window.overheatChaos = false;
         '#ec4899', '#f43f5e', '#dc2626', '#7c3aed',
     ];
     const MAX_QUICK = 8;
-    const PEN_BASE = 1.4;
-    const PEN_VAR = 4.8;
-    const MOUSE_WIDTH = 2.4;
-    const DRAG_THRESHOLD = 6;          // px — movement beyond this = drag, not click
+    const DRAG_THRESHOLD = 6;
+
+    // perfect-freehand options, tuned for Apple Pencil (1st gen included).
+    const STROKE_PEN = {
+        size: 6, thinning: 0.6, smoothing: 0.5, streamline: 0.2,
+        simulatePressure: false,
+        start: { taper: 0, cap: true }, end: { taper: 0, cap: true }, last: true,
+    };
+    const STROKE_MOUSE = {
+        size: 4, thinning: 0.5, smoothing: 0.5, streamline: 0.5,
+        simulatePressure: true,
+        start: { taper: 0, cap: true }, end: { taper: 0, cap: true }, last: true,
+    };
+
+    // ── Dynamic import of perfect-freehand (with fallback) ──────────────────
+    let getStrokeFn = null;
+    import('https://esm.sh/perfect-freehand@1.2.3').then(function (mod) {
+        getStrokeFn = mod.default || mod.getStroke;
+    }).catch(function () {
+        // CDN unreachable — fall back to simple line drawing. The app still
+        // works; strokes just won't have perfect-freehand's tapered smoothing.
+        getStrokeFn = null;
+    });
 
     // ── State ──────────────────────────────────────────────────────────────
     let root, toolbar, pencilBtn, colorBtn, clearBtn, dropdown;
@@ -3348,30 +3371,38 @@ window.overheatChaos = false;
     let presetGrid, quickManageRow, addBtn;
     let canvas, ctx;
 
-    let isActive = false;          // master state: is the scratchpad capturing strokes?
-    let isDrawing = false;         // is a stroke currently in progress?
-    let currentPointerType = '';   // 'pen' | 'touch' | 'mouse' driving the active stroke
-    let strokePoints = [];         // points of the current stroke (for Bézier smoothing)
-    let quickColors = [];          // user's quick-color list (persisted)
-    let selectedColor = '#ffffff'; // current pen color (persisted)
+    let isActive = false;
+    let isDrawing = false;
+    let currentPointerType = '';
+    let currentPoints = [];           // [[x, y, pressure], ...] for the in-progress stroke
+    let committedOutlines = [];       // [{outline:[[x,y]...], color:"#hex"}, ...] cached
+    let currentStrokeOpts = STROKE_PEN;
+    // Fallback stroke state (when perfect-freehand isn't loaded)
+    let fallbackLastX = 0, fallbackLastY = 0;
+
+    let quickColors = [];
+    let selectedColor = '#ffffff';
 
     let dropdownOpen = false;
     let paletteOpen = false;
 
-    // HUD interaction state machine
-    let dragPointerId = null;      // pointerId currently driving the HUD (prevents multi-touch chaos)
-    let dragMoved = false;         // did the pointer move > DRAG_THRESHOLD during this gesture?
-    let dragOffsetX = 0, dragOffsetY = 0; // offset between pointer and root top-left during drag
-    let dragStartX = 0, dragStartY = 0;   // initial pointer position (for threshold detection)
-    let pressedBtn = null;         // which toolbar button received pointerdown ('pencil'|'color'|'clear')
+    let dragPointerId = null;
+    let dragMoved = false;
+    let dragOffsetX = 0, dragOffsetY = 0;
+    let dragStartX = 0, dragStartY = 0;
+    let pressedBtn = null;
 
-    // ── Storage (persists across refresh) ──────────────────────────────────
+    let blockGesture, blockSelect, blockDblClick, blockTouchStart;
+
+    // ── Storage ────────────────────────────────────────────────────────────
     function loadColors() {
         try {
             const qRaw = localStorage.getItem(STORAGE_QUICK);
             const q = qRaw ? JSON.parse(qRaw) : null;
             if (Array.isArray(q) && q.length) {
-                quickColors = q.filter(c => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c));
+                quickColors = q.filter(function (c) {
+                    return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
+                });
             }
             if (!quickColors || !quickColors.length) quickColors = DEFAULT_QUICK_COLORS.slice();
             const s = localStorage.getItem(STORAGE_SELECTED);
@@ -3386,31 +3417,22 @@ window.overheatChaos = false;
         try {
             localStorage.setItem(STORAGE_QUICK, JSON.stringify(quickColors));
             localStorage.setItem(STORAGE_SELECTED, selectedColor);
-        } catch (_) { /* ignore quota / privacy errors */ }
+        } catch (_) { /* ignore */ }
     }
 
     // ── DOM helper ─────────────────────────────────────────────────────────
     function el(tag, attrs, children) {
-        attrs = attrs || {};
-        children = children || [];
+        attrs = attrs || {}; children = children || [];
         const node = document.createElement(tag);
         for (const k in attrs) {
             const v = attrs[k];
-            if (k === 'style' && typeof v === 'object' && v) {
-                Object.assign(node.style, v);
-            } else if (k === 'class') {
-                node.className = v;
-            } else if (k === 'html') {
-                node.innerHTML = v;
-            } else if (k.startsWith('on') && typeof v === 'function') {
-                node.addEventListener(k.slice(2).toLowerCase(), v);
-            } else if (v !== undefined && v !== null) {
-                node.setAttribute(k, String(v));
-            }
+            if (k === 'style' && typeof v === 'object' && v) Object.assign(node.style, v);
+            else if (k === 'class') node.className = v;
+            else if (k === 'html') node.innerHTML = v;
+            else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v);
+            else if (v !== undefined && v !== null) node.setAttribute(k, String(v));
         }
-        for (const c of children) {
-            node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-        }
+        for (const c of children) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
         return node;
     }
     function svg(paths, size, sw) {
@@ -3420,152 +3442,200 @@ window.overheatChaos = false;
             'stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
     }
     const ICON_PENCIL = svg('M12 20h9 M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z', 20, 2);
-    const ICON_PLUS   = svg('M12 5v14 M5 12h14', 18, 2.2);
-    const ICON_CLOSE  = svg('M18 6 6 18 M6 6l12 12', 16, 2);
-    const ICON_TRASH  = svg('M3 6h18 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M10 11v6 M14 11v6', 18, 1.8);
-
+    const ICON_PLUS = svg('M12 5v14 M5 12h14', 18, 2.2);
+    const ICON_CLOSE = svg('M18 6 6 18 M6 6l12 12', 16, 2);
+    const ICON_TRASH = svg('M3 6h18 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M10 11v6 M14 11v6', 18, 1.8);
     const GLASS = {
         background: 'rgba(16,16,24,0.92)',
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
+        backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
         border: '1px solid rgba(255,255,255,0.08)',
         boxShadow: '0 10px 34px rgba(0,0,0,0.55)',
     };
 
-    // ── Drawing pipeline ───────────────────────────────────────────────────
-    function widthFor(pressure, type) {
-        if (type === 'pen') {
-            const p = pressure > 0 ? pressure : 0.35;
-            return PEN_BASE + p * PEN_VAR;
-        }
-        return MOUSE_WIDTH;
+    // ── Drawing ────────────────────────────────────────────────────────────
+    function pressureFor(e) {
+        if (e.pointerType === 'pen') return e.pressure > 0 ? e.pressure : 0.5;
+        return 0.5;
     }
-    function drawDot(p) {
-        const w = widthFor(p.pressure, currentPointerType);
-        ctx.beginPath();
-        ctx.fillStyle = selectedColor;
-        ctx.arc(p.x, p.y, w / 2, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    function drawSegment() {
-        const pts = strokePoints;
-        const n = pts.length;
-        if (n < 2) return;
-        ctx.strokeStyle = selectedColor;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        if (n === 2) {
-            const p0 = pts[0], p1 = pts[1];
-            ctx.lineWidth = widthFor(p1.pressure, currentPointerType);
-            ctx.beginPath();
-            ctx.moveTo(p0.x, p0.y);
-            ctx.lineTo(p1.x, p1.y);
-            ctx.stroke();
-            return;
-        }
-        // Quadratic-Bézier through midpoints → silky-smooth strokes.
-        const p0 = pts[n - 3], p1 = pts[n - 2], p2 = pts[n - 1];
-        const m1x = (p0.x + p1.x) / 2, m1y = (p0.y + p1.y) / 2;
-        const m2x = (p1.x + p2.x) / 2, m2y = (p1.y + p2.y) / 2;
-        ctx.lineWidth = widthFor(p1.pressure, currentPointerType);
-        ctx.beginPath();
-        ctx.moveTo(m1x, m1y);
-        ctx.quadraticCurveTo(p1.x, p1.y, m2x, m2y);
-        ctx.stroke();
+    function getCanvasPoint(e) {
+        // Map pointer into canvas coordinate space via the canvas's real rect.
+        // Robust to any offset/zoom/containing-block drift.
+        const rect = canvas.getBoundingClientRect();
+        return [e.clientX - rect.left, e.clientY - rect.top, pressureFor(e)];
     }
 
-    // Map a pointer event into the canvas's own coordinate space. Using
-    // getBoundingClientRect() (instead of raw clientX/clientY) is the fix for
-    // the Apple-Pencil / touch "gap": on iPadOS Safari, when the page is even
-    // slightly zoomed or the layout viewport drifts from the visual viewport,
-    // clientX/clientY no longer line up with where the canvas is actually
-    // rendered. Measuring the canvas's real rect every event and subtracting
-    // its origin maps the pointer to the correct canvas pixel regardless of
-    // zoom, scroll, safe-area insets, or containing-block offsets.
-    function getCanvasPoint(e) {
-        const rect = canvas.getBoundingClientRect();
-        return { x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure };
+    function fillOutline(outline, color) {
+        if (!outline || !outline.length) return;
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        if (outline.length === 1) {
+            ctx.arc(outline[0][0], outline[0][1], 1.5, 0, Math.PI * 2);
+        } else {
+            ctx.moveTo(outline[0][0], outline[0][1]);
+            for (let i = 1; i < outline.length; i++) ctx.lineTo(outline[i][0], outline[i][1]);
+            ctx.closePath();
+        }
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function render() {
+        if (!canvas || !ctx) return;
+        const dpr = window.devicePixelRatio || 1;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        // Re-draw all committed strokes (cached outlines)
+        for (let i = 0; i < committedOutlines.length; i++) {
+            const c = committedOutlines[i];
+            if (c.fallback) drawFallbackStroke(c.outline, c.color);
+            else fillOutline(c.outline, c.color);
+        }
+        // Draw the in-progress stroke
+        if (currentPoints.length) {
+            if (getStrokeFn) {
+                const outline = getStrokeFn(currentPoints, currentStrokeOpts);
+                fillOutline(outline, selectedColor);
+            } else {
+                drawFallbackStroke(currentPoints, selectedColor);
+            }
+        }
+    }
+
+    function drawFallbackStroke(points, color) {
+        if (points.length < 1) return;
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = currentPointerType === 'pen' ? 2.5 : 2.4;
+        if (points.length === 1) {
+            ctx.beginPath();
+            ctx.arc(points[0][0], points[0][1], 1.5, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(points[0][0], points[0][1]);
+            for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+            ctx.stroke();
+        }
+        ctx.restore();
     }
 
     function onCanvasPointerDown(e) {
         if (!isActive) return;
         if (dropdownOpen || paletteOpen) return;
-        // Palm rejection: a pen stroke in progress ignores stray touches.
         if (isDrawing && currentPointerType === 'pen' && e.pointerType !== 'pen') return;
         if (e.cancelable) e.preventDefault();
         isDrawing = true;
         currentPointerType = e.pointerType;
+        currentStrokeOpts = e.pointerType === 'pen' ? STROKE_PEN : STROKE_MOUSE;
         try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* pointer gone */ }
-        const p = getCanvasPoint(e);
-        strokePoints = [p];
-        drawDot(p);
+        currentPoints = [getCanvasPoint(e)];
+        render();
     }
     function onCanvasPointerMove(e) {
         if (!isActive || !isDrawing) return;
         if (e.pointerType !== currentPointerType) return;
         if (e.cancelable) e.preventDefault();
-        // Coalesced events carry every sub-frame sample from the Apple Pencil.
         const queue = (typeof e.getCoalescedEvents === 'function' && e.getCoalescedEvents().length)
-            ? e.getCoalescedEvents()
-            : [e];
-        for (const ev of queue) {
-            strokePoints.push(getCanvasPoint(ev));
-            drawSegment();
-        }
+            ? e.getCoalescedEvents() : [e];
+        for (let i = 0; i < queue.length; i++) currentPoints.push(getCanvasPoint(queue[i]));
+        render();
     }
     function onCanvasPointerUp(e) {
         if (!isActive) return;
         if (e.pointerType !== currentPointerType) return;
         isDrawing = false;
         currentPointerType = '';
-        strokePoints = [];
-        try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+        if (currentPoints.length) {
+            if (getStrokeFn) {
+                const outline = getStrokeFn(currentPoints, currentStrokeOpts);
+                committedOutlines.push({ outline: outline, color: selectedColor });
+            } else {
+                // Cache fallback stroke as a snapshot of its points for re-render
+                committedOutlines.push({ outline: currentPoints, color: selectedColor, fallback: true });
+            }
+        }
+        currentPoints = [];
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* released */ }
+        render();
     }
 
-    // ── Canvas sizing (preserves existing strokes across resize) ───────────
+    // ── Canvas sizing (THE fix for "gap grows as I write") ─────────────────
+    // Use window.innerWidth/Height for BOTH the CSS size AND the DPR-scaled
+    // internal resolution. CSS 100vw/100vh ≠ innerWidth/Height on iPadOS
+    // (Safari's dynamic browser chrome), and that mismatch made the coordinate
+    // error grow linearly with distance from the top-left corner.
     function resizeCanvas() {
         if (!canvas || !ctx) return;
         const dpr = window.devicePixelRatio || 1;
         const cssW = window.innerWidth;
         const cssH = window.innerHeight;
+        canvas.style.width = cssW + 'px';
+        canvas.style.height = cssH + 'px';
         const newW = Math.round(cssW * dpr);
         const newH = Math.round(cssH * dpr);
-        if (canvas.width === newW && canvas.height === newH) return;
-        let snap = null;
-        if (canvas.width && canvas.height) {
-            snap = document.createElement('canvas');
-            snap.width = canvas.width;
-            snap.height = canvas.height;
-            const sctx = snap.getContext('2d');
-            if (sctx) sctx.drawImage(canvas, 0, 0);
+        if (canvas.width === newW && canvas.height === newH) {
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            return;
         }
         canvas.width = newW;
         canvas.height = newH;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.strokeStyle = selectedColor;
-        if (snap) {
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.drawImage(snap, 0, 0);
-            ctx.restore();
-        }
-    }
-    function clearCanvas() {
-        if (!canvas || !ctx) return;
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.restore();
+        render();
     }
 
-    // ── Master toggle ──────────────────────────────────────────────────────
+    function clearCanvas() {
+        committedOutlines = [];
+        currentPoints = [];
+        render();
+    }
+
+    // ── Gesture / selection blockers (added while active) ──────────────────
+    function installBlockers() {
+        blockGesture = function (e) { e.preventDefault(); }; // pinch-zoom (gesturestart/change/end)
+        blockSelect = function (e) { e.preventDefault(); };  // selectstart / dragstart
+        blockDblClick = function (e) { e.preventDefault(); }; // double-tap zoom
+        blockTouchStart = function (e) {
+            // Block multi-touch (pinch) so only the single drawing pointer works.
+            if (e.touches && e.touches.length > 1) e.preventDefault();
+        };
+        document.addEventListener('gesturestart', blockGesture, { passive: false });
+        document.addEventListener('gesturechange', blockGesture, { passive: false });
+        document.addEventListener('gestureend', blockGesture, { passive: false });
+        document.addEventListener('selectstart', blockSelect);
+        document.addEventListener('dragstart', blockSelect);
+        document.addEventListener('dblclick', blockDblClick);
+        document.addEventListener('touchstart', blockTouchStart, { passive: false });
+    }
+    function removeBlockers() {
+        if (blockGesture) {
+            document.removeEventListener('gesturestart', blockGesture);
+            document.removeEventListener('gesturechange', blockGesture);
+            document.removeEventListener('gestureend', blockGesture);
+        }
+        if (blockSelect) {
+            document.removeEventListener('selectstart', blockSelect);
+            document.removeEventListener('dragstart', blockSelect);
+        }
+        if (blockDblClick) document.removeEventListener('dblclick', blockDblClick);
+        if (blockTouchStart) document.removeEventListener('touchstart', blockTouchStart);
+    }
+
+    // ── Active toggle ──────────────────────────────────────────────────────
     function toggleActive() {
         isActive = !isActive;
         if (isActive) {
             canvas.style.pointerEvents = 'auto';
             document.body.classList.add('scratchpad-active');
+            installBlockers();
             pencilBtn.style.background = 'rgba(34,197,94,0.22)';
             pencilBtn.style.boxShadow = '0 0 0 1px rgba(34,197,94,0.7), 0 0 14px rgba(34,197,94,0.45)';
             closeDropdown();
@@ -3573,6 +3643,7 @@ window.overheatChaos = false;
             clearCanvas();
             canvas.style.pointerEvents = 'none';
             document.body.classList.remove('scratchpad-active');
+            removeBlockers();
             pencilBtn.style.background = 'rgba(255,255,255,0.04)';
             pencilBtn.style.boxShadow = 'none';
             closeDropdown();
@@ -3581,13 +3652,10 @@ window.overheatChaos = false;
 
     // ── Color state ────────────────────────────────────────────────────────
     function updateColorBtn() { if (colorBtn) colorBtn.style.background = selectedColor; }
-    function updateCtxColor() { if (ctx) ctx.strokeStyle = selectedColor; }
-
     function applyColor(c) {
         selectedColor = c.toLowerCase();
         saveColors();
         updateColorBtn();
-        updateCtxColor();
         if (nativeInput) nativeInput.value = selectedColor;
         if (hexInput) hexInput.value = selectedColor;
         if (bigSwatch) bigSwatch.style.background = selectedColor;
@@ -3595,13 +3663,10 @@ window.overheatChaos = false;
         renderPaletteQuick();
         renderDropdown();
     }
-    function selectColorFromDropdown(c) {
-        applyColor(c);
-        closeDropdown();
-    }
+    function selectColorFromDropdown(c) { applyColor(c); closeDropdown(); }
     function addQuick() {
         const lc = selectedColor.toLowerCase();
-        if (quickColors.some(s => s.toLowerCase() === lc)) return;
+        if (quickColors.some(function (s) { return s.toLowerCase() === lc; })) return;
         if (quickColors.length >= MAX_QUICK) return;
         quickColors.push(selectedColor);
         saveColors();
@@ -3610,11 +3675,10 @@ window.overheatChaos = false;
     }
     function removeQuick(c) {
         if (quickColors.length <= 1) return;
-        quickColors = quickColors.filter(x => x !== c);
+        quickColors = quickColors.filter(function (x) { return x !== c; });
         if (selectedColor === c) {
             selectedColor = quickColors[0];
             updateColorBtn();
-            updateCtxColor();
             if (nativeInput) nativeInput.value = selectedColor;
             if (hexInput) hexInput.value = selectedColor;
             if (bigSwatch) bigSwatch.style.background = selectedColor;
@@ -3632,14 +3696,11 @@ window.overheatChaos = false;
         renderDropdown();
         dropdown.style.display = 'flex';
     }
-    function closeDropdown() {
-        dropdownOpen = false;
-        if (dropdown) dropdown.style.display = 'none';
-    }
+    function closeDropdown() { dropdownOpen = false; if (dropdown) dropdown.style.display = 'none'; }
     function renderDropdown() {
         if (!dropdown) return;
         dropdown.innerHTML = '';
-        quickColors.forEach(c => {
+        quickColors.forEach(function (c) {
             const sel = c.toLowerCase() === selectedColor.toLowerCase();
             const sw = el('div', {
                 class: 'sp-sw', role: 'button', tabindex: '0', title: c,
@@ -3649,10 +3710,10 @@ window.overheatChaos = false;
                     outlineOffset: sel ? '1px' : '0',
                     cursor: 'pointer', transition: 'transform 0.12s ease',
                 },
-                onclick: () => selectColorFromDropdown(c),
+                onclick: function () { selectColorFromDropdown(c); },
             });
-            sw.addEventListener('pointerenter', () => sw.style.transform = 'scale(1.12)');
-            sw.addEventListener('pointerleave', () => sw.style.transform = 'scale(1)');
+            sw.addEventListener('pointerenter', function () { sw.style.transform = 'scale(1.12)'; });
+            sw.addEventListener('pointerleave', function () { sw.style.transform = 'scale(1)'; });
             dropdown.appendChild(sw);
         });
         const plus = el('div', {
@@ -3665,10 +3726,10 @@ window.overheatChaos = false;
                 cursor: 'pointer', transition: 'transform 0.12s ease, background 0.12s ease',
             },
             html: ICON_PLUS,
-            onclick: () => { closeDropdown(); openPalette(); },
+            onclick: function () { closeDropdown(); openPalette(); },
         });
-        plus.addEventListener('pointerenter', () => { plus.style.transform = 'scale(1.12)'; plus.style.background = 'rgba(255,255,255,0.12)'; });
-        plus.addEventListener('pointerleave', () => { plus.style.transform = 'scale(1)'; plus.style.background = 'rgba(255,255,255,0.06)'; });
+        plus.addEventListener('pointerenter', function () { plus.style.transform = 'scale(1.12)'; plus.style.background = 'rgba(255,255,255,0.12)'; });
+        plus.addEventListener('pointerleave', function () { plus.style.transform = 'scale(1)'; plus.style.background = 'rgba(255,255,255,0.06)'; });
         dropdown.appendChild(plus);
     }
 
@@ -3683,14 +3744,11 @@ window.overheatChaos = false;
         renderPaletteQuick();
         paletteOverlay.style.display = 'flex';
     }
-    function closePalette() {
-        paletteOpen = false;
-        if (paletteOverlay) paletteOverlay.style.display = 'none';
-    }
+    function closePalette() { paletteOpen = false; if (paletteOverlay) paletteOverlay.style.display = 'none'; }
     function renderPresets() {
         if (!presetGrid) return;
         presetGrid.innerHTML = '';
-        PRESET_COLORS.forEach(c => {
+        PRESET_COLORS.forEach(function (c) {
             const sel = c.toLowerCase() === selectedColor.toLowerCase();
             const cell = el('div', {
                 class: 'sp-preset', role: 'button', tabindex: '0', title: c,
@@ -3700,17 +3758,17 @@ window.overheatChaos = false;
                     outlineOffset: sel ? '1px' : '0',
                     cursor: 'pointer', transition: 'transform 0.1s ease',
                 },
-                onclick: () => applyColor(c),
+                onclick: function () { applyColor(c); },
             });
-            cell.addEventListener('pointerenter', () => cell.style.transform = 'scale(1.12)');
-            cell.addEventListener('pointerleave', () => cell.style.transform = 'scale(1)');
+            cell.addEventListener('pointerenter', function () { cell.style.transform = 'scale(1.12)'; });
+            cell.addEventListener('pointerleave', function () { cell.style.transform = 'scale(1)'; });
             presetGrid.appendChild(cell);
         });
     }
     function renderPaletteQuick() {
         if (!quickManageRow) return;
         quickManageRow.innerHTML = '';
-        quickColors.forEach(c => {
+        quickColors.forEach(function (c) {
             const sel = c.toLowerCase() === selectedColor.toLowerCase();
             const wrap = el('div', { class: 'sp-qwrap', style: { position: 'relative', width: '36px', height: '36px' } });
             const sw = el('div', {
@@ -3718,10 +3776,9 @@ window.overheatChaos = false;
                 style: {
                     width: '36px', height: '36px', borderRadius: '50%', background: c,
                     outline: sel ? '2px solid #fff' : '1px solid rgba(255,255,255,0.15)',
-                    outlineOffset: sel ? '1px' : '0',
-                    cursor: 'pointer',
+                    outlineOffset: sel ? '1px' : '0', cursor: 'pointer',
                 },
-                onclick: () => applyColor(c),
+                onclick: function () { applyColor(c); },
             });
             const x = el('div', {
                 class: 'sp-qx', role: 'button', tabindex: '0', title: 'Remove from quick colors',
@@ -3734,7 +3791,7 @@ window.overheatChaos = false;
                     cursor: 'pointer', fontSize: '0', lineHeight: '0',
                 },
                 html: svg('M18 6 6 18 M6 6l12 12', 11, 2.4),
-                onclick: (e) => { e.stopPropagation(); removeQuick(c); },
+                onclick: function (e) { e.stopPropagation(); removeQuick(c); },
             });
             wrap.appendChild(sw);
             wrap.appendChild(x);
@@ -3742,7 +3799,7 @@ window.overheatChaos = false;
         });
         if (addBtn) {
             const lc = selectedColor.toLowerCase();
-            const dup = quickColors.some(s => s.toLowerCase() === lc);
+            const dup = quickColors.some(function (s) { return s.toLowerCase() === lc; });
             const canAdd = quickColors.length < MAX_QUICK && !dup;
             addBtn.style.opacity = canAdd ? '1' : '0.4';
             addBtn.style.pointerEvents = canAdd ? 'auto' : 'none';
@@ -3788,7 +3845,7 @@ window.overheatChaos = false;
     }
     function onHudPointerUp(e) {
         if (e.pointerId !== dragPointerId) return;
-        try { toolbar.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+        try { toolbar.releasePointerCapture(e.pointerId); } catch (_) { /* released */ }
         dragPointerId = null;
         if (dragMoved) { dragMoved = false; pressedBtn = null; return; }
         const btn = pressedBtn;
@@ -3801,11 +3858,13 @@ window.overheatChaos = false;
     // ── DOM injection ──────────────────────────────────────────────────────
     function injectDOM() {
         // Canvas overlay — full viewport, pointer-events:none unless active.
-        // touch-action:none is CRITICAL for Apple Pencil (see header comment).
+        // CRITICAL: width/height are set by resizeCanvas() to window.innerWidth/
+        // innerHeight in PX (NOT 100vw/100vh — those mismatch on iPadOS and
+        // cause the gap to grow as you draw further from the top-left).
         canvas = el('canvas', {
             id: 'scratchpad-canvas',
             style: {
-                position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
+                position: 'fixed', top: '0', left: '0',
                 zIndex: '999995', pointerEvents: 'none', display: 'block',
                 touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none',
                 WebkitTouchCallout: 'none',
@@ -3813,7 +3872,6 @@ window.overheatChaos = false;
         });
         document.body.appendChild(canvas);
 
-        // Floating toolbar container (draggable).
         root = el('div', {
             id: 'scratchpad-root',
             style: {
@@ -3831,7 +3889,6 @@ window.overheatChaos = false;
             }, GLASS),
         });
 
-        // Pencil button — single tap toggles the canvas active/inactive.
         pencilBtn = el('div', {
             class: 'sp-btn', role: 'button', tabindex: '0', title: 'Toggle scratchpad',
             style: {
@@ -3842,14 +3899,13 @@ window.overheatChaos = false;
             },
             html: ICON_PENCIL,
         });
-        pencilBtn.addEventListener('pointerenter', () => {
+        pencilBtn.addEventListener('pointerenter', function () {
             if (!dragMoved) pencilBtn.style.background = isActive ? 'rgba(34,197,94,0.32)' : 'rgba(255,255,255,0.1)';
         });
-        pencilBtn.addEventListener('pointerleave', () => {
+        pencilBtn.addEventListener('pointerleave', function () {
             if (!dragMoved) pencilBtn.style.background = isActive ? 'rgba(34,197,94,0.22)' : 'rgba(255,255,255,0.04)';
         });
 
-        // Color swatch button — single tap drops down the color menu.
         colorBtn = el('div', {
             class: 'sp-btn', role: 'button', tabindex: '0', title: 'Pick color',
             style: {
@@ -3859,20 +3915,19 @@ window.overheatChaos = false;
                 transition: 'transform 0.15s ease, box-shadow 0.15s ease',
             },
         });
-        colorBtn.addEventListener('pointerenter', () => {
+        colorBtn.addEventListener('pointerenter', function () {
             if (!dragMoved) {
                 colorBtn.style.transform = 'scale(1.08)';
                 colorBtn.style.boxShadow = 'inset 0 0 0 2px rgba(0,0,0,0.45), 0 0 0 3px rgba(255,255,255,0.12)';
             }
         });
-        colorBtn.addEventListener('pointerleave', () => {
+        colorBtn.addEventListener('pointerleave', function () {
             if (!dragMoved) {
                 colorBtn.style.transform = 'scale(1)';
                 colorBtn.style.boxShadow = 'inset 0 0 0 2px rgba(0,0,0,0.45)';
             }
         });
 
-        // Clear button — wipes the canvas without deactivating.
         clearBtn = el('div', {
             class: 'sp-btn', role: 'button', tabindex: '0', title: 'Clear canvas',
             style: {
@@ -3883,10 +3938,10 @@ window.overheatChaos = false;
             },
             html: ICON_TRASH,
         });
-        clearBtn.addEventListener('pointerenter', () => {
+        clearBtn.addEventListener('pointerenter', function () {
             if (!dragMoved) { clearBtn.style.background = 'rgba(248,113,113,0.18)'; clearBtn.style.color = '#fca5a5'; }
         });
-        clearBtn.addEventListener('pointerleave', () => {
+        clearBtn.addEventListener('pointerleave', function () {
             if (!dragMoved) { clearBtn.style.background = 'rgba(255,255,255,0.04)'; clearBtn.style.color = '#94a3b8'; }
         });
 
@@ -3895,7 +3950,6 @@ window.overheatChaos = false;
         toolbar.appendChild(clearBtn);
         root.appendChild(toolbar);
 
-        // Dropdown (main color menu) — anchored below the toolbar.
         dropdown = el('div', {
             id: 'scratchpad-dropdown',
             style: Object.assign({
@@ -3919,7 +3973,7 @@ window.overheatChaos = false;
                 backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
             },
         });
-        paletteOverlay.addEventListener('pointerdown', (e) => {
+        paletteOverlay.addEventListener('pointerdown', function (e) {
             if (e.target === paletteOverlay) closePalette();
         });
 
@@ -3931,7 +3985,6 @@ window.overheatChaos = false;
             }, GLASS),
         });
 
-        // Header
         const header = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } });
         header.appendChild(el('div', { style: { fontWeight: '600', fontSize: '14px', color: '#f1f5f9' } }, ['Pick a color']));
         const closeBtn = el('div', {
@@ -3946,7 +3999,6 @@ window.overheatChaos = false;
         header.appendChild(closeBtn);
         paletteBox.appendChild(header);
 
-        // Main row: big swatch (triggers native picker) + hex
         const mainRow = el('div', { style: { display: 'flex', gap: '12px', alignItems: 'center', position: 'relative' } });
         bigSwatch = el('div', {
             class: 'sp-big', role: 'button', tabindex: '0', title: 'Open system color picker',
@@ -3955,13 +4007,13 @@ window.overheatChaos = false;
                 border: '1px solid rgba(255,255,255,0.15)',
                 boxShadow: '0 2px 10px rgba(0,0,0,0.4)', flexShrink: '0',
             },
-            onclick: () => nativeInput.click(),
+            onclick: function () { nativeInput.click(); },
         });
         nativeInput = el('input', {
             type: 'color', tabindex: '-1', 'aria-hidden': 'true',
             style: { position: 'absolute', width: '1px', height: '1px', opacity: '0', pointerEvents: 'none', top: '0', left: '0' },
         });
-        nativeInput.addEventListener('input', () => applyColor(nativeInput.value));
+        nativeInput.addEventListener('input', function () { applyColor(nativeInput.value); });
 
         const hexBox = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px', flex: '1' } });
         hexInput = el('input', {
@@ -3973,14 +4025,14 @@ window.overheatChaos = false;
                 fontFamily: 'ui-monospace, monospace', outline: 'none',
             },
         });
-        hexInput.addEventListener('change', () => {
+        hexInput.addEventListener('change', function () {
             let v = hexInput.value.trim();
             if (!v.startsWith('#')) v = '#' + v;
             if (/^#[0-9a-fA-F]{6}$/.test(v)) applyColor(v.toLowerCase());
             else hexInput.value = selectedColor;
         });
-        hexInput.addEventListener('focus', () => hexInput.style.borderColor = 'rgba(255,255,255,0.3)');
-        hexInput.addEventListener('blur', () => hexInput.style.borderColor = 'rgba(255,255,255,0.12)');
+        hexInput.addEventListener('focus', function () { hexInput.style.borderColor = 'rgba(255,255,255,0.3)'; });
+        hexInput.addEventListener('blur', function () { hexInput.style.borderColor = 'rgba(255,255,255,0.12)'; });
         hexBox.appendChild(hexInput);
         hexBox.appendChild(el('div', { style: { fontSize: '11px', color: '#64748b' } }, ['Tap the swatch for the full picker']));
 
@@ -3989,14 +4041,11 @@ window.overheatChaos = false;
         mainRow.appendChild(hexBox);
         paletteBox.appendChild(mainRow);
 
-        // Preset grid
         presetGrid = el('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '5px' } });
         paletteBox.appendChild(presetGrid);
 
-        // Divider
         paletteBox.appendChild(el('div', { style: { height: '1px', background: 'rgba(255,255,255,0.08)' } }));
 
-        // Quick-color management
         const qmHeader = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } });
         qmHeader.appendChild(el('div', { style: { fontSize: '12px', color: '#94a3b8', fontWeight: '500' } }, ['Quick colors']));
         addBtn = el('div', {
@@ -4010,8 +4059,8 @@ window.overheatChaos = false;
             html: '<span style="display:flex;align-items:center">' + ICON_PLUS + '</span> Add current',
             onclick: addQuick,
         });
-        addBtn.addEventListener('pointerenter', () => addBtn.style.background = 'rgba(255,255,255,0.16)');
-        addBtn.addEventListener('pointerleave', () => addBtn.style.background = 'rgba(255,255,255,0.08)');
+        addBtn.addEventListener('pointerenter', function () { addBtn.style.background = 'rgba(255,255,255,0.16)'; });
+        addBtn.addEventListener('pointerleave', function () { addBtn.style.background = 'rgba(255,255,255,0.08)'; });
         qmHeader.appendChild(addBtn);
         paletteBox.appendChild(qmHeader);
 
@@ -4033,31 +4082,26 @@ window.overheatChaos = false;
         if (!ctx) return;
         resizeCanvas();
 
-        // Wire HUD interactions (unified PointerEvents)
         toolbar.addEventListener('pointerdown', onHudPointerDown);
         toolbar.addEventListener('pointermove', onHudPointerMove);
         toolbar.addEventListener('pointerup', onHudPointerUp);
         toolbar.addEventListener('pointercancel', onHudPointerUp);
 
-        // Wire drawing pipeline
         canvas.addEventListener('pointerdown', onCanvasPointerDown);
         canvas.addEventListener('pointermove', onCanvasPointerMove);
         canvas.addEventListener('pointerup', onCanvasPointerUp);
         canvas.addEventListener('pointerleave', onCanvasPointerUp);
         canvas.addEventListener('pointercancel', onCanvasPointerUp);
 
-        // Resize handling — preserve strokes on viewport/orientation change.
         window.addEventListener('resize', resizeCanvas);
-        window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 250));
+        window.addEventListener('orientationchange', function () { setTimeout(resizeCanvas, 250); });
 
-        // Close the dropdown when tapping outside the toolbar.
-        document.addEventListener('pointerdown', (e) => {
+        document.addEventListener('pointerdown', function (e) {
             if (!dropdownOpen) return;
             if (e.target && !root.contains(e.target)) closeDropdown();
         }, true);
 
-        // Esc closes any open color UI.
-        document.addEventListener('keydown', (e) => {
+        document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') { closePalette(); closeDropdown(); }
         });
     }
@@ -4068,11 +4112,10 @@ window.overheatChaos = false;
         init();
     }
 
-    // Expose a minimal debug/control surface.
     window.__scratchpad = {
-        getActive: () => isActive,
-        getColor: () => selectedColor,
-        getQuick: () => quickColors.slice(),
+        getActive: function () { return isActive; },
+        getColor: function () { return selectedColor; },
+        getQuick: function () { return quickColors.slice(); },
         toggle: toggleActive,
         clear: clearCanvas,
     };
