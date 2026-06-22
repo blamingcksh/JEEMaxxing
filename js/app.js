@@ -3474,6 +3474,19 @@ window.overheatChaos = false;
         ctx.stroke();
     }
 
+    // Map a pointer event into the canvas's own coordinate space. Using
+    // getBoundingClientRect() (instead of raw clientX/clientY) is the fix for
+    // the Apple-Pencil / touch "gap": on iPadOS Safari, when the page is even
+    // slightly zoomed or the layout viewport drifts from the visual viewport,
+    // clientX/clientY no longer line up with where the canvas is actually
+    // rendered. Measuring the canvas's real rect every event and subtracting
+    // its origin maps the pointer to the correct canvas pixel regardless of
+    // zoom, scroll, safe-area insets, or containing-block offsets.
+    function getCanvasPoint(e) {
+        const rect = canvas.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure };
+    }
+
     function onCanvasPointerDown(e) {
         if (!isActive) return;
         if (dropdownOpen || paletteOpen) return;
@@ -3483,7 +3496,7 @@ window.overheatChaos = false;
         isDrawing = true;
         currentPointerType = e.pointerType;
         try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* pointer gone */ }
-        const p = { x: e.clientX, y: e.clientY, pressure: e.pressure };
+        const p = getCanvasPoint(e);
         strokePoints = [p];
         drawDot(p);
     }
@@ -3496,7 +3509,7 @@ window.overheatChaos = false;
             ? e.getCoalescedEvents()
             : [e];
         for (const ev of queue) {
-            strokePoints.push({ x: ev.clientX, y: ev.clientY, pressure: ev.pressure });
+            strokePoints.push(getCanvasPoint(ev));
             drawSegment();
         }
     }
