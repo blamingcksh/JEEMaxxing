@@ -55,6 +55,9 @@ import {
     renderChapterDecayGrid,
 } from './matrix.js';
 
+// ── Candlestick engine (powers both home-section graphs) ──
+import { drawCandlesticks, extractCountsFromSvg } from './candlestick-engine.js';
+
 // ==================== LOCAL STATE ====================
 // State that doesn't need to be shared with other modules
 let cropSession = {
@@ -237,6 +240,7 @@ export async function switchTab(viewId, element) {
         renderErrorMatrixFromBank();
         filterErrors();
         renderErrorResolutionDashboard(); // NEW: refresh error dashboard when viewing errors
+        if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
     }
     if (viewId === 'dashboard') await renderGraph();
 }
@@ -594,150 +598,105 @@ export async function updateStreakDisplay() {
     }
 }
 
-// ==================== PREDICTIVE MOMENTUM ENGINE ====================
+// ==================== PREDICTIVE MOMENTUM ENGINE (candlestick edition) ====================
 export async function renderGraph() {
     const svg = document.getElementById('dynamic-graph');
     if (!svg) return;
-    svg.innerHTML = '';
 
+    // ── Pull daily history (same data source as the original line graph) ──
     let history = await getDailyHistory();
-    let counts = history.map(h => h.count);
+    if (!history || !history.length) return;
 
-    if (counts.length === 1) {
-        counts.unshift(counts[0]);
-    }
+    // ── Protocol Zero overlay (Pillar 4) ──
+    // Force a HARD ZERO on any day in the penalty log, overriding real solves.
+    let penaltyDates = [];
+    try {
+        penaltyDates = JSON.parse(localStorage.getItem('checkpoint:protocolZero') || '[]');
+    } catch (_) { /* ignore */ }
+    const penaltySet = new Set(penaltyDates);
+    const penaltyFlags = history.map(h => penaltySet.has(h.date));
 
-    let n = counts.length;
+    // Raw scalar series (P0 enforcement is applied inside drawCandlesticks).
+    const counts = history.map(h => h.count);
 
-    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-    for (let i = 0; i < n; i++) {
-        sumX += i;
-        sumY += counts[i];
-        sumXY += i * counts[i];
-        sumXX += i * i;
-    }
-    let slope = (n * sumXY - sumX * sumY) / ((n * sumXX - sumX * sumX) || 1);
-    let intercept = (sumY - slope * sumX) / n;
+    // ── Label formatter: "Mon 12" style ──
+    const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const labelFn = (i) => {
+        const h = history[i];
+        if (!h || !h.date) return `Day ${i + 1}`;
+        const d = new Date(h.date + 'T00:00:00');
+        if (isNaN(d.getTime())) return h.date;
+        return `${DOW[d.getDay()]} ${d.getDate()}`;
+    };
 
-    let predictions = [];
-    for (let i = n; i < n + 5; i++) {
-        let predictedVal = slope * i + intercept;
-        predictions.push(Math.max(0, parseFloat(predictedVal.toFixed(1))));
-    }
+    // ── Render as OHLC candlesticks ──
+    // Internal coordinate space is wider/taller than the old 320x80 so candles
+    // are legible. The SVG's viewBox is set by drawCandlesticks; CSS on
+    // #dynamic-graph stretches it to fill the card.
+    drawCandlesticks(svg, counts, {
+        width: 360,
+        height: 170,
+        penaltyFlags,
+        showPrediction: true,
+        predDays: 5,
+        compact: false,
+        invert: false,
+        valueLabel: 'solves',
+        labelFn,
+    });
+}
 
-    let themeColor = '#8b5cf6';
-    if (slope > 0.2) themeColor = '#22c55e';
-    if (slope < -0.2) themeColor = '#f87171';
+// ==================== 15-DAY ERROR MOMENTUM (candlestick edition) ====================
+/**
+ * Re-renders #error-momentum-svg-container as a compact candlestick chart.
+ *
+ * Strategy: matrix.js's renderErrorResolutionDashboard() already draws a
+ * sparkline (polyline / bars / dots) into the container. We run AFTER it (via
+ * requestAnimationFrame), read the data points back out with
+ * extractCountsFromSvg(), and replace the contents with candlesticks.
+ *
+ * This means zero changes to matrix.js and no need to know its internal data
+ * structures — whatever it plotted becomes candles.
+ */
+export function renderMomentumCandles() {
+    const container = document.getElementById('error-momentum-svg-container');
+    if (!container) return;
 
-    const width = 320;
-    const height = 80;
-    const paddingLeft = 15;
-    const paddingRight = 15;
-    const paddingTop = 10;
-    const paddingBottom = 10;
+    // Defer one frame so matrix.js's render completes first.
+    requestAnimationFrame(() => {
+        const counts = extractCountsFromSvg(container);
+        if (!counts || counts.length < 2) return;
 
-    const plotWidth = width - paddingLeft - paddingRight;
-    const plotHeight = height - paddingTop - paddingBottom;
+        const w = Math.max(container.clientWidth || 320, 240);
+        const h = 70;
 
-    let maxVal = Math.max(...counts, ...predictions, 10);
+        // Reset container & build a fresh SVG.
+        container.innerHTML = '';
+        const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svgEl.setAttribute('viewBox', `0 0 ${w} ${h}`);
+        svgEl.setAttribute('preserveAspectRatio', 'none');
+        svgEl.style.width = '100%';
+        svgEl.style.height = h + 'px';
+        svgEl.style.display = 'block';
+        container.appendChild(svgEl);
 
-    const getX = (index, isPrediction) => {
-        if (!isPrediction) {
-            return paddingLeft + (index / (n - 1)) * (plotWidth * 0.7);
-        } else {
-            return paddingLeft + (plotWidth * 0.7) + ((index + 1) / predictions.length) * (plotWidth * 0.3);
+        drawCandlesticks(svgEl, counts, {
+            width: w,
+            height: h,
+            compact: true,
+            invert: true,           // green = errors fell (good), red = rose (bad)
+            valueLabel: 'errors',
+            showPrediction: false,
+            labelFn: (i) => `Day ${i + 1}`,
+        });
+
+        // Refresh the avg/day label above the chart, if present.
+        const avgLbl = document.getElementById('erm-avg-label');
+        if (avgLbl) {
+            const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+            avgLbl.textContent = `avg ${avg.toFixed(1)}/day`;
         }
-    };
-
-    const getY = (val) => {
-        let ratio = val / maxVal;
-        return paddingTop + plotHeight - (ratio * plotHeight);
-    };
-
-    const ns = "http://www.w3.org/2000/svg";
-
-    for (let level = 0.25; level <= 1.0; level += 0.25) {
-        let lineY = getY(maxVal * level);
-        let grid = document.createElementNS(ns, 'line');
-        grid.setAttribute('x1', paddingLeft.toString());
-        grid.setAttribute('y1', lineY.toString());
-        grid.setAttribute('x2', (width - paddingRight).toString());
-        grid.setAttribute('y2', lineY.toString());
-        grid.setAttribute('stroke', 'rgba(255, 255, 255, 0.03)');
-        grid.setAttribute('stroke-width', '1');
-        svg.appendChild(grid);
-    }
-
-    let divX = getX(n - 1, false);
-    let divider = document.createElementNS(ns, 'line');
-    divider.setAttribute('x1', divX.toString());
-    divider.setAttribute('y1', paddingTop.toString());
-    divider.setAttribute('x2', divX.toString());
-    divider.setAttribute('y2', (height - paddingBottom).toString());
-    divider.setAttribute('stroke', 'rgba(255, 255, 255, 0.08)');
-    divider.setAttribute('stroke-dasharray', '2 2');
-    svg.appendChild(divider);
-
-    let pastPoints = [];
-    for (let i = 0; i < n; i++) {
-        pastPoints.push(`${getX(i, false)},${getY(counts[i])}`);
-    }
-    let pastPathStr = "M " + pastPoints.join(" L ");
-
-    let pastPath = document.createElementNS(ns, 'path');
-    pastPath.setAttribute('d', pastPathStr);
-    pastPath.setAttribute('fill', 'none');
-    pastPath.setAttribute('stroke', themeColor);
-    pastPath.setAttribute('stroke-width', '2.5');
-    pastPath.setAttribute('stroke-linecap', 'round');
-    pastPath.setAttribute('filter', `drop-shadow(0px 0px 5px ${themeColor}a0)`);
-    svg.appendChild(pastPath);
-
-    let defs = svg.querySelector('defs') || document.createElementNS(ns, 'defs');
-    if (!svg.querySelector('defs')) svg.appendChild(defs);
-
-    let oldGrad = document.getElementById('dynamic-glow-gradient');
-    if (oldGrad) oldGrad.remove();
-
-    let grad = document.createElementNS(ns, 'linearGradient');
-    grad.setAttribute('id', 'dynamic-glow-gradient');
-    grad.setAttribute('x1', '0%'); grad.setAttribute('y1', '0%');
-    grad.setAttribute('x2', '0%'); grad.setAttribute('y2', '100%');
-    grad.innerHTML = `
-        <stop offset="0%" stop-color="${themeColor}" stop-opacity="0.25"/>
-        <stop offset="100%" stop-color="${themeColor}" stop-opacity="0.0"/>
-    `;
-    defs.appendChild(grad);
-
-    let pastAreaStr = pastPathStr + ` L ${getX(n - 1, false)},${getY(0)} L ${getX(0, false)},${getY(0)} Z`;
-    let pastArea = document.createElementNS(ns, 'path');
-    pastArea.setAttribute('d', pastAreaStr);
-    pastArea.setAttribute('fill', `url(#dynamic-glow-gradient)`);
-    svg.appendChild(pastArea);
-
-    let predPoints = [`${getX(n - 1, false)},${getY(counts[n - 1])}`];
-    for (let i = 0; i < predictions.length; i++) {
-        predPoints.push(`${getX(i, true)},${getY(predictions[i])}`);
-    }
-    let predPathStr = "M " + predPoints.join(" L ");
-
-    let predPath = document.createElementNS(ns, 'path');
-    predPath.setAttribute('d', predPathStr);
-    predPath.setAttribute('fill', 'none');
-    predPath.setAttribute('stroke', themeColor);
-    predPath.setAttribute('stroke-width', '2');
-    predPath.setAttribute('stroke-dasharray', '4 3');
-    predPath.setAttribute('stroke-linecap', 'round');
-    svg.appendChild(predPath);
-
-    let todayCircle = document.createElementNS(ns, 'circle');
-    todayCircle.setAttribute('cx', getX(n - 1, false).toString());
-    todayCircle.setAttribute('cy', getY(counts[n - 1]).toString());
-    todayCircle.setAttribute('r', '3.5');
-    todayCircle.setAttribute('fill', '#ffffff');
-    todayCircle.setAttribute('stroke', themeColor);
-    todayCircle.setAttribute('stroke-width', '1.5');
-    svg.appendChild(todayCircle);
+    });
 }
 
 // ==================== CALENDAR ====================
@@ -900,6 +859,7 @@ window.saveErrTargets = async function saveErrTargets() {
 
     lockTargetsOnly();
     renderErrorResolutionDashboard();
+    if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
 };
 
 /**
@@ -3127,6 +3087,15 @@ async function initApp() {
 
     // NEW: initialise the error resolution dashboard once data is ready
     renderErrorResolutionDashboard();
+    if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
+
+    // Listen for Protocol Zero penalty events from checkpoint.js → re-render
+    // the main predictive graph so the red valley appears immediately.
+    window.addEventListener('checkpoint:penalty', function () {
+        if (typeof renderGraph === 'function') renderGraph();
+        if (typeof renderErrorResolutionDashboard === 'function') renderErrorResolutionDashboard();
+        if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
+    });
 
     // Initialize Google Drive
     await initDrive();
@@ -3273,6 +3242,7 @@ window.srToggleImage = srToggleImage;
 window.toggleCardHistory = toggleCardHistory;
 window.renderErrorResolutionDashboard = renderErrorResolutionDashboard;
 window.renderChapterDecayGrid = renderChapterDecayGrid;
+window.renderMomentumCandles = renderMomentumCandles;
 
 // Expose state for debugging / cross-module access
 window.bounty = AppState.bounty;
@@ -3544,7 +3514,15 @@ window.overheatChaos = false;
         if (e.cancelable) e.preventDefault();
         const queue = (typeof e.getCoalescedEvents === 'function' && e.getCoalescedEvents().length)
             ? e.getCoalescedEvents() : [e];
-        for (let i = 0; i < queue.length; i++) currentPoints.push(getCanvasPoint(queue[i]));
+        for (let i = 0; i < queue.length; i++) {
+            const p = getCanvasPoint(queue[i]);
+            currentPoints.push(p);
+            // Fix 2: Feed checkpoint telemetry ONLY from real scratchpad drawing
+            // (not global pointermove). The manager applies a movement threshold.
+            if (window.__checkpoint && typeof window.__checkpoint.reportDrawingActivity === 'function') {
+                window.__checkpoint.reportDrawingActivity(p[0], p[1]);
+            }
+        }
         render();
     }
     function onCanvasPointerUp(e) {

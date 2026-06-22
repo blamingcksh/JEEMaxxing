@@ -515,6 +515,43 @@
                                 <button class="btn btn-secondary" onclick="testGeminiKey()">🔑 Test Key</button>
                                 <div id="key-test-result" style="margin-top:8px; font-size:13px;"></div>
                             </div>
+
+                            <!-- ── 4-Pillar Accountability Checkpoint Configuration ── -->
+                            <div class="settings-card">
+                                <h3>🔒 Checkpoint Times</h3>
+                                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                                    Edit the timestamps when the Slump Sentry checks for idle. 10 min before each, you get a pre-notify. If idle beyond the threshold, a 15-min grace arms.
+                                </p>
+                                <div id="cp-times-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;"></div>
+                                <button class="btn btn-secondary" style="font-size:12px; padding:6px 12px;" onclick="cpAddTime()">+ Add Checkpoint Time</button>
+
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;">
+                                    <div class="input-group">
+                                        <label style="font-size:11px;">Idle Threshold (min)</label>
+                                        <input type="number" class="pomo-input" id="cp-idle-threshold" value="120" min="5" style="font-size:13px;">
+                                    </div>
+                                    <div class="input-group">
+                                        <label style="font-size:11px;">Grace Window (min)</label>
+                                        <input type="number" class="pomo-input" id="cp-grace-min" value="15" min="1" style="font-size:13px;">
+                                    </div>
+                                    <div class="input-group">
+                                        <label style="font-size:11px;">Pre-Notify Lead (min)</label>
+                                        <input type="number" class="pomo-input" id="cp-pre-notify" value="10" min="1" style="font-size:13px;">
+                                    </div>
+                                    <div class="input-group">
+                                        <label style="font-size:11px;">Proof-of-Work (min)</label>
+                                        <input type="number" class="pomo-input" id="cp-pow-min" value="10" min="1" style="font-size:13px;">
+                                    </div>
+                                </div>
+
+                                <div style="display:flex; gap:8px; align-items:center; margin-top:16px;">
+                                    <button class="btn-save-glow" onclick="cpSaveConfig()">Save Checkpoint Config</button>
+                                    <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
+                                        <input type="checkbox" id="cp-enabled-toggle" onchange="cpToggleEnabled()"> Arm Sentry
+                                    </label>
+                                </div>
+                                <div id="cp-status-msg" style="margin-top:8px; font-size:12px;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -830,7 +867,121 @@
     img.src = url;
 })();
 </script>
+
+<!-- ============================================================= -->
+<!--  Checkpoint Config UI (bridges Settings card to checkpoint.js) -->
+<!--  Waits for window.__checkpoint to be ready, then populates the  -->
+<!--  time-list + threshold inputs from persisted config.            -->
+<!-- ============================================================= -->
+<script>
+(function () {
+    // Temp store for time inputs (added/removed before save)
+    let cpTimes = [];
+
+    function cpReady() { return window.__checkpoint && typeof window.__checkpoint.getConfig === 'function'; }
+
+    function cpRenderTimes() {
+        const list = document.getElementById('cp-times-list');
+        if (!list) return;
+        list.innerHTML = '';
+        cpTimes.forEach(function (t, i) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex; align-items:center; gap:8px;';
+            const inp = document.createElement('input');
+            inp.type = 'time';
+            inp.value = t;
+            inp.className = 'pomo-input';
+            inp.style.cssText = 'font-size:13px; flex:1;';
+            inp.addEventListener('change', function () { cpTimes[i] = inp.value; });
+            const x = document.createElement('button');
+            x.textContent = '✕';
+            x.style.cssText = 'width:30px; height:30px; border-radius:8px; background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.3); color:#f87171; cursor:pointer; font-size:14px;';
+            x.onclick = function () { cpTimes.splice(i, 1); cpRenderTimes(); };
+            row.appendChild(inp);
+            row.appendChild(x);
+            list.appendChild(row);
+        });
+    }
+
+    // Expose to window for onclick handlers
+    window.cpAddTime = function () {
+        if (cpTimes.length >= 8) { cpShowMsg('Max 8 checkpoint times allowed.', 'warn'); return; }
+        cpTimes.push('12:00');
+        cpRenderTimes();
+    };
+
+    window.cpSaveConfig = function () {
+        if (!cpReady()) { cpShowMsg('Checkpoint module not loaded yet.', 'danger'); return; }
+        const valid = cpTimes.filter(function (t) { return /^\d{1,2}:\d{2}$/.test(t); });
+        if (!valid.length) { cpShowMsg('Add at least one valid time (HH:MM).', 'warn'); return; }
+        const idleEl = document.getElementById('cp-idle-threshold');
+        const graceEl = document.getElementById('cp-grace-min');
+        const preEl = document.getElementById('cp-pre-notify');
+        const powEl = document.getElementById('cp-pow-min');
+        const cfg = window.__checkpoint.getConfig();
+        window.__checkpoint.setConfig({
+            checkpoints: valid,
+            idleThresholdMin: parseInt(idleEl.value) || 120,
+            graceMin: parseInt(graceEl.value) || 15,
+            preNotifyMin: parseInt(preEl.value) || 10,
+            powMin: parseInt(powEl.value) || 10,
+            enabled: cfg.enabled,
+        });
+        cpShowMsg('✅ Checkpoint config saved.', 'ok');
+    };
+
+    window.cpToggleEnabled = function () {
+        if (!cpReady()) return;
+        const cb = document.getElementById('cp-enabled-toggle');
+        const cfg = window.__checkpoint.getConfig();
+        window.__checkpoint.setConfig({ enabled: cb.checked });
+        cpShowMsg(cb.checked ? '🚨 Sentry ARMED.' : '○ Sentry disarmed.', cb.checked ? 'warn' : 'ok');
+        // Request notification permission on arm
+        if (cb.checked && 'Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().catch(function () {});
+        }
+    };
+
+    function cpShowMsg(msg, kind) {
+        const el = document.getElementById('cp-status-msg');
+        if (!el) return;
+        el.textContent = msg;
+        el.style.color = kind === 'danger' ? '#f87171' : kind === 'warn' ? '#fbbf24' : '#22c55e';
+        setTimeout(function () { el.textContent = ''; }, 4000);
+    }
+
+    // Populate the UI from the checkpoint config once it's loaded
+    function cpPopulate() {
+        if (!cpReady()) { setTimeout(cpPopulate, 300); return; }
+        const cfg = window.__checkpoint.getConfig();
+        cpTimes = (cfg.checkpoints && cfg.checkpoints.length) ? cfg.checkpoints.slice() : ['11:00', '17:00', '21:00'];
+        cpRenderTimes();
+        const set = function (id, val) { const el = document.getElementById(id); if (el) el.value = val; };
+        set('cp-idle-threshold', cfg.idleThresholdMin);
+        set('cp-grace-min', cfg.graceMin);
+        set('cp-pre-notify', cfg.preNotifyMin);
+        set('cp-pow-min', cfg.powMin);
+        const cb = document.getElementById('cp-enabled-toggle');
+        if (cb) cb.checked = !!cfg.enabled;
+    }
+
+    // Run when Settings tab is opened OR on load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', cpPopulate);
+    } else {
+        cpPopulate();
+    }
+    // Also re-populate when the user switches to the Settings tab
+    document.addEventListener('click', function (e) {
+        const a = e.target.closest && e.target.closest('.nav-item');
+        if (a && a.getAttribute('onclick') && a.getAttribute('onclick').indexOf('switchTab(\'settings\'') >= 0) {
+            setTimeout(cpPopulate, 100);
+        }
+    });
+})();
+</script>
     <script type="module" src="js/app.js"></script>
+    <script type="module" src="js/checkpoint.js"></script>
 
     <!-- ============================================================= -->
     <!--  Error Matrix · Filter Pill Wiring (UI skin only)             -->
