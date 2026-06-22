@@ -21,6 +21,16 @@
             font-family: 'Plus Jakarta Sans', sans-serif;
             -webkit-font-smoothing: antialiased;
         }
+        html, body {
+            /* Kill iPad rubber-banding / scroll chaining and any default touch
+               gesture handling so the scratchpad canvas receives untouched,
+               tip-accurate pointer events. Without this, iPadOS Safari shifts
+               touch coordinates during its gesture-recognition phase, producing
+               the "gap" between where the pencil lands and where the ink appears. */
+            overscroll-behavior: none;
+            -webkit-overflow-scrolling: auto;
+            touch-action: manipulation;
+        }
         body {
             background-color: var(--bg-base);
             color: var(--text-primary);
@@ -3354,9 +3364,16 @@ body.scratchpad-active .app-container {
     transition: opacity 0.25s ease;
 }
 
-/* Lock workspace viewport scrolling while drawing */
-body.scratchpad-active {
+/* Lock workspace viewport scrolling + ALL touch gestures while drawing.
+   touch-action:none on html/body too is what actually stops iPadOS Safari
+   from entering its gesture-recognition phase (the phase that shifts touch
+   coordinates and creates the pencil-to-ink gap). The canvas rule alone is
+   not enough because Safari applies gesture detection at the document level. */
+body.scratchpad-active,
+body.scratchpad-active html {
     overflow: hidden !important;
+    overscroll-behavior: none !important;
+    touch-action: none !important;
 }
 
 /* The scratchpad canvas. touch-action:none is CRITICAL for Apple Pencil on
