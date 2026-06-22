@@ -655,61 +655,28 @@ export function submitPracticeLog() {
     // ════════════════════════════════════════════════════════════════════════
     // 🎮 GAMIFICATION CONVERGENCE (SR drawer ↔ standard practice modal)
     // ════════════════════════════════════════════════════════════════════════
-    // Mirror the EXACT same dopamine loops that fire inside the patched
-    // practiceSubmit() in app.js (streaks, audio, glows, critical hits, streak
-    // shields, overheat modifiers) so the SR practice drawer inherits the full
-    // feedback suite. All calls go through the explicitly-attached `window`
-    // properties exposed at the bottom of app.js to avoid a circular module
-    // dependency (app.js already imports matrix.js, so matrix.js cannot import
-    // app.js back).
-    //
-    // The overheat-ready check uses document.body.classList.contains(
-    // 'overheat-active') as a DOM-level proxy for (overheatActive && !
-    // overheatUsed): activateOverheat() adds the class, deactivateOverheat()
-    // removes it, and the only path that calls deactivateOverheat() inside this
-    // branch is the consume-overheat flow itself — so the class is present iff
-    // overheat is active AND the double-count bonus has not yet been spent.
     if (_drawerState.result === 'incorrect') {
-        // ❌ Wrong answer — red flash + wrong sound, 20% streak-shield roll.
         if (typeof window.triggerRedFlash === 'function') window.triggerRedFlash();
         if (typeof window.playWrongSound === 'function') window.playWrongSound();
-
         if (Math.random() < 0.2) {
-            // Shield saves the combo — streak is preserved.
             if (typeof window.triggerStreakShield === 'function') window.triggerStreakShield();
         } else {
-            // Shield roll failed — reset the consecutive-correct streak.
             AppState.practiceCorrectStreak = 0;
         }
     } else if (_drawerState.result === 'correct') {
-        // ✅ Correct answer — increment the consecutive-correct streak.
         AppState.practiceCorrectStreak++;
-
         if (window._justWonBounty) {
-            // Bounty just won — cash out as a normal glow (preserves streak
-            // without burning a supercharge).
             window._justWonBounty = false;
             if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
         } else if (document.body.classList.contains('overheat-active')) {
-            // 🔥 Overheat is active and not yet depleted — apply the double-
-            // count bonus (an extra +2 on top of the +1 already awarded above
-            // for the status flip), supercharge, mark depleted, deactivate.
             changeCount(q.subject, 2);
             if (typeof window.showSupercharged === 'function') window.showSupercharged();
-            // deactivateOverheat() resets overheatActive / overheatUsed / the
-            // body class and clears the auto-deactivate timeout.
             if (typeof window.deactivateOverheat === 'function') window.deactivateOverheat();
         } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
-            // 💰 Active bounty payoff window — decrement remaining payoffs,
-            // persist immediately, and supercharge.
             AppState.bounty.payoffCount--;
             saveAllAsync().catch(console.error);
             if (typeof window.showSupercharged === 'function') window.showSupercharged();
         } else {
-            // 🎯 Standard routing — normal green glow + correct sound, with a
-            // 15% random roll to upgrade the execution to a critical hit.
-            // showSupercharged() itself contains a secondary 15% evaluation
-            // that may switch on activateOverheat(), matching app.js.
             if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
             if (typeof window.playCorrectSound === 'function') window.playCorrectSound();
             if (Math.random() < 0.15) {
@@ -718,41 +685,23 @@ export function submitPracticeLog() {
         }
     }
 
-    // Sync the streak visualizer number + flame intensity so the pixel fire
-    // reflects the new streak on the next renderLoop tick.
     if (typeof window.updateStreakVisualizer === 'function') window.updateStreakVisualizer();
 
-    // ⏱ Converge the SR drawer's active execution time into the daily and
-    // subjective study counters (studySecs.physics / .chemistry / .maths —
-    // the same tracker the Pomodoro deep-focus blocks write into). The raw
-    // minutes captured by the drawer stopwatch / manual input are converted
-    // into stable baseline seconds before injection.
     const secondsToInject = Math.round(timeSpent * 60);
     if (secondsToInject > 0 && q.subject) {
         const subjKey = String(q.subject).toLowerCase();
-        // studySecs keys are lowercase: physics / chemistry / maths
         if (subjKey in studySecs) {
             studySecs[subjKey] += secondsToInject;
-            // Live HUD repaint — updateStudyTimeHeader reads studySecs and
-            // repaints the dashboard counters immediately. The function is
-            // exposed on window by app.js (which imports it from pomodoro.js).
             if (typeof window.updateStudyTimeHeader === 'function') {
                 window.updateStudyTimeHeader();
             }
         }
     }
 
-    // Persist consolidated arrays to IndexedDB/Cloud Sync pipelines — the
-    // studySecs mutation above is included in this snapshot (saveAllAsync
-    // writes studySecs to IndexedDB under the 'jeemax_study_secs' key).
     saveAllAsync().catch(console.error);
-
-    // Close drawer and re-render UI matrix structures cleanly
     closePracticeDrawer();
     renderErrorMatrixFromBank();
     filterErrors();
-    // ⚡ Refresh the error-resolution dashboard so today's count updates live
-    // the moment a practice attempt is logged (correct answers bump the count).
     renderErrorResolutionDashboard();
 }
 
@@ -772,7 +721,6 @@ export function removeErrorLog(id) {
 // ── Filter ──────────────────────────────────────────────────────────────────
 
 export function filterErrors() {
-    // ── Daily Core Queue intercept ──
     if (_dailyQueueActive) {
         _renderDailyQueueCards();
         return;
@@ -794,7 +742,6 @@ export function filterErrors() {
         let subjMatch = (bSubj === AppState.currentErrorSubject);
         let textMatch = bChapter.includes(textFilter) || bTag.includes(textFilter);
 
-        // SR status filtering
         let statusMatch = true;
         if (statusFilter === 'ready')     statusMatch = bSrStatus === 'ready';
         else if (statusFilter === 'due_soon')   statusMatch = bSrStatus === 'due_soon';
@@ -820,25 +767,20 @@ export function toggleDailyQueue() {
     const folders = document.querySelectorAll('.subject-folder');
 
     if (_dailyQueueActive) {
-        // ── Activate ──
         if (btn) btn.classList.add('active');
         if (title) title.textContent = '⚡ Daily Core Queue';
         if (badge) badge.style.display = 'inline';
         folders.forEach(f => f.style.opacity = '0.35');
-        // Deactivate all status pills
         document.querySelectorAll('.emf-pill-group[data-emf-filter="status"] .matrix-pill').forEach(p => p.classList.remove('active'));
         _renderDailyQueueCards();
     } else {
-        // ── Deactivate ──
         if (btn) btn.classList.remove('active');
         if (badge) badge.style.display = 'none';
         folders.forEach(f => f.style.opacity = '1');
-        // Reactivate "All" status pill
         const allPill = document.querySelector('.emf-pill-group[data-emf-filter="status"] .matrix-pill[data-emf-value="all"]');
         if (allPill) allPill.classList.add('active');
         const statusCarrier = document.getElementById('filter-status');
         if (statusCarrier) statusCarrier.value = 'all';
-        // Restore normal title
         if (title) {
             const subj = AppState.currentErrorSubject;
             title.textContent = `${subj.charAt(0).toUpperCase() + subj.slice(1)} Matrix`;
@@ -848,16 +790,12 @@ export function toggleDailyQueue() {
     }
 }
 
-// Returns the locked list of question IDs for today's daily queue.
-// The snapshot is (re)generated only when the local date changes — solving a
-// question during the day does NOT add a replacement; the slot stays done.
 function _getDailyQueueSnapshot() {
     const today = _todayKey();
     if (_dailyQueueSnapshot.date === today && Array.isArray(_dailyQueueSnapshot.ids)) {
         return _dailyQueueSnapshot.ids;
     }
 
-    // (Re)generate the snapshot for the new day.
     const allErrors = AppState.questionBank.filter(q =>
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
     );
@@ -866,7 +804,6 @@ function _getDailyQueueSnapshot() {
         const subj = (q.subject || '').toLowerCase();
         if (bySubject[subj]) bySubject[subj].push(q);
     });
-    // Most vulnerable first (lowest easeFactor).
     Object.keys(bySubject).forEach(subj => {
         bySubject[subj].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
     });
@@ -880,7 +817,6 @@ function _getDailyQueueSnapshot() {
     return ids;
 }
 
-// A question counts as "completed today" if it has a correct historyLog dated today.
 function _isCompletedToday(q) {
     if (!Array.isArray(q.historyLogs)) return false;
     const today = _todayKey();
@@ -895,16 +831,11 @@ function _renderDailyQueueCards() {
     if (!c) return;
     c.innerHTML = '';
 
-    // Lock the day's queue ONCE. Solving a question does NOT pull in a
-    // replacement — the solved card stays (marked done) until tomorrow.
     const snapshotIds = _getDailyQueueSnapshot();
-
-    // Look up the live question objects (some may have been deleted).
     const targets = snapshotIds
         .map(id => AppState.questionBank.find(q => q.id.toString() === id))
         .filter(Boolean);
 
-    // Group by subject for divider rendering + progress counts.
     const bySubject = { physics: [], maths: [], chemistry: [] };
     targets.forEach(q => {
         const subj = (q.subject || '').toLowerCase();
@@ -940,7 +871,6 @@ function _renderDailyQueueCards() {
             `);
         }
         c.insertAdjacentHTML('beforeend', _buildErrorCardHTML(q));
-        // Mark completed-today cards so CSS can dim them + show a check ribbon.
         if (_isCompletedToday(q)) {
             const lastBlock = c.lastElementChild;
             if (lastBlock) lastBlock.classList.add('daily-queue-done');
@@ -1034,7 +964,6 @@ export function addErrorBlock() {
         errorReason: typeValue,
         timeTaken: 0,
         solution: "",
-        // ── SR fields (new) ──
         currentInterval: 0,
         easeFactor: 2.5,
         nextReviewAt: new Date().toISOString(),
@@ -1144,8 +1073,6 @@ export function renderErrorMatrixFromBank() {
     if (typeof initErrorLazyLoaders === 'function') initErrorLazyLoaders();
 }
 
-// ── Toggle Expanded History ────────────────────────────────────────────────
-
 export function toggleCardHistory(qId) {
     const el = document.getElementById(`sr-history-${qId}`);
     const chevron = document.getElementById(`sr-chevron-${qId}`);
@@ -1195,12 +1122,10 @@ export function renderChapterDecayGrid() {
     const container = document.getElementById('chapter-decay-grid');
     if (!container) return;
 
-    // Collect all active friction entries
     const allErrors = AppState.questionBank.filter(q =>
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
     );
 
-    // Group by chapter
     const chapterMap = {};
     allErrors.forEach(q => {
         const chapter = q.chapter || 'Uncategorized';
@@ -1208,23 +1133,18 @@ export function renderChapterDecayGrid() {
         chapterMap[chapter].push(q);
     });
 
-    // Compute per-chapter health
     const chapters = Object.entries(chapterMap).map(([name, questions]) => {
         const avgEF = questions.reduce((sum, q) => sum + (q.easeFactor || 2.5), 0) / questions.length;
         const overdueCount = questions.filter(q => getDueStatus(q).status === 'ready').length;
 
-        // Health % = CLAMP(10, 100, ((Average EF - 1.3) / 1.7) * 100)
         let health = ((avgEF - 1.3) / 1.7) * 100;
         health = Math.max(10, Math.min(100, health));
-
-        // Deduct 15% penalty per overdue question
         health -= overdueCount * 15;
         health = Math.max(10, Math.min(100, health));
 
         return { name, health, questionCount: questions.length, avgEF, overdueCount };
     });
 
-    // Sort by health ascending — worst chapters first
     chapters.sort((a, b) => a.health - b.health);
 
     if (chapters.length === 0) {
@@ -1232,7 +1152,6 @@ export function renderChapterDecayGrid() {
         return;
     }
 
-    // ── SVG Layout Constants ──
     const ROW_H = 38;
     const LABEL_W = 170;
     const TRACK_W = 280;
@@ -1250,9 +1169,7 @@ export function renderChapterDecayGrid() {
         const trackY = y + (ROW_H - TRACK_H) / 2;
         const fillW = Math.max(3, (ch.health / 100) * TRACK_W);
 
-        // Color mapping per spec
         let fillStyle, glowAttr = '', opacityAttr = '';
-
         if (ch.health > 75) {
             fillStyle = 'fill: var(--glow-green);';
             glowAttr = 'filter: url(#decay-glow-green);';
@@ -1263,7 +1180,6 @@ export function renderChapterDecayGrid() {
             opacityAttr = 'opacity: 0.88;';
         }
 
-        // Truncate long chapter names
         const displayName = ch.name.length > 24 ? ch.name.substring(0, 22) + '…' : ch.name;
 
         return `
@@ -1306,24 +1222,32 @@ export function renderChapterDecayGrid() {
         </svg>`;
 }
 
-// ==================== ERROR RESOLUTION ENGINE ====================
+// ── Pillar 2 helper: lowest-health question for Checkpoint lockdown ──────────
+// Returns the single highest-priority, lowest-health question from the Chapter
+// Decay Grid — the one with the lowest easeFactor among due (overdue) error
+// entries. This is what the Checkpoint serves during lockdown.
+export function getLowestHealthQuestion() {
+    const candidates = AppState.questionBank.filter(q =>
+        (q.status === 'error' || q.status === 'wrong' || q.status === 'solved') &&
+        getDueStatus(q).status === 'ready'
+    );
+    if (!candidates.length) {
+        // Fallback: lowest easeFactor across the entire bank
+        const sorted = [...AppState.questionBank].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
+        return sorted[0] || null;
+    }
+    const sorted = [...candidates].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
+    return sorted[0];
+}
 
-// ── Day-rollover watcher ───────────────────────────────────────────────────
-// The dashboard's "today" count is derived dynamically from historyLogs
-// filtered by the current local date, so it resets to 0 at midnight BY DESIGN.
-// The only way it can appear "stuck" is if the dashboard is never re-rendered
-// after the date changes (e.g. the app stays open overnight). This watcher
-// detects local-date changes and re-renders automatically, so the count
-// always reflects the correct day.
+// ==================== ERROR RESOLUTION ENGINE ====================
 
 let _todayKeyCache = null;
 let _lastRenderedDate = null;
 let _rolloverWatchStarted = false;
 
-// Stable local YYYY-MM-DD key. Pass a Date to format that date; omit for today.
 function _todayKey(date) {
     const d = date || new Date();
-    // en-CA → "YYYY-MM-DD" in the browser's local timezone
     return d.toLocaleDateString('en-CA');
 }
 
@@ -1335,31 +1259,20 @@ export function refreshErrorDashboardIfStale() {
     }
 }
 
-// Start the rollover watcher exactly once (auto-starts on first dashboard render).
 function _startRolloverWatcher() {
     if (_rolloverWatchStarted) return;
     _rolloverWatchStarted = true;
     _lastRenderedDate = _todayKey();
-    // Poll every 60s — cheap, catches a midnight rollover within a minute.
     setInterval(refreshErrorDashboardIfStale, 60_000);
-    // Re-check immediately when the tab becomes visible / regains focus
-    // (covers the common "leave app open overnight, come back next morning" case).
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) refreshErrorDashboardIfStale();
     });
     window.addEventListener('focus', refreshErrorDashboardIfStale);
 }
 
-/**
- * Scan AppState.questionBank historyLogs to compute:
- *  1. Today's per-subject error correction counts vs baseTargets
- *  2. 15-day historical momentum sparkline
- * All computed dynamically on the fly — no persistent state changes.
- * "Today" is the current LOCAL date, so the count resets to 0 at midnight.
- */
 export function renderErrorResolutionDashboard() {
     _startRolloverWatcher();
-    const todayStr = _todayKey(); // YYYY-MM-DD local — resets each new day
+    const todayStr = _todayKey();
     const subjects = ['physics', 'chemistry', 'maths'];
     const subjectGradients = {
         physics:   'linear-gradient(90deg, #3b82f6, #8b5cf6)',
@@ -1372,7 +1285,6 @@ export function renderErrorResolutionDashboard() {
         maths:     { val: 'erm-math-val', bar: 'erm-math-bar', pct: 'erm-math-pct', tgt: 'erm-math-tgt' },
     };
 
-    // ── Today's per-subject correct counts from historyLogs ──
     const todayCounts = { physics: 0, chemistry: 0, maths: 0 };
 
     AppState.questionBank.forEach(q => {
@@ -1387,19 +1299,12 @@ export function renderErrorResolutionDashboard() {
         });
     });
 
-    // ── Update progress rows ──
     let totalToday = 0;
-    // Inside renderErrorResolutionDashboard() in js/matrix.js, find this loop:
-subjects.forEach(subj => {
-    const count = todayCounts[subj];
-    
-    // ⚡ FIX: Change "baseTargets[subj] || 10" to read from your error targets object:
-    const target = baseErrorTargets[subj] || 5; 
-    
-    const pct = target > 0 ? Math.min(100, (count / target) * 100) : 0;
-    totalToday += count;
-    
-    // ... rest of the loop remains exactly the same ...
+    subjects.forEach(subj => {
+        const count = todayCounts[subj];
+        const target = baseErrorTargets[subj] || 5;
+        const pct = target > 0 ? Math.min(100, (count / target) * 100) : 0;
+        totalToday += count;
 
         const ids = subjectIds[subj];
         const valEl = document.getElementById(ids.val);
@@ -1413,7 +1318,6 @@ subjects.forEach(subj => {
         if (barEl) {
             barEl.style.width = `${pct}%`;
             barEl.style.background = subjectGradients[subj];
-            // Glow when on-target or above
             barEl.style.boxShadow = pct >= 100
                 ? '0 0 12px rgba(139, 92, 246, 0.5), 0 0 24px rgba(139, 92, 246, 0.2)'
                 : 'none';
@@ -1434,7 +1338,6 @@ subjects.forEach(subj => {
         momentumData.push({ date: dateStr, dayLabel: date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), count: 0 });
     }
 
-    // Scan ALL questions' historyLogs across entire questionBank
     AppState.questionBank.forEach(q => {
         if (!q.historyLogs || !Array.isArray(q.historyLogs)) return;
         q.historyLogs.forEach(log => {
@@ -1445,13 +1348,23 @@ subjects.forEach(subj => {
         });
     });
 
-    // Compute average
+    // ── Protocol Zero overlay (Pillar 4) ──
+    // Any date in the jeemax_protocol_zero record forces a HARD ZERO on that
+    // day's count, overriding real activity. This is the "irreversible metric
+    // scarring" — even if you solved 50 questions that day, the graph shows 0.
+    try {
+        const penaltyDates = JSON.parse(localStorage.getItem('checkpoint:protocolZero') || '[]');
+        penaltyDates.forEach(pDate => {
+            const entry = momentumData.find(m => m.date === pDate);
+            if (entry) { entry.count = 0; entry.penalty = true; }
+        });
+    } catch (_) { /* ignore */ }
+
     const totalMomentum = momentumData.reduce((s, m) => s + m.count, 0);
     const avgMomentum = (totalMomentum / 15).toFixed(1);
     const avgLabel = document.getElementById('erm-avg-label');
     if (avgLabel) avgLabel.textContent = `avg ${avgMomentum}/day`;
 
-    // ── Render SVG Sparkline ──
     _renderMomentumSparkline(momentumData);
 }
 
@@ -1467,24 +1380,26 @@ function _renderMomentumSparkline(data) {
     const plotH = H - PAD_Y * 2;
     const maxVal = Math.max(1, ...data.map(d => d.count));
 
-    // Map data points to SVG coordinates
     const points = data.map((d, i) => {
         const x = PAD_X + (i / (data.length - 1)) * plotW;
         const y = PAD_Y + plotH - (d.count / maxVal) * plotH;
-        return { x, y, count: d.count, dayLabel: d.dayLabel };
+        return { x, y, count: d.count, dayLabel: d.dayLabel, penalty: d.penalty };
     });
 
-    // Build smooth path using Catmull-Rom to cubic Bezier conversion
     const pathD = _smoothPath(points);
-
-    // Build area fill path (closed)
     const areaD = pathD +
         ` L ${points[points.length - 1].x},${PAD_Y + plotH}` +
         ` L ${points[0].x},${PAD_Y + plotH} Z`;
 
-    // Dot circles for data points
+    // Dots with penalty (P0) markers
     const dots = points.map((p, i) => {
         const isToday = i === points.length - 1;
+        if (p.penalty) {
+            // Protocol Zero red valley marker
+            return `<line x1="${p.x}" y1="${p.y}" x2="${p.x}" y2="${PAD_Y + plotH}" stroke="#f87171" stroke-width="2.5" opacity="0.6" stroke-dasharray="3 2"/>` +
+                   `<circle cx="${p.x}" cy="${p.y}" r="5" fill="#f87171" stroke="#fff" stroke-width="1.5" filter="url(#p0-glow)"/>` +
+                   `<text x="${p.x}" y="${p.y - 12}" fill="#f87171" font-size="9" font-family="'Space Grotesk', monospace" text-anchor="middle" font-weight="700">P0</text>`;
+        }
         const r = isToday ? 4 : 2.5;
         const fill = isToday ? '#ec4899' : '#8b5cf6';
         const stroke = isToday ? '#ec4899' : 'none';
@@ -1493,14 +1408,12 @@ function _renderMomentumSparkline(data) {
         return `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" ${glowFilter}/>`;
     }).join('');
 
-    // Day labels for first, mid, and last
     const labelIndices = [0, Math.floor(data.length / 2), data.length - 1];
     const labels = labelIndices.map(i => {
         const p = points[i];
         return `<text x="${p.x}" y="${H - 1}" fill="var(--text-muted)" font-size="8" font-family="'Plus Jakarta Sans', sans-serif" text-anchor="${i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}" font-weight="500">${data[i].dayLabel}</text>`;
     }).join('');
 
-    // Peak annotation
     const peakIdx = points.reduce((mi, p, i, arr) => p.count > arr[mi].count ? i : mi, 0);
     const peak = points[peakIdx];
     const peakLabel = peak.count > 0
@@ -1524,27 +1437,27 @@ function _renderMomentumSparkline(data) {
                         <feMergeNode in="SourceGraphic"/>
                     </feMerge>
                 </filter>
+                <!-- Protocol Zero glow filter -->
+                <filter id="p0-glow" x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+                    <feFlood flood-color="#f87171" flood-opacity="0.7" result="color"/>
+                    <feComposite in="color" in2="blur" operator="in" result="glow"/>
+                    <feMerge>
+                        <feMergeNode in="glow"/>
+                        <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                </filter>
             </defs>
-            <!-- Baseline grid -->
             <line x1="${PAD_X}" y1="${PAD_Y + plotH}" x2="${W - PAD_X}" y2="${PAD_Y + plotH}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
             <line x1="${PAD_X}" y1="${PAD_Y + plotH * 0.5}" x2="${W - PAD_X}" y2="${PAD_Y + plotH * 0.5}" stroke="rgba(255,255,255,0.025)" stroke-width="1" stroke-dasharray="4 4"/>
-            <!-- Area fill -->
             <path d="${areaD}" fill="url(#error-momentum-gradient)"/>
-            <!-- Line -->
             <path d="${pathD}" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <!-- Dots -->
             ${dots}
-            <!-- Peak annotation -->
             ${peakLabel}
-            <!-- Day labels -->
             ${labels}
         </svg>`;
 }
 
-/**
- * Generate a smooth SVG path string through the given points
- * using Catmull-Rom to cubic Bezier conversion for fluid curves.
- */
 function _smoothPath(points) {
     if (points.length < 2) return '';
     if (points.length === 2) {
