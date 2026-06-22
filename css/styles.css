@@ -3374,6 +3374,12 @@ body.scratchpad-active html {
     overflow: hidden !important;
     overscroll-behavior: none !important;
     touch-action: none !important;
+    /* Prevent text selection / long-press callout while drawing. This stops
+       iPadOS from starting a text-selection drag (which auto-scrolls the page
+       and causes the growing pencil-to-ink gap). */
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-touch-callout: none !important;
 }
 
 /* The scratchpad canvas. touch-action:none is CRITICAL for Apple Pencil on
