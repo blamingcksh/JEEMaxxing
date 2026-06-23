@@ -3348,7 +3348,7 @@ window.overheatChaos = false;
     let root, toolbar, pencilBtn, colorBtn, clearBtn, dropdown;
     let paletteOverlay, paletteBox, bigSwatch, hexInput, nativeInput;
     let presetGrid, quickManageRow, addBtn;
-    let canvas, ctx;
+    let canvas, ctx, bgCanvas, bgCtx;  // fg (live) + bg (bitmap accumulator)
 
     let isActive = false;
     let isDrawing = false;
@@ -3443,66 +3443,69 @@ window.overheatChaos = false;
         return [e.clientX - rect.left, e.clientY - rect.top, pressureFor(e)];
     }
 
-    function fillOutline(outline, color) {
+    // Fill a perfect-freehand outline polygon onto an arbitrary context.
+    // `targetCtx` defaults to the foreground ctx when omitted.
+    function fillOutline(outline, color, targetCtx) {
         if (!outline || !outline.length) return;
-        ctx.save();
-        ctx.fillStyle = color;
-        ctx.beginPath();
+        var c = targetCtx || ctx;
+        c.save();
+        c.fillStyle = color;
+        c.beginPath();
         if (outline.length === 1) {
-            ctx.arc(outline[0][0], outline[0][1], 1.5, 0, Math.PI * 2);
+            c.arc(outline[0][0], outline[0][1], 1.5, 0, Math.PI * 2);
         } else {
-            ctx.moveTo(outline[0][0], outline[0][1]);
-            for (let i = 1; i < outline.length; i++) ctx.lineTo(outline[i][0], outline[i][1]);
-            ctx.closePath();
+            c.moveTo(outline[0][0], outline[0][1]);
+            for (var i = 1; i < outline.length; i++) c.lineTo(outline[i][0], outline[i][1]);
+            c.closePath();
         }
-        ctx.fill();
-        ctx.restore();
+        c.fill();
+        c.restore();
     }
 
+    // O(1) live repaint — only the single in-progress stroke is drawn on the
+    // foreground canvas. Historical strokes live permanently on the background
+    // bitmap accumulator and are never revisited during pointermove.
     function render() {
         if (!canvas || !ctx) return;
-        const dpr = window.devicePixelRatio || 1;
+        var dpr = window.devicePixelRatio || 1;
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.restore();
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        // Re-draw all committed strokes (cached outlines)
-        for (let i = 0; i < committedOutlines.length; i++) {
-            const c = committedOutlines[i];
-            if (c.fallback) drawFallbackStroke(c.outline, c.color);
-            else fillOutline(c.outline, c.color);
-        }
-        // Draw the in-progress stroke
+        // Draw ONLY the single active stroke on the live foreground layer
         if (currentPoints.length) {
             if (getStrokeFn) {
-                const outline = getStrokeFn(currentPoints, currentStrokeOpts);
-                fillOutline(outline, selectedColor);
+                var outline = getStrokeFn(currentPoints, currentStrokeOpts);
+                fillOutline(outline, selectedColor, ctx);
             } else {
-                drawFallbackStroke(currentPoints, selectedColor);
+                drawFallbackStroke(currentPoints, selectedColor, ctx);
             }
         }
     }
 
-    function drawFallbackStroke(points, color) {
+    // Fallback line renderer (when perfect-freehand CDN is unavailable).
+    // `targetCtx` defaults to the foreground ctx when omitted.
+    function drawFallbackStroke(points, color, targetCtx) {
         if (points.length < 1) return;
-        ctx.save();
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.lineWidth = currentPointerType === 'pen' ? 2.5 : 2.4;
+        var c = targetCtx || ctx;
+        c.save();
+        c.strokeStyle = color;
+        c.fillStyle = color;
+        c.lineCap = 'round';
+        c.lineJoin = 'round';
+        c.lineWidth = currentPointerType === 'pen' ? 2.5 : 2.4;
         if (points.length === 1) {
-            ctx.beginPath();
-            ctx.arc(points[0][0], points[0][1], 1.5, 0, Math.PI * 2);
-            ctx.fill();
+            c.beginPath();
+            c.arc(points[0][0], points[0][1], 1.5, 0, Math.PI * 2);
+            c.fill();
         } else {
-            ctx.beginPath();
-            ctx.moveTo(points[0][0], points[0][1]);
-            for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-            ctx.stroke();
+            c.beginPath();
+            c.moveTo(points[0][0], points[0][1]);
+            for (var i = 1; i < points.length; i++) c.lineTo(points[i][0], points[i][1]);
+            c.stroke();
         }
-        ctx.restore();
+        c.restore();
     }
 
     function onCanvasPointerDown(e) {
@@ -3534,23 +3537,38 @@ window.overheatChaos = false;
         }
         render();
     }
+    // On pointer release, flatten the completed stroke permanently onto the
+    // background bitmap layer. This is the only moment we write to bgCanvas.
+    // The committedOutlines array is kept solely for resize recovery — it is
+    // never iterated in the hot render() path.
     function onCanvasPointerUp(e) {
         if (!isActive) return;
         if (e.pointerType !== currentPointerType) return;
         isDrawing = false;
         currentPointerType = '';
-        if (currentPoints.length) {
+        if (currentPoints.length && bgCanvas && bgCtx) {
+            var dpr = window.devicePixelRatio || 1;
+            bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            bgCtx.lineCap = 'round';
+            bgCtx.lineJoin = 'round';
             if (getStrokeFn) {
-                const outline = getStrokeFn(currentPoints, currentStrokeOpts);
+                var outline = getStrokeFn(currentPoints, currentStrokeOpts);
+                fillOutline(outline, selectedColor, bgCtx);
                 committedOutlines.push({ outline: outline, color: selectedColor });
             } else {
-                // Cache fallback stroke as a snapshot of its points for re-render
-                committedOutlines.push({ outline: currentPoints, color: selectedColor, fallback: true });
+                drawFallbackStroke(currentPoints, selectedColor, bgCtx);
+                committedOutlines.push({ outline: currentPoints.slice(), color: selectedColor, fallback: true });
             }
         }
         currentPoints = [];
+        // Clear the live foreground canvas — ready for the next stroke
+        if (canvas && ctx) {
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.restore();
+        }
         try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* released */ }
-        render();
     }
 
     // ── Canvas sizing (THE fix for "gap grows as I write") ─────────────────
@@ -3558,31 +3576,62 @@ window.overheatChaos = false;
     // internal resolution. CSS 100vw/100vh ≠ innerWidth/Height on iPadOS
     // (Safari's dynamic browser chrome), and that mismatch made the coordinate
     // error grow linearly with distance from the top-left corner.
+    // Resize BOTH canvases to match the viewport at the current DPR.
+    // After resize (which clears both bitmap buffers), redraw all committed
+    // strokes onto the background layer so nothing is lost.
     function resizeCanvas() {
-        if (!canvas || !ctx) return;
-        const dpr = window.devicePixelRatio || 1;
-        const cssW = window.innerWidth;
-        const cssH = window.innerHeight;
+        if (!canvas || !ctx || !bgCanvas || !bgCtx) return;
+        var dpr = window.devicePixelRatio || 1;
+        var cssW = window.innerWidth;
+        var cssH = window.innerHeight;
+        // Set CSS dimensions on both canvases
         canvas.style.width = cssW + 'px';
         canvas.style.height = cssH + 'px';
-        const newW = Math.round(cssW * dpr);
-        const newH = Math.round(cssH * dpr);
-        if (canvas.width === newW && canvas.height === newH) {
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            return;
-        }
+        bgCanvas.style.width = cssW + 'px';
+        bgCanvas.style.height = cssH + 'px';
+        var newW = Math.round(cssW * dpr);
+        var newH = Math.round(cssH * dpr);
+        var sizeUnchanged = (canvas.width === newW && canvas.height === newH);
+        // Resize both canvas buffers (clears their bitmaps)
         canvas.width = newW;
         canvas.height = newH;
+        bgCanvas.width = newW;
+        bgCanvas.height = newH;
+        // Restore transforms and drawing defaults on both contexts
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        render();
+        bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        bgCtx.lineCap = 'round';
+        bgCtx.lineJoin = 'round';
+        // Redraw all committed strokes onto the background bitmap accumulator
+        for (var i = 0; i < committedOutlines.length; i++) {
+            var s = committedOutlines[i];
+            if (s.fallback) drawFallbackStroke(s.outline, s.color, bgCtx);
+            else fillOutline(s.outline, s.color, bgCtx);
+        }
+        // If an active stroke exists, repaint it on the foreground
+        if (!sizeUnchanged) render();
     }
 
+    // Clear BOTH canvas surfaces and empty all auxiliary memory arrays.
     function clearCanvas() {
         committedOutlines = [];
         currentPoints = [];
-        render();
+        // Wipe the live foreground canvas
+        if (canvas && ctx) {
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.restore();
+        }
+        // Wipe the permanent background bitmap accumulator
+        if (bgCanvas && bgCtx) {
+            bgCtx.save();
+            bgCtx.setTransform(1, 0, 0, 1, 0, 0);
+            bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+            bgCtx.restore();
+        }
     }
 
     // ── Gesture / selection blockers (added while active) ──────────────────
@@ -3844,7 +3893,22 @@ window.overheatChaos = false;
 
     // ── DOM injection ──────────────────────────────────────────────────────
     function injectDOM() {
-        // Canvas overlay — full viewport, pointer-events:none unless active.
+        // ── Double-canvas layering system ──────────────────────────────────
+        // Bottom layer: permanent bitmap accumulator for committed strokes.
+        // pointer-events: none always — this canvas is never interacted with.
+        bgCanvas = el('canvas', {
+            id: 'scratchpad-bg-canvas',
+            style: {
+                position: 'fixed', top: '0', left: '0',
+                zIndex: '999994', pointerEvents: 'none', display: 'block',
+                touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none',
+                WebkitTouchCallout: 'none',
+            },
+        });
+        document.body.appendChild(bgCanvas);
+
+        // Top layer: live foreground for the single in-progress stroke.
+        // pointer-events: none unless scratchpad is active (toggled by toggleActive).
         // CRITICAL: width/height are set by resizeCanvas() to window.innerWidth/
         // innerHeight in PX (NOT 100vw/100vh — those mismatch on iPadOS and
         // cause the gap to grow as you draw further from the top-left).
@@ -4066,7 +4130,8 @@ window.overheatChaos = false;
         loadColors();
         injectDOM();
         ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        bgCtx = bgCanvas.getContext('2d');
+        if (!ctx || !bgCtx) return;
         resizeCanvas();
 
         toolbar.addEventListener('pointerdown', onHudPointerDown);
