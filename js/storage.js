@@ -970,14 +970,41 @@ export async function loadStateFromCloud(isBackground = false) {
                 const merged = Array.from(mergedMap.entries()).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)).slice(-15);
                 await idbSet('jeemax_daily_history', merged);
             }
+            // ══════════════════════════════════════════════════════════════════════
+            // ✅ FIX: SAFE ROLLOVER — preserve local progress on date mismatch
+            //
+            // Previous code had a destructive `else` branch that zeroed out
+            // `solved` and `studySecs` whenever cloudState.date !== todayStr.
+            // This wiped today's local progress whenever a date-rollover or
+            // a stale cloud sync occurred.
+            //
+            // New strategy:
+            //   • Same-date  → merge via Math.max (no data loss, unchanged).
+            //   • Stale-date → leave local counters INTACT. The cloud data
+            //     belongs to a previous day and must NOT overwrite today's
+            //     tracking. A stale cloud snapshot is simply ignored for
+            //     daily counters; it was already folded into dailyHistory
+            //     above. Local state is always authoritative for the
+            //     *current* tracking window.
+            // ══════════════════════════════════════════════════════════════════════
             const todayStr = new Date().toISOString().split('T')[0];
             if (cloudState.date === todayStr) {
-                if (cloudState.solved) { solved.physics = Math.max(solved.physics, cloudState.solved.physics || 0); solved.chemistry = Math.max(solved.chemistry, cloudState.solved.chemistry || 0); solved.maths = Math.max(solved.maths, cloudState.solved.maths || 0); }
-                if (cloudState.studySecs) { studySecs.physics = Math.max(studySecs.physics, cloudState.studySecs.physics || 0); studySecs.chemistry = Math.max(studySecs.chemistry, cloudState.studySecs.chemistry || 0); studySecs.maths = Math.max(studySecs.maths, cloudState.studySecs.maths || 0); }
-            } else {
-                solved.physics = 0; solved.chemistry = 0; solved.maths = 0; studySecs.physics = 0; studySecs.chemistry = 0; studySecs.maths = 0;
-                await saveAllAsync().catch(console.error);
+                // Cloud is current — high-water-mark merge preserves the
+                // larger of local vs. cloud for each subject.
+                if (cloudState.solved) {
+                    solved.physics   = Math.max(solved.physics,   cloudState.solved.physics   || 0);
+                    solved.chemistry = Math.max(solved.chemistry, cloudState.solved.chemistry || 0);
+                    solved.maths     = Math.max(solved.maths,     cloudState.solved.maths     || 0);
+                }
+                if (cloudState.studySecs) {
+                    studySecs.physics   = Math.max(studySecs.physics,   cloudState.studySecs.physics   || 0);
+                    studySecs.chemistry = Math.max(studySecs.chemistry, cloudState.studySecs.chemistry || 0);
+                    studySecs.maths     = Math.max(studySecs.maths,     cloudState.studySecs.maths     || 0);
+                }
             }
+            // else: stale cloud date — LOCAL WINS. Intentionally no-op.
+            // The daily counters belong to the current local day; a
+            // yesterday-cloud snapshot has no authority to zero them out.
             _ui('updateUI'); _ui('updateStudyTimeHeader'); _ui('renderGraph'); _ui('renderErrorMatrixFromBank');
         }
     } catch (e) { console.error("Failed to download state from cloud:", e); } finally { if (!isBackground) hideLoading(); }

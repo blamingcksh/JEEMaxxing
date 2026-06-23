@@ -2112,16 +2112,25 @@ function _injectPracticeTimeIntoStudySecs() {
         // finalised (flag already flipped to true by the caller).
         if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return;
 
-        const subject = AppState.currentQ.subject
-            ? String(AppState.currentQ.subject).toLowerCase()
-            : null;
+        const subject = AppState.currentQ.subject;
+
+        // ── Defensive subject key normalization (same pattern as matrix.js) ──
+        const SUBJ_KEY_ALIASES = {
+            math: 'maths',
+            mathematics: 'maths',
+            'maths ': 'maths',
+        };
+        const rawKey = String(subject).trim().toLowerCase();
+        const subjKey = SUBJ_KEY_ALIASES[rawKey] || rawKey;
+
         // studySecs keys are lowercase: physics / chemistry / maths
-        if (!subject || !(subject in studySecs)) return;
+        if (!subjKey || !(subjKey in studySecs)) return;
 
         const seconds = Math.max(0, Math.floor(AppState.practiceSeconds || 0));
         if (seconds <= 0) return;
 
-        studySecs[subject] += seconds;
+        // ⚡ CRITICAL FIX: Deposit time directly using the canonical normalized key
+        studySecs[subjKey] += seconds;
 
         // Live HUD repaint — updateStudyTimeHeader reads studySecs and
         // repaints the dashboard counters. Lazy-import pomodoro.js to avoid

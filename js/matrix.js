@@ -689,7 +689,20 @@ export function submitPracticeLog() {
 
     const secondsToInject = Math.round(timeSpent * 60);
     if (secondsToInject > 0 && q.subject) {
-        const subjKey = String(q.subject).toLowerCase();
+        // ══════════════════════════════════════════════════════════════════════
+        // 🔑 DEFENSIVE SUBJECT KEY NORMALIZATION
+        // Trim, lowercase, and coerce common aliases ("math", "mathematics")
+        // into the canonical dictionary index key "maths" so that the `in`
+        // check never silently drops a time-injection due to a key mismatch.
+        // ══════════════════════════════════════════════════════════════════════
+        const SUBJ_KEY_ALIASES = {
+            math: 'maths',
+            mathematics: 'maths',
+            'maths ': 'maths',   // trailing-space guard
+        };
+        const rawKey = String(q.subject).trim().toLowerCase();
+        const subjKey = SUBJ_KEY_ALIASES[rawKey] || rawKey;
+
         if (subjKey in studySecs) {
             studySecs[subjKey] += secondsToInject;
             if (typeof window.updateStudyTimeHeader === 'function') {
@@ -706,12 +719,20 @@ export function submitPracticeLog() {
     //    (renderErrorMatrixFromBank wipes & rebuilds N cards via innerHTML,
     //    filterErrors forces layout reads, renderErrorResolutionDashboard
     //    recalculates sparkline SVG). On mobile/WebKit this prevents the
-    //    close-transition frames from being dropped. ──
+    //    close-transition frames from being dropped.
+    //
+    //    ✅ FIX: Also unconditionally repaint the home-screen HUD, daily
+    //    line charts, and overall progress metrics so the dashboard reflects
+    //    the just-injected study time the instant the drawer closes. ──
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
             renderErrorMatrixFromBank();
             filterErrors();
             renderErrorResolutionDashboard();
+
+            // ── Global HUD / graph repaint (bridged via window surface) ──
+            if (typeof window.updateUI === 'function')   window.updateUI();
+            if (typeof window.renderGraph === 'function') window.renderGraph();
         });
     });
 }
