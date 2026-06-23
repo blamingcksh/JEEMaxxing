@@ -3371,6 +3371,11 @@ window.overheatChaos = false;
     let dragStartX = 0, dragStartY = 0;
     let pressedBtn = null;
 
+    // rAF render-throttle state — decouples 240Hz Apple Pencil input
+    // from the 60Hz/120Hz ProMotion display refresh cycle.
+    let renderRequested = false;
+    let rafId = 0;
+
     let blockGesture, blockSelect, blockDblClick, blockTouchStart;
 
     // ── Storage ────────────────────────────────────────────────────────────
@@ -3511,31 +3516,55 @@ window.overheatChaos = false;
     function onCanvasPointerDown(e) {
         if (!isActive) return;
         if (dropdownOpen || paletteOpen) return;
-        if (isDrawing && currentPointerType === 'pen' && e.pointerType !== 'pen') return;
+        // ── Apple Pencil drawing lock ──
+        // Rejects mouse / finger / eraser — only 'pen' may draw on the canvas.
+        // HUD toolbar buttons remain fully touch-friendly (no guard there).
+        if (e.pointerType !== 'pen') return;
+        if (isDrawing) return;
         if (e.cancelable) e.preventDefault();
         isDrawing = true;
-        currentPointerType = e.pointerType;
-        currentStrokeOpts = e.pointerType === 'pen' ? STROKE_PEN : STROKE_MOUSE;
+        currentPointerType = 'pen';
+        currentStrokeOpts = STROKE_PEN;
         try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* pointer gone */ }
         currentPoints = [getCanvasPoint(e)];
         render();
     }
     function onCanvasPointerMove(e) {
         if (!isActive || !isDrawing) return;
-        if (e.pointerType !== currentPointerType) return;
+        // ── Apple Pencil drawing lock ──
+        if (e.pointerType !== 'pen') return;
         if (e.cancelable) e.preventDefault();
-        const queue = (typeof e.getCoalescedEvents === 'function' && e.getCoalescedEvents().length)
-            ? e.getCoalescedEvents() : [e];
+
+        // Ingest all coalesced Apple Pencil sub-frame events at hardware rate (240Hz)
+        // without triggering any canvas path computation on the event thread.
+        const coalesced = (typeof e.getCoalescedEvents === 'function')
+            ? e.getCoalescedEvents()
+            : null;
+        const queue = (coalesced && coalesced.length) ? coalesced : [e];
+
         for (let i = 0; i < queue.length; i++) {
-            const p = getCanvasPoint(queue[i]);
-            currentPoints.push(p);
-            // Fix 2: Feed checkpoint telemetry ONLY from real scratchpad drawing
-            // (not global pointermove). The manager applies a movement threshold.
-            if (window.__checkpoint && typeof window.__checkpoint.reportDrawingActivity === 'function') {
-                window.__checkpoint.reportDrawingActivity(p[0], p[1]);
-            }
+            currentPoints.push(getCanvasPoint(queue[i]));
         }
-        render();
+
+        // Telemetry: sample only the latest coordinate once per event batch,
+        // moved outside the inner coalesced loop to minimize overhead.
+        if (window.__checkpoint && typeof window.__checkpoint.reportDrawingActivity === 'function') {
+            var latest = currentPoints[currentPoints.length - 1];
+            if (latest) window.__checkpoint.reportDrawingActivity(latest[0], latest[1]);
+        }
+
+        // Decoupled rAF render: schedule at most ONE render per display frame.
+        // This lets the render() call (perfect-freehand O(N^2) path computation)
+        // scale naturally to the ProMotion refresh rate instead of firing at
+        // every 240Hz hardware event.
+        if (!renderRequested) {
+            renderRequested = true;
+            rafId = requestAnimationFrame(function () {
+                renderRequested = false;
+                rafId = 0;
+                render();
+            });
+        }
     }
     // On pointer release, flatten the completed stroke permanently onto the
     // background bitmap layer. This is the only moment we write to bgCanvas.
@@ -3543,7 +3572,18 @@ window.overheatChaos = false;
     // never iterated in the hot render() path.
     function onCanvasPointerUp(e) {
         if (!isActive) return;
-        if (e.pointerType !== currentPointerType) return;
+        // ── Apple Pencil drawing lock ──
+        if (e.pointerType !== 'pen') return;
+        if (!isDrawing) return;
+
+        // Cancel any pending rAF render — stroke is about to be committed
+        // to the background bitmap, so a stale foreground paint is wasteful.
+        if (renderRequested) {
+            cancelAnimationFrame(rafId);
+            renderRequested = false;
+            rafId = 0;
+        }
+
         isDrawing = false;
         currentPointerType = '';
         if (currentPoints.length && bgCanvas && bgCtx) {
