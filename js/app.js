@@ -1975,9 +1975,9 @@ export function renderPracticeQuestionModal() {
     let questionImageHtml = '';
     if (!AppState.photoHidden) {
         if (AppState.currentQ.imageDataUrl) {
-            questionImageHtml = `<img id="practice-modal-img" src="${AppState.currentQ.imageDataUrl}" style="max-width:100%; max-height:250px; border-radius:16px; margin-bottom:16px; transition: opacity 0.3s;">`;
+            questionImageHtml = `<img id="practice-modal-img" src="${AppState.currentQ.imageDataUrl}" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:250px; border-radius:16px; margin-bottom:16px; transition: opacity 0.3s; cursor: pointer;">`;
         } else if (AppState.currentQ.driveImageId && typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {
-            questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Downloading Asset...</text></svg>" style="max-width:100%; max-height:250px; border-radius:16px; margin-bottom:16px;">`;
+            questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Downloading Asset...</text></svg>" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:250px; border-radius:16px; margin-bottom:16px; cursor: pointer;">`;
             fetchMediaFromDrive(AppState.currentQ.driveImageId, AppState.driveAccessToken).then(b64 => {
                 if (b64) {
                     AppState.currentQ.imageDataUrl = b64;
@@ -3132,6 +3132,105 @@ window.deleteError = removeErrorLog;
 window.filterErrors = filterErrors;
 window.addErrorBlock = addErrorBlock;
 window.openLightbox = openLightbox;
+
+// ── Practice-Image Pinch-to-Zoom Lightbox ───────────────────────────────
+// Hardware-accelerated, full-screen overlay for inspecting practice question
+// images. Supports two-finger pinch-zoom (scale 0.75–8×) and single-pointer
+// drag-pan via the Pointer Events API. Mounted on demand and torn down on
+// close; no persistent DOM footprint.
+window.openPracticeImageLightbox = function(src) {
+    if (!src) return;
+    const old = document.getElementById('practice-image-lightbox');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'practice-image-lightbox';
+    Object.assign(overlay.style, {
+        position: 'fixed', inset: '0', zIndex: '1000000',
+        background: 'rgba(9, 9, 11, 0.96)', backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+        touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none'
+    });
+
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '✕';
+    Object.assign(closeBtn.style, {
+        position: 'absolute', top: '24px', right: '24px', zIndex: '1000002',
+        width: '44px', height: '44px', borderRadius: '50%', border: 'none',
+        background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: '20px',
+        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+    });
+    closeBtn.onclick = () => overlay.remove();
+
+    const img = document.createElement('img');
+    img.src = src;
+    Object.assign(img.style, {
+        maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain',
+        transformOrigin: 'center center', transition: 'transform 0.05s linear',
+        willChange: 'transform'
+    });
+
+    overlay.appendChild(closeBtn);
+    overlay.appendChild(img);
+    document.documentElement.appendChild(overlay);
+
+    let evHistory = [];
+    let prevDist = -1;
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+
+    overlay.onpointerdown = (e) => {
+        evHistory.push(e);
+        if (evHistory.length === 1) {
+            isDragging = true;
+            startX = e.clientX - translateX;
+            startY = e.clientY - translateY;
+        }
+    };
+
+    overlay.onpointermove = (e) => {
+        for (let i = 0; i < evHistory.length; i++) {
+            if (evHistory[i].pointerId === e.pointerId) {
+                evHistory[i] = e;
+                break;
+            }
+        }
+
+        if (evHistory.length === 2) {
+            isDragging = false;
+            const dx = evHistory[0].clientX - evHistory[1].clientX;
+            const dy = evHistory[0].clientY - evHistory[1].clientY;
+            const curDist = Math.hypot(dx, dy);
+
+            if (prevDist > 0) {
+                const delta = curDist / prevDist;
+                scale = Math.max(0.75, Math.min(8, scale * delta));
+                img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            }
+            prevDist = curDist;
+        } 
+        else if (evHistory.length === 1 && isDragging) {
+            translateX = e.clientX - startX;
+            translateY = e.clientY - startY;
+            img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        }
+    };
+
+    const removePointer = (e) => {
+        evHistory = evHistory.filter(ev => ev.pointerId !== e.pointerId);
+        if (evHistory.length < 2) prevDist = -1;
+        if (evHistory.length === 0) isDragging = false;
+    };
+
+    overlay.onpointerup = removePointer;
+    overlay.onpointercancel = removePointer;
+    overlay.onpointerleave = removePointer;
+};
 window.previewImage = previewImage;
 window.saveProfile = saveProfile;
 window.saveTargets = saveTargets;
