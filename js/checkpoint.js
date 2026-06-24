@@ -281,10 +281,15 @@ function restoreStateFromRaw(ps) {
         firePenalty('Grace expired while you were away — Protocol Zero engaged.');
         return;
     }
-    // BUGFIX: if the page was reloaded during the grace window, the grace
-    // modal was never re-shown — the user saw no popup even though the
-    // system was sitting in the 'grace' phase with a live graceEndsAt.
-    // Re-show the modal so the popup survives reloads.
+    // BROWSER REFRESH RECOVERY STATE LOCKING — because graceEndsAt is now
+    // an ABSOLUTE calendar-anchored epoch (set by armCheckpoint's
+    // absoluteDeadlineMs argument), the remaining grace duration is computed
+    // as a pure absolute delta (graceEndsAt - Date.now()) everywhere it is
+    // read: in the grace-modal live countdown (showGraceModal), in the grace
+    // phase of tick(), and in restoreState() above. Refreshing the page
+    // therefore hydrates the EXACT same mathematical duration from storage
+    // with zero time dilation or state amnesia — the grace window cannot be
+    // extended or reset by a reload, only honored or expired.
     if (phase === 'grace' && graceEndsAt && now < graceEndsAt && armedCheckpointTime) {
         showGraceModal(armedCheckpointTime);
     }
@@ -448,21 +453,43 @@ function tick() {
                 if (processedToday.has(key)) continue;
                 if (now < occMs) continue; // checkpoint not yet reached today
 
-                // (a) User engaged with this checkpoint by being active after
-                //     its time. Mark as passed — they are safe for this one.
+                // ABSOLUTE TEMPORAL BARRIER — calendar-anchored deadline.
+                // occMs + graceMin defines an immovable epoch expiration; it
+                // does NOT slide forward when the user reopens the browser.
+                const deadlineMs = occMs + (cfg.graceMin * 60000);
+
+                // (a) User engaged with this checkpoint by performing genuine
+                //     interaction AFTER the checkpoint timestamp — they are
+                //     safe for this one.
                 const engagedAfter = lastActivityAt !== null && lastActivityAt > occMs;
                 if (engagedAfter) {
                     processedToday.add(key);
                     continue;
                 }
-                // (b) User was idle before/at checkpoint time. Fire if they've
-                //     been idle long enough.
-                if (idleMin >= cfg.idleThresholdMin) {
-                    armCheckpoint(t);
+                // (b) User is currently idle AND the absolute grace window
+                //     has already expired (the 15 min elapsed while the tab
+                //     was closed / offline / in background sleep). There is
+                //     no legitimate way to recover — fire Protocol Zero on
+                //     the spot with an explicit absolute-window message.
+                if (idleMin >= cfg.idleThresholdMin && now > deadlineMs) {
                     processedToday.add(key);
+                    firePenalty(
+                        'Absolute grace window for ' + t + ' (' + cfg.graceMin +
+                        ' min from ' + t + ') expired while offline — Protocol Zero engaged.'
+                    );
+                    return;
+                }
+                // (c) User is idle but still WITHIN the legitimate scheduled
+                //     15-minute window. Flag as processed and ARM the
+                //     checkpoint, threading the absolute deadline barrier
+                //     down to the UI layer so the grace modal counts down
+                //     against the immutable calendar timestamp.
+                if (idleMin >= cfg.idleThresholdMin) {
+                    processedToday.add(key);
+                    armCheckpoint(t, deadlineMs);
                     break;
                 }
-                // (c) Not idle long enough yet — keep checking future ticks.
+                // (d) Not idle long enough yet — keep checking future ticks.
                 //     DO NOT add to processedToday.
             }
         } else {
@@ -517,41 +544,37 @@ function tick() {
     emit();
 }
 
-function checkMissedCheckpoints(fromMs, toMs) {
-    if (!cfg.enabled) return;
-    const today = todayKey();
-    for (const t of cfg.checkpoints) {
-        const occ = todaysOccurrence(t, new Date(toMs));
-        if (!occ) continue;
-        const occMs = occ.getTime();
-        const key = today + ':' + t;
-        if (occMs >= fromMs && occMs <= toMs && !processedToday.has(key)) {
-            const now = Date.now();
-            const idleMs = lastActivityAt ? now - lastActivityAt : Infinity;
-            const idleMin = idleMs === Infinity ? Infinity : idleMs / 60000;
-            // Same fix as tick(): do not mark as processed unless armed or
-            // genuinely engaged. Otherwise the popup silently never fires.
-            const engagedAfter = lastActivityAt !== null && lastActivityAt > occMs;
-            if (engagedAfter) {
-                processedToday.add(key);
-                continue;
-            }
-            if (idleMin >= cfg.idleThresholdMin) {
-                armCheckpoint(t);
-                processedToday.add(key);
-                notify('🚨 Checkpoint ARMED', 'You missed ' + t + ' while away. Initiate now!');
-                break;
-            }
-            // else: keep checking — do NOT mark as processed.
-        }
-    }
+// DEACTIVATED RESUME RACE-CONDITION HANDLER — intentional no-op safe-handle.
+// All catch-up math now lives UNIFIED inside the single state execution loop
+// in tick(), which uses the absolute temporal barrier (deadlineMs = occMs +
+// graceMin*60000) to decide between mid-window arm vs. post-window penalty.
+// Previously this function ran in parallel with tick()'s evaluation on a
+// background-gap resume event, causing dual-trigger anomalies and duplicate
+// arm/penalty decisions when waking from device background sleep. Emptying
+// the body eliminates that race while preserving the call site (tick() line
+// ~408 still invokes it harmlessly) so surrounding code stays intact.
+function checkMissedCheckpoints(_fromMs, _toMs) {
+    // Intentional no-op. Arguments retained for signature compatibility.
+    return;
 }
 
 // ── Phase transitions ──────────────────────────────────────────────────────
-function armCheckpoint(cpTime) {
+function armCheckpoint(cpTime, absoluteDeadlineMs) {
     armedCheckpointTime = cpTime;
     phase = 'grace';
-    graceEndsAt = Date.now() + cfg.graceMin * 60000;
+    // ABSOLUTE-ANCHOR CONTRACT: If the caller supplies an explicit epoch
+    // deadline (computed from occMs + cfg.graceMin*60000), bind graceEndsAt
+    // directly to that calendar-anchored timestamp instead of computing a
+    // relative `Date.now() + graceMin` offset. This eliminates the offline
+    // grace-window exploit where a user could close the site, return hours
+    // past a scheduled checkpoint, and receive a fresh 15-minute extension
+    // on boot — the absolute barrier is immutable regardless of when the
+    // browser happens to be active.
+    if (typeof absoluteDeadlineMs === 'number' && absoluteDeadlineMs > 0) {
+        graceEndsAt = absoluteDeadlineMs;
+    } else {
+        graceEndsAt = Date.now() + cfg.graceMin * 60000;
+    }
     notify('🚨 Checkpoint ARMED', cpTime + ' — ' + cfg.graceMin + ' min grace to initiate.');
     showGraceModal(cpTime);
     persistState();
