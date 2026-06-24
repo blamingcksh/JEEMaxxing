@@ -39,6 +39,12 @@ const DAILY_QUEUE_LIMITS = {
 // fresh snapshot is generated.
 let _dailyQueueSnapshot = { date: null, ids: [] };
 
+// localStorage key for the persistent daily-queue snapshot. Acts as a secondary
+// fallback cache layer that survives browser refreshes, preventing cold-boot
+// cache drift mid-day (i.e. the queue scrambling/cycling/re-pulling new items
+// after a page reload).
+const DAILY_QUEUE_LS_KEY = 'jeemax_daily_queue_snapshot';
+
 // ---------------------------------------------------------------------------
 //  Local modal helpers
 // ---------------------------------------------------------------------------
@@ -829,15 +835,57 @@ export function toggleDailyQueue() {
 
 function _getDailyQueueSnapshot() {
     const today = _todayKey();
+
+    // ── Layer 0 — In-memory cache hit (already hydrated for today) ────────
     if (_dailyQueueSnapshot.date === today && Array.isArray(_dailyQueueSnapshot.ids)) {
         return _dailyQueueSnapshot.ids;
     }
 
+    // ── Layer 1 — localStorage persistence hydration (cold-boot drift fix) ─
+    // On a browser refresh the volatile in-memory snapshot is wiped, which
+    // previously forced a fresh selection query and scrambled the queue mid-
+    // day. Recover the locked-in ID list from localStorage so the queue stays
+    // stable across page reloads within the same calendar day.
+    if (typeof localStorage !== 'undefined') {
+        try {
+            const raw = localStorage.getItem(DAILY_QUEUE_LS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed &&
+                    parsed.date === today &&
+                    Array.isArray(parsed.ids) &&
+                    parsed.ids.every(id => typeof id === 'string')) {
+                    _dailyQueueSnapshot = { date: parsed.date, ids: parsed.ids };
+                    return _dailyQueueSnapshot.ids;
+                }
+            }
+        } catch (err) {
+            // Corrupt / unparsable payload — fall through to a fresh build.
+            console.warn('[matrix] daily-queue snapshot parse failed, regenerating:', err);
+        }
+    }
+
+    // ── Layer 2 — Fresh selection pipeline ────────────────────────────────
+    // Gather every historical error block, then PIPE the array through the
+    // SR engine's strict due-status validator BEFORE sorting/chunking. Only
+    // items whose `getDueStatus(q).status === 'ready'` (i.e. actively overdue
+    // RIGHT NOW) are eligible — this forcefully isolates the queue from
+    // 'scheduled' / 'due_soon' leakage.
     const allErrors = AppState.questionBank.filter(q =>
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
     );
+
+    const readyErrors = allErrors.filter(q => {
+        try {
+            return getDueStatus(q).status === 'ready';
+        } catch (err) {
+            // Defensive: a malformed question must never crash the queue build.
+            return false;
+        }
+    });
+
     const bySubject = { physics: [], maths: [], chemistry: [] };
-    allErrors.forEach(q => {
+    readyErrors.forEach(q => {
         const subj = (q.subject || '').toLowerCase();
         if (bySubject[subj]) bySubject[subj].push(q);
     });
@@ -850,7 +898,21 @@ function _getDailyQueueSnapshot() {
         ...bySubject.chemistry.slice(0, DAILY_QUEUE_LIMITS.chemistry),
     ].map(q => q.id.toString());
 
+    // ── Commit to in-memory cache AND persistent localStorage layer ───────
     _dailyQueueSnapshot = { date: today, ids };
+
+    if (typeof localStorage !== 'undefined') {
+        try {
+            localStorage.setItem(
+                DAILY_QUEUE_LS_KEY,
+                JSON.stringify({ date: today, ids })
+            );
+        } catch (err) {
+            // Quota exceeded / private mode — silently fall back to in-memory only.
+            console.warn('[matrix] daily-queue snapshot persist failed:', err);
+        }
+    }
+
     return ids;
 }
 
