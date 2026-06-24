@@ -3513,6 +3513,87 @@ window.overheatChaos = false;
         c.restore();
     }
 
+    // ── Asynchronous non-blocking stroke commit queue ─────────────────────
+    // Rapid tap-and-lift sequences (dotting i's, crossing t's) fire pointerup
+    // in quick succession. Running the mathematically intensive perfect-freehand
+    // getStroke() synchronously inside onCanvasPointerUp jams the event loop
+    // and makes Safari drop the next incoming pointerdown. Instead, finished
+    // strokes are snapshotted here and their outline computation + background
+    // flattening are deferred to a decoupled idle task that never blocks the
+    // pointer-event critical path. This also relieves GC pressure: the huge
+    // [[x,y]...] outline arrays are allocated during idle frames, not while a
+    // tap is imminent, so GC pauses no longer paralyze the input thread.
+    let strokeCommitQueue = [];        // [{points, opts, color}, ...]
+    let isProcessingQueue = false;
+    let queueScheduledId = null;
+
+    // Hybrid scheduler: prefer requestIdleCallback for low-priority idle
+    // frames; fall back gracefully to a decoupled setTimeout(..., 0) macrotask
+    // on Safari builds that ship without requestIdleCallback. Either way the
+    // heavy perfect-freehand work runs OFF the input thread.
+    const hasIdleCallback = (typeof window.requestIdleCallback === 'function');
+    function scheduleIdleTask(fn) {
+        if (hasIdleCallback) return window.requestIdleCallback(fn, { timeout: 200 });
+        return window.setTimeout(fn, 0);
+    }
+    function cancelIdleTask(id) {
+        if (id === null || id === undefined) return;
+        if (hasIdleCallback) window.cancelIdleCallback(id);
+        else window.clearTimeout(id);
+    }
+
+    // Isolated O(1) background-layer flattening. Flatten ONE completed stroke
+    // onto the permanent background bitmap. It writes only to bgCanvas and
+    // appends to committedOutlines (which is never iterated here). The
+    // foreground canvas is untouched — it continues to show only the single
+    // active in-progress stroke via render().
+    function processCommitJob(job) {
+        if (!bgCanvas || !bgCtx) return;
+        if (!job.points || !job.points.length) return;
+        var dpr = window.devicePixelRatio || 1;
+        bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        bgCtx.lineCap = 'round';
+        bgCtx.lineJoin = 'round';
+        if (getStrokeFn) {
+            var outline = getStrokeFn(job.points, job.opts);
+            fillOutline(outline, job.color, bgCtx);
+            committedOutlines.push({ outline: outline, color: job.color });
+        } else {
+            // Fallback path (perfect-freehand CDN unreachable).
+            drawFallbackStroke(job.points, job.color, bgCtx);
+            committedOutlines.push({ outline: job.points.slice(), color: job.color, fallback: true });
+        }
+    }
+
+    // Recurring drain: yields to the event loop between commits so incoming
+    // pointerdown events are always serviced promptly. On the requestIdleCallback
+    // path it keeps draining while the idle deadline has budget remaining; on
+    // the setTimeout path it commits exactly one stroke per macrotask, then
+    // re-schedules — guaranteeing the input thread is never held for long.
+    function drainCommitQueue(deadline) {
+        queueScheduledId = null;
+        isProcessingQueue = true;
+        try {
+            const hasDeadline = deadline && typeof deadline.timeRemaining === 'function';
+            while (strokeCommitQueue.length) {
+                processCommitJob(strokeCommitQueue.shift());
+                if (hasDeadline) {
+                    if (deadline.timeRemaining() <= 0) break;
+                } else {
+                    break; // setTimeout path: one commit per tick, then yield
+                }
+            }
+        } finally {
+            isProcessingQueue = false;
+        }
+        if (strokeCommitQueue.length) scheduleQueueDrain();
+    }
+
+    function scheduleQueueDrain() {
+        if (isProcessingQueue || queueScheduledId !== null) return;
+        queueScheduledId = scheduleIdleTask(drainCommitQueue);
+    }
+
     function onCanvasPointerDown(e) {
         if (!isActive) return;
         if (dropdownOpen || paletteOpen) return;
@@ -3525,7 +3606,12 @@ window.overheatChaos = false;
         isDrawing = true;
         currentPointerType = 'pen';
         currentStrokeOpts = STROKE_PEN;
-        try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* pointer gone */ }
+        // NOTE: setPointerCapture is deliberately omitted. On iPadOS Safari the
+        // acquire/release pair on every tap-and-lift forces a synchronous
+        // capture-state transition that clashes with high-frequency Pencil
+        // input and causes the browser to drop subsequent pointerdown events.
+        // The canvas is full-viewport with touch-action:none, so pointer
+        // capture is redundant for pen tracking anyway.
         currentPoints = [getCanvasPoint(e)];
         render();
     }
@@ -3566,18 +3652,27 @@ window.overheatChaos = false;
             });
         }
     }
-    // On pointer release, flatten the completed stroke permanently onto the
-    // background bitmap layer. This is the only moment we write to bgCanvas.
-    // The committedOutlines array is kept solely for resize recovery — it is
-    // never iterated in the hot render() path.
+    // On pointer release, snapshot the raw stroke and defer the expensive
+    // perfect-freehand outline computation + background flattening to the
+    // asynchronous commit queue. This keeps the pointerup handler O(n) in
+    // point count only (a shallow clone) and never blocks the event loop, so
+    // the next pointerdown is never dropped.
+    //
+    // The live foreground canvas is intentionally NOT cleared here: the
+    // just-finished stroke's pixels remain visible as a preview until the
+    // queue flattens them onto the background bitmap. The next render() (on
+    // the following pointerdown) then wipes the foreground. This yields a
+    // flicker-free handoff with zero synchronous heavy work on the input
+    // thread. The committedOutlines array is maintained solely for resize
+    // recovery and is never accessed during active pointer-tracking frames.
     function onCanvasPointerUp(e) {
         if (!isActive) return;
         // ── Apple Pencil drawing lock ──
         if (e.pointerType !== 'pen') return;
         if (!isDrawing) return;
 
-        // Cancel any pending rAF render — stroke is about to be committed
-        // to the background bitmap, so a stale foreground paint is wasteful.
+        // Cancel any pending rAF render — the stroke is finished; its pixels
+        // will be re-rendered onto the background layer by the commit queue.
         if (renderRequested) {
             cancelAnimationFrame(rafId);
             renderRequested = false;
@@ -3586,29 +3681,26 @@ window.overheatChaos = false;
 
         isDrawing = false;
         currentPointerType = '';
-        if (currentPoints.length && bgCanvas && bgCtx) {
-            var dpr = window.devicePixelRatio || 1;
-            bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            bgCtx.lineCap = 'round';
-            bgCtx.lineJoin = 'round';
-            if (getStrokeFn) {
-                var outline = getStrokeFn(currentPoints, currentStrokeOpts);
-                fillOutline(outline, selectedColor, bgCtx);
-                committedOutlines.push({ outline: outline, color: selectedColor });
-            } else {
-                drawFallbackStroke(currentPoints, selectedColor, bgCtx);
-                committedOutlines.push({ outline: currentPoints.slice(), color: selectedColor, fallback: true });
-            }
+
+        // Snapshot clone of the raw points + a shallow copy of the stroke
+        // options + the active color. The queue owns this copy; the live
+        // currentPoints array is reset below for the next stroke. The points
+        // are immutable [x,y,p] tuples, so a shallow slice is a faithful
+        // snapshot without the GC cost of a deep clone.
+        if (currentPoints.length) {
+            strokeCommitQueue.push({
+                points: currentPoints.slice(),
+                opts: Object.assign({}, currentStrokeOpts),
+                color: selectedColor,
+            });
+            scheduleQueueDrain();
         }
         currentPoints = [];
-        // Clear the live foreground canvas — ready for the next stroke
-        if (canvas && ctx) {
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.restore();
-        }
-        try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* released */ }
+
+        // NOTE: releasePointerCapture is intentionally omitted — see the
+        // matching note in onCanvasPointerDown. Safari's capture state machine
+        // is a known source of dropped pointerdown events during rapid
+        // tap-and-lift loops, so neither acquire nor release is used here.
     }
 
     // ── Canvas sizing (THE fix for "gap grows as I write") ─────────────────
@@ -3656,6 +3748,14 @@ window.overheatChaos = false;
 
     // Clear BOTH canvas surfaces and empty all auxiliary memory arrays.
     function clearCanvas() {
+        // Drop any pending async commits so they cannot re-paint strokes onto
+        // the freshly wiped background after this call returns.
+        strokeCommitQueue.length = 0;
+        if (queueScheduledId !== null) {
+            cancelIdleTask(queueScheduledId);
+            queueScheduledId = null;
+        }
+        isProcessingQueue = false;
         committedOutlines = [];
         currentPoints = [];
         // Wipe the live foreground canvas
