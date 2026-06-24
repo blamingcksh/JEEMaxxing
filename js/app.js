@@ -3354,7 +3354,14 @@ window.overheatChaos = false;
     let isDrawing = false;
     let currentPointerType = '';
     let currentPoints = [];           // [[x, y, pressure], ...] for the in-progress stroke
-    let committedOutlines = [];       // [{outline:[[x,y]...], color:"#hex"}, ...] cached
+    // Compact committed-stroke cache. Stores ONLY the lightweight raw points
+    // array, a shallow-cloned opts object, and the color string. The heavy
+    // perfect-freehand outline polygon is NEVER cached here — it is computed
+    // transiently at commit time (to flatten onto bgCanvas) and again lazily
+    // only when a window resize/orientation change forces a full re-render.
+    // This keeps the heap footprint flat during high-frequency tap cadences
+    // and avoids GC pauses that paralyze the input thread mid-stroke.
+    let committedOutlines = [];       // [{points:[[x,y,p]...], opts, color, fallback?}, ...]
     let currentStrokeOpts = STROKE_PEN;
     // Fallback stroke state (when perfect-freehand isn't loaded)
     let fallbackLastX = 0, fallbackLastY = 0;
@@ -3544,9 +3551,14 @@ window.overheatChaos = false;
 
     // Isolated O(1) background-layer flattening. Flatten ONE completed stroke
     // onto the permanent background bitmap. It writes only to bgCanvas and
-    // appends to committedOutlines (which is never iterated here). The
-    // foreground canvas is untouched — it continues to show only the single
-    // active in-progress stroke via render().
+    // appends a COMPACT entry to committedOutlines (raw points + opts + color).
+    // The heavy perfect-freehand outline polygon is computed TRANSIENTLY here
+    // for the immediate paint, then discarded — it is never cached, so the
+    // committedOutlines array stays lightweight and the heap doesn't churn
+    // during high-frequency tap cadences. The outline is recomputed lazily
+    // only inside resizeCanvas() when a layout change forces a full re-render.
+    // The foreground canvas is untouched — it continues to show only the
+    // single active in-progress stroke via render().
     function processCommitJob(job) {
         if (!bgCanvas || !bgCtx) return;
         if (!job.points || !job.points.length) return;
@@ -3555,13 +3567,23 @@ window.overheatChaos = false;
         bgCtx.lineCap = 'round';
         bgCtx.lineJoin = 'round';
         if (getStrokeFn) {
+            // Transient outline — painted onto bgCtx, then dropped. Not cached.
             var outline = getStrokeFn(job.points, job.opts);
             fillOutline(outline, job.color, bgCtx);
-            committedOutlines.push({ outline: outline, color: job.color });
+            committedOutlines.push({
+                points: job.points,           // already a slice owned by the job
+                opts: job.opts,               // already a shallow clone
+                color: job.color,
+            });
         } else {
             // Fallback path (perfect-freehand CDN unreachable).
             drawFallbackStroke(job.points, job.color, bgCtx);
-            committedOutlines.push({ outline: job.points.slice(), color: job.color, fallback: true });
+            committedOutlines.push({
+                points: job.points,
+                opts: job.opts,
+                color: job.color,
+                fallback: true,
+            });
         }
     }
 
@@ -3736,11 +3758,24 @@ window.overheatChaos = false;
         bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         bgCtx.lineCap = 'round';
         bgCtx.lineJoin = 'round';
-        // Redraw all committed strokes onto the background bitmap accumulator
+        // LAZY outline recomputation — this is the ONLY place the heavy
+        // perfect-freehand polygon metrics are recomputed from the compact
+        // committedOutlines cache. Because each entry stores only the raw
+        // points + opts + color (no cached polygon), this loop runs getStroke()
+        // per stroke solely when a resize/orientation change wipes the bgCanvas
+        // bitmap. The transient outline is painted straight onto bgCtx and
+        // discarded, keeping peak heap bounded to one outline at a time.
         for (var i = 0; i < committedOutlines.length; i++) {
             var s = committedOutlines[i];
-            if (s.fallback) drawFallbackStroke(s.outline, s.color, bgCtx);
-            else fillOutline(s.outline, s.color, bgCtx);
+            if (s.fallback) {
+                drawFallbackStroke(s.points, s.color, bgCtx);
+            } else if (getStrokeFn) {
+                var outline = getStrokeFn(s.points, s.opts);
+                fillOutline(outline, s.color, bgCtx);
+            } else {
+                // perfect-freehand dropped mid-session — degrade gracefully.
+                drawFallbackStroke(s.points, s.color, bgCtx);
+            }
         }
         // If an active stroke exists, repaint it on the foreground
         if (!sizeUnchanged) render();
@@ -3790,12 +3825,18 @@ window.overheatChaos = false;
         document.addEventListener('dragstart', blockSelect);
         document.addEventListener('dblclick', blockDblClick);
         document.addEventListener('touchstart', blockTouchStart, { passive: false });
+        // Window-level non-passive touchmove blocker. Reuses blockGesture so the
+        // same handler kills both gesture-events and stray touchmove scrolls /
+        // edge-swipes that iOS Safari would otherwise route to its scroll /
+        // back-forward navigation engine during fast horizontal Pencil dashes.
+        window.addEventListener('touchmove', blockGesture, { passive: false });
     }
     function removeBlockers() {
         if (blockGesture) {
             document.removeEventListener('gesturestart', blockGesture);
             document.removeEventListener('gesturechange', blockGesture);
             document.removeEventListener('gestureend', blockGesture);
+            window.removeEventListener('touchmove', blockGesture);
         }
         if (blockSelect) {
             document.removeEventListener('selectstart', blockSelect);
@@ -3811,6 +3852,12 @@ window.overheatChaos = false;
         if (isActive) {
             canvas.style.pointerEvents = 'auto';
             document.body.classList.add('scratchpad-active');
+            // Terminate the browser's horizontal history-navigation swipe
+            // gesture engine while the drawing surface is live. Without this,
+            // fast horizontal Pencil dashes (e.g. '=' or math dashes) can be
+            // intercepted by iOS Safari's back/forward swipe recognizer and
+            // swallowed before reaching the canvas pointer pipeline.
+            document.body.style.overscrollBehaviorX = 'none';
             installBlockers();
             pencilBtn.style.background = 'rgba(34,197,94,0.22)';
             pencilBtn.style.boxShadow = '0 0 0 1px rgba(34,197,94,0.7), 0 0 14px rgba(34,197,94,0.45)';
@@ -3819,6 +3866,9 @@ window.overheatChaos = false;
             clearCanvas();
             canvas.style.pointerEvents = 'none';
             document.body.classList.remove('scratchpad-active');
+            // Restore the default horizontal overscroll behavior so normal
+            // page navigation gestures work again outside the scratchpad.
+            document.body.style.overscrollBehaviorX = 'auto';
             removeBlockers();
             pencilBtn.style.background = 'rgba(255,255,255,0.04)';
             pencilBtn.style.boxShadow = 'none';
@@ -4041,7 +4091,8 @@ window.overheatChaos = false;
             style: {
                 position: 'fixed', top: '0', left: '0',
                 zIndex: '999994', pointerEvents: 'none', display: 'block',
-                touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none',
+                touchAction: 'none', overscrollBehavior: 'none',
+                WebkitUserSelect: 'none', userSelect: 'none',
                 WebkitTouchCallout: 'none',
             },
         });
@@ -4057,7 +4108,8 @@ window.overheatChaos = false;
             style: {
                 position: 'fixed', top: '0', left: '0',
                 zIndex: '999995', pointerEvents: 'none', display: 'block',
-                touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none',
+                touchAction: 'none', overscrollBehavior: 'none',
+                WebkitUserSelect: 'none', userSelect: 'none',
                 WebkitTouchCallout: 'none',
             },
         });
@@ -4284,6 +4336,18 @@ window.overheatChaos = false;
         canvas.addEventListener('pointerup', onCanvasPointerUp);
         canvas.addEventListener('pointerleave', onCanvasPointerUp);
         canvas.addEventListener('pointercancel', onCanvasPointerUp);
+
+        // GESTURE BYPASS — explicit non-passive touchstart on the foreground
+        // canvas. iOS Safari layers system-level hold/tap-delay/zoom-intercept
+        // buffers over elements with default touch handling; during fast
+        // horizontal Pencil dashes these buffers can swallow the touch that
+        // would have become a pointerdown, causing the dropped-input bug.
+        // An unconditional cancelable preventDefault on touchstart forces the
+        // web view to stand down its gesture recognizers over the drawing
+        // surface so the Pointer Events pipeline receives every contact.
+        canvas.addEventListener('touchstart', function (e) {
+            if (e.cancelable) e.preventDefault();
+        }, { passive: false });
 
         window.addEventListener('resize', resizeCanvas);
         window.addEventListener('orientationchange', function () { setTimeout(resizeCanvas, 250); });
