@@ -199,6 +199,35 @@ function escapeHtml(s) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+//  Audio-visual hover telemetry tick
+// ──────────────────────────────────────────────────────────────────────────
+// Fires a tiny, click-free bleep whenever the crosshair lands on a NEW candle.
+//   • Green candle (target met)  → clean sine wave @880Hz
+//   • Red candle   (target missed) → bass sawtooth @220Hz
+// Gain envelope peaks at 0.03 and decays to ~0 within 0.08s via exponential
+// ramps (exponential ramps cannot reach exactly 0, so 0.0001 is the floor).
+function playHoverTick(metTarget) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!window._candleTickCtx) window._candleTickCtx = new Ctx();
+    const ac = window._candleTickCtx;
+    if (ac.state === "suspended") ac.resume();
+    const now = ac.currentTime;
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = metTarget ? "sine" : "sawtooth";
+    osc.frequency.setValueAtTime(metTarget ? 880 : 220, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.03, now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+    osc.connect(gain).connect(ac.destination);
+    osc.start(now);
+    osc.stop(now + 0.09);
+  } catch (_) { /* audio is best-effort; never block rendering */ }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 //  Main renderer
 // ──────────────────────────────────────────────────────────────────────────
 /**
@@ -230,6 +259,7 @@ export function drawCandlesticks(svg, counts, opts = {}) {
     invert = false,
     valueLabel = "solves",
     labelFn,
+    targetValue,
   } = opts;
 
   clearNode(svg);
@@ -276,8 +306,19 @@ export function drawCandlesticks(svg, counts, opts = {}) {
   const plotW = Math.max(10, width - padL - padR);
   const plotH = Math.max(10, height - padT - padB);
 
-  const rawMax = Math.max(...all.map((c) => c.high), 1);
-  const rawMin = Math.min(...all.map((c) => c.low), 0);
+  // ── Target compliance setup ──
+  // An explicit target drives candle colour; if absent, fall back to the
+  // series mean so the chart still gets a meaningful green/red split WITHOUT
+  // reverting to delta-driven (open vs close) finance logic.
+  const targetValueRaw = Number.isFinite(targetValue) ? targetValue : null;
+  const effectiveTarget = targetValueRaw != null
+    ? targetValueRaw
+    : all.reduce((s, c) => s + (Number.isFinite(c.close) ? c.close : 0), 0) / Math.max(1, all.length);
+
+  // Expand the y-domain to include the target so the LOCK line stays visible.
+  const domainExtras = targetValueRaw != null ? [targetValueRaw] : [];
+  const rawMax = Math.max(...all.map((c) => c.high), 1, ...domainExtras);
+  const rawMin = Math.min(...all.map((c) => c.low), 0, ...domainExtras);
   const yMax = rawMax + (rawMax - rawMin) * 0.08 + 0.5;
   const yMin = Math.max(0, rawMin - (rawMax - rawMin) * 0.05);
   const yRange = Math.max(0.001, yMax - yMin);
@@ -333,19 +374,45 @@ export function drawCandlesticks(svg, counts, opts = {}) {
     el("polyline", { points: pts.join(" "), fill: "none", stroke: themeColor, "stroke-width": 1.6, "stroke-dasharray": "4 3", "stroke-linecap": "round", opacity: 0.85 }, svg);
   }
 
+  // ── "Target Lock" barrier line (neon cyan) ──
+  // Edge-to-edge horizontal at y(targetValue); drawn before candles so the
+  // bodies paint on top of it.
+  if (targetValueRaw != null && !compact) {
+    const lockY = y(targetValueRaw);
+    el("line", {
+      x1: padL, y1: lockY, x2: width - padR, y2: lockY,
+      stroke: "rgba(6, 182, 212, 0.6)", "stroke-width": 1.5, "stroke-dasharray": "4 2",
+    }, svg);
+    const lockLbl = el("text", {
+      x: width - padR - 2, y: lockY - 3, "text-anchor": "end",
+      "font-size": 8, "font-family": "'Space Grotesk',monospace",
+      fill: "rgba(6, 182, 212, 0.9)", "font-weight": 700, "letter-spacing": 0.6,
+    }, svg);
+    lockLbl.textContent = "LOCK";
+  }
+
   // ── Candles ──
   const hoverGroup = el("g", { class: "cnd-hover-layer" }, svg);
   const crosshairV = el("line", { stroke: "rgba(255,255,255,0.18)", "stroke-width": 1, "stroke-dasharray": "2 3", opacity: 0 }, hoverGroup);
   const crosshairH = el("line", { stroke: "rgba(255,255,255,0.12)", "stroke-width": 1, "stroke-dasharray": "2 3", opacity: 0 }, hoverGroup);
   const hoverDot = el("circle", { r: 3, fill: "#fff", opacity: 0 }, hoverGroup);
 
+  // ── Target Compliance Colouring Rule ──
+  // Green/red is driven SOLELY by whether `close` meets the target metric,
+  // completely ignoring previous-day (open) values.
+  //   • invert=false (Daily Solves):   green when close >= target
+  //   • invert=true  (Error Momentum): green when close <= target
   const candleColor = (c) => {
     if (c.isPenalty) return COLOR.down;
     if (c.isPrediction) return themeColor;
-    if (c.close > c.open) return invert ? COLOR.down : COLOR.up;
-    if (c.close < c.open) return invert ? COLOR.up : COLOR.down;
-    return COLOR.flat;
+    if (!invert) return c.close >= effectiveTarget ? COLOR.up : COLOR.down;
+    return c.close <= effectiveTarget ? COLOR.up : COLOR.down;
   };
+
+  // ── "Bull Run" combustion streak tracker ──
+  // Running count of consecutive target-meeting history candles. ≥3 in a row
+  // promotes the body <rect> to `candle-hyper-charged`; otherwise normal.
+  let targetStreak = 0;
 
   all.forEach((c, i) => {
     const cx = xCenter(i);
@@ -353,6 +420,14 @@ export function drawCandlesticks(svg, counts, opts = {}) {
     const bodyTop = y(Math.max(c.open, c.close));
     const bodyBot = y(Math.min(c.open, c.close));
     const bodyH = Math.max(1, bodyBot - bodyTop);
+
+    // Update consecutive target-meeting streak (history candles only;
+    // penalties and predictions break the chain).
+    const meetsTarget = !c.isPrediction && !c.isPenalty && (
+      invert ? (c.close <= effectiveTarget) : (c.close >= effectiveTarget)
+    );
+    targetStreak = meetsTarget ? targetStreak + 1 : 0;
+    const candleClass = targetStreak >= 3 ? "candle-hyper-charged" : "candle-normal";
 
     // Penalty marker
     if (c.isPenalty && !compact) {
@@ -372,12 +447,14 @@ export function drawCandlesticks(svg, counts, opts = {}) {
         x: cx - bodyW / 2, y: bodyTop, width: bodyW, height: bodyH,
         rx: compact ? 1 : 2, fill: "none", stroke: color,
         "stroke-width": 1.1, "stroke-dasharray": "2 2", opacity: 0.6,
+        class: candleClass,
       }, svg);
     } else {
       el("rect", {
         x: cx - bodyW / 2, y: bodyTop, width: bodyW, height: bodyH,
         rx: compact ? 1 : 2, fill: color, opacity: c.close >= c.open ? 0.92 : 0.88,
         filter: "url(#cnd-glow)",
+        class: candleClass,
       }, svg);
     }
 
@@ -419,6 +496,15 @@ export function drawCandlesticks(svg, counts, opts = {}) {
       const d = Math.abs(xCenter(i) - px);
       if (d < bestDist) { bestDist = d; nearest = i; }
     }
+    // ── Telemetry tick: fire a bleep ONLY when the crosshair lands on a new candle index ──
+    if (nearest !== window._lastHoveredIndex) {
+      window._lastHoveredIndex = nearest;
+      if (nearest >= 0) {
+        const hovered = all[nearest];
+        const metTarget = candleColor(hovered) === COLOR.up;
+        playHoverTick(metTarget);
+      }
+    }
     if (nearest < 0) { tip.style.display = "none"; crosshairV.setAttribute("opacity", 0); crosshairH.setAttribute("opacity", 0); hoverDot.setAttribute("opacity", 0); return; }
     const c = all[nearest];
     const cx = xCenter(nearest);
@@ -435,6 +521,7 @@ export function drawCandlesticks(svg, counts, opts = {}) {
     showTooltip(tip, c, nearest, { ...opts, predStart }, cx, cy, width, height);
   };
   const onLeave = () => {
+    window._lastHoveredIndex = -1;
     tip.style.display = "none";
     crosshairV.setAttribute("opacity", 0);
     crosshairH.setAttribute("opacity", 0);

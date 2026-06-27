@@ -633,7 +633,10 @@ export async function renderGraph() {
     // Internal coordinate space is wider/taller than the old 320x80 so candles
     // are legible. The SVG's viewBox is set by drawCandlesticks; CSS on
     // #dynamic-graph stretches it to fill the card.
-    drawCandlesticks(svg, counts, {
+    //
+    // Target Compliance: the combined absolute daily targets across all three
+    // subjects becomes the green/red threshold for every candle.
+    const metrics = drawCandlesticks(svg, counts, {
         width: 360,
         height: 170,
         penaltyFlags,
@@ -643,7 +646,29 @@ export async function renderGraph() {
         invert: false,
         valueLabel: 'solves',
         labelFn,
+        targetValue: (baseTargets.physics + baseTargets.chemistry + baseTargets.maths),
     });
+
+    // ── Loss Aversion / Projection Slope Flasher ──
+    // Reads the regression { slope, r2 } returned by the engine and toggles
+    // dashboard-level trend classes that drive the gamified CSS feedback layer.
+    const mainGraphContainer = document.getElementById('view-dashboard');
+    if (mainGraphContainer && metrics && typeof metrics.slope === 'number') {
+        if (metrics.slope < -0.1) {
+            mainGraphContainer.classList.add('trend-under-liquidation');
+            mainGraphContainer.classList.remove('trend-bull-market');
+            svg.classList.remove('graph-bull-run');
+        } else if (metrics.slope > 0.1 && metrics.r2 > 0.7) {
+            mainGraphContainer.classList.add('trend-bull-market');
+            mainGraphContainer.classList.remove('trend-under-liquidation');
+            svg.classList.add('graph-bull-run');
+        } else {
+            // Neutral zone — clear any stale trend state from previous renders.
+            mainGraphContainer.classList.remove('trend-bull-market');
+            mainGraphContainer.classList.remove('trend-under-liquidation');
+            svg.classList.remove('graph-bull-run');
+        }
+    }
 }
 
 // ==================== 15-DAY ERROR MOMENTUM (candlestick edition) ====================
