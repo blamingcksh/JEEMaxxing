@@ -4057,3 +4057,15 @@ html body .erm-sparkline-box svg {
 .erm-sparkline-box svg {
     overflow: visible;
 }
+#latex-render {
+  white-space: pre-wrap;       /* Crucial: Forces HTML to render \n characters as real line breaks */
+  line-height: 1.75;           /* Adds clean, legible breathing room between sentences */
+  word-break: break-word;      /* Prevents long mathematical fractions from clipping off screen */
+  padding: 8px 0;
+}
+
+/* Add custom margins around heavy math equations to prevent text crowding */
+#latex-render .katex-display {
+  margin: 14px 0 !important;
+  padding: 4px 0;
+}

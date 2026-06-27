@@ -1337,24 +1337,162 @@ document.getElementById('upload-images').addEventListener('change', function () 
 });
 
 // ==================== PRACTICE: OCR & ANSWER KEY ====================
+/**
+ * extractTextForAll() — Grid Sheet Matrix Edition
+ *
+ * Instead of issuing one API request per question (which throttles and
+ * adds massive network overhead), this build:
+ *   1. collects every un-processed question from AppState.extractedItems,
+ *   2. groups them into vertical columns of up to 5 questions,
+ *   3. stitches each column vertically (reusing stitchSegmentsVertically),
+ *   4. merges all columns side-by-side into ONE master grid canvas,
+ *   5. dispatches exactly ONE callGeminiWithFallback request,
+ *   6. parses the flat JSON array and hydrates the pending items in order.
+ *
+ * The downstream preview modal pipeline (showPreviewModal) is left fully
+ * intact and is invoked exactly once at the end, exactly as before.
+ */
 export async function extractTextForAll() {
+    // ── 0. Guards ────────────────────────────────────────────────────────
     if (!AppState.extractedItems.length) return alert("No questions cropped.");
     const apiKey = AppState.geminiApiKey;
     if (!apiKey) return alert("Set API key first.");
-    showLoading("Extracting text & options...");
-    for (let i = 0; i < AppState.extractedItems.length; i++) {
-        const q = AppState.extractedItems[i];
-        if (q.extractedText) continue;
-        const imageToOcr = q.questionOnlyDataUrl || q.imageDataUrl;
-        const prompt = `Extract the full question text in LaTeX and all answer options from this image. Return ONLY a JSON object: { "extractedText": "...", "options": ["A) ...", "B) ..."] }. CRITICAL: If there are no explicitly labeled choices (e.g., integer or fill-in numerical style constraints), leave the "options" array completely EMPTY. Do not invent choices.`;
-        try {
-            const res = await callGeminiWithFallback(apiKey, prompt, imageToOcr, 'image/png', null, true);
-            const json = cleanAndParseJson(res.text);
-            q.extractedText = json.extractedText || "";
-            q.options = json.options || [];
-            q.type = q.options.length > 0 ? 'mcq' : 'text';
-        } catch (e) { console.error('OCR fail at index: ', i, e); }
+
+    // ── 1. Extract & group the unprocessed items ────────────────────────
+    const pendingItems = AppState.extractedItems.filter(q => !q.extractedText);
+    if (!pendingItems.length) {
+        return alert("All questions already have extracted text. Nothing new to process.");
     }
+
+    // Group into sub-arrays (columns) of max 5 questions each.
+    const COLUMN_SIZE = 5;
+    const columns = [];
+    for (let i = 0; i < pendingItems.length; i += COLUMN_SIZE) {
+        columns.push(pendingItems.slice(i, i + COLUMN_SIZE));
+    }
+
+    showLoading(`Assembling grid sheet (${pendingItems.length} questions, ${columns.length} column${columns.length > 1 ? 's' : ''})…`);
+
+    try {
+        // ── 2. Stitch each column vertically (concurrent via Promise.all) ───
+        // Map each pending question into the { cropDataUrl } shape expected by
+        // stitchSegmentsVertically, then run every column concurrently.
+        const columnImageDataUrls = await Promise.all(
+            columns.map(col => stitchSegmentsVertically(
+                col.map(q => ({ cropDataUrl: q.questionOnlyDataUrl || q.imageDataUrl }))
+            ))
+        );
+
+        // ── 3. Stitch the columns horizontally into a master grid sheet ─────
+        // Inline canvas operation: load each column image, sum widths, take the
+        // max height, fill white, draw each column at its X-offset.
+        const masterGridImage = await (async () => {
+            const loaded = await Promise.all(
+                columnImageDataUrls
+                    .filter(Boolean)              // stitchSegmentsVertically returns null on empty input
+                    .map(dataUrl => new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.onload = () => resolve(img);
+                        img.onerror = () => reject(new Error('Failed to load a stitched column image during master grid assembly.'));
+                        img.src = dataUrl;
+                    }))
+            );
+            if (!loaded.length) throw new Error('No column images were produced — cannot assemble master grid sheet.');
+
+            const totalWidth = loaded.reduce((sum, img) => sum + img.width, 0);
+            const maxHeight = Math.max(...loaded.map(img => img.height));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = totalWidth;
+            canvas.height = maxHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, totalWidth, maxHeight);
+
+            let xOffset = 0;
+            loaded.forEach(img => {
+                // Vertically anchor each column to the top so reading order
+                // (top→bottom within column) is visually unambiguous.
+                ctx.drawImage(img, xOffset, 0);
+                xOffset += img.width;
+            });
+
+            return canvas.toDataURL('image/png');
+        })();
+
+        // ── 4. Dispatch the master batch prompt (exactly ONE request) ───────
+        showLoading(`Dispatching single OCR batch (${pendingItems.length} questions)…`);
+        const prompt = `You are a precision academic OCR transcriber specializing in Indian competitive engineering examinations (IIT JEE Advanced). You are looking at a single high-definition grid sheet containing exactly ${pendingItems.length} physics, chemistry, or mathematics questions separated by grid lines. Parse the grid cell-by-cell (column-by-column, top-to-bottom).
+
+CRITICAL COMMAND FOR STRICT KATEX TOKENIZATION:
+You are strictly forbidden from outputting mathematical symbols, variables, numbers, constants, operators, units, or chemical expressions as raw plain text. If a character can be rendered in KaTeX, it MUST be wrapped in delimiters.
+
+Follow these exact strict formatting rules for your JSON strings:
+
+1. SINGLE VARIABLES & COEFFICIENTS (Math Italic):
+   - WRONG: "Find the value of x where y = 2"
+   - CORRECT: "Find the value of $x$ where $y = 2$"
+
+2. NUMBERS WITH ACADEMIC UNITS (Thin space before upright text units):
+   - WRONG: "velocity is 3 x 10^8 m/s" or "mass is 5 kg"
+   - CORRECT: "velocity is $3 \\\\times 10^8 ~ \\\\text{m/s}$" or "mass is $5 ~ \\\\text{kg}$"
+
+3. CHEMICAL EQUATIONS & THERMODYNAMICS (Uniform upright Roman font via \\\\mathrm):
+   - WRONG: "H2O at delta H = -ve" or "Fe2O3 + 2Al"
+   - CORRECT: "$\\\\mathrm{H_2O}$ at $\\\\Delta H = -\\\\text{ve}$" or "$\\\\mathrm{Fe_2O_3} + 2\\\\mathrm{Al}$"
+
+4. INLINE OPERATORS & GREEK SYMBOLS:
+   - WRONG: "angle theta is greater than or equal to 0"
+   - CORRECT: "angle $\\\\theta \\\\ge 0$"
+
+5. FRACTIONS, POWERS, & ROOTS:
+   - WRONG: "x^(1/2) or 3/4"
+   - CORRECT: "$x^{1/2}$ or $\\\\frac{3}{4}$"
+
+JSON ESCAPING RULES:
+- Use single dollar signs ($...$) for all inline characters, expressions, numbers, and units.
+- Use double dollar signs ($$...$$) ONLY for centered standalone equations.
+- CRITICAL: Because you are returning a raw JSON string, EVERY backslash must be explicitly double-escaped in your output text (e.g., type \\\\times, \\\\text, \\\\mathrm, \\\\frac) so that JSON.parse() can resolve the string successfully without hitting unexpected escape sequence tokens.
+
+OUTPUT FORMAT:
+Return a flat single JSON array containing exactly ${pendingItems.length} objects matching this exact sequence: [ { "extractedText": "...", "options": ["A) ...", "B) ..."] }, ... ]. If there are no options inside a cell, leave that specific "options" array completely empty.`;
+
+        const res = await callGeminiWithFallback(apiKey, prompt, masterGridImage, 'image/png', null, true);
+
+        // ── 5. Parse & map the matrix payload ───────────────────────────────
+        const parsed = cleanAndParseJson(res.text);
+        if (!Array.isArray(parsed)) {
+            throw new Error('Master OCR response was not a JSON array — aborting to avoid misaligned state.');
+        }
+        if (parsed.length !== pendingItems.length) {
+            throw new Error(
+                `Matrix payload size mismatch: expected ${pendingItems.length} items, received ${parsed.length}. ` +
+                `No partial data has been written to state.`
+            );
+        }
+
+        // Hydrate the flat pending-items list in perfect sequential order.
+        // This runs only AFTER all validations pass, so no partial / misaligned
+        // data can ever be written to state memory.
+        parsed.forEach((obj, i) => {
+            const q = pendingItems[i];
+            const options = Array.isArray(obj.options) ? obj.options : [];
+            q.extractedText = typeof obj.extractedText === 'string' ? obj.extractedText : '';
+            q.options = options;
+            q.type = options.length > 0 ? 'mcq' : 'text';
+        });
+    } catch (err) {
+        // ── 6. Error handling boundary ──────────────────────────────────────
+        // Covers column stitching, canvas grid assembly, network transaction,
+        // and JSON parsing / size-mismatch. No partial data is ever written
+        // because hydration only happens after every validation passes above.
+        console.error('extractTextForAll() Grid Sheet Matrix failure:', err);
+        hideLoading();
+        alert(`Grid Sheet OCR failed: ${err && err.message ? err.message : err}. No partial data was applied.`);
+        return;
+    }
+
+    // ── Downstream preview pipeline (preserved exactly) ─────────────────
     hideLoading();
     showPreviewModal();
     alert('Text metrics parsed and stored.');
@@ -1981,16 +2119,6 @@ export function toggleOriginalPhoto() {
     renderPracticeQuestionModal();
 }
 
-export function renderLatexInElement() {
-    let el = document.getElementById('latex-render');
-    if (el && window.katex) {
-        let text = el.innerText;
-        el.innerHTML = text.replace(/\$\$([\s\S]+?)\$\$|\$([^\$]+)\$/g, (match, block, inline) => {
-            try { return window.katex.renderToString(block || inline, { throwOnError: false }); } catch (e) { return match; }
-        });
-    }
-}
-
 export function renderPracticeQuestionModal() {
     AppState.currentQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
     AppState.selectedMcq = null;
@@ -2045,8 +2173,6 @@ export function renderPracticeQuestionModal() {
             });
         });
         document.getElementById('practice-submit-btn').style.display = 'none';
-
-        if (AppState.currentQ.extractedText) renderLatexInElement();
         return;
     }
 
@@ -2082,25 +2208,6 @@ export function renderPracticeQuestionModal() {
             toggleMcqOption(this, optionText);
         });
     });
-    container.querySelectorAll('.mcq-option').forEach(opt => {
-        const raw = opt.getAttribute('data-option');
-        if (!raw || !window.katex) return;
-        opt.textContent = raw;
-        opt.innerHTML = raw.replace(
-            /\$\$([\s\S]+?)\$\$|\$([^\$]+)\$/g,
-            (match, displayMath, inlineMath) => {
-                try {
-                    return katex.renderToString(displayMath || inlineMath, {
-                        throwOnError: false,
-                        displayMode: !!displayMath
-                    });
-                } catch (e) {
-                    return match;
-                }
-            }
-        );
-    });
-    if (AppState.currentQ.extractedText) renderLatexInElement();
 }
 
 export function toggleMcqOption(element, optionText) {
@@ -2364,14 +2471,10 @@ export function showSolutionPopup() {
     const solutionText = AppState.currentQ.solution;
     if (!solutionText) return;
     const contentEl = document.getElementById('solution-content');
-    contentEl.innerHTML = escapeHtml(solutionText);
-    if (window.katex) {
-        contentEl.innerHTML = solutionText.replace(/\$\$([\s\S]+?)\$\$|\$([^\$]+)\$/g, (match, block, inline) => {
-            try {
-                return window.katex.renderToString(block || inline, { throwOnError: false, displayMode: !!block });
-            } catch (e) { return match; }
-        });
-    }
+    if (!contentEl) return;
+    // Raw text injection — the global MutationObserver watchdog hydrates
+    // any $...$ / $$...$$ LaTeX fragments automatically.
+    contentEl.textContent = solutionText;
     openModal('solution-modal');
 }
 
@@ -3133,6 +3236,15 @@ async function initApp() {
 
     // Initialize Google Drive
     await initDrive();
+
+    // ── Global KaTeX Rendering Engine ───────────────────────────────────
+    // Activate the live DOM watchdog. Every subsequent DOM mutation
+    // (practice modals, solution popups, dashboards, banners, etc.) is
+    // scanned for $...$ / $$...$$ math fragments and hydrated automatically.
+    // The one-shot body sweep below catches content rendered earlier in
+    // initApp() before the observer was attached.
+    globalMathObserver.observe(document.body, { childList: true, subtree: true });
+    processElementMath(document.body);
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
@@ -3330,7 +3442,13 @@ window.loadData = loadDataAsync;
 window.lockTargetsOnly = lockTargetsOnly;
 window.renderChaptersList = renderChaptersList;
 window.updatePracticeTimerDisplay = updatePracticeTimerDisplay;
-window.renderLatexInElement = renderLatexInElement;
+// Backward-compatible shim — legacy callers (and any inline onclick handlers
+// still wired to window.renderLatexInElement) are transparently routed
+// through the new global engine instead of the deleted standalone impl.
+window.renderLatexInElement = function () {
+    const el = document.getElementById('latex-render');
+    if (el) processElementMath(el);
+};
 window.deleteQuestion = deleteQuestion;
 window.handleDriveAuth = handleDriveAuth;
 window.updateStreakDisplay = updateStreakDisplay;
@@ -3389,6 +3507,145 @@ window._pendingBountyId = null;
 window._bountyQuestion = null;
 window._bountyTimeLimit = null;
 window.overheatChaos = false;
+
+// ============================================================================
+// GLOBAL KATEX RENDERING ENGINE — Automatic Math Hydration
+// ============================================================================
+// A single unified math parser that replaces all legacy inline KaTeX
+// processing calls (renderLatexInElement, manual .mcq-option regex loops,
+// showSolutionPopup string substitution, etc.). Paired with a live
+// MutationObserver watchdog, any $...$ or $$...$$ fragment injected into
+// the DOM — whether by practice modals, solution popups, dashboards, or
+// third-party pipelines — is automatically discovered and rendered without
+// any manual trigger.
+//
+// SAFE GUARD BOUNDARY: each processed element is stamped with
+// `data-math-rendered="true"` to prevent infinite recursive observation
+// loops (the observer would otherwise re-process the DOM mutations
+// produced by KaTeX's own innerHTML writes).
+// ============================================================================
+
+/**
+ * Recursively scan `element`'s subtree for unrendered LaTeX math fragments
+ * ($$...$$ display blocks and $...$ inline spans) and hydrate them via
+ * window.katex.renderToString(). Idempotent — re-invoking on an already-
+ * processed element is an O(1) no-op thanks to the data-math-rendered flag.
+ *
+ * @param {Element} element — the DOM subtree root to scan.
+ */
+function processElementMath(element) {
+    // ── Guards ──
+    if (!element || element.nodeType !== Node.ELEMENT_NODE) return;
+    // Fail gracefully if KaTeX is temporarily unavailable (CDN hiccup, etc.).
+    if (typeof window.katex === 'undefined' || !window.katex) return;
+    // SAFE GUARD BOUNDARY: never re-process an already-rendered element.
+    if (element.hasAttribute('data-math-rendered')) return;
+    // Never touch KaTeX's own rendered output internals.
+    if (element.closest && element.closest('.katex')) return;
+
+    // Canonical delimiter regex (display $$...$$ first, then inline $...$).
+    const MATH_REGEX = /\$\$([\s\S]+?)\$\$|\$([^\$]+)\$/g;
+
+    try {
+        // ── Collect every text node that contains at least one math fragment ──
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: function (node) {
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    const tag = parent.tagName;
+                    if (tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
+                    // Skip text already inside rendered KaTeX output.
+                    if (parent.closest('.katex')) return NodeFilter.FILTER_REJECT;
+                    const val = node.nodeValue;
+                    if (!val) return NodeFilter.FILTER_REJECT;
+                    MATH_REGEX.lastIndex = 0;
+                    if (!MATH_REGEX.test(val)) return NodeFilter.FILTER_REJECT;
+                    MATH_REGEX.lastIndex = 0;
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            }
+        );
+
+        const targets = [];
+        let n;
+        while ((n = walker.nextNode())) targets.push(n);
+
+        for (const textNode of targets) {
+            const parent = textNode.parentElement;
+            if (!parent) continue;
+            const raw = textNode.nodeValue;
+            MATH_REGEX.lastIndex = 0;
+            const hydrated = raw.replace(MATH_REGEX, function (match, block, inline) {
+                if (!block && !inline) return match;
+                try {
+                    return window.katex.renderToString(block || inline, {
+                        throwOnError: false,
+                        displayMode: !!block
+                    });
+                } catch (e) {
+                    // Malformed LaTeX — preserve the original source so the
+                    // rest of the document renders normally.
+                    return match;
+                }
+            });
+
+            if (hydrated !== raw) {
+                // Wrap the rendered HTML in a sealed span so the observer
+                // recognises it as already-processed and never re-enters.
+                const wrapper = document.createElement('span');
+                wrapper.innerHTML = hydrated;
+                wrapper.setAttribute('data-math-rendered', 'true');
+                parent.replaceChild(wrapper, textNode);
+            }
+        }
+
+        // Stamp the container so subsequent observer ticks short-circuit.
+        element.setAttribute('data-math-rendered', 'true');
+    } catch (err) {
+        // Hard error boundary: never let a malformed fragment or a missing
+        // KaTeX build break the app's state, sync systems, or canvas engines.
+        try { element.setAttribute('data-math-rendered', 'true'); } catch (_) { /* noop */ }
+        if (window.console && console.warn) console.warn('[processElementMath] skipped:', err);
+    }
+}
+
+// ── Live DOM Watchdog ────────────────────────────────────────────────────
+// Watches the entire workspace subtree for added nodes (new modals, freshly
+// rendered practice questions, dynamic banners, etc.) and pipes them through
+// processElementMath() so LaTeX is hydrated the instant it enters the DOM.
+const globalMathObserver = new MutationObserver(function (mutations) {
+    // If KaTeX isn't loaded yet, defer — the initial body sweep in initApp()
+    // will catch any pre-existing fragments once it arrives.
+    if (typeof window.katex === 'undefined' || !window.katex) return;
+
+    for (const mutation of mutations) {
+        if (mutation.type !== 'childList') continue;
+        if (!mutation.addedNodes || !mutation.addedNodes.length) continue;
+
+        for (const node of mutation.addedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                // Skip KaTeX's own rendered internals and raw script/style.
+                if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
+                if (node.classList && node.classList.contains('katex')) continue;
+                if (node.hasAttribute && node.hasAttribute('data-math-rendered')) continue;
+                processElementMath(node);
+            } else if (node.nodeType === Node.TEXT_NODE) {
+                // A raw text node was injected (e.g. element.textContent = ...).
+                // Process its parent — but first clear any stale render stamp
+                // so dynamic re-renders (like #solution-content) are picked up.
+                const parent = node.parentElement;
+                if (!parent) continue;
+                if (parent.hasAttribute('data-math-rendered')) {
+                    parent.removeAttribute('data-math-rendered');
+                }
+                processElementMath(parent);
+            }
+        }
+    }
+});
 
 // ============================================================================
 // FULL-VIEWPORT SCRATCHPAD HUD — Perfect-Freehand + Apple Pencil optimized
