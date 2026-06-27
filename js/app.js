@@ -2629,10 +2629,253 @@ function _renderGlobalMmrRow(globalElo) {
         profile.appendChild(row);
     }
     const tier = getRankTierDetails(globalElo);
-    
+
     // Completely drops the long tier string text to display just the icon and numeric Elo value
     row.innerHTML = `<span class="mmr-tier-badge">${tier.icon} ${Math.round(globalElo)} ELO</span>`;
+
+    // ── Make the ELO badge clickable → opens the JEE Advanced AIR projection
+    // popup. The row persists across re-renders (getElementById reuse above),
+    // so setting onclick each time is idempotent and never stacks listeners.
+    row.style.cursor = 'pointer';
+    row.title = 'Click to view predicted JEE Advanced AIR';
+    row.onclick = () => _openAirPopup(globalElo, row);
+
+    // If the popup is already open, refresh its content with the latest elo.
+    _refreshAirPopupIfOpen(globalElo);
 }
+
+// ── JEE Advanced AIR projection popup ──────────────────────────────────────
+// Small square popover that opens when the user clicks their Global ELO badge
+// in the sidebar (near the profile + name). Equates the Cognitive MMR rating
+// to a projected JEE Advanced All-India Rank using the log-linear model
+// derived from the Elo engine (σ=400 logistic, baseline 1200, cap 3000):
+//
+//   AIR_adv  = 10 ^ (8.00 − 0.00214 × GlobalElo)
+//   AIR_main = 10 ^ (8.61 − 0.00236 × GlobalElo)
+//
+// Anchored at Elo 1200 ≈ AIR 6,00,000 (median aspirant) and Elo 2800 ≈ AIR 100
+// (top of the grind). Each +400 Elo = 10× lower expected error rate.
+
+const JEE_ADV_CANDIDATES = 250000;
+const JEE_MAIN_CANDIDATES = 1200000;
+
+function _computeJeeAdvAir(globalElo) {
+    const e = Math.max(0, Math.min(3000, Number(globalElo) || 0));
+    return Math.pow(10, 8.00 - 0.00214 * e);
+}
+
+function _computeJeeMainAir(globalElo) {
+    const e = Math.max(0, Math.min(3000, Number(globalElo) || 0));
+    return Math.pow(10, 8.61 - 0.00236 * e);
+}
+
+function _formatAir(air) {
+    if (!isFinite(air) || air <= 0) return '—';
+    if (air < 100) return 'Top ' + Math.max(1, Math.round(air));
+    return '~' + Math.round(air).toLocaleString('en-IN');
+}
+
+function _formatPercentile(air, candidates) {
+    if (!isFinite(air) || air <= 0 || candidates <= 0) return '—';
+    const topPct = (air / candidates) * 100;
+    if (topPct >= 0.01) return 'Top ' + topPct.toFixed(2) + '%';
+    const percentile = (1 - air / candidates) * 100;
+    return percentile.toFixed(2) + ' %ile';
+}
+
+/** Build (or refresh) the inner content of the AIR popup for a given elo. */
+function _airPopupInnerHtml(globalElo) {
+    const tier = getRankTierDetails(globalElo);
+    const advAir = _computeJeeAdvAir(globalElo);
+    const mainAir = _computeJeeMainAir(globalElo);
+    const advPct = _formatPercentile(advAir, JEE_ADV_CANDIDATES);
+    const mainPct = _formatPercentile(mainAir, JEE_MAIN_CANDIDATES);
+    const isLow = advAir >= JEE_ADV_CANDIDATES; // wouldn't clear Advanced cutoff
+    return `
+        <div class="air-pop-head">
+            <span class="air-pop-title">🎯 JEE Advanced</span>
+            <button class="air-pop-close" type="button" aria-label="Close">✕</button>
+        </div>
+        <div class="air-pop-body">
+            <div class="air-pop-air ${isLow ? 'air-low' : ''}">${_formatAir(advAir)}</div>
+            <div class="air-pop-air-label">Predicted AIR</div>
+            <div class="air-pop-pct">${isLow ? 'Below cutoff — keep grinding' : advPct}</div>
+        </div>
+        <div class="air-pop-divider"></div>
+        <div class="air-pop-secondary">
+            <div class="air-pop-sec-row">
+                <span class="air-pop-sec-label">JEE Main</span>
+                <span class="air-pop-sec-val">${_formatAir(mainAir)}</span>
+            </div>
+            <div class="air-pop-sec-row">
+                <span class="air-pop-sec-label">Main %ile</span>
+                <span class="air-pop-sec-val">${_formatPercentile(mainAir, JEE_MAIN_CANDIDATES)}</span>
+            </div>
+        </div>
+        <div class="air-pop-foot">
+            <span class="air-pop-tier">${tier.icon} ${tier.name}</span>
+            <span class="air-pop-elo">${Math.round(globalElo)} Global</span>
+        </div>`;
+}
+
+/** Open the small square AIR popup, anchored near the clicked badge. */
+function _openAirPopup(globalElo, anchorEl) {
+    // If already open, just close it (toggle behaviour).
+    const existing = document.getElementById('air-popup');
+    if (existing) { _closeAirPopup(); return; }
+
+    _injectAirPopupStyles();
+
+    const pop = document.createElement('div');
+    pop.id = 'air-popup';
+    pop.className = 'air-popup';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-label', 'Predicted JEE Advanced AIR');
+    pop.innerHTML = _airPopupInnerHtml(globalElo);
+    document.body.appendChild(pop);
+
+    // ── Smart positioning: place the square just below the badge, aligned to
+    // the badge's left edge. Flip above / clamp to viewport if it would clip.
+    const rect = anchorEl.getBoundingClientRect();
+    const popRect = pop.getBoundingClientRect();
+    const gap = 8;
+    let left = rect.left;
+    let top = rect.bottom + gap;
+
+    // Horizontal clamp (keep fully on-screen, min 12px margin)
+    const maxLeft = window.innerWidth - popRect.width - 12;
+    left = Math.max(12, Math.min(left, maxLeft));
+
+    // If it overflows the bottom, flip it above the badge
+    if (top + popRect.height > window.innerHeight - 12) {
+        top = rect.top - popRect.height - gap;
+    }
+    // Final vertical clamp
+    top = Math.max(12, Math.min(top, window.innerHeight - popRect.height - 12));
+
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+
+    // Entrance animation
+    requestAnimationFrame(() => { pop.classList.add('air-pop-visible'); });
+
+    // ── Wire dismiss handlers (close button, outside click, Esc) ──
+    pop.querySelector('.air-pop-close').addEventListener('click', _closeAirPopup);
+    // Defer the outside-click listener so the opening click doesn't close it
+    setTimeout(() => {
+        document.addEventListener('click', _airPopupOutsideClick, true);
+    }, 0);
+    document.addEventListener('keydown', _airPopupEsc);
+}
+
+function _closeAirPopup() {
+    const pop = document.getElementById('air-popup');
+    if (!pop) return;
+    pop.classList.remove('air-pop-visible');
+    setTimeout(() => { if (pop && pop.parentNode) pop.parentNode.removeChild(pop); }, 180);
+    document.removeEventListener('click', _airPopupOutsideClick, true);
+    document.removeEventListener('keydown', _airPopupEsc);
+}
+
+function _airPopupOutsideClick(e) {
+    const pop = document.getElementById('air-popup');
+    if (pop && !pop.contains(e.target)) _closeAirPopup();
+}
+
+function _airPopupEsc(e) {
+    if (e.key === 'Escape') _closeAirPopup();
+}
+
+/** If the popup is open, refresh its numbers with the latest elo. */
+function _refreshAirPopupIfOpen(globalElo) {
+    const pop = document.getElementById('air-popup');
+    if (pop) pop.innerHTML = _airPopupInnerHtml(globalElo);
+    // Re-wire the close button after innerHTML refresh
+    if (pop) {
+        const cb = pop.querySelector('.air-pop-close');
+        if (cb) cb.addEventListener('click', _closeAirPopup);
+    }
+}
+
+// ── One-time CSS injection for the AIR popup + badge hover ──
+function _injectAirPopupStyles() {
+    if (document.getElementById('air-popup-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'air-popup-styles';
+    style.textContent = `
+        .global-mmr-row { transition: transform 0.15s ease; }
+        .global-mmr-row:hover { transform: scale(1.04); }
+        .global-mmr-row:hover .mmr-tier-badge {
+            box-shadow: 0 0 14px rgba(168,85,247,0.35);
+            border-color: rgba(168,85,247,0.5);
+        }
+        .air-popup {
+            position: fixed; z-index: 99999;
+            width: 224px; min-height: 224px;
+            background: linear-gradient(160deg, #18181b 0%, #12121a 100%);
+            border: 1px solid rgba(168,85,247,0.35);
+            border-radius: 16px;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 0 24px rgba(168,85,247,0.15);
+            padding: 14px 16px;
+            font-family: 'Space Grotesk', system-ui, sans-serif;
+            color: #e4e4e7;
+            opacity: 0; transform: scale(0.85) translateY(-6px);
+            transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.34,1.56,0.64,1);
+            pointer-events: none;
+        }
+        .air-popup.air-pop-visible {
+            opacity: 1; transform: scale(1) translateY(0); pointer-events: auto;
+        }
+        .air-pop-head {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .air-pop-title {
+            font-size: 13px; font-weight: 700; color: #c4b5fd; letter-spacing: 0.3px;
+        }
+        .air-pop-close {
+            background: none; border: none; color: #71717a;
+            font-size: 14px; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+            line-height: 1;
+        }
+        .air-pop-close:hover { color: #f87171; background: rgba(248,113,113,0.1); }
+        .air-pop-body { text-align: center; padding: 4px 0 8px; }
+        .air-pop-air {
+            font-size: 34px; font-weight: 800; color: #4ade80;
+            line-height: 1.1; letter-spacing: -0.5px;
+            text-shadow: 0 0 18px rgba(74,222,128,0.3);
+        }
+        .air-pop-air.air-low { color: #f87171; text-shadow: 0 0 18px rgba(248,113,113,0.3); }
+        .air-pop-air-label {
+            font-size: 11px; color: #a1a1aa; text-transform: uppercase;
+            letter-spacing: 1.2px; margin-top: 2px;
+        }
+        .air-pop-pct {
+            font-size: 12px; color: #a1a1aa; margin-top: 6px;
+        }
+        .air-pop-divider {
+            height: 1px; background: rgba(255,255,255,0.08); margin: 8px 0;
+        }
+        .air-pop-secondary { display: flex; flex-direction: column; gap: 4px; }
+        .air-pop-sec-row {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 12px;
+        }
+        .air-pop-sec-label { color: #71717a; }
+        .air-pop-sec-val { color: #d4d4d8; font-weight: 600; }
+        .air-pop-foot {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 10px; padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .air-pop-tier { font-size: 11px; color: #c4b5fd; font-weight: 600; }
+        .air-pop-elo { font-size: 11px; color: #71717a; font-weight: 600; }
+    `;
+    document.head.appendChild(style);
+}
+
+window._openAirPopup = _openAirPopup;
+window._closeAirPopup = _closeAirPopup;
 
 /** Render a localized rating monitor into a dashboard subject card. */
 function _renderSubjectEloMonitor(subject, elo) {
