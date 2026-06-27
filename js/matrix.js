@@ -103,6 +103,9 @@ let _drawerState = {
     targetTimeMins: 5,
     stopwatchSeconds: 0,
     stopwatchInterval: null,
+    eloResult: null,        // 🧠 Elo migration result captured at the decision instant
+    frozenTimeMins: 0,      // ⏱ Stopwatch time frozen at the moment of truth
+    resultLocked: false,    // 🔒 True once the user committed correct/incorrect
 };
 
 function _resetDrawerState() {
@@ -119,10 +122,17 @@ function _resetDrawerState() {
         targetTimeMins: 5,
         stopwatchSeconds: 0,
         stopwatchInterval: null,
+        eloResult: null,        // 🧠 Elo migration result captured at the decision instant
+        frozenTimeMins: 0,      // ⏱ Stopwatch time frozen at the moment of truth
+        resultLocked: false,    // 🔒 True once the user committed correct/incorrect
     };
 }
 
 function _startStopwatch() {
+    // 🔒 Once the result is committed the stopwatch is frozen at the decision
+    // instant — never let it restart, otherwise the time noted + Elo temporal-
+    // divergence calc would inflate up to the "Log Attempt" click.
+    if (_drawerState.resultLocked) return;
     if (_drawerState.stopwatchInterval) return;
     _drawerState.stopwatchInterval = setInterval(() => {
         _drawerState.stopwatchSeconds++;
@@ -367,6 +377,13 @@ function _applyResult(result, source, q) {
     const pulseDot = document.getElementById('sr-pulse-dot');
     if (pulseDot) pulseDot.style.display = 'none';
 
+    // 🔒 Lock the result so the stopwatch can't be restarted and the time/
+    // elo can't drift downstream. Capture the FROZEN time so the Elo
+    // migration (fired below) and submitPracticeLog() both use the instant
+    // the user committed their answer — NOT the "Log Attempt" click.
+    _drawerState.resultLocked = true;
+    _drawerState.frozenTimeMins = _drawerState.stopwatchSeconds / 60;
+
     const zone = document.getElementById('sr-result-zone');
     if (zone) {
         const correctAns = _hasLoadedAnswer(q)
@@ -413,6 +430,125 @@ function _applyResult(result, source, q) {
             const as = document.getElementById('sr-answer-stage');
             if (as) as.style.display = 'none';
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🎮 GAMIFICATION + 🧠 ELO FEEDBACK — fired at the MOMENT OF TRUTH
+    // (when the user clicks "Confirm Answer" / "Yes, correct" / "No,
+    // incorrect"), NOT deferred to the "Log Attempt" button. This mirrors
+    // the standard question-practice modal so the user instantly gets:
+    //   • the red/green colour flash + correct/wrong sound effect
+    //   • the streak update + glow/supercharged overlays
+    //   • the +/- Elo chip popped into the header (the title bar that holds
+    //     the streak visualizer & hide-image button), using the FROZEN time
+    //     captured at the decision instant.
+    // The frozen time + eloResult are stashed on _drawerState so the later
+    // submitPracticeLog() reuses them instead of recomputing/double-counting.
+    // ═══════════════════════════════════════════════════════════════════════
+    if (_drawerState.result === 'incorrect') {
+        if (typeof window.triggerRedFlash === 'function') window.triggerRedFlash();
+        if (typeof window.playWrongSound === 'function') window.playWrongSound();
+        if (Math.random() < 0.2) {
+            if (typeof window.triggerStreakShield === 'function') window.triggerStreakShield();
+        } else {
+            AppState.practiceCorrectStreak = 0;
+        }
+    } else if (_drawerState.result === 'correct') {
+        AppState.practiceCorrectStreak++;
+        if (window._justWonBounty) {
+            window._justWonBounty = false;
+            if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
+        } else if (document.body.classList.contains('overheat-active')) {
+            changeCount(q.subject, 2);
+            if (typeof window.showSupercharged === 'function') window.showSupercharged();
+            if (typeof window.deactivateOverheat === 'function') window.deactivateOverheat();
+        } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
+            AppState.bounty.payoffCount--;
+            saveAllAsync().catch(console.error);
+            if (typeof window.showSupercharged === 'function') window.showSupercharged();
+        } else {
+            if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
+            if (typeof window.playCorrectSound === 'function') window.playCorrectSound();
+            if (Math.random() < 0.15) {
+                if (typeof window.showSupercharged === 'function') window.showSupercharged();
+            }
+        }
+    }
+    if (typeof window.updateStreakVisualizer === 'function') window.updateStreakVisualizer();
+
+    // ── Cognitive MMR / Elo migration (uses the FROZEN decision time) ──
+    let _eloResult = null;
+    if (typeof window.calculateEloMigration === 'function' && q.subject) {
+        try {
+            const _actualSeconds = Math.max(0, Math.round(_drawerState.frozenTimeMins * 60));
+            const _score = _drawerState.result === 'correct' ? 1 : 0;
+            const _health = (typeof window._getChapterHealth === 'function')
+                ? window._getChapterHealth(q.subject, q.chapter)
+                : 50;  // benign mid-default if the bridge is unavailable
+            _eloResult = window.calculateEloMigration(
+                q.subject,
+                _actualSeconds,
+                _score,
+                _health,
+                q
+            );
+        } catch (_eloErr) {
+            console.error('Elo migration fault in _applyResult:', _eloErr);
+        }
+    }
+    _drawerState.eloResult = _eloResult;
+
+    // Persist the Elo mutation immediately — don't wait for "Log Attempt".
+    saveAllAsync().catch(console.error);
+
+    // ── Inject a PERSISTENT +/- Elo chip into the SR drawer header slot
+    // (the title bar that holds the streak visualizer & hide-image button).
+    // It stays visible while the user finishes tagging and is cleared
+    // automatically when the drawer closes (the overlay is removed).
+    if (_eloResult) {
+        const _headerSlot = document.getElementById('sr-elo-header-slot');
+        if (_headerSlot) {
+            const _delta = _eloResult.deltaSubject || 0;
+            const _sign = _delta >= 0 ? '+' : '';
+            let _tierName = '';
+            try {
+                if (typeof window.getRankTierDetails === 'function') {
+                    _tierName = '[' + window.getRankTierDetails(_eloResult.newSubjectElo).name + ']';
+                }
+            } catch (_) { /* ignore */ }
+            _headerSlot.innerHTML =
+                '<div class="elo-header-chip ' + (_delta >= 0 ? 'elo-up' : 'elo-down') + '">' +
+                    '<span class="elo-shift-delta">' + _sign + Math.round(_delta) + '</span>' +
+                    '<span class="elo-shift-tier">' + _tierName + '</span>' +
+                '</div>';
+        }
+
+        // ── Tier transition celebration — cascading emoji burst + fanfare,
+        // fired from the SR drawer's centre while it's still on screen. ──
+        if (_eloResult.tierChanged) {
+            try {
+                let originX = window.innerWidth / 2;
+                let originY = window.innerHeight / 2;
+                const drawer = document.querySelector('#sr-practice-overlay .sr-practice-modal');
+                if (drawer && drawer.offsetParent !== null) {
+                    const rect = drawer.getBoundingClientRect();
+                    originX = rect.left + rect.width / 2;
+                    originY = rect.top + rect.height / 2;
+                }
+                if (typeof window.burstEmojis === 'function') {
+                    window.burstEmojis(originX, originY, 40,
+                        ['🎉', '😄', '🔥', '✨', '🥳', '🎊', '💯', '🌟', '😎', '🏆'], 1.6);
+                }
+                if (typeof window.playSuperSound === 'function') {
+                    window.playSuperSound();
+                }
+            } catch (_) { /* ignore celebration errors */ }
+        }
+    }
+
+    // Refresh the dashboard MMR matrix so the new rating is visible immediately.
+    if (typeof window.renderEloMatrix === 'function') {
+        try { window.renderEloMatrix(); } catch (_) { /* never block */ }
     }
 
     _updateDrawerUI();
@@ -551,6 +687,8 @@ export function srToggleFriction(ft) {
 }
 
 export function srToggleStopwatch() {
+    // 🔒 Frozen at the result-decision instant — ignore toggles afterwards.
+    if (_drawerState.resultLocked) return;
     const dot = document.getElementById('sr-pulse-dot');
     if (_drawerState.stopwatchInterval) {
         _pauseStopwatch();
@@ -671,80 +809,12 @@ export function submitPracticeLog() {
         q.status = 'error';
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    // 🎮 GAMIFICATION CONVERGENCE (SR drawer ↔ standard practice modal)
-    // ════════════════════════════════════════════════════════════════════════
-    if (_drawerState.result === 'incorrect') {
-        if (typeof window.triggerRedFlash === 'function') window.triggerRedFlash();
-        if (typeof window.playWrongSound === 'function') window.playWrongSound();
-        if (Math.random() < 0.2) {
-            if (typeof window.triggerStreakShield === 'function') window.triggerStreakShield();
-        } else {
-            AppState.practiceCorrectStreak = 0;
-        }
-    } else if (_drawerState.result === 'correct') {
-        AppState.practiceCorrectStreak++;
-        if (window._justWonBounty) {
-            window._justWonBounty = false;
-            if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
-        } else if (document.body.classList.contains('overheat-active')) {
-            changeCount(q.subject, 2);
-            if (typeof window.showSupercharged === 'function') window.showSupercharged();
-            if (typeof window.deactivateOverheat === 'function') window.deactivateOverheat();
-        } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
-            AppState.bounty.payoffCount--;
-            saveAllAsync().catch(console.error);
-            if (typeof window.showSupercharged === 'function') window.showSupercharged();
-        } else {
-            if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
-            if (typeof window.playCorrectSound === 'function') window.playCorrectSound();
-            if (Math.random() < 0.15) {
-                if (typeof window.showSupercharged === 'function') window.showSupercharged();
-            }
-        }
-    }
-
-    if (typeof window.updateStreakVisualizer === 'function') window.updateStreakVisualizer();
-
-    // ════════════════════════════════════════════════════════════════════════
-    // 🧠 COGNITIVE MMR / ELO MATRIX CONVERGENCE
-    // ════════════════════════════════════════════════════════════════════════
-    // Intercept the active card data (_drawerState + resolved question object)
-    // and invoke the Elo migration engine to scale BOTH the player's subject
-    // MMR and the error item's underlying difficulty (qElo) concurrently.
-    //
-    // This runs BEFORE saveAllAsync() so the rating mutation lands in the same
-    // persistence write cycle as the SR history log above. The engine is
-    // bridged via window.calculateEloMigration (exposed by app.js) to preserve
-    // the existing one-way module dependency graph (app.js → matrix.js); a
-    // static import here would create a circular dependency.
-    //
-    // Active card data mapped to the engine signature:
-    //   subject       ← q.subject
-    //   actualTime    ← timeSpent (minutes) × 60  → seconds
-    //   scoreOutcome  ← _drawerState.result === 'correct' ? 1 : 0
-    //   chapterHealth ← window._getChapterHealth(q.subject, q.chapter)
-    //   questionObj   ← q  (qElo retro-mutated in-place)
-    // ════════════════════════════════════════════════════════════════════════
-    let _eloResult = null;
-    if (typeof window.calculateEloMigration === 'function' && q.subject) {
-        try {
-            const _actualSeconds = Math.max(0, Math.round(timeSpent * 60));
-            const _score = _drawerState.result === 'correct' ? 1 : 0;
-            const _health = (typeof window._getChapterHealth === 'function')
-                ? window._getChapterHealth(q.subject, q.chapter)
-                : 50;  // benign mid-default if the bridge is unavailable
-            _eloResult = window.calculateEloMigration(
-                q.subject,
-                _actualSeconds,
-                _score,
-                _health,
-                q
-            );
-        } catch (_eloErr) {
-            console.error('Elo migration fault in submitPracticeLog:', _eloErr);
-        }
-    }
+    // 🎮 Gamification effects (red flash / sounds / streak) and 🧠 Elo
+    // migration now fire at the moment of truth in _applyResult() — i.e. when
+    // the user clicks "Confirm Answer" / "Yes, correct" / "No, incorrect" —
+    // so the feedback (colour flash, sound, +/- Elo chip in the header) shows
+    // immediately, exactly like the standard question-practice modal. The
+    // frozen time + eloResult are stashed on _drawerState and reused here.
 
     const secondsToInject = Math.round(timeSpent * 60);
     if (secondsToInject > 0 && q.subject) {
@@ -803,37 +873,8 @@ export function submitPracticeLog() {
                 try { window.renderEloMatrix(); } catch (_) { /* never block */ }
             }
 
-            // ── Tier transition celebration ──
-            // If this practice frame crossed a competitive rank bracket
-            // boundary, fire the cascading emoji burst + synth fanfare from
-            // the SR drawer's centre (it was still on screen a moment ago;
-            // we centre on the viewport as a graceful fallback once closed).
-            if (_eloResult) {
-                // Inject the ELO shift chip into the practice header slot
-                // so the user sees +/- elo feedback front-and-center.
-                if (typeof window.injectEloShiftChip === 'function') {
-                    try { window.injectEloShiftChip(_eloResult); } catch (_) { /* never block */ }
-                }
-            }
-            if (_eloResult && _eloResult.tierChanged) {
-                try {
-                    let originX = window.innerWidth / 2;
-                    let originY = window.innerHeight / 2;
-                    const drawer = document.querySelector('#sr-practice-overlay .sr-practice-modal');
-                    if (drawer && drawer.offsetParent !== null) {
-                        const rect = drawer.getBoundingClientRect();
-                        originX = rect.left + rect.width / 2;
-                        originY = rect.top + rect.height / 2;
-                    }
-                    if (typeof window.burstEmojis === 'function') {
-                        window.burstEmojis(originX, originY, 40,
-                            ['🎉', '😄', '🔥', '✨', '🥳', '🎊', '💯', '🌟', '😎', '🏆'], 1.6);
-                    }
-                    if (typeof window.playSuperSound === 'function') {
-                        window.playSuperSound();
-                    }
-                } catch (_) { /* ignore celebration errors */ }
-            }
+            // (Tier transition celebration + Elo chip injection now happen
+            //  in _applyResult() at the moment of truth — nothing to do here.)
         });
     });
 }
