@@ -175,6 +175,7 @@ export function openPracticeDrawer(qId) {
                 </div>
                 <div class="sr-drawer-header-actions">
                     <div class="streak-visualizer" id="streak-visualizer"><canvas id="streak-canvas" width="16" height="16"></canvas></div>
+                    <div id="sr-elo-header-slot" class="elo-header-slot"></div>
                     ${hasImage ? `<button class="sr-hide-img-btn" id="sr-hide-img-btn" type="button" onclick="srToggleImage()">👁 Hide Image</button>` : ''}
                     <button class="sr-drawer-close" onclick="closePracticeDrawer()" aria-label="Close practice drawer">✕</button>
                 </div>
@@ -350,9 +351,21 @@ function _renderTagStage() {
 }
 
 // Commit the result (auto-graded or self-reported) and reveal the tag stage.
+// Also freezes the stopwatch so the time recorded is when the user decided
+// their answer, not when they eventually click "Log Attempt".
 function _applyResult(result, source, q) {
     _drawerState.result = result;
     _drawerState.resultSource = source;
+
+    // ⏱ Freeze the stopwatch NOW — time should reflect when the user
+    // decided their answer, not when they finish tagging friction types.
+    if (_drawerState.stopwatchInterval) {
+        clearInterval(_drawerState.stopwatchInterval);
+        _drawerState.stopwatchInterval = null;
+    }
+    // Also freeze the pulse dot animation
+    const pulseDot = document.getElementById('sr-pulse-dot');
+    if (pulseDot) pulseDot.style.display = 'none';
 
     const zone = document.getElementById('sr-result-zone');
     if (zone) {
@@ -795,6 +808,13 @@ export function submitPracticeLog() {
             // boundary, fire the cascading emoji burst + synth fanfare from
             // the SR drawer's centre (it was still on screen a moment ago;
             // we centre on the viewport as a graceful fallback once closed).
+            if (_eloResult) {
+                // Inject the ELO shift chip into the practice header slot
+                // so the user sees +/- elo feedback front-and-center.
+                if (typeof window.injectEloShiftChip === 'function') {
+                    try { window.injectEloShiftChip(_eloResult); } catch (_) { /* never block */ }
+                }
+            }
             if (_eloResult && _eloResult.tierChanged) {
                 try {
                     let originX = window.innerWidth / 2;

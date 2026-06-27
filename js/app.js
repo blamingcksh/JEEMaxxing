@@ -211,7 +211,7 @@ export function triggerStreakShield() {
 export function toggleSidebar() {
     const sb = document.getElementById('sidebar');
     sb.classList.toggle('collapsed');
-    document.querySelector('.collapse-btn').textContent = sb.classList.contains('collapsed') ? '→' : 'Collapse';
+    document.querySelector('.collapse-btn').textContent = sb.classList.contains('collapsed') ? '→' : 'Shrink';
 }
 
 export async function switchTab(viewId, element) {
@@ -283,10 +283,10 @@ function _renderCatProgressView(overallPct) {
     const catText = document.getElementById('cat-text');
     if (!catText) return;
     if (overallPct >= 100) {
-        catText.textContent = `All Daily Targets Complete! 🚀`;
+        catText.textContent = `Absolute termination. Daily targets cleared. Your aura is unmatched today 🌌`;
         catText.className = "cat-text glow-green";
     } else {
-        catText.textContent = `Daily Targets: ${overallPct}% Complete`;
+        catText.textContent = `Current focus vector: ${overallPct}% cooked. Keep feeding the machine ⚙️`;
         catText.className = "cat-text glow-orange";
     }
 }
@@ -315,7 +315,7 @@ function _scanCatBannerVulnerabilities() {
             vulnerabilities.push({
                 priority: 1,
                 className: 'glow-red',
-                text: '🚨 STREAK VOLATILITY: 0 questions logged. Current training streak vector is highly vulnerable to breaking.',
+                text: '🚨 STREAK CHURN WARNING: 0 questions touched. Wake up, you are throwing away your daily consistency vector.',
             });
         }
     }
@@ -353,7 +353,7 @@ function _scanCatBannerVulnerabilities() {
             vulnerabilities.push({
                 priority: 2,
                 className: 'glow-red',
-                text: `⚠️ VULNERABILITY DETECTED: ${worstChapter} health dropped below 45%. Re-solve immediate.`,
+                text: `⚠️ SKILL GAP ACTIVE: ${worstChapter} health is literally decaying. Resolve this right now or it's over.`,
             });
         }
     }
@@ -375,7 +375,7 @@ function _scanCatBannerVulnerabilities() {
             vulnerabilities.push({
                 priority: 3,
                 className: 'glow-orange',
-                text: '⚔️ BOUNTY DEFICIT: Structural target penalty active. Chapter asset locked due to failure.',
+                text: '⚔️ DEBT LIQUIDATION: Bounty failed. Targets scaled up. Cry about it or double down.',
             });
         }
     }
@@ -394,7 +394,7 @@ function _scanCatBannerVulnerabilities() {
             vulnerabilities.push({
                 priority: 4,
                 className: 'glow-orange',
-                text: `⚡ CORE QUEUE CRITICAL: ${readyCount} friction points are highly vulnerable to memory erasure.`,
+                text: `⚡ MEMORY ERASURE THREAT: ${readyCount} raw mistakes are actively rot-decaying in your bank. Clear them.`,
             });
         }
     }
@@ -418,7 +418,7 @@ function _scanCatBannerVulnerabilities() {
             vulnerabilities.push({
                 priority: 5,
                 className: 'glow-orange',
-                text: `📉 SYSTEM IMBALANCE: ${displayName} execution volume is severely lagging behind target matrix.`,
+                text: `📉 FRAUD ALERT: Your ${displayName} volume is straight lagging. Stop dodging the hard topics.`,
             });
         }
     }
@@ -430,7 +430,7 @@ function _scanCatBannerVulnerabilities() {
             vulnerabilities.push({
                 priority: 6,
                 className: 'glow-orange',
-                text: '🧠 COGNITIVE FRICTION: CNS exhaustion active. Intervals scaled to 25/5; prioritize accuracy.',
+                text: '🧠 BRAIN-FRIED MODE: CNS capacity low. Focus on raw calculation quality over volume.',
             });
         }
     }
@@ -490,7 +490,7 @@ function _scanCatBannerVulnerabilities() {
         // persists instead of being overwritten by the progress view. ──
         if (window._eloDeficitActive === true) {
             _renderCatText(
-                '🚨 PROFILE IMBALANCE DETECTED: Systemic structural variance. Target role constraints locked until baseline symmetry is re-established.',
+                '🚨 OVER-SPECIALIZATION DETECTED: You are building a lopsided build. Balance your subject ratings immediately or face total doom.',
                 'glow-red'
             );
             showVulnerability = !showVulnerability;
@@ -581,7 +581,7 @@ export async function updateStreakDisplay() {
     let history = await getDailyHistory();
     if (!Array.isArray(history) || history.length === 0) {
         const streakEl = document.getElementById('top-streak');
-        if (streakEl) streakEl.textContent = "0 Days";
+        if (streakEl) streakEl.textContent = "0 Days (start something)";
         return;
     }
 
@@ -770,7 +770,7 @@ export function selectSubject(s) {
     renderChaptersList();
     showPracticeSubview('practice-chapters-view');
     document.getElementById('chapters-subject-title').innerText =
-        `${s.toUpperCase()} - Domain Constraints`;
+        `${s.toUpperCase()} - Domain Zone`;
 }
 
 export function goToSubjects() {
@@ -813,7 +813,7 @@ export function renderChaptersList() {
 }
 
 export function deleteChapter(ch) {
-    if (confirm(`Delete "${ch}"?`)) {
+    if (confirm(`Nuke "${ch}"? This wipes everything inside.`)) {
         AppState.chapters[AppState.currentSubject] = AppState.chapters[AppState.currentSubject].filter(c => c !== ch);
         // Use splice to avoid reassigning the exported let binding
         for (let i = AppState.questionBank.length - 1; i >= 0; i--) {
@@ -861,7 +861,7 @@ export async function saveProfile() {
     document.getElementById('display-username').textContent = name;
     if (AppState.profilePicData) document.getElementById('display-pfp').src = AppState.profilePicData;
     await saveAllAsync();
-    alert("Profile Updated.");
+    alert("Profile data locked in. Your build has been updated.");
 }
 
 export async function saveTargets() {
@@ -877,7 +877,7 @@ export async function saveTargets() {
     AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
     updateUI();
     lockTargetsOnly();
-    alert("Targets synchronized and locked for 24 Hours.");
+    alert("Symmetry constraints locked for the next 24h. No escaping now. Get to work.");
 }
 
 /**
@@ -932,14 +932,14 @@ export function lockTargetsOnly() {
 
 export async function testGeminiKey() {
     const key = document.getElementById('gemini-key').value;
-    if (!key) return alert("No key.");
+    if (!key) return alert("No API key found. Add one in Config first.");
     AppState.geminiApiKey = key;
     await idbSet('gemini_api_key', key);
     try {
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
-        document.getElementById('key-test-result').innerHTML = r.ok ? '✅ Verified.' : '❌ Rejected.';
+        document.getElementById('key-test-result').innerHTML = r.ok ? '✅ Key verified. You\'re good.' : '❌ Key rejected. Try again.';
     } catch (e) {
-        document.getElementById('key-test-result').innerHTML = '⚠️ Network error.';
+        document.getElementById('key-test-result').innerHTML = '⚠️ Network ded. Try again.';
     }
 }
 // ==================== PRACTICE: UPLOAD & MULTI-CROP SYSTEM ====================
@@ -1016,11 +1016,11 @@ export function refreshCropUI() {
         segBar.appendChild(wrapper);
     });
 
-    inst.textContent = `Question ${cropSession.currentQuestionIdx + 1}: Draw rectangles. Click □ inside a rectangle to toggle diagram.`;
+    inst.textContent = `Q ${cropSession.currentQuestionIdx + 1}: Draw boxes around the question. Click □ inside a box to mark it as a diagram.`;
 
     redrawBtn.style.display = _cq.segments.length > 0 ? 'inline-block' : 'none';
     confirmBtn.style.display = 'inline-block';
-    confirmBtn.textContent = '✓ Confirm Question';
+    confirmBtn.textContent = '✓ Lock Question';
     nextBtn.style.display = 'none';
     finishBtn.style.display = 'none';
 
@@ -1258,10 +1258,10 @@ export function combineImagesSideBySide(leftImg, rightImg) {
 
 export async function confirmMultiCropQuestion() {
     const _cq = cropSession.allQuestions[cropSession.currentQuestionIdx];
-    if (_cq.segments.length === 0) { alert('No segments selected. Draw at least one rectangle.'); return; }
+    if (_cq.segments.length === 0) { alert('Nothing selected. Draw at least one box around the question.'); return; }
     const questionSegs = _cq.segments.filter(s => !s.isDiagram);
     const diagramSegs = _cq.segments.filter(s => s.isDiagram);
-    if (questionSegs.length === 0) { alert('At least one segment must be a question part (Q).'); return; }
+    if (questionSegs.length === 0) { alert('At least one box needs to be a question part (Q). Mark it.'); return; }
 
     const questionStitched = await stitchSegmentsVertically(questionSegs);
     const diagramStitched = diagramSegs.length > 0 ? await stitchSegmentsVertically(diagramSegs) : null;
@@ -1274,7 +1274,7 @@ export async function confirmMultiCropQuestion() {
     document.getElementById('crop-next-question').style.display = 'inline-block';
     document.getElementById('crop-finish').style.display = 'inline-block';
     document.getElementById('crop-redraw').style.display = 'none';
-    document.getElementById('crop-instruction').textContent = 'Question combined. Add next question or finish.';
+    document.getElementById('crop-instruction').textContent = 'Question locked. Add the next one or wrap up.';
 }
 
 export function nextQuestionInSession() {
@@ -1311,7 +1311,7 @@ export function finishAllQuestions() {
 }
 
 export function cancelCropSession() {
-    if (confirm('Cancel all cropping?')) {
+    if (confirm('Nuke all crops? No going back.')) {
         closeCropModal();
         cropSession = { sourceImages: [], currentQuestionIdx: 0, allQuestions: [], activeCrop: false, drawing: {}, canvasRefs: {}, ctxRefs: {}, imgRefs: {} };
         AppState.extractedItems = [];
@@ -1320,13 +1320,13 @@ export function cancelCropSession() {
 
 export async function startManualCrop() {
     let files = document.getElementById('upload-images').files;
-    if (!files.length) { alert("Select at least one image"); return; }
+    if (!files.length) { alert("Select at least one image c'mon"); return; }
     let apiKey = document.getElementById('gemini-key').value;
-    if (!apiKey) { alert("Set Gemini API key in Settings"); return; }
+    if (!apiKey) { alert("Drop your Gemini API key in Config first"); return; }
     AppState.geminiApiKey = apiKey;
     await idbSet('gemini_api_key', apiKey);
     document.getElementById('upload-progress').style.width = '0%';
-    document.getElementById('upload-status-text').innerText = 'Loading images...';
+    document.getElementById('upload-status-text').innerText = 'Loading the payload...';
     Promise.all(Array.from(files).map(readFileAsBase64)).then(base64Array => {
         initCropSession(base64Array);
         document.getElementById('crop-modal').style.display = 'flex';
@@ -1377,14 +1377,14 @@ document.getElementById('upload-images').addEventListener('change', function () 
  */
 export async function extractTextForAll() {
     // ── 0. Guards ────────────────────────────────────────────────────────
-    if (!AppState.extractedItems.length) return alert("No questions cropped.");
+    if (!AppState.extractedItems.length) return alert("No questions captured yet.");
     const apiKey = AppState.geminiApiKey;
-    if (!apiKey) return alert("Set API key first.");
+    if (!apiKey) return alert("Set API key first. Config → API Key.");
 
     // ── 1. Extract & group the unprocessed items ────────────────────────
     const pendingItems = AppState.extractedItems.filter(q => !q.extractedText);
     if (!pendingItems.length) {
-        return alert("All questions already have extracted text. Nothing new to process.");
+        return alert("Everything's already been extracted. Nothing left to cook.");
     }
 
     // Group into sub-arrays (columns) of max 5 questions each.
@@ -1394,7 +1394,7 @@ export async function extractTextForAll() {
         columns.push(pendingItems.slice(i, i + COLUMN_SIZE));
     }
 
-    showLoading(`Assembling grid sheet (${pendingItems.length} questions, ${columns.length} column${columns.length > 1 ? 's' : ''})…`);
+    showLoading(`Stitching the grid matrix together (${pendingItems.length} questions, ${columns.length} column${columns.length > 1 ? 's' : ''})… Let him cook...`);
 
     try {
         // ── 2. Stitch each column vertically (concurrent via Promise.all) ───
@@ -1444,7 +1444,7 @@ export async function extractTextForAll() {
         })();
 
         // ── 4. Dispatch the master batch prompt (exactly ONE request) ───────
-        showLoading(`Dispatching single OCR batch (${pendingItems.length} questions)…`);
+        showLoading(`Beaming the macro grid to the mothership (${pendingItems.length} questions)… Parsing variables...`);
         const prompt = `You are a precision academic OCR transcriber specializing in Indian competitive engineering examinations (IIT JEE Advanced). You are looking at a single high-definition grid sheet containing exactly ${pendingItems.length} physics, chemistry, or mathematics questions separated by grid lines. Parse the grid cell-by-cell (column-by-column, top-to-bottom).
 
 CRITICAL COMMAND FOR STRICT KATEX TOKENIZATION:
@@ -1511,26 +1511,26 @@ Return a flat single JSON array containing exactly ${pendingItems.length} object
         // because hydration only happens after every validation passes above.
         console.error('extractTextForAll() Grid Sheet Matrix failure:', err);
         hideLoading();
-        alert(`Grid Sheet OCR failed: ${err && err.message ? err.message : err}. No partial data was applied.`);
+        alert(`OCR crashed and burned: ${err && err.message ? err.message : err}. No partial data was applied.`);
         return;
     }
 
     // ── Downstream preview pipeline (preserved exactly) ─────────────────
     hideLoading();
     showPreviewModal();
-    alert('Text metrics parsed and stored.');
+    alert('Text extracted and stored. Let\'s go.');
 }
 
 export async function processAnswerKey() {
     let file = document.getElementById('answer-key-image').files[0];
-    if (!file) return alert("No answer key selected.");
+    if (!file) return alert("No answer key selected. Upload one.");
     const apiKey = AppState.geminiApiKey;
-    if (!apiKey) return alert("Set API key first.");
-    if (AppState.extractedItems.length === 0) return alert("No questions exist in buffer.");
+    if (!apiKey) return alert("Set API key first. Config → API Key.");
+    if (AppState.extractedItems.length === 0) return alert("No questions in the buffer. Crop some first.");
     if (AppState.extractedItems.some(item => !item.extractedText)) {
-        return alert("Error: Run 'Extract Text & Options' first to provide the context required for semantic processing.");
+        return alert("Error: Run 'Extract Text' first. The AI needs context before it can map answers.");
     }
-    showLoading("Cross-referencing parsed questions against visual answer sheet...");
+    showLoading("Decoding visual answer assets... Verifying criteria inputs...");
     const base64 = await readFileAsBase64(file);
     const questionReferences = AppState.extractedItems.map((q, idx) =>
         `Target ID: ${idx}\nContent: ${q.extractedText}`).join('\n\n');
@@ -1569,24 +1569,24 @@ IMPORTANT – MULTI‑ANSWER QUESTIONS:
             }
         });
         hideLoading();
-        alert(`Semantic mapping operations concluded successfully via image.`);
+        alert('Answer mapping complete via image. All locked in.');
         showPreviewModal();
     } catch (e) {
         hideLoading();
-        alert("Semantic algorithm execution fault: " + e.message);
+        alert("Mapping crashed: " + e.message);
     }
 }
 
 export async function processAnswerKeyFromText() {
     const text = document.getElementById('answer-key-text').value.trim();
-    if (!text) return alert("Paste structural key details first.");
+    if (!text) return alert("Paste the answer key first. It's empty.");
     const apiKey = AppState.geminiApiKey;
-    if (!apiKey) return alert("Set Gemini API key in Settings.");
-    if (AppState.extractedItems.length === 0) return alert("No items recorded in context.");
+    if (!apiKey) return alert("Drop your API key in Config.");
+    if (AppState.extractedItems.length === 0) return alert("Nothing in the buffer. Crop some questions first.");
     if (AppState.extractedItems.some(item => !item.extractedText)) {
-        return alert("Error: Run 'Extract Text & Options' first to provide the context required for semantic processing.");
+        return alert("Error: Run 'Extract Text' first. The AI needs context before it can map answers.");
     }
-    showLoading("Cross-referencing parsed questions against raw structural key metrics...");
+    showLoading("Decoding visual answer assets... Verifying criteria inputs...");
     const questionReferences = AppState.extractedItems.map((q, idx) =>
         `Target ID: ${idx}\nContent: ${q.extractedText}`).join('\n\n');
     const prompt = `You are a semantic analysis matrix. You are provided a list of target context queries, and a messy plain-text data feed containing structural answers and step-by-step documentation. Your operational profile is to align the mathematical criteria and link each answer/solution payload directly back to the target index using its "id".\n\nTarget Context Metrics:\n${questionReferences}\n\nRaw Solution Feed Block:\n${text}\n\nCRITICAL JSON CONFORMITY ESCAPING RULE: Because step-by-step solutions contain heavy LaTeX mathematical notation, every single backslash character '\\' inside the solution text string MUST be double-escaped as '\\\\' in your raw JSON output payload (e.g., write '\\\\frac{x}{y}' or '\\\\sigma' instead of '\\frac{x}{y}' or '\\sigma'). If you do not double-escape backslashes, the JSON parser breaks.\n\nReturn ONLY a JSON structured array tracking target parameters: [ { "id": 0, "answer": "...", "solution": "..." }, ... ]
@@ -1624,11 +1624,11 @@ IMPORTANT – MULTI‑ANSWER QUESTIONS:
             }
         });
         hideLoading();
-        alert(`Semantic text matching complete.`);
+        alert('Text mapping complete. All answers linked.');
         showPreviewModal();
     } catch (e) {
         hideLoading();
-        alert("Semantic algorithm execution fault: " + e.message);
+        alert("Mapping crashed: " + e.message);
     }
 }
 
@@ -1684,7 +1684,7 @@ export function saveAllQuestions() {
     }
     saveAllAsync().catch(console.error);
     closeModalStr('preview-modal');
-    alert(`Saved ${AppState.extractedItems.length} questions.`);
+    alert(`Successfully imported ${AppState.extractedItems.length} fresh problems into the local engine. Let's see how you handle them.`);
 }
 
 export function showPreviewModal() {
@@ -1703,7 +1703,7 @@ export function showPreviewModal() {
             `<p style="font-size:13px; color:#93c5fd;">Options: ${q.options.map(o => escapeHtml(o)).join(', ')}</p>` :
             '';
         let solutionPreview = q.solution ?
-            `<p style="font-size:12px; color:#6ee7b7; margin-top:4px;">📝 Solution Bound</p>` : '';
+            `<p style="font-size:12px; color:#6ee7b7; margin-top:4px;">📝 Solution Loaded</p>` : '';
         let answerDisplay = Array.isArray(q.correctAnswer) ? q.correctAnswer.join(',') : (q.correctAnswer || '');
         div.innerHTML = `<strong>Question ${idx + 1}</strong>
             <div style="display:flex; gap:12px; align-items:flex-start;">
@@ -1713,7 +1713,7 @@ export function showPreviewModal() {
             </div>
             <div class="manual-answer-row">
                 <span>Answer:</span>
-                <input id="manual-answer-${idx}" class="pomo-input" style="width:150px;" placeholder="A/B/C/D or comma-separated list" value="${escapeHtml(answerDisplay)}">
+                <input id="manual-answer-${idx}" class="pomo-input" style="width:150px;" placeholder="A/B/C/D or list" value="${escapeHtml(answerDisplay)}">
             </div>`;
         container.appendChild(div);
     });
@@ -1761,7 +1761,7 @@ export function showQuestionList() {
     AppState.currentFilter = AppState.currentFilter || 'all';
 
     let chapterQuestions = AppState.questionBank.filter(q => q.subject === AppState.currentSubject && q.chapter === AppState.currentChapter);
-    if (!chapterQuestions.length) { alert("No questions in this chapter."); return; }
+    if (!chapterQuestions.length) { alert("This chapter is empty. Feed it some questions."); return; }
 
     AppState.currentChapterQuestions = chapterQuestions;
 
@@ -1777,9 +1777,9 @@ export function showQuestionList() {
     const titleEl = document.getElementById('question-list-title');
     if (titleEl) {
         if (AppState.currentFilter === 'all') titleEl.textContent = 'All Questions';
-        else if (AppState.currentFilter === 'unsolved') titleEl.textContent = 'Filtered: Unexecuted';
-        else if (AppState.currentFilter === 'solved') titleEl.textContent = 'Filtered: Correct';
-        else if (AppState.currentFilter === 'wrong') titleEl.textContent = 'Filtered: Flawed / Wrong';
+        else if (AppState.currentFilter === 'unsolved') titleEl.textContent = 'Filtered: Untouched';
+        else if (AppState.currentFilter === 'solved') titleEl.textContent = 'Filtered: Clutched';
+        else if (AppState.currentFilter === 'wrong') titleEl.textContent = 'Filtered: Fumbled';
     }
 
     const filterEl = document.getElementById('question-filter');
@@ -1807,11 +1807,11 @@ export function showQuestionList() {
         statsRow.style.display = 'flex';
         const completion = total > 0 ? Math.round((solvedCount / chapterQuestions.length) * 100) : 0;
         statsRow.innerHTML = `
-            <div class="stat-box"><div class="stat-value">${accuracy}%</div><div class="stat-label">Accuracy</div></div>
+            <div class="stat-box"><div class="stat-value">${accuracy}%</div><div class="stat-label">Hit Rate</div></div>
             <div class="chapter-progress-bar">
                 <div class="chapter-progress-fill" style="width: ${completion}%;"></div>
             </div>
-            <div class="stat-box"><div class="stat-value">${avgTime}s</div><div class="stat-label">Avg Time</div></div>
+            <div class="stat-box"><div class="stat-value">${avgTime}s</div><div class="stat-label">Avg Speed</div></div>
         `;
     }
 
@@ -1821,7 +1821,7 @@ export function showQuestionList() {
 
     filteredQuestions.forEach((q, idx) => {
         let statusClass = q.status === 'solved' ? 'status-solved' : (q.status === 'error' ? 'status-unsolved' : (q.status === 'wrong' ? 'status-wrong' : 'status-unsolved'));
-        let statusText = q.status === 'solved' ? 'Resolved' : (q.status === 'error' ? 'Flawed' : (q.status === 'wrong' ? 'Wrong' : 'Unexecuted'));
+        let statusText = q.status === 'solved' ? 'Clutched' : (q.status === 'error' ? 'Fumbled' : (q.status === 'wrong' ? 'Wrong' : 'Untouched'));
         let timeDisplay = q.timeTaken ? `<div style="font-size:12px; color:#8a8ad3; margin-top:4px;">⏱ ${Math.floor(q.timeTaken / 60)}:${(q.timeTaken % 60).toString().padStart(2, '0')}</div>` : '';
 
         let imgHtml = '';
@@ -1830,18 +1830,18 @@ export function showQuestionList() {
         } else if (q.driveImageId) {
             imgHtml = `<img data-drive-id="${q.driveImageId}" data-qid="${q.id}" class="lazy-practice-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Waiting for scroll...</text></svg>" style="max-width:100%; border-radius:8px; transition: opacity 0.3s;">`;
         } else {
-            imgHtml = `<div style="padding:20px; font-size:12px; color:var(--text-muted); text-align:center;">No visual asset mapped</div>`;
+            imgHtml = `<div style="padding:20px; font-size:12px; color:var(--text-muted); text-align:center;">No visual asset mapped. Input feed is completely blind here.</div>`;
         }
 
         let card = document.createElement('div');
         card.className = 'question-card';
         card.innerHTML = `
-            <div class="card-close-btn" onclick="event.stopPropagation(); deleteQuestion('${q.id}')" title="Delete Question" style="position: absolute; top: 12px; right: 36px; cursor: pointer; font-size: 22px; color: #4a4a6a; z-index: 5; line-height: 0.8;">×</div>
+            <div class="card-close-btn" onclick="event.stopPropagation(); deleteQuestion('${q.id}')" title="Yeet Question" style="position: absolute; top: 12px; right: 36px; cursor: pointer; font-size: 22px; color: #4a4a6a; z-index: 5; line-height: 0.8;">×</div>
             <div class="three-dot" onclick="event.stopPropagation(); openEditQuestionModal('${q.id}')">⋮</div>
             <div style="display:flex; justify-content:space-between;"><strong>Q ${idx + 1}</strong><span class="status-badge ${statusClass}">${statusText}</span></div>
             <div class="question-preview-text">${imgHtml}</div>
             ${timeDisplay}
-            <button class="btn btn-primary practice-single-btn" data-index="${idx}" style="width:100%; margin-top:12px;">Practice →</button>
+            <button class="btn btn-primary practice-single-btn" data-index="${idx}" style="width:100%; margin-top:12px;">Grind →</button>
         `;
         container.appendChild(card);
     });
@@ -1940,7 +1940,7 @@ export function startPracticeWithQuestion(questions, index) {
     renderPracticeQuestionModal();
     openModal('practice-modal');
     AppState.photoHidden = false;
-    document.getElementById('hide-photo-toggle').textContent = '📷 Occult Bounded Visual';
+    document.getElementById('hide-photo-toggle').textContent = '📷 Hide Image';
 }
 
 // ==================== BOUNTY HUNT ====================
@@ -2013,7 +2013,7 @@ export function tryAssignDailyBounty(questionId) {
     renderPracticeQuestionModal();
     openModal('practice-modal');
     AppState.photoHidden = false;
-    document.getElementById('hide-photo-toggle').textContent = '📷 Occult Bounded Visual';
+    document.getElementById('hide-photo-toggle').textContent = '📷 Hide Image';
     closeModalStr('bounty-modal');
 }
 
@@ -2063,7 +2063,7 @@ export function evaluateBountyOutcome(wasCorrect) {
         AppState.bounty.payoffCount = 3;
         AppState.practiceCorrectStreak = Math.max(AppState.practiceCorrectStreak, 5);
         updateStreakVisualizer();
-        alert('🔥 Bounty won! Next 3 questions are guaranteed critical hits.\nYour fire is now purple!');
+        alert('🔥 CLUTCHED! Bounty absolutely demolished. Multiplier active. You are literally glowing purple.');
     } else {
         q.bountyLockUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         q.criticalDeficit = true;
@@ -2076,7 +2076,7 @@ export function evaluateBountyOutcome(wasCorrect) {
         saveTargets();
         updateUI();
 
-        alert('❌ Bounty failed. Problem locked for 24h and daily target increased by 5.');
+        alert('❌ COOKED. Bounty timed out. Problem locked out and targets artificially amplified as a tax on failure.');
     }
 
     AppState.bounty.done = true;
@@ -2130,7 +2130,7 @@ export function startBountySessionFromModal() {
     renderPracticeQuestionModal();
     openModal('practice-modal');
     AppState.photoHidden = false;
-    document.getElementById('hide-photo-toggle').textContent = '📷 Occult Bounded Visual';
+    document.getElementById('hide-photo-toggle').textContent = '📷 Hide Image';
     closeModalStr('bounty-modal');
 }
 
@@ -2144,7 +2144,7 @@ export function updatePracticeTimerDisplay() {
 export function toggleOriginalPhoto() {
     AppState.photoHidden = !AppState.photoHidden;
     document.getElementById('hide-photo-toggle').textContent = AppState.photoHidden ?
-        '📷 Reveal Bounded Visual' : '📷 Occult Bounded Visual';
+        '📷 Reveal Image' : '📷 Hide Image';
     renderPracticeQuestionModal();
 }
 
@@ -2159,7 +2159,7 @@ export function renderPracticeQuestionModal() {
         if (AppState.currentQ.imageDataUrl) {
             questionImageHtml = `<img id="practice-modal-img" src="${AppState.currentQ.imageDataUrl}" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:250px; border-radius:16px; margin-bottom:16px; transition: opacity 0.3s; cursor: pointer;">`;
         } else if (AppState.currentQ.driveImageId && typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {
-            questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Downloading Asset...</text></svg>" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:250px; border-radius:16px; margin-bottom:16px; cursor: pointer;">`;
+            questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading asset...</text></svg>" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:250px; border-radius:16px; margin-bottom:16px; cursor: pointer;">`;
             fetchMediaFromDrive(AppState.currentQ.driveImageId, AppState.driveAccessToken).then(b64 => {
                 if (b64) {
                     AppState.currentQ.imageDataUrl = b64;
@@ -2170,7 +2170,7 @@ export function renderPracticeQuestionModal() {
         }
     }
     let diagramHtml = AppState.currentQ.diagramImageUrl ?
-        `<div><div class="diagram-hint">📐 Structural Appendix:</div><img src="${AppState.currentQ.diagramImageUrl}" style="max-width:100%; max-height:200px; border-radius:12px;"></div>` :
+        `<div><div class="diagram-hint">📐 Diagram:</div><img src="${AppState.currentQ.diagramImageUrl}" style="max-width:100%; max-height:200px; border-radius:12px;"></div>` :
         '';
     let html =
         `<div style="text-align:center;">${questionImageHtml}${diagramHtml}`;
@@ -2181,14 +2181,14 @@ export function renderPracticeQuestionModal() {
         const correctAns = AppState.currentQ.correctAnswer || 'N/A';
         html += `<div style="display:flex; justify-content:space-between; align-items:center;">`;
         if (AppState.currentQ.status === 'solved') html +=
-            `<div class="result-banner correct" style="flex:1;">✅ Correct! Answer: ${correctAns}</div>`;
+            `<div class="result-banner correct" style="flex:1;">✅ Clutched! The answer was: ${correctAns}</div>`;
         else if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') html +=
-            `<div class="result-banner wrong" style="flex:1;">❌ Wrong! Correct answer: ${correctAns}</div>`;
+            `<div class="result-banner wrong" style="flex:1;">❌ Fumbled. The answer was: ${correctAns}</div>`;
         else html +=
-            `<div class="result-banner wrong" style="flex:1;">Answer shown. Correct answer: ${correctAns}</div>`;
+            `<div class="result-banner wrong" style="flex:1;">Answer revealed. It was: ${correctAns}</div>`;
         if (AppState.currentQ.solution && AppState.currentQ.solution.trim().length > 0) {
             html +=
-                `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">💡 View Solution</button>`;
+                `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">💡 Peep Solution</button>`;
         }
         html += `</div></div>`;
         container.innerHTML = html;
@@ -2207,7 +2207,7 @@ export function renderPracticeQuestionModal() {
 
     if (AppState.currentQ.type === 'mcq' && AppState.currentQ.options.length) {
         const isMulti = Array.isArray(AppState.currentQ.correctAnswer);
-        html += `<div style="margin-top:16px;"><strong>${isMulti ? 'Select all that apply' : 'Select your answer'}:</strong><br>`;
+        html += `<div style="margin-top:16px;"><strong>${isMulti ? 'Pick all that hit' : 'Lock in your answer'}:</strong><br>`;
         AppState.currentQ.options.forEach(opt => {
             html += `<div class="mcq-option ${isMulti ? 'multi-option' : ''}"
                           data-option="${escapeAttribute(opt)}">
@@ -2216,18 +2216,18 @@ export function renderPracticeQuestionModal() {
         });
         html += `</div>`;
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
-        document.getElementById('practice-submit-btn').innerText = 'Submit Answer';
+        document.getElementById('practice-submit-btn').innerText = 'Lock In Answer';
 
     } else if (AppState.currentQ.type === 'numeric') {
         html +=
             `<div class="input-group" style="margin-top:16px;"><label>Numeric answer:</label><input type="number" step="any" id="numeric-answer-input" class="pomo-input" placeholder="0.00"></div>`;
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
-        document.getElementById('practice-submit-btn').innerText = 'Submit Answer';
+        document.getElementById('practice-submit-btn').innerText = 'Lock In Answer';
     } else {
         html +=
-            `<p style="margin-top:16px; color:#cbd5e1;">This is a text‑based question.</p>`;
+            `<p style="margin-top:16px; color:#cbd5e1;">This is a free-response question. No multiple choice here.</p>`;
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
-        document.getElementById('practice-submit-btn').innerText = 'Show Answer';
+        document.getElementById('practice-submit-btn').innerText = 'Reveal Answer';
     }
     html += `</div>`;
     container.innerHTML = html;
@@ -2332,12 +2332,12 @@ const ELO_SUBJECT_BASELINES = {
 
 // Strict competitive rank brackets
 const ELO_RANK_TIERS = [
-    { min: 0,    max: 1199,      name: 'Tactical Baseline',    icon: '⚙️' },
-    { min: 1200, max: 1599,      name: 'Analytical Tier',      icon: '⚔️' },
-    { min: 1600, max: 1999,      name: 'Advanced Core',        icon: '🛡️' },
-    { min: 2000, max: 2399,      name: 'Elite Master',         icon: '🔮' },
-    { min: 2400, max: 2799,      name: 'Grandmaster Core',     icon: '👑' },
-    { min: 2800, max: Infinity,  name: 'Immortal Advanced',    icon: '🌌' },
+    { min: 0,    max: 1199,      name: 'NPC',                  icon: '🧍' },
+    { min: 1200, max: 1599,      name: 'Skill Issue',          icon: '💀' },
+    { min: 1600, max: 1999,      name: 'Cooking',              icon: '🍳' },
+    { min: 2000, max: 2399,      name: 'Let Him Cook',         icon: '👨‍🍳' },
+    { min: 2400, max: 2799,      name: 'Diffed the Exam',      icon: '💀' },
+    { min: 2800, max: Infinity,  name: 'Unhinged Gigachad',    icon: '🗿' },
 ];
 
 /**
@@ -2542,6 +2542,22 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         rawDelta = K_system * omegaLoss * (0 - E_score);
     }
 
+    // ── Re-solve Decay: Questions from the Error Vault that have already been
+    // seen (have an errorReason and a firstAttemptResult) generate significantly
+    // less ELO on re-solve. The logic: you already know the solution, so
+    // correctly re-solving it doesn't prove raw problem-solving ability — it
+    // proves memory retention, which is valuable but NOT the same as solving
+    // a cold question you've never seen. Wrong answers on re-solves still
+    // hurt normally (you had the solution and STILL got it wrong = massive loss).
+    let reSolveMultiplier = 1.0;
+    if (questionObj && questionObj.errorReason && questionObj.firstAttemptResult) {
+        // This question has been attempted before AND has a logged result.
+        // Correct re-solves give only 25% of the normal delta.
+        // Wrong re-solves still hurt at 100% (you saw the solution and blew it).
+        reSolveMultiplier = (S === 1) ? 0.25 : 1.0;
+    }
+    rawDelta *= reSolveMultiplier;
+
     // ── Asymmetric Rating Disparity Filter ──
     // Prevents an advanced rating from point-farming elementary lower-tier content.
     const ratingSpread = E_s - Q_Elo;
@@ -2653,7 +2669,7 @@ function _renderSubjectEloMonitor(subject, elo) {
             `${Math.round(elo)} ${tier.name} · ${pointsAway} pts to ${nextName}`);
     } else {
         monitor.setAttribute('data-tooltip',
-            `${Math.round(elo)} ${tier.name} · Peak tier reached`);
+            `${Math.round(elo)} ${tier.name} · Peak tier hit`);
     }
 }
 
@@ -2697,7 +2713,7 @@ function _applyDeficitLockdown(eP, eC, eM) {
         } else {
             const catText = document.getElementById('cat-text');
             if (catText) {
-                catText.textContent = '🚨 PROFILE IMBALANCE DETECTED: Systemic structural variance. Target role constraints locked until baseline symmetry is re-established.';
+                catText.textContent = '🚨 OVER-SPECIALIZATION DETECTED: You are building a lopsided build. Balance your subject ratings immediately or face total doom.';
                 catText.className = 'cat-text glow-red';
             }
         }
@@ -2724,29 +2740,103 @@ function renderEloMatrix() {
     _applyDeficitLockdown(eP, eC, eM);
 }
 
+// ── One-time CSS injection for ELO shift chips (content + header) ──
+(function _injectEloShiftChipStyles() {
+    if (document.getElementById('elo-shift-chip-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'elo-shift-chip-styles';
+    style.textContent = `
+        .elo-shift-chip {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 8px 16px; border-radius: 10px; margin-top: 12px;
+            font-family: 'Space Grotesk', monospace; font-size: 14px;
+            font-weight: 700; animation: eloChipPop 0.4s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        .elo-shift-chip.elo-up {
+            background: rgba(34,197,94,0.15); color: #4ade80;
+            border: 1px solid rgba(34,197,94,0.3);
+        }
+        .elo-shift-chip.elo-down {
+            background: rgba(248,113,113,0.15); color: #f87171;
+            border: 1px solid rgba(248,113,113,0.3);
+        }
+        .elo-shift-chip .elo-shift-delta { font-size: 18px; }
+        .elo-shift-chip .elo-shift-label { opacity: 0.8; font-size: 12px; }
+        .elo-shift-chip .elo-shift-tier { opacity: 0.7; font-size: 12px; }
+        .elo-header-slot {
+            display: flex; align-items: center; min-width: 0;
+        }
+        .elo-header-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 10px; border-radius: 8px;
+            font-family: 'Space Grotesk', monospace; font-size: 13px;
+            font-weight: 700; white-space: nowrap;
+            animation: eloChipPop 0.4s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        .elo-header-chip.elo-up {
+            background: rgba(34,197,94,0.18); color: #4ade80;
+            border: 1px solid rgba(34,197,94,0.35);
+            box-shadow: 0 0 12px rgba(34,197,94,0.25);
+        }
+        .elo-header-chip.elo-down {
+            background: rgba(248,113,113,0.18); color: #f87171;
+            border: 1px solid rgba(248,113,113,0.35);
+            box-shadow: 0 0 12px rgba(248,113,113,0.25);
+        }
+        .elo-header-chip .elo-shift-delta { font-size: 15px; }
+        .elo-header-chip .elo-shift-tier { opacity: 0.75; font-size: 11px; }
+        @keyframes eloChipPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            60% { transform: scale(1.15); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
 /**
- * Inject an animated Elo shift chip into the practice results banner.
+ * Inject an animated Elo shift chip into the practice results banner
+ * AND the practice header bar (next to streak visualizer).
  * Fires burstEmojis() + playSuperSound() when a ranking tier transition
  * occurs during this practice frame.
  */
 function injectEloShiftChip(eloResult) {
     if (!eloResult) return;
-    const container = document.getElementById('practice-modal-content');
-    if (!container) return;
     const delta = eloResult.deltaSubject || 0;
     const sign = delta >= 0 ? '+' : '';
     const tier = getRankTierDetails(eloResult.newSubjectElo);
     const subjLabel = eloResult.subject.charAt(0).toUpperCase() + eloResult.subject.slice(1);
 
-    const chip = document.createElement('div');
-    chip.className = 'elo-shift-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
-    chip.innerHTML =
-        `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
-        `<span class="elo-shift-label">${subjLabel} Elo</span>` +
-        `<span class="elo-shift-tier">[${tier.name}]</span>`;
-    container.appendChild(chip);
-    // Auto-remove after the animation completes.
-    setTimeout(() => { if (chip && chip.parentNode) chip.parentNode.removeChild(chip); }, 4200);
+    // ── Chip in the practice modal content (original location) ──
+    const container = document.getElementById('practice-modal-content');
+    if (container) {
+        const chip = document.createElement('div');
+        chip.className = 'elo-shift-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
+        chip.innerHTML =
+            `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
+            `<span class="elo-shift-label">${subjLabel} Elo</span>` +
+            `<span class="elo-shift-tier">[${tier.name}]</span>`;
+        container.appendChild(chip);
+        // Auto-remove after the animation completes.
+        setTimeout(() => { if (chip && chip.parentNode) chip.parentNode.removeChild(chip); }, 4200);
+    }
+
+    // ── Chip in the practice header bar (dedicated slot next to streak) ──
+    // This is the prominent feedback the user sees front-and-center.
+    // Supports both the main practice modal and the SR drawer.
+    const headerSlot = document.getElementById('elo-header-slot')
+                   || document.getElementById('sr-elo-header-slot');
+    if (headerSlot) {
+        headerSlot.innerHTML = '';
+        const headerChip = document.createElement('div');
+        headerChip.className = 'elo-header-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
+        headerChip.innerHTML =
+            `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
+            `<span class="elo-shift-tier">[${tier.name}]</span>`;
+        headerSlot.appendChild(headerChip);
+        // Auto-remove after the animation completes.
+        setTimeout(() => { headerSlot.innerHTML = ''; }, 4200);
+    }
 
     // Tier transition celebration — cascading emoji burst + synth fanfare.
     if (eloResult.tierChanged) {
@@ -2809,7 +2899,7 @@ export function practiceSubmit() {
             ).map(el => el.dataset.option);
 
             if (selectedOptions.length === 0) {
-                alert("Please select at least one option.");
+                alert("Pick at least one option. You can't skip this.");
                 return;
             }
 
@@ -2830,13 +2920,13 @@ export function practiceSubmit() {
 
         } else {
             if (!AppState.selectedMcq) {
-                alert("Please select an option.");
+                alert("Select an answer. No cop-outs.");
                 return;
             }
 
             const optIndex = AppState.currentQ.options.indexOf(AppState.selectedMcq);
             if (optIndex === -1) {
-                alert("Invalid selection.");
+                alert("That's not a valid pick. Try again.");
                 return;
             }
 
@@ -2847,7 +2937,7 @@ export function practiceSubmit() {
     } else if (AppState.currentQ.type === 'numeric') {
         const numVal = document.getElementById('numeric-answer-input')?.value;
         if (numVal === undefined || numVal === "") {
-            alert("Enter a numeric answer.");
+            alert("Type a number. This ain't multiple choice.");
             return;
         }
         userAns = parseFloat(numVal).toString();
@@ -2856,9 +2946,15 @@ export function practiceSubmit() {
         isCorrect = Math.abs(userNum - correctNum) < 1e-6;
 
     } else if (AppState.currentQ.type === 'text') {
-        alert(`Correct answer: ${AppState.currentQ.correctAnswer || 'No answer provided'}`);
+        alert(`The answer was: ${AppState.currentQ.correctAnswer || 'not provided'}`);
+        // ⏱ Freeze the timer NOW — the time spent deciding correct/wrong after
+        // seeing the answer should NOT inflate the ELO temporal divergence calc.
+        // Store the frozen seconds so the self-report ELO migration uses this
+        // value instead of the still-ticking practiceSeconds.
+        AppState._frozenTextQSeconds = AppState.practiceSeconds;
+        if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
         AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
-        AppState.currentQ.timeTaken = AppState.practiceSeconds;
+        AppState.currentQ.timeTaken = AppState._frozenTextQSeconds;
         AppState.currentQ.status = 'unsolved';
         // ⏱ Converge practice time into the daily/subjective study counters.
         // Runs exactly once — the flag above is already true, so the guard at
@@ -2932,7 +3028,7 @@ export function practiceSubmit() {
             if (cont) {
                 const btn = document.createElement('button');
                 btn.className = 'btn btn-danger';
-                btn.innerText = 'Log to Error Matrix';
+                btn.innerText = 'Send to the Vault (Log Error)';
                 btn.style.marginTop = '12px';
                 btn.onclick = () => {
                     AppState.pendingWrongQ = AppState.currentQ;
@@ -2950,8 +3046,8 @@ export function addTextQuestionFollowUp() {
     const btnContainer = document.createElement('div');
     btnContainer.style.cssText = "display:flex; gap:12px; margin-top:12px; align-items:center; justify-content:center; flex-wrap:nowrap;";
     btnContainer.innerHTML =
-        `<button class="btn btn-success" id="text-correct-btn" style="flex:1; max-width:160px;">I was correct</button>
-         <button class="btn btn-danger" id="text-wrong-btn" style="flex:1; max-width:160px;">I was wrong</button>`;
+        `<button class="btn btn-success" id="text-correct-btn" style="flex:1; max-width:160px;">Clean Lock ✅</button>
+         <button class="btn btn-danger" id="text-wrong-btn" style="flex:1; max-width:160px;">Skill Issue ❌</button>`;
     container.appendChild(btnContainer);
 
     document.getElementById('text-correct-btn').onclick = () => {
@@ -2964,7 +3060,7 @@ export function addTextQuestionFollowUp() {
         try {
             _eloRes = calculateEloMigration(
                 AppState.currentQ.subject,
-                AppState.practiceSeconds,
+                AppState._frozenTextQSeconds || AppState.practiceSeconds,
                 1,
                 _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
                 AppState.currentQ
@@ -2981,7 +3077,7 @@ export function addTextQuestionFollowUp() {
         btnContainer.remove();
         const banner = document.createElement('div');
         banner.className = 'result-banner correct';
-        banner.innerText = 'Marked as correct.';
+        banner.innerText = 'Clean lock. Marked correct.';
         container.appendChild(banner);
         if (_eloRes) { try { injectEloShiftChip(_eloRes); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
@@ -2997,7 +3093,7 @@ export function addTextQuestionFollowUp() {
         try {
             _eloRes = calculateEloMigration(
                 AppState.currentQ.subject,
-                AppState.practiceSeconds,
+                AppState._frozenTextQSeconds || AppState.practiceSeconds,
                 0,
                 _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
                 AppState.currentQ
@@ -3011,13 +3107,13 @@ export function addTextQuestionFollowUp() {
         btnContainer.remove();
         const banner = document.createElement('div');
         banner.className = 'result-banner wrong';
-        banner.innerText = 'Marked as wrong.';
+        banner.innerText = 'Skill issue. Marked wrong.';
         container.appendChild(banner);
         if (_eloRes) { try { injectEloShiftChip(_eloRes); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
         const logBtn = document.createElement('button');
         logBtn.className = 'btn btn-danger';
-        logBtn.innerText = 'Log to Error Matrix';
+        logBtn.innerText = 'Send to the Vault (Log Error)';
         logBtn.style.marginTop = '8px';
         logBtn.onclick = () => {
             AppState.pendingWrongQ = AppState.currentQ;
@@ -3046,7 +3142,7 @@ export function confirmErrorLog() {
     AppState.pendingWrongQ.status = 'error';
     AppState.pendingWrongQ.errorReason = reason;
     saveAllAsync().catch(console.error);
-    alert("Logged to Error Matrix.");
+    alert("Logged to the Vault. Error archived.");
     closeModalStr('error-reason-modal');
     renderErrorMatrixFromBank();
     renderPracticeQuestionModal();
@@ -3061,7 +3157,7 @@ export function practiceNext() {
     } else {
         clearInterval(AppState.practiceTimer);
         closePracticeModal();
-        alert("All questions completed!");
+        alert("Queue completely cleared! Flawless run. Take a breath, then load up the next block.");
         showQuestionList();
     }
 }
@@ -3084,7 +3180,7 @@ export function closePracticeModal() {
 }
 
 export async function deleteQuestion(id) {
-    if (confirm("Permanently delete this question from your local database and Google Drive cloud storage?")) {
+    if (confirm("Permanently yeet this question from local AND cloud storage? Gone forever. No undo.")) {
         let targetQ = AppState.questionBank.find(q => q.id.toString() === id.toString());
 
         if (targetQ && typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {
@@ -3124,7 +3220,7 @@ export function toggleImmersive() {
     document.body.classList.toggle('immersive-active');
     const btn = document.getElementById('immersive-focus-btn');
     if (btn) {
-        btn.textContent = document.body.classList.contains('immersive-active') ? '🔲 Exit' : '🕶 Immersive';
+        btn.textContent = document.body.classList.contains('immersive-active') ? '🔲 Exit' : '🕶 Lock In';
     }
 }
 
@@ -4899,7 +4995,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
             dropdown.appendChild(sw);
         });
         const plus = el('div', {
-            class: 'sp-sw sp-plus', role: 'button', tabindex: '0', title: 'More colors',
+            class: 'sp-sw sp-plus', role: 'button', tabindex: '0', title: 'More vibes',
             style: {
                 width: '34px', height: '34px', borderRadius: '50%',
                 background: 'rgba(255,255,255,0.06)',
@@ -4963,7 +5059,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
                 onclick: function () { applyColor(c); },
             });
             const x = el('div', {
-                class: 'sp-qx', role: 'button', tabindex: '0', title: 'Remove from quick colors',
+                class: 'sp-qx', role: 'button', tabindex: '0', title: 'Yeet from quick colors',
                 style: {
                     position: 'absolute', top: '-5px', right: '-5px',
                     width: '16px', height: '16px', borderRadius: '50%',
@@ -5089,7 +5185,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         });
 
         pencilBtn = el('div', {
-            class: 'sp-btn', role: 'button', tabindex: '0', title: 'Toggle scratchpad',
+            class: 'sp-btn', role: 'button', tabindex: '0', title: 'Toggle doodle pad',
             style: {
                 width: '42px', height: '42px', borderRadius: '12px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5106,7 +5202,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         });
 
         colorBtn = el('div', {
-            class: 'sp-btn', role: 'button', tabindex: '0', title: 'Pick color',
+            class: 'sp-btn', role: 'button', tabindex: '0', title: 'Grab color',
             style: {
                 width: '42px', height: '42px', borderRadius: '50%', cursor: 'pointer',
                 border: '2px solid rgba(255,255,255,0.22)',
@@ -5128,7 +5224,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         });
 
         clearBtn = el('div', {
-            class: 'sp-btn', role: 'button', tabindex: '0', title: 'Clear canvas',
+            class: 'sp-btn', role: 'button', tabindex: '0', title: 'Nuke canvas',
             style: {
                 width: '42px', height: '42px', borderRadius: '12px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5185,7 +5281,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         });
 
         const header = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } });
-        header.appendChild(el('div', { style: { fontWeight: '600', fontSize: '14px', color: '#f1f5f9' } }, ['Pick a color']));
+        header.appendChild(el('div', { style: { fontWeight: '600', fontSize: '14px', color: '#f1f5f9' } }, ['Pick your vibe']));
         const closeBtn = el('div', {
             role: 'button', tabindex: '0', title: 'Close',
             style: {
@@ -5200,7 +5296,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
 
         const mainRow = el('div', { style: { display: 'flex', gap: '12px', alignItems: 'center', position: 'relative' } });
         bigSwatch = el('div', {
-            class: 'sp-big', role: 'button', tabindex: '0', title: 'Open system color picker',
+            class: 'sp-big', role: 'button', tabindex: '0', title: 'Full color picker',
             style: {
                 width: '56px', height: '56px', borderRadius: '12px', cursor: 'pointer',
                 border: '1px solid rgba(255,255,255,0.15)',
@@ -5216,7 +5312,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
 
         const hexBox = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px', flex: '1' } });
         hexInput = el('input', {
-            type: 'text', maxlength: '7', spellcheck: 'false', title: 'Hex color',
+            type: 'text', maxlength: '7', spellcheck: 'false', title: 'Hex code',
             style: {
                 width: '100%', background: 'rgba(255,255,255,0.06)',
                 border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px',
@@ -5246,16 +5342,16 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         paletteBox.appendChild(el('div', { style: { height: '1px', background: 'rgba(255,255,255,0.08)' } }));
 
         const qmHeader = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } });
-        qmHeader.appendChild(el('div', { style: { fontSize: '12px', color: '#94a3b8', fontWeight: '500' } }, ['Quick colors']));
+        qmHeader.appendChild(el('div', { style: { fontSize: '12px', color: '#94a3b8', fontWeight: '500' } }, ['Stash Colors']));
         addBtn = el('div', {
-            role: 'button', tabindex: '0', title: 'Add current color to quick colors',
+            role: 'button', tabindex: '0', title: 'Stash this color',
             style: {
                 display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px',
                 color: '#e5e7eb', background: 'rgba(255,255,255,0.08)',
                 padding: '5px 10px', borderRadius: '8px', cursor: 'pointer',
                 transition: 'background 0.12s ease',
             },
-            html: '<span style="display:flex;align-items:center">' + ICON_PLUS + '</span> Add current',
+            html: '<span style="display:flex;align-items:center">' + ICON_PLUS + '</span> Stash it',
             onclick: addQuick,
         });
         addBtn.addEventListener('pointerenter', function () { addBtn.style.background = 'rgba(255,255,255,0.16)'; });
@@ -5266,7 +5362,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         quickManageRow = el('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap', minHeight: '36px' } });
         paletteBox.appendChild(quickManageRow);
 
-        paletteBox.appendChild(el('div', { style: { fontSize: '11px', color: '#475569' } }, ['Up to 8 quick colors · tap × to remove · changes are saved automatically']));
+        paletteBox.appendChild(el('div', { style: { fontSize: '11px', color: '#475569' } }, ['Up to 8 stashed colors · tap × to yeet · auto-saved']));
 
         paletteOverlay.appendChild(paletteBox);
         document.body.appendChild(paletteOverlay);
