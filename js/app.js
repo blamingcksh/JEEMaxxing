@@ -1792,14 +1792,18 @@ export function showQuestionList() {
     // NOT change the accuracy — only the first attempt counts. The first-attempt
     // result is locked in `q.firstAttemptResult` on the very first practice; if
     // that field is missing we derive it from the earliest historyLog.
-    const firstAttempted = filteredQuestions.filter(q => {
+   // ── Accuracy is based on the FIRST attempt of each question ONLY.
+    // FIX: Use chapterQuestions so filtering cards doesn't break global chapter metrics
+    const firstAttempted = chapterQuestions.filter(q => {
         const r = _firstAttemptResult(q);
         return r === 'correct' || r === 'incorrect';
     });
     const firstCorrect = firstAttempted.filter(q => _firstAttemptResult(q) === 'correct').length;
     const accuracy = firstAttempted.length > 0 ? Math.round((firstCorrect / firstAttempted.length) * 100) : 0;
+    
     // Average time is averaged only over questions that actually logged a time.
-    const timedQuestions = filteredQuestions.filter(q => q.timeTaken > 0);
+    // FIX: Use chapterQuestions here as well to preserve the macro chapter velocity average
+    const timedQuestions = chapterQuestions.filter(q => q.timeTaken > 0);
     const avgTime = timedQuestions.length > 0 ? Math.round(timedQuestions.reduce((sum, q) => sum + (q.timeTaken || 0), 0) / timedQuestions.length) : 0;
 
     const statsRow = document.getElementById('stats-row');
@@ -3082,7 +3086,7 @@ function injectEloShiftChip(eloResult) {
     }
 
     // Tier transition celebration — cascading emoji burst + synth fanfare.
-    if (eloResult.tierChanged) {
+    if (eloResult.tierChanged && delta > 0) {
         try {
             let originX = window.innerWidth / 2;
             let originY = window.innerHeight / 2;
@@ -3289,7 +3293,7 @@ export function addTextQuestionFollowUp() {
     const btnContainer = document.createElement('div');
     btnContainer.style.cssText = "display:flex; gap:12px; margin-top:12px; align-items:center; justify-content:center; flex-wrap:nowrap;";
     btnContainer.innerHTML =
-        `<button class="btn btn-success" id="text-correct-btn" style="flex:1; max-width:160px;">Clean Lock ✅</button>
+        `<button class="btn btn-success" id="text-correct-btn" style="flex:1; max-width:170px;">Clean Lock ✅</button>
          <button class="btn btn-danger" id="text-wrong-btn" style="flex:1; max-width:160px;">Skill Issue ❌</button>`;
     container.appendChild(btnContainer);
 
@@ -3396,9 +3400,22 @@ export function practiceNext() {
         AppState.currentPracticeIndex++;
         AppState.practiceSeconds = 0;
         updatePracticeTimerDisplay();
+        
+        // FIX: Re-initialize the background interval loop if it was killed by a text question reveal
+        if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+        if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) {
+            AppState.practiceTimer = setInterval(() => {
+                AppState.practiceSeconds++;
+                updatePracticeTimerDisplay();
+            }, 1000);
+        } else {
+            AppState.practiceTimer = null;
+        }
+
         renderPracticeQuestionModal();
     } else {
-        clearInterval(AppState.practiceTimer);
+        if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+        AppState.practiceTimer = null;
         closePracticeModal();
         alert("Queue completely cleared! Flawless run. Take a breath, then load up the next block.");
         showQuestionList();
@@ -3410,6 +3427,18 @@ export function practicePrev() {
         AppState.currentPracticeIndex--;
         AppState.practiceSeconds = 0;
         updatePracticeTimerDisplay();
+
+        // FIX: Re-initialize the background interval loop if it was killed by a text question reveal
+        if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+        if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) {
+            AppState.practiceTimer = setInterval(() => {
+                AppState.practiceSeconds++;
+                updatePracticeTimerDisplay();
+            }, 1000);
+        } else {
+            AppState.practiceTimer = null;
+        }
+
         renderPracticeQuestionModal();
     }
 }
