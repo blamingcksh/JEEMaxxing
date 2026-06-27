@@ -2277,6 +2277,19 @@ function _injectPracticeTimeIntoStudySecs() {
         // finalised (flag already flipped to true by the caller).
         if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return;
 
+        // ⚡ FIX: Detect if Pomodoro or the main countdown timer is already incrementing studySecs live
+        const pomoActive = document.body.classList.contains('pomo-active') ||
+            document.body.classList.contains('timer-running') ||
+            (typeof window._pomoRunning === 'boolean' && window._pomoRunning);
+
+        if (pomoActive) {
+            // The time spent on this question has already been tracked second-by-second by pomodoro.js.
+            // Bypassing mutation to prevent double-counting. Just refresh layout and save.
+            if (typeof updateStudyTimeHeader === 'function') updateStudyTimeHeader();
+            saveAllAsync().catch(console.error);
+            return;
+        }
+
         const subject = AppState.currentQ.subject;
 
         // ── Defensive subject key normalization (same pattern as matrix.js) ──
