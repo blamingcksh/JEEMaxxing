@@ -484,6 +484,19 @@ function _scanCatBannerVulnerabilities() {
         const catText = document.getElementById('cat-text');
         if (!catText) return;
 
+        // ── Cognitive MMR Deficit Lockdown takes absolute priority over the
+        // normal telemetry rotation. While the profile symmetry ratio is
+        // below 0.65, every tick renders the imbalance warning so it
+        // persists instead of being overwritten by the progress view. ──
+        if (window._eloDeficitActive === true) {
+            _renderCatText(
+                '🚨 PROFILE IMBALANCE DETECTED: Systemic structural variance. Target role constraints locked until baseline symmetry is re-established.',
+                'glow-red'
+            );
+            showVulnerability = !showVulnerability;
+            return;
+        }
+
         if (showVulnerability) {
             // Tick B: evaluate vulnerabilities dynamically on this tick.
             const vuln = _scanCatBannerVulnerabilities();
@@ -554,6 +567,11 @@ export async function updateUI() {
         varEl.textContent = (variance > 0 ? "+" : "") + variance.toFixed(1) + "%";
         varEl.style.color = variance >= 0 ? 'var(--glow-green)' : 'var(--glow-red)';
     }
+
+    // ── Cognitive MMR Matrix hydration (global profile row + subject
+    // monitors + deficit lockdown protocol). Runs on every updateUI tick so
+    // the dashboard always reflects the live rating state. ──
+    try { renderEloMatrix(); } catch (_) { /* never block updateUI */ }
 
     updateStreakDisplay();
 }
@@ -1277,7 +1295,12 @@ export function finishAllQuestions() {
                 correctAnswer: "",
                 type: "text",
                 timeTaken: 0,
-                solution: ""
+                solution: "",
+                // ── Cognitive MMR: seed the dynamic Implied Difficulty Rating
+                // (qElo). Defaults to the running chapter average Elo, or 1200
+                // if the chapter is clean. Re-affirmed at saveAllQuestions(). ──
+                qElo: _computeDefaultQEloForCurrentChapter(),
+                isAnomaly: false,
             });
         }
     });
@@ -1649,7 +1672,13 @@ export function saveAllQuestions() {
             status: 'unsolved',
             errorReason: null,
             timeTaken: 0,
-            solution: q.solution || ""
+            solution: q.solution || "",
+            // ── Cognitive MMR: carry over the seeded qElo from the crop
+            // pipeline, or recompute the chapter-average default if it was
+            // never set. isAnomaly starts false; the engine flags it if the
+            // qElo ever shoots >600 pts past the chapter baseline. ──
+            qElo: (typeof q.qElo === 'number' && isFinite(q.qElo)) ? q.qElo : _computeDefaultQEloForCurrentChapter(),
+            isAnomaly: false,
         };
         AppState.questionBank.push(newQ);
     }
@@ -2281,6 +2310,490 @@ function _injectPracticeTimeIntoStudySecs() {
     }
 }
 
+// ============================================================================
+// COGNITIVE MMR & ELO MATRIX ENGINE — HARDCORE ASYMMETRIC GRIND EDITION
+// ============================================================================
+// Subject-segregated, uncapped Cognitive Matchmaking Rating system. Runs
+// entirely without a pre-existing question-difficulty database by reverse-
+// engineering an "Implied Difficulty Rating" (IDR, stored as qElo) for every
+// question at runtime from user execution telemetry.
+//
+// Refactored with Asymmetric Antagonistic Scaling Curves to enforce a gritty,
+// low-yield MMO grind style that cushions falls at low levels and heavily
+// compresses gains while amplifying drop penalties at high rankings.
+// ============================================================================
+
+// Foundational K-factor baselines scaled down to enforce tight, micro-incremental progression
+const ELO_SUBJECT_BASELINES = {
+    physics:   { K: 12, defaultTime: 180 },
+    chemistry: { K: 12, defaultTime: 90  },
+    maths:     { K: 16, defaultTime: 240 },
+};
+
+// Strict competitive rank brackets
+const ELO_RANK_TIERS = [
+    { min: 0,    max: 1199,      name: 'Tactical Baseline',    icon: '⚙️' },
+    { min: 1200, max: 1599,      name: 'Analytical Tier',      icon: '⚔️' },
+    { min: 1600, max: 1999,      name: 'Advanced Core',        icon: '🛡️' },
+    { min: 2000, max: 2399,      name: 'Elite Master',         icon: '🔮' },
+    { min: 2400, max: 2799,      name: 'Grandmaster Core',     icon: '👑' },
+    { min: 2800, max: Infinity,  name: 'Immortal Advanced',    icon: '🌌' },
+];
+
+/**
+ * Parse any integer rating into its competitive skill tier.
+ */
+function getRankTierDetails(rating) {
+    const r = Math.max(0, Math.floor(Number(rating) || 0));
+    for (const t of ELO_RANK_TIERS) {
+        if (r >= t.min && r <= t.max) {
+            return { name: t.name, icon: t.icon, badge: `${t.icon} ${t.name}`, rating: r };
+        }
+    }
+    const top = ELO_RANK_TIERS[ELO_RANK_TIERS.length - 1];
+    return { name: top.name, icon: top.icon, badge: `${top.icon} ${top.name}`, rating: r };
+}
+
+/** Returns the lower bound of the tier immediately above the current rating. */
+function _getNextTierThreshold(rating) {
+    const r = Math.max(0, Math.floor(Number(rating) || 0));
+    for (let i = 0; i < ELO_RANK_TIERS.length; i++) {
+        const t = ELO_RANK_TIERS[i];
+        if (r >= t.min && r <= t.max) {
+            return i + 1 < ELO_RANK_TIERS.length ? (t.max + 1) : null;
+        }
+    }
+    return null;
+}
+
+/** Returns the human-readable name of the tier immediately above the rating. */
+function _getNextTierName(rating) {
+    const r = Math.max(0, Math.floor(Number(rating) || 0));
+    for (let i = 0; i < ELO_RANK_TIERS.length; i++) {
+        const t = ELO_RANK_TIERS[i];
+        if (r >= t.min && r <= t.max) {
+            return i + 1 < ELO_RANK_TIERS.length ? ELO_RANK_TIERS[i + 1].name : t.name;
+        }
+    }
+    return '';
+}
+
+/**
+ * Historical chapter average execution time (seconds).
+ */
+function _getChapterAvgTime(subject, chapter) {
+    const safeSubject = _normalizeSubjectKey(subject);
+    const baseline = ELO_SUBJECT_BASELINES[safeSubject];
+    if (!baseline) return 180;
+    const timed = AppState.questionBank.filter(q =>
+        q.subject === safeSubject && q.chapter === chapter &&
+        q.timeTaken > 0 && !q.isAnomaly
+    );
+    if (timed.length === 0) return baseline.defaultTime;
+    const sum = timed.reduce((acc, q) => acc + (q.timeTaken || 0), 0);
+    return sum / timed.length;
+}
+
+/**
+ * Running average qElo across a chapter's non-anomalous questions.
+ */
+function _getChapterAvgElo(subject, chapter) {
+    const safeSubject = _normalizeSubjectKey(subject);
+    const qs = AppState.questionBank.filter(q =>
+        q.subject === safeSubject && q.chapter === chapter && !q.isAnomaly
+    );
+    if (qs.length === 0) return 1200;
+    const sum = qs.reduce((acc, q) => acc + (q.qElo || 1200), 0);
+    return sum / qs.length;
+}
+
+/** Volume of unresolved friction items currently in the bank. */
+function _getActiveErrorBankCount() {
+    return AppState.questionBank.filter(q => q.status === 'error' || q.status === 'wrong').length;
+}
+
+/**
+ * Chapter stability health (0-100).
+ */
+function _getChapterHealth(subject, chapter) {
+    const safeSubject = _normalizeSubjectKey(subject);
+    const qs = AppState.questionBank.filter(q =>
+        q.subject === safeSubject && q.chapter === chapter &&
+        q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
+    );
+    if (qs.length === 0) return 50;
+    const avgEF = qs.reduce((s, q) => s + (q.easeFactor || 2.5), 0) / qs.length;
+    const overdue = qs.filter(q => getDueStatus(q).status === 'ready').length;
+    let health = ((avgEF - 1.3) / 1.7) * 100;
+    health = Math.max(10, Math.min(100, health));
+    health -= overdue * 15;
+    health = Math.max(10, Math.min(100, health));
+    return health;
+}
+
+/** Deep Work Block multiplier (μ_block). */
+function _getDeepWorkBlockMultiplier() {
+    if (window._eloDistractionFlag === true) return 0.75;
+    if (AppState.practiceTimer !== null) return 1.5;
+    const pomoActive = document.body.classList.contains('pomo-active') ||
+        document.body.classList.contains('timer-running') ||
+        (typeof window._pomoRunning === 'boolean' && window._pomoRunning);
+    if (pomoActive) return 1.5;
+    return 1.0;
+}
+
+/** Normalise subject aliases to canonical keys. */
+function _normalizeSubjectKey(subject) {
+    const raw = String(subject || '').trim().toLowerCase();
+    if (raw === 'math' || raw === 'mathematics') return 'maths';
+    return raw;
+}
+
+/** Consolidated Global Meta-MMR with non-linear p-norm harmonic mapping. */
+function _computeGlobalMetaMMR(eP, eC, eM) {
+    const clampPos = v => Math.max(1, Number(v) || 1);
+    const P = clampPos(eP), C = clampPos(eC), M = clampPos(eM);
+    const harm = Math.pow((P ** -2 + C ** -2 + M ** -2) / 3, -1 / 2);
+    const mean = (P + C + M) / 3;
+    const penalty = 0.15 * (Math.max(0, mean - P) + Math.max(0, mean - C) + Math.max(0, mean - M));
+    return Math.max(0, Math.round(harm - penalty));
+}
+
+/**
+ * THE CORE ELO MIGRATION ENGINE — HARDCORE ASYMMETRIC OVERHAUL
+ *
+ * Synchronous (execution-blocking). Computes structural modifications in-place.
+ */
+function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth, questionObj) {
+    const safeSubject = _normalizeSubjectKey(subject);
+    const base = ELO_SUBJECT_BASELINES[safeSubject];
+
+    const result = {
+        subject: safeSubject,
+        deltaSubject: 0,
+        deltaGlobal: 0,
+        oldSubjectElo: AppState.elo[safeSubject] || 1200,
+        newSubjectElo: AppState.elo[safeSubject] || 1200,
+        oldGlobalElo: AppState.elo.global || 1200,
+        newGlobalElo: AppState.elo.global || 1200,
+        oldQElo: (questionObj && typeof questionObj.qElo === 'number') ? questionObj.qElo : 1200,
+        newQElo: (questionObj && typeof questionObj.qElo === 'number') ? questionObj.qElo : 1200,
+        tierChanged: false,
+        oldTier: '',
+        newTier: '',
+        isAnomaly: false,
+    };
+    if (!base) return result;
+
+    // ── Step A: Temporal Divergence (τ) + Subject Behavioral Adjustments ──
+    const T_act = Math.max(0, Number(actualTime) || 0);
+    const T_avg = _getChapterAvgTime(safeSubject, questionObj ? questionObj.chapter : null);
+    const tauRaw = T_act / Math.max(1, T_avg);
+
+    let tau = tauRaw;
+    const S = (Number(scoreOutcome) === 1) ? 1 : 0;
+    let S_forPerf = S;
+
+    if (safeSubject === 'physics') {
+        tau = tauRaw * 0.85; // Calculation buffer window
+    } else if (safeSubject === 'chemistry') {
+        // Slow-but-correct answers downgrade the performance vector yield
+        if (tauRaw > 1.25 && S === 1) {
+            S_forPerf = Math.max(0.1, 1.0 - 0.4 * (tauRaw - 1.25));
+        }
+    }
+
+    const E_s = AppState.elo[safeSubject] || 1200;
+    const Q_Elo = (questionObj && typeof questionObj.qElo === 'number') ? questionObj.qElo : 1200;
+
+    // ── Step B: Implied Performance Rating (R_perf) ──
+    const tauSafe = Math.max(0.001, tau);
+    const R_perf = E_s + 400 * (
+        S_forPerf * Math.log(1 + tau) -
+        (1 - S_forPerf) * (1 / tauSafe)
+    );
+
+    // ── Step C: Expected Score Prediction (E_score) ──
+    const E_score = 1 / (1 + Math.pow(10, (Q_Elo - E_s) / 400));
+
+    // ── Step D: Adaptive K-Factor Multipliers (K_system) ──
+    let K_base = base.K;
+    if (E_s > 2000) {
+        const shield = (3000 - E_s) / 1000;
+        K_base = K_base * Math.max(0, shield); // High-tier soft wall
+    }
+    const mu_block = _getDeepWorkBlockMultiplier();
+    const H_ch = Math.max(0, Math.min(100, Number(chapterHealth) || 0));
+    const omega_decay = 1.0 + Math.log(Math.max(0.0001, 2 - (H_ch / 100)));
+    const N_active = _getActiveErrorBankCount();
+    const delta_error = Math.exp(-0.4 * (N_active / 15));
+    const K_system = K_base * mu_block * omega_decay * delta_error;
+
+    // ── Step E: Asymmetric Antagonistic Scaling Curves ──
+    // Ω_win compresses point yields heavily at high ratings (making climbing tough).
+    // Ω_loss minimizes deductions at low ratings but scales up heavily at high levels.
+    const omegaWin = 2 / (1 + Math.pow(10, (E_s - 1200) / 800));
+    const omegaLoss = 2 / (1 + Math.pow(10, (1200 - E_s) / 800));
+
+    let rawDelta = 0;
+    if (S === 1) {
+        rawDelta = K_system * omegaWin * (1 - E_score);
+    } else {
+        rawDelta = K_system * omegaLoss * (0 - E_score);
+    }
+
+    // ── Asymmetric Rating Disparity Filter ──
+    // Prevents an advanced rating from point-farming elementary lower-tier content.
+    const ratingSpread = E_s - Q_Elo;
+    if (ratingSpread > 400) {
+        if (S === 1) {
+            rawDelta = Math.min(rawDelta, 0.2); // Hard point ceiling on mismatched wins
+        } else {
+            rawDelta = rawDelta * 2.0; // Double-penalty liquidation event for casual drops
+        }
+    }
+
+    const oldE_s = E_s;
+    let newE_s = Math.max(0, E_s + rawDelta);
+    if (newE_s > 2999.99) newE_s = 2999.99;
+    AppState.elo[safeSubject] = newE_s;
+
+    // ── Fixed Question Retro-Mutation Loop ──
+    // FIXED: Changed learning scale from 20 down to an elegant fractional 0.05 convergence 
+    // coefficient to completely eliminate numerical hyper-inflation crashes.
+    const oldQ = Q_Elo;
+    let newQ = Math.max(0, Q_Elo + 0.05 * (R_perf - Q_Elo));
+
+    // Anomaly evaluation boundaries
+    const chapterAvg = _getChapterAvgElo(safeSubject, questionObj ? questionObj.chapter : null);
+    let isAnomaly = false;
+    if (Math.abs(newQ - chapterAvg) > 600) {
+        isAnomaly = true;
+    }
+    if (questionObj) {
+        questionObj.qElo = newQ;
+        if (isAnomaly) questionObj.isAnomaly = true;
+    }
+
+    // ── Step F: Master Global Meta-MMR Sync ──
+    const oldGlobal = AppState.elo.global || 1200;
+    const eP = AppState.elo.physics || 1200;
+    const eC = AppState.elo.chemistry || 1200;
+    const eM = AppState.elo.maths || 1200;
+    const newGlobal = _computeGlobalMetaMMR(eP, eC, eM);
+    AppState.elo.global = newGlobal;
+
+    const oldTier = getRankTierDetails(oldE_s);
+    const newTier = getRankTierDetails(newE_s);
+
+    result.deltaSubject = newE_s - oldE_s;
+    result.deltaGlobal = newGlobal - oldGlobal;
+    result.newSubjectElo = newE_s;
+    result.newGlobalElo = newGlobal;
+    result.newQElo = newQ;
+    result.oldQElo = oldQ;
+    result.tierChanged = oldTier.name !== newTier.name;
+    result.oldTier = oldTier.badge;
+    result.newTier = newTier.badge;
+    result.isAnomaly = isAnomaly;
+    return result;
+}
+
+// ── Front-End Interface Hydration ──────────────────────────────────────────
+
+/** Render the Global Meta-MMR tracking row under the user profile card. */
+function _renderGlobalMmrRow(globalElo) {
+    const profile = document.querySelector('.user-profile');
+    if (!profile) return;
+    let row = document.getElementById('global-mmr-row');
+    if (!row) {
+        row = document.createElement('div');
+        row.id = 'global-mmr-row';
+        row.className = 'global-mmr-row';
+        profile.appendChild(row);
+    }
+    const tier = getRankTierDetails(globalElo);
+    
+    // Completely drops the long tier string text to display just the icon and numeric Elo value
+    row.innerHTML = `<span class="mmr-tier-badge">${tier.icon} ${Math.round(globalElo)} ELO</span>`;
+}
+
+/** Render a localized rating monitor into a dashboard subject card. */
+function _renderSubjectEloMonitor(subject, elo) {
+    const safeSubject = _normalizeSubjectKey(subject);
+    const cards = document.querySelectorAll('#view-dashboard .compact-subject-card');
+    let cardEl = null;
+    cards.forEach(c => {
+        const h4 = c.querySelector('h4');
+        if (!h4) return;
+        const txt = h4.textContent.toLowerCase();
+        if (safeSubject === 'physics' && txt.includes('physics')) cardEl = c;
+        else if (safeSubject === 'chemistry' && txt.includes('chemistry')) cardEl = c;
+        else if (safeSubject === 'maths' && (txt.includes('maths') || txt.includes('math'))) cardEl = c;
+    });
+    if (!cardEl) return;
+    const pill = cardEl.querySelector('.distribution-pill');
+    if (!pill) return;
+    let monitor = cardEl.querySelector('.elo-monitor');
+    if (!monitor) {
+        monitor = document.createElement('div');
+        monitor.className = 'elo-monitor';
+        pill.insertAdjacentElement('afterend', monitor);
+    }
+    const tier = getRankTierDetails(elo);
+    const nextThreshold = _getNextTierThreshold(elo);
+    monitor.innerHTML =
+        `<span class="elo-monitor-rating">${tier.icon} ${Math.round(elo)}</span>` +
+        `<span class="elo-monitor-tier">${tier.name}</span>`;
+    // Hover breakdown: relative points away from the next higher tier badge.
+    if (nextThreshold !== null) {
+        const pointsAway = Math.max(0, nextThreshold - Math.floor(elo));
+        const nextName = _getNextTierName(elo);
+        monitor.setAttribute('data-tooltip',
+            `${Math.round(elo)} ${tier.name} · ${pointsAway} pts to ${nextName}`);
+    } else {
+        monitor.setAttribute('data-tooltip',
+            `${Math.round(elo)} ${tier.name} · Peak tier reached`);
+    }
+}
+
+/**
+ * Deficit Lockdown Protocol overlay.
+ *   if (min(EP,EC,EM) / max(EP,EC,EM) < 0.65) → activate lockdown.
+ * Applies a deep crimson background gradient to #view-dashboard, pulses the
+ * lowest-performing subject card, and drops a high-priority warning banner
+ * into #cat-text. Sets a global flag the cat-banner telemetry loop honours.
+ */
+function _applyDeficitLockdown(eP, eC, eM) {
+    const minV = Math.min(eP, eC, eM);
+    const maxV = Math.max(eP, eC, eM);
+    const ratio = maxV > 0 ? minV / maxV : 1;
+    const dash = document.getElementById('view-dashboard');
+    if (!dash) return;
+
+    const active = ratio < 0.65;
+    window._eloDeficitActive = active;
+
+    if (active) {
+        dash.classList.add('deficit-lockdown-active');
+        // Identify + pulse the lowest-performing subject card.
+        const subjects = [['physics', eP], ['chemistry', eC], ['maths', eM]];
+        subjects.sort((a, b) => a[1] - b[1]);
+        const lowest = subjects[0][0];
+        const cards = dash.querySelectorAll('.compact-subject-card');
+        cards.forEach(c => {
+            const h4 = c.querySelector('h4');
+            if (!h4) return;
+            const txt = h4.textContent.toLowerCase();
+            const subj = txt.includes('physics') ? 'physics'
+                : (txt.includes('chemistry') ? 'chemistry' : 'maths');
+            if (subj === lowest) c.classList.add('lowest-subject-pulse');
+            else c.classList.remove('lowest-subject-pulse');
+        });
+        // Force an immediate telemetry tick so the warning shows instantly
+        // instead of waiting up to 10s for the next rotation.
+        if (window.__catTelemetry && typeof window.__catTelemetry.tick === 'function') {
+            try { window.__catTelemetry.tick(); } catch (_) { /* noop */ }
+        } else {
+            const catText = document.getElementById('cat-text');
+            if (catText) {
+                catText.textContent = '🚨 PROFILE IMBALANCE DETECTED: Systemic structural variance. Target role constraints locked until baseline symmetry is re-established.';
+                catText.className = 'cat-text glow-red';
+            }
+        }
+    } else {
+        dash.classList.remove('deficit-lockdown-active');
+        dash.querySelectorAll('.compact-subject-card').forEach(c => c.classList.remove('lowest-subject-pulse'));
+    }
+}
+
+/**
+ * Master Elo Matrix UI hydration. Called from updateUI() and initApp().
+ * Renders the global profile row, every subject monitor, and runs the
+ * deficit lockdown protocol check.
+ */
+function renderEloMatrix() {
+    const eP = AppState.elo.physics || 1200;
+    const eC = AppState.elo.chemistry || 1200;
+    const eM = AppState.elo.maths || 1200;
+    const eG = AppState.elo.global || 1200;
+    _renderGlobalMmrRow(eG);
+    _renderSubjectEloMonitor('physics', eP);
+    _renderSubjectEloMonitor('chemistry', eC);
+    _renderSubjectEloMonitor('maths', eM);
+    _applyDeficitLockdown(eP, eC, eM);
+}
+
+/**
+ * Inject an animated Elo shift chip into the practice results banner.
+ * Fires burstEmojis() + playSuperSound() when a ranking tier transition
+ * occurs during this practice frame.
+ */
+function injectEloShiftChip(eloResult) {
+    if (!eloResult) return;
+    const container = document.getElementById('practice-modal-content');
+    if (!container) return;
+    const delta = eloResult.deltaSubject || 0;
+    const sign = delta >= 0 ? '+' : '';
+    const tier = getRankTierDetails(eloResult.newSubjectElo);
+    const subjLabel = eloResult.subject.charAt(0).toUpperCase() + eloResult.subject.slice(1);
+
+    const chip = document.createElement('div');
+    chip.className = 'elo-shift-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
+    chip.innerHTML =
+        `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
+        `<span class="elo-shift-label">${subjLabel} Elo</span>` +
+        `<span class="elo-shift-tier">[${tier.name}]</span>`;
+    container.appendChild(chip);
+    // Auto-remove after the animation completes.
+    setTimeout(() => { if (chip && chip.parentNode) chip.parentNode.removeChild(chip); }, 4200);
+
+    // Tier transition celebration — cascading emoji burst + synth fanfare.
+    if (eloResult.tierChanged) {
+        try {
+            let originX = window.innerWidth / 2;
+            let originY = window.innerHeight / 2;
+            const modal = document.querySelector('#practice-modal .modal-card') ||
+                document.querySelector('#sr-practice-overlay .sr-practice-modal');
+            if (modal && modal.offsetParent !== null) {
+                const rect = modal.getBoundingClientRect();
+                originX = rect.left + rect.width / 2;
+                originY = rect.top + rect.height / 2;
+            }
+            burstEmojis(originX, originY, 40,
+                ['🎉', '😄', '🔥', '✨', '🥳', '🎊', '💯', '🌟', '😎', '🏆'], 1.6);
+            playSuperSound();
+        } catch (_) { /* ignore celebration errors */ }
+    }
+}
+
+/** Default qElo for a newly-created question = chapter running average, else 1200. */
+function _computeDefaultQEloForCurrentChapter() {
+    try {
+        const subject = AppState.currentSubject;
+        const chapter = AppState.currentChapter;
+        const qs = AppState.questionBank.filter(q =>
+            q.subject === subject && q.chapter === chapter && !q.isAnomaly
+        );
+        if (qs.length === 0) return 1200;
+        const sum = qs.reduce((acc, q) => acc + (q.qElo || 1200), 0);
+        return Math.round(sum / qs.length);
+    } catch (_) {
+        return 1200;
+    }
+}
+
+// Expose the Elo engine surface for cross-module / debug access.
+// _getChapterHealth is also exposed so matrix.js's submitPracticeLog() can
+// resolve the active card's chapter stability health for the migration call
+// without importing app.js (which would create a circular module dependency
+// — app.js already imports matrix.js).
+window.getRankTierDetails = getRankTierDetails;
+window.calculateEloMigration = calculateEloMigration;
+window.renderEloMatrix = renderEloMatrix;
+window.injectEloShiftChip = injectEloShiftChip;
+window._getChapterHealth = _getChapterHealth;
+
 export function practiceSubmit() {
     if (AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return;
 
@@ -2380,6 +2893,23 @@ export function practiceSubmit() {
         AppState.currentQ.status = 'wrong';
     }
 
+    // ── Cognitive MMR: Elo Migration (MCQ / Numeric resolution) ──
+    // Synchronous, execution-blocking. Mutates AppState.elo (subject + global)
+    // and AppState.currentQ.qElo in-place BEFORE saveAllAsync so the updated
+    // ratings persist in the same write cycle.
+    let _eloResult = null;
+    try {
+        _eloResult = calculateEloMigration(
+            AppState.currentQ.subject,
+            AppState.practiceSeconds,
+            isCorrect ? 1 : 0,
+            _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
+            AppState.currentQ
+        );
+    } catch (_eloErr) {
+        console.error('Elo migration fault:', _eloErr);
+    }
+
     saveAllAsync().catch(console.error);
 
     if (AppState.bountyMode) {
@@ -2388,6 +2918,13 @@ export function practiceSubmit() {
     }
 
     renderPracticeQuestionModal();
+
+    // ── Elo shift chip (injected AFTER the modal re-render so it survives) ──
+    if (_eloResult) {
+        try { injectEloShiftChip(_eloResult); } catch (_) { /* ignore */ }
+    }
+    // Refresh the dashboard MMR matrix so the new rating is visible immediately.
+    try { renderEloMatrix(); } catch (_) { /* ignore */ }
 
     if (!isCorrect) {
         setTimeout(() => {
@@ -2422,6 +2959,17 @@ export function addTextQuestionFollowUp() {
         // Lock first-attempt result — only the first attempt counts for accuracy.
         if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'correct';
         AppState.currentQ.status = 'solved';
+        // ── Cognitive MMR: Elo Migration (text self-report: correct) ──
+        let _eloRes = null;
+        try {
+            _eloRes = calculateEloMigration(
+                AppState.currentQ.subject,
+                AppState.practiceSeconds,
+                1,
+                _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
+                AppState.currentQ
+            );
+        } catch (_e) { console.error('Elo migration fault:', _e); }
         saveAllAsync().catch(console.error);
         if (AppState.bountyMode) {
             evaluateBountyOutcome(true);
@@ -2435,6 +2983,8 @@ export function addTextQuestionFollowUp() {
         banner.className = 'result-banner correct';
         banner.innerText = 'Marked as correct.';
         container.appendChild(banner);
+        if (_eloRes) { try { injectEloShiftChip(_eloRes); } catch (_) { /* ignore */ } }
+        try { renderEloMatrix(); } catch (_) { /* ignore */ }
         document.getElementById('practice-submit-btn').style.display = 'none';
     };
 
@@ -2442,6 +2992,17 @@ export function addTextQuestionFollowUp() {
         // Lock first-attempt result — only the first attempt counts for accuracy.
         if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'incorrect';
         AppState.currentQ.status = 'wrong';
+        // ── Cognitive MMR: Elo Migration (text self-report: wrong) ──
+        let _eloRes = null;
+        try {
+            _eloRes = calculateEloMigration(
+                AppState.currentQ.subject,
+                AppState.practiceSeconds,
+                0,
+                _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
+                AppState.currentQ
+            );
+        } catch (_e) { console.error('Elo migration fault:', _e); }
         saveAllAsync().catch(console.error);
         if (AppState.bountyMode) {
             evaluateBountyOutcome(false);
@@ -2452,6 +3013,8 @@ export function addTextQuestionFollowUp() {
         banner.className = 'result-banner wrong';
         banner.innerText = 'Marked as wrong.';
         container.appendChild(banner);
+        if (_eloRes) { try { injectEloShiftChip(_eloRes); } catch (_) { /* ignore */ } }
+        try { renderEloMatrix(); } catch (_) { /* ignore */ }
         const logBtn = document.createElement('button');
         logBtn.className = 'btn btn-danger';
         logBtn.innerText = 'Log to Error Matrix';
@@ -3222,6 +3785,12 @@ async function initApp() {
     resetPomoUI();
     updateStreakVisualizer();
 
+    // ── Cognitive MMR Matrix: explicit initial hydration. updateUI() above
+    // already calls renderEloMatrix(), but we re-run it here after the full
+    // init pipeline so the profile row + subject monitors are guaranteed to
+    // exist even if the dashboard DOM wasn't fully painted during updateUI. ──
+    try { renderEloMatrix(); } catch (_) { /* never block initApp */ }
+
     // NEW: initialise the error resolution dashboard once data is ready
     renderErrorResolutionDashboard();
     if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
@@ -3472,6 +4041,12 @@ window.showSupercharged = showSupercharged;
 window.playCorrectSound = playCorrectSound;
 window.playWrongSound = playWrongSound;
 window.playSuperSound = playSuperSound;
+// burstEmojis is exposed so matrix.js's SR-drawer tier-transition celebration
+// can fire a cascading emoji burst at a custom origin (the drawer centre)
+// without routing through showSupercharged() (which adds a full-screen glow
+// overlay and centres on the viewport). Sibling to playSuperSound — they are
+// the canonical celebration pair.
+window.burstEmojis = burstEmojis;
 window.activateOverheat = activateOverheat;
 window.deactivateOverheat = deactivateOverheat;
 window.updateStreakVisualizer = updateStreakVisualizer;

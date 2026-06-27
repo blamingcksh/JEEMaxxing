@@ -142,6 +142,17 @@ export const AppState = {
     visualMode: 'bar',
     // ── Error Matrix: active practice log drawer state ──
     activePracticeDrawerId: null,
+    // ── Cognitive MMR / Elo Matrix ──
+    // Subject-segregated, uncapped matchmaking ratings with a consolidated
+    // global meta-MMR. Foundational baseline = 1200 for every axis. These are
+    // hydrated instantly in loadDataAsync() with protective fallback defaults
+    // so a missing/corrupt profile never produces data gaps.
+    elo: {
+        physics: 1200,
+        chemistry: 1200,
+        maths: 1200,
+        global: 1200,
+    },
 };
 
 
@@ -332,6 +343,14 @@ export function migrateQuestionBankSR() {
         if (q.isMastered      === undefined) { q.isMastered      = false; dirty = true; }
         if (!q.nextReviewAt)  { q.nextReviewAt = new Date().toISOString(); dirty = true; }
         if (!Array.isArray(q.historyLogs)) { q.historyLogs = []; dirty = true; }
+        // ── Cognitive MMR: backfill the dynamic question difficulty rating
+        // (qElo = Implied Difficulty Rating). Legacy questions default to
+        // 1200; the engine retro-mutates this toward its true implied
+        // difficulty on every subsequent attempt. isAnomaly flags questions
+        // whose qElo shoots >600 pts past their chapter baseline so they are
+        // dropped from normal Elo iteration filters. ──
+        if (q.qElo === undefined || q.qElo === null) { q.qElo = 1200; dirty = true; }
+        if (q.isAnomaly === undefined) { q.isAnomaly = false; dirty = true; }
     }
     if (dirty) saveAllAsync().catch(console.error);
 }
@@ -501,6 +520,13 @@ export async function saveAllAsync() {
     await idbSet('jeemax_study_secs', studySecs);
     await idbSet('jeemax_bounty', AppState.bounty);
     await idbSet('jeemax_mood_multiplier', AppState.moodMultiplier);
+    // ── Persist Cognitive MMR / Elo Matrix (subject + global meta-MMR) ──
+    await idbSet('jeemax_elo', {
+        physics:   AppState.elo.physics   ?? 1200,
+        chemistry: AppState.elo.chemistry ?? 1200,
+        maths:     AppState.elo.maths     ?? 1200,
+        global:    AppState.elo.global    ?? 1200,
+    });
     await idbSet('jeemax_username', document.getElementById('display-username').textContent);
     await idbSet('bounty_data', AppState.bounty);
 
@@ -552,6 +578,22 @@ export async function loadDataAsync() {
 
     const mood = await idbGet('jeemax_mood_multiplier');
     if (mood !== null) AppState.moodMultiplier = parseFloat(mood);
+
+    // ── Hydrate Cognitive MMR / Elo Matrix instantly with fallback defaults ──
+    // Every axis is guarded so a missing/corrupt profile field can never
+    // produce a NaN data gap — it always falls back to the 1200 baseline.
+    const savedElo = await idbGet('jeemax_elo');
+    if (savedElo && typeof savedElo === 'object') {
+        AppState.elo.physics   = (typeof savedElo.physics   === 'number' && isFinite(savedElo.physics))   ? savedElo.physics   : 1200;
+        AppState.elo.chemistry = (typeof savedElo.chemistry === 'number' && isFinite(savedElo.chemistry)) ? savedElo.chemistry : 1200;
+        AppState.elo.maths     = (typeof savedElo.maths     === 'number' && isFinite(savedElo.maths))     ? savedElo.maths     : 1200;
+        AppState.elo.global    = (typeof savedElo.global    === 'number' && isFinite(savedElo.global))    ? savedElo.global    : 1200;
+    } else {
+        AppState.elo.physics   = 1200;
+        AppState.elo.chemistry = 1200;
+        AppState.elo.maths     = 1200;
+        AppState.elo.global    = 1200;
+    }
 
     const username = await idbGet('jeemax_username');
     if (username) {
@@ -859,6 +901,14 @@ export async function executeUnifiedSync() {
                             studySecs.maths    = Math.max(studySecs.maths,    cloudState.studySecs.maths || 0);
                         }
                     }
+                    // ── Elo Matrix: high-water-mark merge (same as solved/studySecs) ──
+                    if (cloudState.elo && typeof cloudState.elo === 'object') {
+                        const ce = cloudState.elo;
+                        if (typeof ce.physics   === 'number' && isFinite(ce.physics))   AppState.elo.physics   = Math.max(AppState.elo.physics,   ce.physics);
+                        if (typeof ce.chemistry === 'number' && isFinite(ce.chemistry)) AppState.elo.chemistry = Math.max(AppState.elo.chemistry, ce.chemistry);
+                        if (typeof ce.maths     === 'number' && isFinite(ce.maths))     AppState.elo.maths     = Math.max(AppState.elo.maths,     ce.maths);
+                        if (typeof ce.global    === 'number' && isFinite(ce.global))    AppState.elo.global    = Math.max(AppState.elo.global,    ce.global);
+                    }
                 }
             }
         }
@@ -879,7 +929,7 @@ export async function executeUnifiedSync() {
                 return;
             }
         }
-        const payload = { date: new Date().toISOString().split('T')[0], questionBank: AppState.questionBank, chapters: AppState.chapters, solved, studySecs, dailyHistory: await getDailyHistory() };
+        const payload = { date: new Date().toISOString().split('T')[0], questionBank: AppState.questionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
         if (!fileId) {
             let createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
                 method: 'POST', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' },
@@ -918,7 +968,7 @@ export async function syncStateToCloud() {
         }
         if (newlyUploaded) await idbSet('jeemax_question_bank', AppState.questionBank);
         if (subText) subText.textContent = "Syncing system state...";
-        const payload = { date: new Date().toISOString().split('T')[0], questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, dailyHistory: await getDailyHistory() };
+        const payload = { date: new Date().toISOString().split('T')[0], questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
         const query = `name='system_state.json' and '${AppState.cloudFolderId}' in parents and trashed=false`;
         let searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, { headers: { Authorization: `Bearer ${AppState.driveAccessToken}` } });
         if (!searchRes.ok) { if (searchRes.status === 404) throw new Error("Target cloud storage folder directory not found."); throw new Error(`Drive connection interface dropped with code: ${searchRes.status}`); }
@@ -1001,6 +1051,16 @@ export async function loadStateFromCloud(isBackground = false) {
                     studySecs.chemistry = Math.max(studySecs.chemistry, cloudState.studySecs.chemistry || 0);
                     studySecs.maths     = Math.max(studySecs.maths,     cloudState.studySecs.maths     || 0);
                 }
+            }
+            // ── Elo Matrix: high-water-mark merge. Ratings are cumulative
+            // skill capital — unlike daily counters, they are NOT date-scoped,
+            // so the cloud's higher rating always wins regardless of date. ──
+            if (cloudState.elo && typeof cloudState.elo === 'object') {
+                const ce = cloudState.elo;
+                if (typeof ce.physics   === 'number' && isFinite(ce.physics))   AppState.elo.physics   = Math.max(AppState.elo.physics,   ce.physics);
+                if (typeof ce.chemistry === 'number' && isFinite(ce.chemistry)) AppState.elo.chemistry = Math.max(AppState.elo.chemistry, ce.chemistry);
+                if (typeof ce.maths     === 'number' && isFinite(ce.maths))     AppState.elo.maths     = Math.max(AppState.elo.maths,     ce.maths);
+                if (typeof ce.global    === 'number' && isFinite(ce.global))    AppState.elo.global    = Math.max(AppState.elo.global,    ce.global);
             }
             // else: stale cloud date — LOCAL WINS. Intentionally no-op.
             // The daily counters belong to the current local day; a

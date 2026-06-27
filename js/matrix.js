@@ -693,6 +693,46 @@ export function submitPracticeLog() {
 
     if (typeof window.updateStreakVisualizer === 'function') window.updateStreakVisualizer();
 
+    // ════════════════════════════════════════════════════════════════════════
+    // 🧠 COGNITIVE MMR / ELO MATRIX CONVERGENCE
+    // ════════════════════════════════════════════════════════════════════════
+    // Intercept the active card data (_drawerState + resolved question object)
+    // and invoke the Elo migration engine to scale BOTH the player's subject
+    // MMR and the error item's underlying difficulty (qElo) concurrently.
+    //
+    // This runs BEFORE saveAllAsync() so the rating mutation lands in the same
+    // persistence write cycle as the SR history log above. The engine is
+    // bridged via window.calculateEloMigration (exposed by app.js) to preserve
+    // the existing one-way module dependency graph (app.js → matrix.js); a
+    // static import here would create a circular dependency.
+    //
+    // Active card data mapped to the engine signature:
+    //   subject       ← q.subject
+    //   actualTime    ← timeSpent (minutes) × 60  → seconds
+    //   scoreOutcome  ← _drawerState.result === 'correct' ? 1 : 0
+    //   chapterHealth ← window._getChapterHealth(q.subject, q.chapter)
+    //   questionObj   ← q  (qElo retro-mutated in-place)
+    // ════════════════════════════════════════════════════════════════════════
+    let _eloResult = null;
+    if (typeof window.calculateEloMigration === 'function' && q.subject) {
+        try {
+            const _actualSeconds = Math.max(0, Math.round(timeSpent * 60));
+            const _score = _drawerState.result === 'correct' ? 1 : 0;
+            const _health = (typeof window._getChapterHealth === 'function')
+                ? window._getChapterHealth(q.subject, q.chapter)
+                : 50;  // benign mid-default if the bridge is unavailable
+            _eloResult = window.calculateEloMigration(
+                q.subject,
+                _actualSeconds,
+                _score,
+                _health,
+                q
+            );
+        } catch (_eloErr) {
+            console.error('Elo migration fault in submitPracticeLog:', _eloErr);
+        }
+    }
+
     const secondsToInject = Math.round(timeSpent * 60);
     if (secondsToInject > 0 && q.subject) {
         // ══════════════════════════════════════════════════════════════════════
@@ -739,6 +779,41 @@ export function submitPracticeLog() {
             // ── Global HUD / graph repaint (bridged via window surface) ──
             if (typeof window.updateUI === 'function')   window.updateUI();
             if (typeof window.renderGraph === 'function') window.renderGraph();
+
+            // ── Cognitive MMR: refresh the dashboard Elo matrix so the new
+            // subject + global ratings are visible immediately after the
+            // drawer closes. updateUI() above already calls renderEloMatrix()
+            // internally, but we re-run it explicitly so the subject monitors
+            // + deficit lockdown overlay reflect the just-migrated state even
+            // if updateUI short-circuited on a stale DOM cache. ──
+            if (typeof window.renderEloMatrix === 'function') {
+                try { window.renderEloMatrix(); } catch (_) { /* never block */ }
+            }
+
+            // ── Tier transition celebration ──
+            // If this practice frame crossed a competitive rank bracket
+            // boundary, fire the cascading emoji burst + synth fanfare from
+            // the SR drawer's centre (it was still on screen a moment ago;
+            // we centre on the viewport as a graceful fallback once closed).
+            if (_eloResult && _eloResult.tierChanged) {
+                try {
+                    let originX = window.innerWidth / 2;
+                    let originY = window.innerHeight / 2;
+                    const drawer = document.querySelector('#sr-practice-overlay .sr-practice-modal');
+                    if (drawer && drawer.offsetParent !== null) {
+                        const rect = drawer.getBoundingClientRect();
+                        originX = rect.left + rect.width / 2;
+                        originY = rect.top + rect.height / 2;
+                    }
+                    if (typeof window.burstEmojis === 'function') {
+                        window.burstEmojis(originX, originY, 40,
+                            ['🎉', '😄', '🔥', '✨', '🥳', '🎊', '💯', '🌟', '😎', '🏆'], 1.6);
+                    }
+                    if (typeof window.playSuperSound === 'function') {
+                        window.playSuperSound();
+                    }
+                } catch (_) { /* ignore celebration errors */ }
+            }
         });
     });
 }
