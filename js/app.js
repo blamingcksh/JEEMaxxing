@@ -299,9 +299,12 @@ function _renderCatProgressView(overallPct) {
 //
 // This function is self-contained and reads only from already-imported state
 // (AppState, solved, getDueStatus). It does NOT import matrix.js, avoiding
-// any circular module dependency. The chapter-decay health calculation mirrors
-// the algorithm inside renderChapterDecayGrid() in matrix.js so the math
-// parameters evaluate identically without corrupting target locks or storage.
+// any circular module dependency. The CRITICAL_DECAY check delegates directly
+// to the canonical `_getChapterHealth` (Continuous Biological Memory Construct),
+// whose math is mirrored inside renderChapterDecayGrid() in matrix.js so the
+// scanner, the grid, and the Elo engine all evaluate an identical continuous
+// accessibility percentage — no divergence between layers, and no corruption
+// of target locks or storage.
 function _scanCatBannerVulnerabilities() {
     const vulnerabilities = [];
 
@@ -321,32 +324,33 @@ function _scanCatBannerVulnerabilities() {
     }
 
     // ── PRIORITY 2: CRITICAL_DECAY ───────────────────────────────────────
-    // Triggered if any chapter stability health drops below 45%. Health is
-    // calculated using the same algorithm as renderChapterDecayGrid() in
-    // matrix.js: health = clamped((avgEF - 1.3) / 1.7 * 100, [10,100]) minus
-    // 15% per overdue (ready) question, clamped again.
+    // Triggered if any chapter stability health drops below 45%. Health now
+    // uses the Continuous Non-Linear Biological Memory Construct (Bjork's New
+    // Theory of Disuse): a difficulty-weighted harmonic accessibility mean of
+    // per-item exponential Retrieval Strength decay. This delegates to the
+    // canonical `_getChapterHealth` so the scanner and the Elo engine evaluate
+    // identical math (no divergence between the monitoring layer and the
+    // scoring layer). The legacy discrete 15%-per-overdue tax is eliminated.
     {
         const allErrors = AppState.questionBank.filter(q =>
             q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
         );
-        const chapterMap = {};
+        // Group by (subject, chapter) so each domain resolves its own
+        // continuous accessibility score with the correct subject normalisation.
+        const domainMap = {};
         allErrors.forEach(q => {
+            const subject = q.subject || '';
             const chapter = q.chapter || 'Uncategorized';
-            if (!chapterMap[chapter]) chapterMap[chapter] = [];
-            chapterMap[chapter].push(q);
+            const key = subject + '||' + chapter;
+            if (!domainMap[key]) domainMap[key] = { subject, chapter };
         });
         let worstChapter = null;
         let worstHealth = 100;
-        for (const [name, questions] of Object.entries(chapterMap)) {
-            const avgEF = questions.reduce((sum, q) => sum + (q.easeFactor || 2.5), 0) / questions.length;
-            const overdueCount = questions.filter(q => getDueStatus(q).status === 'ready').length;
-            let health = ((avgEF - 1.3) / 1.7) * 100;
-            health = Math.max(10, Math.min(100, health));
-            health -= overdueCount * 15;
-            health = Math.max(10, Math.min(100, health));
+        for (const { subject, chapter } of Object.values(domainMap)) {
+            const health = _getChapterHealth(subject, chapter);
             if (health < 45 && health < worstHealth) {
                 worstHealth = health;
-                worstChapter = name;
+                worstChapter = chapter;
             }
         }
         if (worstChapter) {
@@ -2430,7 +2434,30 @@ function _getActiveErrorBankCount() {
 }
 
 /**
- * Chapter stability health (0-100).
+ * Continuous, Non-Linear Biological Memory Construct — Chapter Health.
+ *
+ * Replaces the legacy discrete model (flat 15% tax per `getDueStatus === 'ready'`
+ * item) which produced severe telemetry distortion and crashed layout transitions
+ * during active practice blocks. The new model is grounded in Bjork's *New Theory
+ * of Disuse* and uses an exponential Retrieval Strength decay per item, then
+ * aggregates all attempted items in the chapter into a single difficulty-weighted
+ * harmonic accessibility score.
+ *
+ *   RS_i(t) = e ^ ( -ln(2) · (Δt / S_i) )
+ *   A_ch(t) = ( Σ Q_Elo,i · RS_i(t) ) / ( Σ Q_Elo,i ) · 100
+ *
+ * where  Δt   = (Date.now() − lastReviewedAt) / 86_400_000   (days, float)
+ *        S_i  = max(0.5, easeFactor)                          (stability, days)
+ *
+ * This is a PURE READ — it never mutates the question objects, so it is safe to
+ * call at high frequency from layout/telemetry loops (idempotent). Permanent
+ * field attachment is performed once, at write time, inside
+ * `calculateEloMigration` / `practiceSubmit` / `confirmErrorLog`.
+ *
+ * @param {string} subject  Raw subject key (aliases auto-normalised).
+ * @param {string} chapter  Chapter name.
+ * @returns {number} Chapter health, clamped tightly to [10, 100]. Neutral 50
+ *                   when no tracked items exist for the domain.
  */
 function _getChapterHealth(subject, chapter) {
     const safeSubject = _normalizeSubjectKey(subject);
@@ -2438,14 +2465,105 @@ function _getChapterHealth(subject, chapter) {
         q.subject === safeSubject && q.chapter === chapter &&
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
     );
-    if (qs.length === 0) return 50;
-    const avgEF = qs.reduce((s, q) => s + (q.easeFactor || 2.5), 0) / qs.length;
-    const overdue = qs.filter(q => getDueStatus(q).status === 'ready').length;
-    let health = ((avgEF - 1.3) / 1.7) * 100;
-    health = Math.max(10, Math.min(100, health));
-    health -= overdue * 15;
+    if (qs.length === 0) return 50; // neutral default for UI consistency
+
+    const nowMs = Date.now();
+    const MS_PER_DAY = 86400000;
+    const LN2 = Math.LN2; // natural log of 2
+
+    let weightedSum = 0;   // Σ ( Q_Elo,i · RS_i(t) )
+    let weightTotal = 0;   // Σ  Q_Elo,i
+
+    for (const q of qs) {
+        // ── JIT (Just-In-Time) legacy hydration: resolve the biological-memory
+        //    fields on the fly WITHOUT mutating the source object, so cloud-sync
+        //    shape is never disturbed by a read path. ──
+        const mem = _hydrateMemoryFields(q);
+
+        // Δt — continuous time variance in days (floating point).
+        const lastMs = new Date(mem.lastReviewedAt).getTime();
+        const deltaMs = nowMs - (isNaN(lastMs) ? nowMs : lastMs);
+        const deltaDays = deltaMs / MS_PER_DAY;
+
+        // S_i — structural memory stability tracking coefficient (days).
+        const S_i = Math.max(0.5, mem.easeFactor);
+
+        // RS_i(t) — exponential retrievability. e^(−ln2 · Δt/S_i) ∈ (0, 1].
+        // A freshly logged fumble (Δt = 0) yields RS = 1, so it degrades the
+        // chapter baseline smoothly proportional to its difficulty weight
+        // rather than triggering an architectural crash.
+        const RS = Math.exp(-LN2 * (deltaDays / S_i));
+
+        // Difficulty weight: Q_Elo,i (Implied Difficulty Rating).
+        weightedSum += mem.qElo * RS;
+        weightTotal += mem.qElo;
+    }
+
+    if (weightTotal === 0) return 50; // guard against an all-zero-weight chapter
+
+    // A_ch(t) — difficulty-weighted harmonic accessibility mean, scaled to 0–100.
+    let health = (weightedSum / weightTotal) * 100;
+
+    // Clamp tightly between 10 and 100 to prevent chart layout breakage.
     health = Math.max(10, Math.min(100, health));
     return health;
+}
+
+/**
+ * JIT (Just-In-Time) legacy-data hydration for the biological-memory fields.
+ *
+ * Resolves `easeFactor`, `qElo`, and `lastReviewedAt` for a single question
+ * using the backward-compatibility fallback rules, WITHOUT mutating the source
+ * object. This keeps the read path (chapter-health loops) safe against legacy
+ * shapes while the write path (`calculateEloMigration` etc.) permanently
+ * attaches the canonical fields on save.
+ *
+ * @param {object} q  A question object from `AppState.questionBank`.
+ * @returns {{easeFactor:number, qElo:number, lastReviewedAt:string}}
+ */
+function _hydrateMemoryFields(q) {
+    // ── easeFactor: default baseline 2.5 when missing/undefined. ──
+    const easeFactor = (typeof q.easeFactor === 'number' && isFinite(q.easeFactor))
+        ? q.easeFactor
+        : 2.5;
+
+    // ── qElo: use existing value; fallback to 1200 if missing/volatile-absent.
+    //    (Chapter-average fallback is applied by callers when relevant; here we
+    //    only guarantee a non-null numeric weight so the harmonic mean never
+    //    divides by zero.) ──
+    const qElo = (typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0)
+        ? q.qElo
+        : 1200;
+
+    // ── lastReviewedAt: hydrate per the legacy blueprint. ──
+    let lastReviewedAt = q.lastReviewedAt;
+    if (!lastReviewedAt || isNaN(new Date(lastReviewedAt).getTime())) {
+        // Rule 1: if historyLogs exists and has entries, parse the LATEST log.
+        if (Array.isArray(q.historyLogs) && q.historyLogs.length > 0) {
+            let latestMs = NaN;
+            for (const log of q.historyLogs) {
+                if (log && log.timestamp) {
+                    const t = new Date(log.timestamp).getTime();
+                    if (!isNaN(t) && (isNaN(latestMs) || t > latestMs)) latestMs = t;
+                }
+            }
+            if (!isNaN(latestMs)) lastReviewedAt = new Date(latestMs).toISOString();
+        }
+        // Rule 2: status === 'solved' -> 1 day ago.
+        if (!lastReviewedAt && q.status === 'solved') {
+            lastReviewedAt = new Date(Date.now() - 86400000).toISOString();
+        }
+        // Rule 3: status === 'error' | 'wrong' -> now (0 hours elapsed).
+        if (!lastReviewedAt && (q.status === 'error' || q.status === 'wrong')) {
+            lastReviewedAt = new Date(Date.now()).toISOString();
+        }
+        // Final safety net: treat as just-seen for a neutral decay baseline.
+        if (!lastReviewedAt) {
+            lastReviewedAt = new Date(Date.now()).toISOString();
+        }
+    }
+
+    return { easeFactor, qElo, lastReviewedAt };
 }
 
 /** Deep Work Block multiplier (μ_block). */
@@ -2606,6 +2724,34 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     if (questionObj) {
         questionObj.qElo = newQ;
         if (isAnomaly) questionObj.isAnomaly = true;
+
+        // ── Biological Memory Construct: permanent field attachment ──
+        // When an execution frame resolves, stamp the question with the exact
+        // current timestamp so subsequent `_getChapterHealth` reads compute a
+        // continuous Δt instead of falling back to JIT hydration. This is the
+        // write-side counterpart to the JIT read-side hydration — it
+        // transitions the object seamlessly into the updated schema without a
+        // destructive global migration on boot.
+        questionObj.lastReviewedAt = new Date().toISOString();
+
+        // Adjust the structural stability coefficient (easeFactor) according to
+        // the performance outflux. Success reinforces stability (slower future
+        // decay); failure erodes it (accelerated subsequent decay cycles).
+        // The clamp keeps the value within the [1.3, 3.0] SR-safe band.
+        //
+        // NOTE — flow composition with the SR drawer:
+        //   • app.js `practiceSubmit` flow (standard practice modal): this
+        //     adjustment is the authoritative easeFactor mutation and persists.
+        //   • matrix.js `_applyResult` → `submitPracticeLog` flow: this runs
+        //     at the moment of truth, then `computeSR()` later reads the
+        //     adjusted value as its input and produces the SM-2 scheduled
+        //     easeFactor. `lastReviewedAt` (untouched by computeSR) always
+        //     persists in both flows.
+        if (S === 1) {
+            questionObj.easeFactor = Math.min(3.0, (questionObj.easeFactor || 2.5) + 0.15);
+        } else {
+            questionObj.easeFactor = Math.max(1.3, (questionObj.easeFactor || 2.5) - 0.2);
+        }
     }
 
     // ── Step F: Master Global Meta-MMR Sync ──
@@ -3216,6 +3362,16 @@ export function practiceSubmit() {
         AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
         AppState.currentQ.timeTaken = AppState._frozenTextQSeconds;
         AppState.currentQ.status = 'unsolved';
+        // ── Biological Memory Construct: stamp the processing instant so the
+        //    continuous Δt is well-defined even if the user closes the modal
+        //    without self-reporting. The easeFactor is hydrated (not nudged)
+        //    here because the success/failure outcome is not yet known — the
+        //    nudge is applied later by calculateEloMigration once the user
+        //    clicks "Clean Lock" / "Skill Issue" in addTextQuestionFollowUp().
+        AppState.currentQ.lastReviewedAt = new Date().toISOString();
+        if (typeof AppState.currentQ.easeFactor !== 'number' || !isFinite(AppState.currentQ.easeFactor)) {
+            AppState.currentQ.easeFactor = 2.5;
+        }
         // ⏱ Converge practice time into the daily/subjective study counters.
         // Runs exactly once — the flag above is already true, so the guard at
         // the top of practiceSubmit() blocks any re-entry from double-counting.
@@ -3401,6 +3557,18 @@ export function confirmErrorLog() {
     let reason = document.getElementById('error-reason-select').value;
     AppState.pendingWrongQ.status = 'error';
     AppState.pendingWrongQ.errorReason = reason;
+    // ── Biological Memory Construct: permanent field attachment on save.
+    //    Logging an error is a processing instant — stamp lastReviewedAt to
+    //    now (0 hours elapsed, so RS≈1 and the fumble degrades the chapter
+    //    baseline smoothly via its difficulty weight). Hydrate easeFactor to
+    //    the 2.5 baseline if the object is a legacy entry lacking the field.
+    //    No success/failure nudge is applied here — that is the exclusive
+    //    responsibility of calculateEloMigration (the Elo engine). This path
+    //    only guarantees the canonical schema fields are present.
+    AppState.pendingWrongQ.lastReviewedAt = new Date().toISOString();
+    if (typeof AppState.pendingWrongQ.easeFactor !== 'number' || !isFinite(AppState.pendingWrongQ.easeFactor)) {
+        AppState.pendingWrongQ.easeFactor = 2.5;
+    }
     saveAllAsync().catch(console.error);
     alert("Logged to the Vault. Error archived.");
     closeModalStr('error-reason-modal');

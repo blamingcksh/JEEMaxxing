@@ -1369,6 +1369,62 @@ export function openLightbox(src) {
 
 // ==================== SVG CHAPTER DECAY GRID ====================
 
+/**
+ * Continuous Non-Linear Biological Memory Construct — local chapter-health
+ * mirror for the Chapter Decay Grid.
+ *
+ * Mirrors app.js's `_getChapterHealth` math EXACTLY (Bjork's New Theory of
+ * Disuse: exponential Retrieval Strength decay + difficulty-weighted harmonic
+ * accessibility mean). Kept local to matrix.js to avoid a circular module
+ * dependency on app.js (app.js already imports matrix.js). The formula is
+ * identical so the grid, the cat-banner scanner, and the Elo engine all
+ * evaluate the same continuous percentage — no divergence between the
+ * visual, monitoring, and scoring layers.
+ *
+ *   RS_i(t) = e ^ ( -ln(2) · (Δt / S_i) )
+ *   A_ch(t) = ( Σ Q_Elo,i · RS_i(t) ) / ( Σ Q_Elo,i ) · 100
+ *
+ * JIT-hydrates `easeFactor` / `qElo` / `lastReviewedAt` per the legacy
+ * backward-compatibility blueprint (read-only; never mutates the source).
+ */
+function _matrixChapterHealthContinuous(questions) {
+    if (!questions || questions.length === 0) return 50;
+    const nowMs = Date.now();
+    const MS_PER_DAY = 86400000;
+    const LN2 = Math.LN2;
+    let weightedSum = 0;
+    let weightTotal = 0;
+    for (const q of questions) {
+        const easeFactor = (typeof q.easeFactor === 'number' && isFinite(q.easeFactor)) ? q.easeFactor : 2.5;
+        const qElo = (typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0) ? q.qElo : 1200;
+        let lastReviewedAt = q.lastReviewedAt;
+        if (!lastReviewedAt || isNaN(new Date(lastReviewedAt).getTime())) {
+            if (Array.isArray(q.historyLogs) && q.historyLogs.length > 0) {
+                let latestMs = NaN;
+                for (const log of q.historyLogs) {
+                    if (log && log.timestamp) {
+                        const t = new Date(log.timestamp).getTime();
+                        if (!isNaN(t) && (isNaN(latestMs) || t > latestMs)) latestMs = t;
+                    }
+                }
+                if (!isNaN(latestMs)) lastReviewedAt = new Date(latestMs).toISOString();
+            }
+            if (!lastReviewedAt && q.status === 'solved') lastReviewedAt = new Date(Date.now() - 86400000).toISOString();
+            if (!lastReviewedAt && (q.status === 'error' || q.status === 'wrong')) lastReviewedAt = new Date(Date.now()).toISOString();
+            if (!lastReviewedAt) lastReviewedAt = new Date(Date.now()).toISOString();
+        }
+        const lastMs = new Date(lastReviewedAt).getTime();
+        const deltaDays = (nowMs - (isNaN(lastMs) ? nowMs : lastMs)) / MS_PER_DAY;
+        const S_i = Math.max(0.5, easeFactor);
+        const RS = Math.exp(-LN2 * (deltaDays / S_i));
+        weightedSum += qElo * RS;
+        weightTotal += qElo;
+    }
+    if (weightTotal === 0) return 50;
+    let health = (weightedSum / weightTotal) * 100;
+    return Math.max(10, Math.min(100, health));
+}
+
 export function renderChapterDecayGrid() {
     const container = document.getElementById('chapter-decay-grid');
     if (!container) return;
@@ -1377,22 +1433,22 @@ export function renderChapterDecayGrid() {
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
     );
 
+    // Group by (subject, chapter) so each domain resolves its own continuous
+    // accessibility score — consistent with _getChapterHealth and the
+    // cat-banner CRITICAL_DECAY scanner.
     const chapterMap = {};
     allErrors.forEach(q => {
+        const subject = q.subject || '';
         const chapter = q.chapter || 'Uncategorized';
-        if (!chapterMap[chapter]) chapterMap[chapter] = [];
-        chapterMap[chapter].push(q);
+        const key = subject + '||' + chapter;
+        if (!chapterMap[key]) chapterMap[key] = { name: chapter, questions: [] };
+        chapterMap[key].questions.push(q);
     });
 
-    const chapters = Object.entries(chapterMap).map(([name, questions]) => {
+    const chapters = Object.values(chapterMap).map(({ name, questions }) => {
         const avgEF = questions.reduce((sum, q) => sum + (q.easeFactor || 2.5), 0) / questions.length;
         const overdueCount = questions.filter(q => getDueStatus(q).status === 'ready').length;
-
-        let health = ((avgEF - 1.3) / 1.7) * 100;
-        health = Math.max(10, Math.min(100, health));
-        health -= overdueCount * 15;
-        health = Math.max(10, Math.min(100, health));
-
+        const health = _matrixChapterHealthContinuous(questions);
         return { name, health, questionCount: questions.length, avgEF, overdueCount };
     });
 
