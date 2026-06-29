@@ -1691,38 +1691,311 @@ export function saveAllQuestions() {
     alert(`Successfully imported ${AppState.extractedItems.length} fresh problems into the local engine. Let's see how you handle them.`);
 }
 
+// ============================================================================
+// DUAL-ENGINE INGESTION: Gemini Gem Text Track (Textadd)
+// ============================================================================
+// A parallel entry engine that accepts pre-schematized, formatted JSON data
+// directly from a custom external Gemini Gem. It maps the payload instantly
+// into AppState.extractedItems and mounts an interactive validation view
+// (showPreviewModal) where the user can surgically attach diagrams ONLY to
+// specific questions that require them — eliminating cropping friction for
+// standard text questions.
+//
+// Supported Gem payload formats (auto-classified when `type` is omitted):
+//   • Single-Choice MCQ      → options has 4 items, correctAnswer is a single letter "C"
+//   • Multiple-Correct MCQ   → options has 4 items, correctAnswer is ["A","D"]
+//   • Integer / Numerical    → options empty, correctAnswer is "42" or "-0.5"
+//   • Self-Evaluation (text) → options empty, correctAnswer is free text or ""
+// ============================================================================
+
+/**
+ * Toggles the upload-modal between the Traditional Multicrop panel and the
+ * Gemini Gem Text Track terminal. Pure DOM visibility swap — no state mutation.
+ * @param {'multicrop'|'texttrack'} track
+ */
+export function switchIngestionTrack(track) {
+    const multicropPanel = document.getElementById('ingestion-panel-multicrop');
+    const texttrackPanel = document.getElementById('ingestion-panel-texttrack');
+    const multicropBtn = document.getElementById('toggle-multicrop');
+    const texttrackBtn = document.getElementById('toggle-texttrack');
+    if (!multicropPanel || !texttrackPanel || !multicropBtn || !texttrackBtn) return;
+
+    if (track === 'multicrop') {
+        multicropPanel.classList.add('active');
+        texttrackPanel.classList.remove('active');
+        multicropBtn.classList.add('active');
+        texttrackBtn.classList.remove('active');
+    } else if (track === 'texttrack') {
+        texttrackPanel.classList.add('active');
+        multicropPanel.classList.remove('active');
+        texttrackBtn.classList.add('active');
+        multicropBtn.classList.remove('active');
+    }
+}
+
+/**
+ * Ingests and processes a schematized text array from the custom Gemini Gem.
+ * Completely bypasses manual bounding-box cropping constraints for pure text velocity.
+ */
+/**
+ * Advanced line-by-line JSON sanitizer for LaTeX and string arrays.
+ * 1. Heals rogue unescaped inner double quotes ("labelled as "volume"")
+ * 2. Normalizes single backslashes (\text, \times) into valid double backslashes
+ */
+/**
+ * Context-Aware JSON Sanitizer for LaTeX Code Ingestion.
+ * 1. Isolates specific properties to repair unescaped inner double quotes.
+ * 2. Standardizes any arbitrary run of backslashes (\, \\, \\\) down to exactly 
+ * two backslashes (\\) inside string values so JSON.parse() reads them cleanly.
+ */
+function sanitizeGemTextDump(rawInput) {
+    if (!rawInput) return "";
+
+    // Step 1: Repair unescaped inner quotes inside "extractedText" properties globally
+    rawInput = rawInput.replace(/"extractedText"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"options"|,\s*"correctAnswer"|,\s*"type"|,\s*"solution"|,\s*\}|\s*\})/g, (match, content) => {
+        let cleaned = content.replace(/\\"/g, '\uEAEA').replace(/"/g, '\\"').replace(/\uEAEA/g, '\\"');
+        return `"extractedText": "${cleaned}"`;
+    });
+
+    // Step 2: Repair unescaped inner quotes inside "solution" properties globally
+    rawInput = rawInput.replace(/"solution"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"extractedText"|,\s*"options"|,\s*"correctAnswer"|,\s*"type"|,\s*\}|\s*\})/g, (match, content) => {
+        let cleaned = content.replace(/\\"/g, '\uEAEA').replace(/"/g, '\\"').replace(/\uEAEA/g, '\\"');
+        return `"solution": "${cleaned}"`;
+    });
+
+    // Step 3: Repair unescaped inner quotes inside individual option item entries safely (handles same-line options)
+    rawInput = rawInput.replace(/"([A-D]\)[\s\S]*?)"\s*(?=,\s*"[A-D]\)"|,\s*\]|\s*\])/g, (match, content) => {
+        let cleaned = content.replace(/\\"/g, '\uEAEA').replace(/"/g, '\\"').replace(/\uEAEA/g, '\\"');
+        return `"${cleaned}"`;
+    });
+
+    // Step 4: With all text boundaries stabilized, capture every string token and normalize backslash runs down to exactly \\
+    let cleanJson = rawInput.replace(/"([\s\S]*?)"/g, (match, stringContent) => {
+        if (stringContent === "extractedText" || stringContent === "options" || stringContent === "correctAnswer" || stringContent === "type" || stringContent === "solution" || stringContent === "mcq" || stringContent === "numeric" || stringContent === "text") {
+            return match;
+        }
+        let fixedContent = stringContent.replace(/\\+/g, '\\\\').replace(/\\\\"/g, '\\"');
+        return `"${fixedContent}"`;
+    });
+
+    return cleanJson;
+}
+
+/**
+ * Ingests and processes a schematized text array from the custom Gemini Gem.
+ * Upgraded with a structural key-based sanitizer to completely clear LaTeX formatting traps.
+ */
+/**
+ * Direct Anchor-Based Structural Text Ingestion Compiler.
+ * Completely bypasses JSON.parse() to insulate the workspace from unescaped quotes,
+ * double/triple backslash collisions, and same-line array layouts.
+ */
+/**
+ * Direct Anchor-Based Structural Text Ingestion Compiler.
+ * Fixed to safely collapse multi-backslash formatting traps down to single backslashes
+ * so KaTeX/MathJax processes math symbols (\times, \text) on a single line.
+ */
+export async function processGemTextDump() {
+    const terminalInput = document.getElementById('text-add-terminal')?.value.trim();
+    if (!terminalInput) return alert("Terminal area is completely empty. Paste your Gem JSON payload.");
+
+    showLoading("Running structural text compiler... Sanitizing LaTeX math symbols...");
+
+    try {
+        // Step 1: Isolate individual question segments using the unique "extractedText" key as a boundary anchor
+        const segments = terminalInput.split(/"extractedText"\s*:\s*"/g);
+        if (segments.length <= 1) {
+            throw new Error("Could not find any structural 'extractedText' keys in the pasted payload.");
+        }
+
+        const parsedItems = [];
+
+        // Loop through each isolated question block (skipping index 0)
+        for (let i = 1; i < segments.length; i++) {
+            const segment = segments[i];
+
+            // 1. Extract the raw question text by finding where the next key metadata block begins
+            const textEndIndex = segment.search(/"\s*(?=,\s*"options"|,\s*"correctAnswer"|,\s*"type"|,\s*"solution")/g);
+            if (textEndIndex === -1) continue;
+            let extractedText = segment.substring(0, textEndIndex);
+
+            // The remainder of the string segment holds metadata exclusive to this specific item
+            const metadata = segment.substring(textEndIndex);
+
+            // 2. Extract options array contents
+            let options = [];
+            const optionsMatch = metadata.match(/"options"\s*:\s*\[([\s\S]*?)\]/);
+            if (optionsMatch && optionsMatch[1]) {
+                // Collect individual string tokens within option boundaries
+                const optMatches = optionsMatch[1].match(/"([\s\S]*?)"/g);
+                if (optMatches) {
+                    options = optMatches.map(o => {
+                        // Strip outer quotes
+                        let rawOpt = o.substring(1, o.length - 1);
+                        // FIX: Collapse any arbitrary run of backslashes down to a single backslash
+                        return rawOpt.replace(/\\+/g, '\\');
+                    });
+                }
+            }
+
+            // 3. Extract correctAnswer string or multi-select array
+            let correctAnswer = "";
+            const ansMatch = metadata.match(/"correctAnswer"\s*:\s*(\[[\s\S]*?\]|"(?:[^"\\]|\\.)*")/);
+            if (ansMatch && ansMatch[1]) {
+                let ansRaw = ansMatch[1].trim();
+                if (ansRaw.startsWith('[')) {
+                    const letterMatches = ansRaw.match(/"([^"]+)"/g);
+                    if (letterMatches) {
+                        correctAnswer = letterMatches.map(l => l.replace(/"/g, '').trim());
+                    }
+                } else {
+                    correctAnswer = ansRaw.substring(1, ansRaw.length - 1).trim();
+                }
+            }
+
+            // 4. Extract question type tracking field
+            let type = "";
+            const typeMatch = metadata.match(/"type"\s*:\s*"([^"]*)"/);
+            if (typeMatch && typeMatch[1]) {
+                type = typeMatch[1].trim();
+            }
+
+            // 5. Extract step-by-step solution string
+            let solution = "";
+            const solMatch = metadata.match(/"solution"\s*:\s*"([\s\S]*?)"\s*(?=\}|\s*\})/);
+            if (solMatch && solMatch[1]) {
+                solution = solMatch[1];
+            }
+
+            // FIX: Normalize continuous runs of backslashes down to exactly ONE backslash for proper inline parsing
+            extractedText = extractedText.replace(/\\+/g, '\\');
+            if (typeof solution === 'string') {
+                solution = solution.replace(/\\+/g, '\\');
+            }
+
+            // Auto-fallback type classification logic if not explicitly returned by the Gem
+            if (!type) {
+                if (options.length > 0) {
+                    type = "mcq";
+                } else if (correctAnswer && /^-?\d+(\.\d+)?$/.test(correctAnswer.toString().trim())) {
+                    type = "numeric";
+                } else {
+                    type = "text";
+                }
+            }
+
+            parsedItems.push({
+                imageDataUrl: null, 
+                questionOnlyDataUrl: null,
+                diagramImageUrl: null, 
+                extractedText: extractedText,
+                options: options,
+                correctAnswer: correctAnswer,
+                type: type,
+                timeTaken: 0,
+                solution: solution,
+                qElo: _computeDefaultQEloForCurrentChapter(), 
+                isAnomaly: false
+            });
+        }
+
+        if (parsedItems.length === 0) {
+            throw new Error("Failed to compile any valid items. Verify structural array fields.");
+        }
+
+        AppState.extractedItems = parsedItems;
+        hideLoading();
+        alert(`Ingestion locked: ${AppState.extractedItems.length} items compiled successfully. Mounting preview grid.`);
+
+        // Pass control flow directly to your interactive validation view
+        showPreviewModal();
+
+    } catch (err) {
+        console.error("Text track execution crash:", err);
+        hideLoading();
+        alert(`Ingestion failed: ${err.message}. Ensure your copied text contains complete question definitions.`);
+    }
+}
 export function showPreviewModal() {
     let container = document.getElementById('extracted-questions-list');
+    if (!container) return;
     container.innerHTML = '';
+    
     AppState.extractedItems.forEach((q, idx) => {
         let div = document.createElement('div');
         div.className = 'question-preview-item';
-        let diagramHtml = q.diagramImageUrl ?
-            `<div><small>📐 Diagram:</small><br><img src="${q.diagramImageUrl}" style="max-width:120px; border-radius:8px; margin-top:4px;"></div>` :
-            '';
-        let textPreview = q.extractedText ?
-            `<p style="font-size:13px; color:#cbd5e1;">${escapeHtml(q.extractedText.substring(0, 100))}…</p>` :
-            '';
-        let optionsPreview = q.options.length ?
-            `<p style="font-size:13px; color:#93c5fd;">Options: ${q.options.map(o => escapeHtml(o)).join(', ')}</p>` :
-            '';
-        let solutionPreview = q.solution ?
-            `<p style="font-size:12px; color:#6ee7b7; margin-top:4px;">📝 Solution Loaded</p>` : '';
-        let answerDisplay = Array.isArray(q.correctAnswer) ? q.correctAnswer.join(',') : (q.correctAnswer || '');
-        div.innerHTML = `<strong>Question ${idx + 1}</strong>
-            <div style="display:flex; gap:12px; align-items:flex-start;">
-                <img src="${q.imageDataUrl}" style="max-width:200px; border-radius:12px;">
-                ${diagramHtml}
-                <div>${textPreview}${optionsPreview}${solutionPreview}</div>
-            </div>
-            <div class="manual-answer-row">
-                <span>Answer:</span>
-                <input id="manual-answer-${idx}" class="pomo-input" style="width:150px;" placeholder="A/B/C/D or list" value="${escapeHtml(answerDisplay)}">
+
+        // ── Visual asset container: legacy crop image vs surgical diagram slot ──
+        let visualAssetContainerHtml = '';
+
+        if (q.imageDataUrl) {
+            visualAssetContainerHtml = `<img src="${q.imageDataUrl}" style="max-width:200px; border-radius:12px;">`;
+        } else {
+            if (q.diagramImageUrl) {
+                visualAssetContainerHtml = `
+                    <div class="surgical-asset-box" style="border: 1px solid var(--glow-orange); padding:8px; border-radius:8px; background:rgba(249,115,22,0.05); flex-shrink:0;">
+                        <small style="color: #f97316; font-weight:700;">📐 Diagram Mapped</small><br>
+                        <img src="${q.diagramImageUrl}" style="max-width:140px; border-radius:6px; margin:6px 0;">
+                        <button class="btn btn-danger btn-xs" style="display:block; width:100%; padding:2px;" onclick="event.stopPropagation(); window.yeetSurgicalDiagram(${idx})">✕ Wipe Asset</button>
+                    </div>`;
+            } else {
+                visualAssetContainerHtml = `
+                    <div class="surgical-asset-trigger" style="text-align:center; padding:10px; border:1px dashed #4a4a6a; border-radius:8px; flex-shrink:0; min-width:140px;">
+                        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); window.triggerSurgicalDiagramUpload(${idx})">➕ Add Diagram</button>
+                        <p style="font-size:10px; color:#64748b; margin-top:4px; line-height:1.1;">Optional: Bind crop asset if needed.</p>
+                    </div>`;
+            }
+        }
+
+        // ── Text column: Maintained full text for pure text track dumps to avoid broken LaTeX syntax ──
+        let typeBadge = q.type ? `<span class="q-type-badge q-type-${q.type}">${q.type.toUpperCase()}</span>` : '';
+        let fullTextContent = q.extractedText || '';
+        let processedTextHtml = '';
+        
+        if (fullTextContent) {
+            let textToDisplay = q.imageDataUrl ? (fullTextContent.substring(0, 120) + (fullTextContent.length > 120 ? '…' : '')) : fullTextContent;
+            processedTextHtml = `<p style="font-size:14px; color:#cbd5e1; line-height:1.4; margin-bottom:6px;">${escapeHtml(textToDisplay)}</p>`;
+        } else {
+            processedTextHtml = `<p style="font-size:12px; color:#64748b; font-style:italic;">No text extracted yet — run "Extract Text" for multicrop items.</p>`;
+        }
+
+        // Clean option layout rows
+        let optionsPreview = '';
+        if (q.options && q.options.length) {
+            optionsPreview = `<div style="margin: 6px 0; padding-left: 8px; border-left: 2px solid #3b82f6;">
+                ${q.options.map(o => `<p style="font-size:13px; color:#93c5fd; margin: 2px 0;">${escapeHtml(o)}</p>`).join('')}
             </div>`;
+        }
+        
+        let solutionPreview = q.solution ? `<p style="font-size:12px; color:#6ee7b7; margin-top:4px; font-weight:500;">📝 Solution Context Loaded</p>` : '';
+        let answerDisplay = Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || '');
+        
+        div.innerHTML = `
+            <div style="margin-bottom: 6px; display:flex; justify-content:space-between; align-items:center;">
+                <strong>Question ${idx + 1}</strong> ${typeBadge}
+            </div>
+            <div style="display:flex; gap:16px; align-items:flex-start; justify-content:space-between;">
+                <div style="flex:1; min-width:0;">
+                    ${processedTextHtml}
+                    ${optionsPreview}
+                    ${solutionPreview}
+                </div>
+                ${visualAssetContainerHtml}
+            </div>
+            <div class="manual-answer-row" style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.04);">
+                <span style="font-size:12px; color:#a1a1aa;">Verified Target Key:</span>
+                <input id="manual-answer-${idx}" class="pomo-input" style="width:160px; margin-left:8px; padding:4px 8px;" placeholder="A/B/C/D or numeric list" value="${escapeHtml(answerDisplay)}">
+            </div>`;
+            
         container.appendChild(div);
     });
+    
     openModal('preview-modal');
 }
+
+// Export module logic to global window context
+window.processGemTextDump = processGemTextDump;
+window.showPreviewModal = showPreviewModal;
 
 // ==================== PRACTICE: QUESTION LIST ====================
 
@@ -1833,13 +2106,29 @@ export function showQuestionList() {
         let timeDisplay = q.timeTaken ? `<div style="font-size:12px; color:#8a8ad3; margin-top:4px;">⏱ ${Math.floor(q.timeTaken / 60)}:${(q.timeTaken % 60).toString().padStart(2, '0')}</div>` : '';
 
         let imgHtml = '';
-        if (q.imageDataUrl && q.imageDataUrl.length > 100) {
-            imgHtml = `<img src="${q.imageDataUrl}" style="max-width:100%; border-radius:8px;">`;
-        } else if (q.driveImageId) {
-            imgHtml = `<img data-drive-id="${q.driveImageId}" data-qid="${q.id}" class="lazy-practice-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Waiting for scroll...</text></svg>" style="max-width:100%; border-radius:8px; transition: opacity 0.3s;">`;
-        } else {
-            imgHtml = `<div style="padding:20px; font-size:12px; color:var(--text-muted); text-align:center;">No visual asset mapped. Input feed is completely blind here.</div>`;
-        }
+if (q.imageDataUrl && q.imageDataUrl.length > 100) {
+    imgHtml = `<img src="${q.imageDataUrl}" style="max-width:100%; border-radius:8px;">`;
+} else if (q.driveImageId) {
+    imgHtml = `<img data-drive-id="${q.driveImageId}" data-qid="${q.id}" class="lazy-practice-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Waiting for scroll...</text></svg>" style="max-width:100%; border-radius:8px; transition: opacity 0.3s;">`;
+} else {
+    // Elegant left-aligned text layout with a line clamp to keep card heights uniform on the grid sheet
+    imgHtml = `
+        <div style="
+            padding: 12px; 
+            font-size: 13px; 
+            color: #cbd5e1; 
+            text-align: left; 
+            line-height: 1.5; 
+            max-height: 110px; 
+            overflow: hidden; 
+            display: -webkit-box; 
+            -webkit-line-clamp: 4; 
+            -webkit-box-orient: vertical;
+            white-space: normal;
+        ">
+            ${escapeHtml(q.extractedText || 'No text or visual asset saved.')}
+        </div>`;
+}
 
         let card = document.createElement('div');
         card.className = 'question-card';
@@ -4521,6 +4810,33 @@ window.processAnswerKeyFromText = processAnswerKeyFromText;
 window.saveAllQuestions = saveAllQuestions;
 window.showPreviewModal = showPreviewModal;
 window.showQuestionList = showQuestionList;
+
+// ── Surgical File Upload Bindings for Text-Track Diagram Synchronization ──
+window.processGemTextDump = processGemTextDump;
+window.switchIngestionTrack = switchIngestionTrack;
+
+window.triggerSurgicalDiagramUpload = function(index) {
+    const dynamicInput = document.createElement('input');
+    dynamicInput.type = 'file';
+    dynamicInput.accept = 'image/*';
+    dynamicInput.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            showLoading("Injecting graphic asset... Synchronizing preview ledger...");
+            const base64String = await readFileAsBase64(file);
+            AppState.extractedItems[index].diagramImageUrl = base64String;
+            hideLoading();
+            // Idempotent interface refresh: force immediate visual sync update
+            showPreviewModal();
+        }
+    };
+    dynamicInput.click();
+};
+
+window.yeetSurgicalDiagram = function(index) {
+    AppState.extractedItems[index].diagramImageUrl = null;
+    showPreviewModal();
+};
 // Expose applyFilter globally so the inline `onchange="applyFilter()"`
 // attribute on #question-filter (inside #practice-question-list-view) can
 // resolve it. Without this, the function stays module-scoped and the filter

@@ -12,6 +12,7 @@
             --glow-green: #22c55e;
             --glow-red: #f87171;
             --glow-yellow: #eab308;
+            --glow-orange: #f97316;
         }
 
         * {
@@ -4257,5 +4258,172 @@ html body .erm-sparkline-box svg {
     }
     50% {
         box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.75), 0 0 28px rgba(248, 113, 113, 0.58);
+    }
+}
+
+/* ============================================================================
+   DUAL-ENGINE INGESTION SYSTEM — Gemini Gem Text Track (Textadd)
+   Non-breaking structural styling for the workspace toggle panels and the
+   compact diagram attachment rows. Matches the dark interface theme and
+   protects canvas positioning layers from accidental adjustments.
+   ============================================================================ */
+
+/* ── Button size variants (referenced by surgical asset rows) ── */
+.btn-xs {
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.btn-sm {
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+/* ── Ingestion track toggle row ── */
+.ingestion-toggle-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 6px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ingestion-toggle-btn {
+    flex: 1;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 700;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+    text-align: center;
+}
+.ingestion-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+.ingestion-toggle-btn.active {
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+    color: #fff;
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 18px rgba(139, 92, 246, 0.35);
+}
+
+/* ── Ingestion panels (only one visible at a time) ── */
+.ingestion-panel {
+    display: none;
+}
+.ingestion-panel.active {
+    display: block;
+}
+
+/* ── Gemini Gem Text Track terminal ── */
+.text-track-terminal {
+    background: rgba(5, 5, 12, 0.6);
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    border-radius: 14px;
+    padding: 16px;
+}
+.text-track-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.text-track-badge {
+    background: linear-gradient(90deg, #f97316, #eab308);
+    color: #1a0e00;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    font-family: 'Space Grotesk', sans-serif;
+    box-shadow: 0 0 14px rgba(249, 115, 22, 0.3);
+}
+.text-track-terminal-input {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace !important;
+    font-size: 12.5px;
+    line-height: 1.6;
+    resize: vertical;
+    background: rgba(0, 0, 0, 0.4) !important;
+    border-color: rgba(139, 92, 246, 0.2) !important;
+}
+.text-track-terminal-input:focus {
+    border-color: rgba(139, 92, 246, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+}
+
+/* ── Surgical diagram attachment rows (enhancement layer over inline styles) ── */
+.surgical-asset-box {
+    min-width: 160px;
+    transition: all 0.2s ease;
+}
+.surgical-asset-box:hover {
+    box-shadow: 0 0 16px rgba(249, 115, 22, 0.18);
+}
+.surgical-asset-trigger {
+    min-width: 160px;
+    transition: all 0.2s ease;
+    cursor: default;
+}
+.surgical-asset-trigger:hover {
+    border-color: rgba(139, 92, 246, 0.4) !important;
+    background: rgba(139, 92, 246, 0.04);
+}
+.surgical-asset-trigger .btn-sm {
+    transition: all 0.2s ease;
+}
+.surgical-asset-trigger:hover .btn-sm {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+}
+.surgical-asset-wipe {
+    transition: all 0.15s ease;
+}
+.surgical-asset-wipe:hover {
+    filter: brightness(1.15);
+}
+
+/* ── Question type badges (preview modal) ── */
+.q-type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    margin-left: 8px;
+    vertical-align: middle;
+    font-family: 'Space Grotesk', sans-serif;
+}
+.q-type-mcq {
+    background: rgba(59, 130, 246, 0.15);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.q-type-numeric {
+    background: rgba(234, 179, 8, 0.15);
+    color: #fde68a;
+    border: 1px solid rgba(234, 179, 8, 0.3);
+}
+.q-type-text {
+    background: rgba(139, 92, 246, 0.15);
+    color: #c4b5fd;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+/* ── Responsive: stack toggle buttons on narrow screens ── */
+@media (max-width: 480px) {
+    .ingestion-toggle-row {
+        flex-direction: column;
     }
 }
