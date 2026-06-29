@@ -4593,19 +4593,64 @@ async function initApp() {
     if (errMathIn) errMathIn.value = errMath;
 
     // Verify calibration timeline
+    // Verify calibration timeline
     const todayStr = new Date().toISOString().split('T')[0];
     const lastCalDate = await idbGet('jeemax_last_calibrated_date');
+    
     if (lastCalDate === todayStr) {
         AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
         AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
         AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
     } else {
+        // ── CRITICAL: PREVENT LIQUIDATION REFLEX EXPLOIT ON REFRESH ──
+        // Using a distinct calendar check ensures the 20 ELO penalty executes exactly once 
+        // per daily transition, even if you reload the interface before closing the mood modal.
+        const lastTaxDate = await idbGet('jeemax_last_tax_date');
+        
+        if (lastTaxDate !== todayStr) {
+            // Extract baseline question deficits relative to previous targets
+            const defP = Math.max(0, (AppState.activeTargets.physics || 0) - (solved.physics || 0));
+            const defC = Math.max(0, (AppState.activeTargets.chemistry || 0) - (solved.chemistry || 0));
+            const defM = Math.max(0, (AppState.activeTargets.maths || 0) - (solved.maths || 0));
+            const totalDeficit = defP + defC + defM;
+
+            if (totalDeficit > 0) {
+                // Calculate proportional distribution allocations
+                const taxP = (defP / totalDeficit) * 20;
+                const taxC = (defC / totalDeficit) * 20;
+                const taxM = (defM / totalDeficit) * 20;
+
+                // Mutate the localized subject ELO ratings in-place (Clamped at absolute zero)
+                AppState.elo.physics = Math.max(0, (AppState.elo.physics || 1200) - taxP);
+                AppState.elo.chemistry = Math.max(0, (AppState.elo.chemistry || 1200) - taxC);
+                AppState.elo.maths = Math.max(0, (AppState.elo.maths || 1200) - taxM);
+
+                // Recompute the master global meta-MMR rating using the updated parameters
+                AppState.elo.global = _computeGlobalMetaMMR(
+                    AppState.elo.physics,
+                    AppState.elo.chemistry,
+                    AppState.elo.maths
+                );
+
+                // Mount hard UI notification alert immediately into the telemetry header
+                const catText = document.getElementById('cat-text');
+                if (catText) {
+                    catText.textContent = `🚨 TARGET LIQUIDATION: You missed yesterday's focus vectors by ${totalDeficit} questions. 20 total ELO has been extracted from your build.`;
+                    catText.className = "cat-text glow-red";
+                }
+            }
+            // Commit structural tax state signature timestamp to storage
+            await idbSet('jeemax_last_tax_date', todayStr);
+        }
+
+        // Flush tracking parameters for the new daily matrix cycle
         solved.physics = 0;
         solved.chemistry = 0;
         solved.maths = 0;
         studySecs.physics = 0;
         studySecs.chemistry = 0;
         studySecs.maths = 0;
+        
         await saveAllAsync().catch(console.error);
         openModal('mood-modal');
     }
@@ -5294,6 +5339,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         c.fill();
         c.restore();
     }
+    
 
     // O(1) live repaint — only the single in-progress stroke is drawn on the
     // foreground canvas. Historical strokes live permanently on the background
