@@ -1832,8 +1832,8 @@ export async function processGemTextDump() {
                     options = optMatches.map(o => {
                         // Strip outer quotes
                         let rawOpt = o.substring(1, o.length - 1);
-                        // FIX: Collapse any arbitrary run of backslashes down to a single backslash
-                        return rawOpt.replace(/\\+/g, '\\');
+                        // FIX: Convert literal \n or \\n traps into real newlines, then collapse backslashes
+                        return rawOpt.replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
                     });
                 }
             }
@@ -1868,9 +1868,12 @@ export async function processGemTextDump() {
             }
 
             // FIX: Normalize continuous runs of backslashes down to exactly ONE backslash for proper inline parsing
-            extractedText = extractedText.replace(/\\+/g, '\\');
+            // FIX: Convert literal macro/newline traps (\n or \\n) into actual newline characters first.
+            // This prevents KaTeX from choking on an "Undefined control sequence: \n" error,
+            // allowing math symbols like \mathrm to render successfully.
+            extractedText = extractedText.replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
             if (typeof solution === 'string') {
-                solution = solution.replace(/\\+/g, '\\');
+                solution = solution.replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
             }
 
             // Auto-fallback type classification logic if not explicitly returned by the Gem
