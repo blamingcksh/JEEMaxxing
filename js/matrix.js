@@ -220,6 +220,19 @@ export function openPracticeDrawer(qId) {
     `;
 
     document.body.appendChild(overlay);
+
+    // ── PERF: freeze the matrix background while the practice drawer is open.
+    // The matrix page keeps three live SVG feGaussianBlur filters (decay-glow,
+    // erm-dot-glow, p0-glow) plus a card grid with stacked box-shadows all
+    // compositing behind the overlay. At blue/purple streak fire the streak
+    // canvas's per-frame cost triples (additive blending + extra particles),
+    // and combined with the matrix's background compositing it blows the 16ms
+    // frame budget. Tagging <body> lets CSS skip painting those layers until
+    // the drawer closes — the streak then has the full GPU budget it has in
+    // the normal question-practice flow, where the background is light. ──
+    document.body.classList.add('matrix-drawer-open');
+    _pauseRolloverWatcher();
+
     _startStopwatch();
     _postRenderDrawer(q);
 }
@@ -229,6 +242,10 @@ export function closePracticeDrawer() {
     _resetDrawerState();
     const overlay = document.getElementById('sr-practice-overlay');
     if (overlay) overlay.remove();
+
+    // ── PERF: unfreeze the matrix background now that the drawer is gone. ──
+    document.body.classList.remove('matrix-drawer-open');
+    _resumeRolloverWatcher();
 }
 
 // ── Practice drawer: helpers ───────────────────────────────────────────────
@@ -1566,15 +1583,53 @@ export function refreshErrorDashboardIfStale() {
     }
 }
 
+// Handle to the 60s rollover interval. Held at module scope so the practice
+// drawer can pause it while open (see openPracticeDrawer / closePracticeDrawer)
+// — refreshErrorDashboardIfStale iterates the entire questionBank's history
+// logs, which is a main-thread cost we don't want competing with the streak
+// fire animation at blue/purple tiers.
+let _rolloverIntervalId = null;
+let _rolloverVisibilityHandler = null;
+let _rolloverFocusHandler = null;
+
 function _startRolloverWatcher() {
     if (_rolloverWatchStarted) return;
     _rolloverWatchStarted = true;
     _lastRenderedDate = _todayKey();
-    setInterval(refreshErrorDashboardIfStale, 60_000);
-    document.addEventListener('visibilitychange', () => {
+    _resumeRolloverWatcher();
+}
+
+// Install the interval + event listeners. Called on matrix boot and when the
+// practice drawer closes. Safe to call repeatedly — it tears down existing
+// handles first to prevent leaks.
+function _resumeRolloverWatcher() {
+    if (!_rolloverWatchStarted) return;
+    if (_rolloverIntervalId !== null) return; // already running
+    _rolloverIntervalId = setInterval(refreshErrorDashboardIfStale, 60_000);
+    _rolloverVisibilityHandler = () => {
         if (!document.hidden) refreshErrorDashboardIfStale();
-    });
-    window.addEventListener('focus', refreshErrorDashboardIfStale);
+    };
+    _rolloverFocusHandler = refreshErrorDashboardIfStale;
+    document.addEventListener('visibilitychange', _rolloverVisibilityHandler);
+    window.addEventListener('focus', _rolloverFocusHandler);
+}
+
+// Tear down the interval + event listeners. Called when the practice drawer
+// opens so the matrix stops doing per-minute questionBank sweeps in the
+// background while the user is mid-attempt.
+function _pauseRolloverWatcher() {
+    if (_rolloverIntervalId !== null) {
+        clearInterval(_rolloverIntervalId);
+        _rolloverIntervalId = null;
+    }
+    if (_rolloverVisibilityHandler) {
+        document.removeEventListener('visibilitychange', _rolloverVisibilityHandler);
+        _rolloverVisibilityHandler = null;
+    }
+    if (_rolloverFocusHandler) {
+        window.removeEventListener('focus', _rolloverFocusHandler);
+        _rolloverFocusHandler = null;
+    }
 }
 
 export function renderErrorResolutionDashboard() {
