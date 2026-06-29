@@ -1065,15 +1065,7 @@ let cpIgnite = null;    // prominent INITIATE button (appears when grace arms)
 
 function injectControlCenter() {
     // Floating hub button (bottom-left so it doesn't clash with scratchpad top-right)
-    cpHub = document.createElement('div');
-    cpHub.id = 'cp-hub';
-    cpHub.innerHTML = '🔒';
-    cpHub.title = 'Checkpoint Control Center';
-    cpHub.addEventListener('click', function () {
-        if (cpPanel && cpPanel.style.display === 'flex') closeControlPanel();
-        else openControlPanel();
-    });
-    document.body.appendChild(cpHub);
+    
 
     // The control panel
     cpPanel = document.createElement('div');
