@@ -173,6 +173,29 @@ export function closeModalStr(id) {
     setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
 }
 
+/**
+ * Synchronous, transition-bypassing modal hide.
+ *
+ * `closeModalStr` removes `.active` immediately but defers the actual
+ * `display='none'` for 300ms so the fade-out CSS transition can play. That
+ * delay is a problem when we need to IMMEDIATELY swap one full-screen flex
+ * overlay for another (e.g. preview-modal → crop-modal, or upload-modal →
+ * preview-modal): for 300ms both overlays keep `display:flex` inline, and if
+ * the dismissed one has the higher z-index it keeps capturing pointer
+ * events and visually burying the new one.
+ *
+ * This helper tears the modal down in a single synchronous tick — remove
+ * `.active`, force `display='none'` inline — so the next overlay is the only
+ * one on stage the moment it opens. The fade-out animation is sacrificed,
+ * but correctness > prettiness here.
+ */
+function forceHideModal(id) {
+    const m = document.getElementById(id);
+    if (!m) return;
+    m.classList.remove('active');
+    m.style.display = 'none';
+}
+
 export function triggerStreakShield() {
     // Resolve the VISIBLE streak visualizer. The standard practice modal
     // (#practice-modal) keeps a permanent #streak-visualizer in the DOM (hidden
@@ -1205,7 +1228,12 @@ function endDraw(e) {
             cropSession.activeCrop = false;
             cropSession.drawing = { startX: 0, startY: 0, endX: 0, endY: 0, sourceId: null };
             cropSession.surgicalTargetIdx = null;
-            closeCropModal();
+            // Force-hide the crop modal SYNCHRONOUSLY (not closeModalStr's
+            // 300ms deferred fade-out) so it can't linger on top of the
+            // preview modal we're about to reopen. Without this, both overlays
+            // are display:flex for 300ms and the crop modal can capture
+            // pointer events meant for the preview grid.
+            forceHideModal('crop-modal');
             showPreviewModal();
             return;
         }
@@ -1447,21 +1475,21 @@ export function closeCropModal() {
     // active class). For the cancel / backdrop-click path this is the ONLY
     // restore point, which is why it must live here.
     if (Number.isInteger(cropSession.surgicalTargetIdx)) {
-        const stillSurgical = cropSession.surgicalTargetIdx;
         // Clear the flag BEFORE opening the preview so any downstream
         // refreshCropUI() call re-enters multi-crop mode cleanly.
         cropSession.surgicalTargetIdx = null;
-        // Use openModal (which calls openModal's standard flow) to restore
-        // the preview grid. Guard with a try/catch in case the preview
-        // modal was never mounted (e.g. during initial bootstrap).
+        // Restore the preview grid. showPreviewModal() both re-renders the
+        // card content AND calls openModal('preview-modal'), which is what we
+        // want — a stale preview would be worse than none. Guard with a
+        // try/catch in case the preview modal was never mounted (e.g. during
+        // initial bootstrap).
         try {
-            if (typeof openModal === 'function') {
-                openModal('preview-modal');
-            } else if (typeof showPreviewModal === 'function') {
+            if (typeof showPreviewModal === 'function') {
                 showPreviewModal();
+            } else if (typeof openModal === 'function') {
+                openModal('preview-modal');
             }
         } catch (_e) { /* preview modal unmounted — ignore */ }
-        void stillSurgical;
     }
 }
 
@@ -1796,18 +1824,21 @@ export function saveAllQuestions() {
         AppState.questionBank.push(newQ);
     }
     saveAllAsync().catch(console.error);
-    closeModalStr('preview-modal');
-    // ── Bug 2 fix: wipe the text-track terminal so the next batch starts clean ──
-    // The raw JSON dump inside #text-add-terminal was being left dirty after
-    // Save All, so the next ingestion session would show stale payload text.
-    // Zero it out here, alongside any lingering upload-modal layer, so the
-    // workspace returns to a fully pristine post-save state.
+    // ── Bug 2 fix: tear down the preview modal + upload modal synchronously
+    // and wipe the text-track terminal so the next batch starts clean. ──
+    // closeModalStr() defers display='none' by 300ms for the fade-out
+    // transition, which leaves the upload-modal lingering in a
+    // display:flex-but-fading state — the moment preview-modal also closes,
+    // the upload-modal becomes the topmost visible overlay and looks like it
+    // "reopened". forceHideModal() drops display to 'none' inline in a single
+    // tick so both layers are gone before the alert() yields to the user.
+    forceHideModal('preview-modal');
+    forceHideModal('upload-modal');
+    // Zero out the raw JSON dump inside #text-add-terminal so the next
+    // ingestion session starts with a clean slate. Optional chaining +
+    // conditional guard prevents crashes if the terminal isn't mounted.
     const terminal = document.getElementById('text-add-terminal');
     if (terminal) terminal.value = '';
-    // Also belt-and-suspenders: make sure the upload-modal is dismissed in
-    // case it was never closed (e.g. user navigated back via preview-modal
-    // without going through the normal text-track flow).
-    closeModalStr('upload-modal');
     alert(`Successfully imported ${AppState.extractedItems.length} fresh problems into the local engine. Let's see how you handle them.`);
 }
 
@@ -2030,13 +2061,16 @@ export async function processGemTextDump() {
         hideLoading();
         alert(`Ingestion locked: ${AppState.extractedItems.length} items compiled successfully. Mounting preview grid.`);
 
-        // ── Bug 2 fix: dismiss the parent upload-modal so it doesn't resurface ──
-        // The text track pipeline was leaving #upload-modal hidden in the
-        // background layer. When #preview-modal later closes (e.g. on Save
-        // All), the upload modal would suddenly become visible again, making
-        // it look like it had re-opened. Tear it down explicitly here so the
-        // only overlay on screen after this point is the preview grid.
-        closeModalStr('upload-modal');
+        // ── Bug 2 fix: dismiss the parent upload-modal SYNCHRONOUSLY so it
+        // can't resurface after Save All. ──
+        // closeModalStr() defers display='none' by 300ms for the fade-out
+        // transition. If we use it here, the upload-modal lingers in a
+        // display:flex-but-fading state underneath preview-modal; the moment
+        // preview-modal later closes (on Save All), the upload-modal becomes
+        // the topmost overlay and looks like it "reopened". forceHideModal()
+        // drops display to 'none' inline in a single tick so the upload layer
+        // is fully gone before the preview grid mounts.
+        forceHideModal('upload-modal');
 
         // Pass control flow directly to your interactive validation view
         showPreviewModal();
@@ -5023,14 +5057,18 @@ window.triggerSurgicalDiagramUpload = function(index) {
         cropSession.ctxRefs = {};
         cropSession.imgRefs = {};
 
-        // ── Bug 1 fix: modal handoff ────────────────────────────────────
+        // ── Bug 1 fix: modal handoff (synchronous) ────────────────────
         // The crop modal and the preview modal are both full-screen flex
-        // overlays. If both are visible at once, z-index layering can bury
+        // overlays. If both are visible at once, z-index layering buries
         // #crop-modal underneath #preview-modal, locking the user out of the
-        // canvas. Dismiss the preview modal first so the crop modal is the
-        // only overlay on screen when it opens. showPreviewModal() is
-        // re-invoked from endDraw() once the surgical crop is committed.
-        closeModalStr('preview-modal');
+        // canvas. We MUST dismiss the preview modal synchronously —
+        // closeModalStr() defers display='none' by 300ms for the fade-out
+        // transition, which leaves both overlays capturing pointer events
+        // simultaneously. forceHideModal() sets display='none' inline in a
+        // single tick so the crop modal is the only overlay on stage the
+        // instant it opens. showPreviewModal() is re-invoked from endDraw()
+        // once the surgical crop is committed.
+        forceHideModal('preview-modal');
 
         // Open the crop modal and let refreshCropUI() detect surgical mode
         // (via the surgicalTargetIdx flag we just set) to swap the instruction
