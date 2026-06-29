@@ -70,6 +70,13 @@ let cropSession = {
     ctxRefs: {},
     imgRefs: {},
     toggleButtonSize: 18,
+    // ── Surgical single-crop mode ──
+    // When non-null, the crop modal is operating in "surgical" mode for the
+    // Gemini Gem Text Track: a single source image was uploaded via
+    // window.triggerSurgicalDiagramUpload(idx) and the user is drawing ONE
+    // bounding box to bind a diagram to AppState.extractedItems[idx].
+    // When null, the traditional multi-crop pipeline runs untouched.
+    surgicalTargetIdx: null,
 };
 
 let overheatActive = false;
@@ -951,6 +958,10 @@ export function initCropSession(base64Images) {
     cropSession.sourceImages = base64Images.map((dataUrl, idx) => ({ id: idx, dataUrl }));
     cropSession.allQuestions = [];
     cropSession.currentQuestionIdx = 0;
+    // Safety: entering the traditional multi-crop pipeline must always clear
+    // any lingering surgical target so the two flows never contaminate each
+    // other. endDraw() branches on this flag.
+    cropSession.surgicalTargetIdx = null;
     startNewQuestion();
 }
 
@@ -967,6 +978,14 @@ export function refreshCropUI() {
     const confirmBtn = document.getElementById('crop-confirm-question');
     const nextBtn = document.getElementById('crop-next-question');
     const finishBtn = document.getElementById('crop-finish');
+
+    // ── Surgical single-crop mode detection ──────────────────────────────
+    // surgicalTargetIdx is set by window.triggerSurgicalDiagramUpload(idx).
+    // When active, we swap the instruction copy, hide the entire multi-crop
+    // button row, and let endDraw() auto-confirm on pointer release. The
+    // canvas wiring itself is reused verbatim — only the post-crop handler
+    // and the chrome around the canvas differ.
+    const surgicalMode = Number.isInteger(cropSession.surgicalTargetIdx);
 
     strip.innerHTML = '';
     cropSession.canvasRefs = {};
@@ -1005,28 +1024,46 @@ export function refreshCropUI() {
 
     const _cq = cropSession.allQuestions[cropSession.currentQuestionIdx];
     segBar.innerHTML = '';
-    _cq.segments.forEach((seg, idx) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'segment-preview';
-        wrapper.style.borderColor = seg.isDiagram ? '#f97316' : '#3b82f6';
-        const thumb = document.createElement('img');
-        thumb.src = seg.cropDataUrl;
-        wrapper.appendChild(thumb);
-        const delBtn = document.createElement('button');
-        delBtn.className = 'delete-segment-btn';
-        delBtn.textContent = '✕';
-        delBtn.onclick = () => { deleteSegment(idx); };
-        wrapper.appendChild(delBtn);
-        segBar.appendChild(wrapper);
-    });
+    // In surgical mode the segment preview bar is intentionally left empty —
+    // the moment the user finishes drawing, endDraw() short-circuits straight
+    // into AppState.extractedItems[idx].diagramImageUrl and tears the modal
+    // down, so there is never a persisted segment to preview.
+    if (_cq) {
+        _cq.segments.forEach((seg, idx) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'segment-preview';
+            wrapper.style.borderColor = seg.isDiagram ? '#f97316' : '#3b82f6';
+            const thumb = document.createElement('img');
+            thumb.src = seg.cropDataUrl;
+            wrapper.appendChild(thumb);
+            const delBtn = document.createElement('button');
+            delBtn.className = 'delete-segment-btn';
+            delBtn.textContent = '✕';
+            delBtn.onclick = () => { deleteSegment(idx); };
+            wrapper.appendChild(delBtn);
+            segBar.appendChild(wrapper);
+        });
+    }
 
-    inst.textContent = `Q ${cropSession.currentQuestionIdx + 1}: Draw boxes around the question. Click □ inside a box to mark it as a diagram.`;
-
-    redrawBtn.style.display = _cq.segments.length > 0 ? 'inline-block' : 'none';
-    confirmBtn.style.display = 'inline-block';
-    confirmBtn.textContent = '✓ Lock Question';
-    nextBtn.style.display = 'none';
-    finishBtn.style.display = 'none';
+    if (surgicalMode) {
+        // Surgical copy: tell the user exactly which question index they are
+        // binding a diagram to. Use 1-based indexing for human readability.
+        inst.textContent = `Surgical Crop: Draw a single box around the diagram to bind it to Question ${cropSession.surgicalTargetIdx + 1}.`;
+        // Hide the entire multi-crop control row — there is no "next question",
+        // "lock question", or "finish" step in this flow. The crop modal is
+        // closed automatically by endDraw() the moment a box is committed.
+        if (redrawBtn) redrawBtn.style.display = 'none';
+        if (confirmBtn) confirmBtn.style.display = 'none';
+        if (nextBtn) nextBtn.style.display = 'none';
+        if (finishBtn) finishBtn.style.display = 'none';
+    } else {
+        inst.textContent = `Q ${cropSession.currentQuestionIdx + 1}: Draw boxes around the question. Click □ inside a box to mark it as a diagram.`;
+        redrawBtn.style.display = _cq && _cq.segments.length > 0 ? 'inline-block' : 'none';
+        confirmBtn.style.display = 'inline-block';
+        confirmBtn.textContent = '✓ Lock Question';
+        nextBtn.style.display = 'none';
+        finishBtn.style.display = 'none';
+    }
 
     Object.keys(cropSession.canvasRefs).forEach(srcIdStr => {
         const srcId = parseInt(srcIdStr);
@@ -1136,6 +1173,43 @@ function endDraw(e) {
         h: (h * scaleY) / img.naturalHeight
     };
     cropImageFromBBox(cropSession.sourceImages[sourceId].dataUrl, bbox).then(croppedDataUrl => {
+        // ── Surgical single-crop bypass ─────────────────────────────────
+        // When surgicalTargetIdx is set, skip the sequential segments.push
+        // loop entirely. The cropped data URL is assigned directly to the
+        // targeted text-track item, the canvas references are torn down, the
+        // surgical flag is cleared, the modal is closed, and the preview is
+        // re-rendered so the new diagram thumbnail appears instantly.
+        if (Number.isInteger(cropSession.surgicalTargetIdx)) {
+            const targetIdx = cropSession.surgicalTargetIdx;
+            if (AppState.extractedItems && AppState.extractedItems[targetIdx]) {
+                AppState.extractedItems[targetIdx].diagramImageUrl = croppedDataUrl;
+            }
+            // Cleanup sequence: detach canvas listeners, clear refs, reset
+            // surgical flag, close modal, refresh preview.
+            Object.values(cropSession.canvasRefs || {}).forEach(c => {
+                c.onmousedown = null;
+                c.onmousemove = null;
+                c.onmouseup = null;
+                c.onmouseleave = null;
+                c.ontouchstart = null;
+                c.ontouchmove = null;
+                c.ontouchend = null;
+                c.ontouchcancel = null;
+            });
+            cropSession.canvasRefs = {};
+            cropSession.ctxRefs = {};
+            cropSession.imgRefs = {};
+            cropSession.sourceImages = [];
+            cropSession.allQuestions = [];
+            cropSession.currentQuestionIdx = 0;
+            cropSession.activeCrop = false;
+            cropSession.drawing = { startX: 0, startY: 0, endX: 0, endY: 0, sourceId: null };
+            cropSession.surgicalTargetIdx = null;
+            closeCropModal();
+            showPreviewModal();
+            return;
+        }
+        // ── Traditional multi-crop pipeline (untouched) ──────────────────
         const _cq = cropSession.allQuestions[cropSession.currentQuestionIdx];
         _cq.segments.push({
             sourceId,
@@ -1311,13 +1385,13 @@ export function finishAllQuestions() {
     AppState.extractedItems = items;
     closeCropModal();
     showPreviewModal();
-    cropSession = { sourceImages: [], currentQuestionIdx: 0, allQuestions: [], activeCrop: false, drawing: {}, canvasRefs: {}, ctxRefs: {}, imgRefs: {} };
+    cropSession = { sourceImages: [], currentQuestionIdx: 0, allQuestions: [], activeCrop: false, drawing: {}, canvasRefs: {}, ctxRefs: {}, imgRefs: {}, surgicalTargetIdx: null };
 }
 
 export function cancelCropSession() {
     if (confirm('Nuke all crops? No going back.')) {
         closeCropModal();
-        cropSession = { sourceImages: [], currentQuestionIdx: 0, allQuestions: [], activeCrop: false, drawing: {}, canvasRefs: {}, ctxRefs: {}, imgRefs: {} };
+        cropSession = { sourceImages: [], currentQuestionIdx: 0, allQuestions: [], activeCrop: false, drawing: {}, canvasRefs: {}, ctxRefs: {}, imgRefs: {}, surgicalTargetIdx: null };
         AppState.extractedItems = [];
     }
 }
@@ -4869,14 +4943,41 @@ window.triggerSurgicalDiagramUpload = function(index) {
     dynamicInput.accept = 'image/*';
     dynamicInput.onchange = async (event) => {
         const file = event.target.files[0];
-        if (file) {
-            showLoading("Injecting graphic asset... Synchronizing preview ledger...");
-            const base64String = await readFileAsBase64(file);
-            AppState.extractedItems[index].diagramImageUrl = base64String;
-            hideLoading();
-            // Idempotent interface refresh: force immediate visual sync update
-            showPreviewModal();
+        if (!file) return;
+        // Read the source textbook sheet as a Base64 data URL. Instead of
+        // pasting the whole uncropped image directly into diagramImageUrl, we
+        // load it into the existing #crop-modal bounding-box crop flow so the
+        // user can surgically extract just the diagram region.
+        showLoading('Loading source sheet into crop studio...');
+        const base64String = await readFileAsBase64(file);
+        hideLoading();
+
+        // ── Seed cropSession for surgical single-crop mode ────────────────
+        // Map the single uploaded image into the sourceImages array shape
+        // expected by refreshCropUI() / endDraw(). Seed allQuestions with a
+        // clean slate (one empty placeholder question) so the existing canvas
+        // drawing / redraw machinery has a `_cq.segments` array to read from.
+        // This is critical: leaving allQuestions empty would crash
+        // redrawAllRectangles(), which dereferences _cq.segments.
+        cropSession.surgicalTargetIdx = index;
+        cropSession.sourceImages = [{ id: 0, dataUrl: base64String }];
+        cropSession.allQuestions = [{ segments: [], stitchedImage: null, questionOnly: null }];
+        cropSession.currentQuestionIdx = 0;
+        cropSession.activeCrop = false;
+        cropSession.drawing = { startX: 0, startY: 0, endX: 0, endY: 0, sourceId: null };
+        cropSession.canvasRefs = {};
+        cropSession.ctxRefs = {};
+        cropSession.imgRefs = {};
+
+        // Open the crop modal and let refreshCropUI() detect surgical mode
+        // (via the surgicalTargetIdx flag we just set) to swap the instruction
+        // copy and hide the multi-crop control row.
+        const cropModal = document.getElementById('crop-modal');
+        if (cropModal) {
+            cropModal.style.display = 'flex';
+            cropModal.classList.add('active');
         }
+        refreshCropUI();
     };
     dynamicInput.click();
 };
