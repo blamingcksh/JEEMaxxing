@@ -1416,9 +1416,12 @@ export async function startManualCrop() {
 
 export function closeCropModal() {
     const modal = document.getElementById('crop-modal');
-    modal.classList.remove('active');
-    setTimeout(() => { if (!modal.classList.contains('active')) modal.style.display = 'none'; }, 300);
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => { if (!modal.classList.contains('active')) modal.style.display = 'none'; }, 300);
+    }
     Object.values(cropSession.canvasRefs || {}).forEach(canvas => {
+        if (!canvas) return;
         canvas.onmousedown = null;
         canvas.onmousemove = null;
         canvas.onmouseup = null;
@@ -1428,6 +1431,38 @@ export function closeCropModal() {
         canvas.ontouchend = null;
         canvas.ontouchcancel = null;
     });
+    // ── Bug 1 fix: restore the preview grid after a surgical crop session ──
+    // When closeCropModal() is invoked while surgicalTargetIdx is active
+    // (user committed a crop via endDraw, or cancelled via the modal backdrop),
+    // we need to bring #preview-modal back to the foreground so the user can
+    // continue binding diagrams to other questions. finishAllQuestions() and
+    // cancelCropSession() handle the multi-crop teardown themselves, so we
+    // snapshot the surgical flag BEFORE those callers clear cropSession and
+    // only re-open the preview when surgical mode was the active context.
+    //
+    // Note: endDraw()'s surgical bypass already calls showPreviewModal()
+    // directly, so by the time closeCropModal() runs from that path the
+    // preview is already restored — calling openModal('preview-modal') again
+    // here is a safe idempotent no-op (it just re-asserts display:flex +
+    // active class). For the cancel / backdrop-click path this is the ONLY
+    // restore point, which is why it must live here.
+    if (Number.isInteger(cropSession.surgicalTargetIdx)) {
+        const stillSurgical = cropSession.surgicalTargetIdx;
+        // Clear the flag BEFORE opening the preview so any downstream
+        // refreshCropUI() call re-enters multi-crop mode cleanly.
+        cropSession.surgicalTargetIdx = null;
+        // Use openModal (which calls openModal's standard flow) to restore
+        // the preview grid. Guard with a try/catch in case the preview
+        // modal was never mounted (e.g. during initial bootstrap).
+        try {
+            if (typeof openModal === 'function') {
+                openModal('preview-modal');
+            } else if (typeof showPreviewModal === 'function') {
+                showPreviewModal();
+            }
+        } catch (_e) { /* preview modal unmounted — ignore */ }
+        void stillSurgical;
+    }
 }
 
 // Wire upload-images change listener
@@ -1762,6 +1797,17 @@ export function saveAllQuestions() {
     }
     saveAllAsync().catch(console.error);
     closeModalStr('preview-modal');
+    // ── Bug 2 fix: wipe the text-track terminal so the next batch starts clean ──
+    // The raw JSON dump inside #text-add-terminal was being left dirty after
+    // Save All, so the next ingestion session would show stale payload text.
+    // Zero it out here, alongside any lingering upload-modal layer, so the
+    // workspace returns to a fully pristine post-save state.
+    const terminal = document.getElementById('text-add-terminal');
+    if (terminal) terminal.value = '';
+    // Also belt-and-suspenders: make sure the upload-modal is dismissed in
+    // case it was never closed (e.g. user navigated back via preview-modal
+    // without going through the normal text-track flow).
+    closeModalStr('upload-modal');
     alert(`Successfully imported ${AppState.extractedItems.length} fresh problems into the local engine. Let's see how you handle them.`);
 }
 
@@ -1983,6 +2029,14 @@ export async function processGemTextDump() {
         AppState.extractedItems = parsedItems;
         hideLoading();
         alert(`Ingestion locked: ${AppState.extractedItems.length} items compiled successfully. Mounting preview grid.`);
+
+        // ── Bug 2 fix: dismiss the parent upload-modal so it doesn't resurface ──
+        // The text track pipeline was leaving #upload-modal hidden in the
+        // background layer. When #preview-modal later closes (e.g. on Save
+        // All), the upload modal would suddenly become visible again, making
+        // it look like it had re-opened. Tear it down explicitly here so the
+        // only overlay on screen after this point is the preview grid.
+        closeModalStr('upload-modal');
 
         // Pass control flow directly to your interactive validation view
         showPreviewModal();
@@ -4968,6 +5022,15 @@ window.triggerSurgicalDiagramUpload = function(index) {
         cropSession.canvasRefs = {};
         cropSession.ctxRefs = {};
         cropSession.imgRefs = {};
+
+        // ── Bug 1 fix: modal handoff ────────────────────────────────────
+        // The crop modal and the preview modal are both full-screen flex
+        // overlays. If both are visible at once, z-index layering can bury
+        // #crop-modal underneath #preview-modal, locking the user out of the
+        // canvas. Dismiss the preview modal first so the crop modal is the
+        // only overlay on screen when it opens. showPreviewModal() is
+        // re-invoked from endDraw() once the surgical crop is committed.
+        closeModalStr('preview-modal');
 
         // Open the crop modal and let refreshCropUI() detect surgical mode
         // (via the surgicalTargetIdx flag we just set) to swap the instruction
