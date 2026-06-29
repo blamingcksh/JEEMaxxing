@@ -2560,6 +2560,13 @@ body.overheat-active .practice-header .hide-toggle {
     -webkit-backdrop-filter: blur(10px);
     animation: srFadeIn 0.2s ease;
     overflow-y: auto;
+    /* ── PERF: promote overlay + modal to their own GPU layers so they
+       composite independently of the matrix page underneath. Without this,
+       every streak-canvas frame forces the browser to re-composite the
+       backdrop-filter over the entire viewport + the matrix's SVG blur
+       filters in one pass → frame drops at blue/purple fire tiers. ── */
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 @keyframes srFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
@@ -2572,6 +2579,9 @@ body.overheat-active .practice-header .hide-toggle {
     display: flex;
     flex-direction: column;
     animation: srSlideUp 0.3s ease;
+    /* ── PERF: own GPU layer for the modal, same rationale as the overlay. ── */
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 .sr-practice-modal .sr-drawer-body {
     overflow-y: auto;
@@ -4427,6 +4437,38 @@ html body .erm-sparkline-box svg {
         flex-direction: column;
     }
 }
+/* ════════════════════════════════════════════════════════════════════════
+   PERF · Streak Lag Fix v2 — Matrix Practice Drawer
+   ─────────────────────────────────────────────────────────────────────
+   Three-layer fix for the lag at button-click and log-submit when a
+   high-tier (blue/purple) streak fire is active over the matrix.
+
+   LAYER 1 (JS, matrix.js):
+     • renderEloMatrix() removed from _applyResult() click path — deferred
+       to the post-close rebuild.
+     • submitPracticeLog() rebuild avalanche broken into 3 staggered
+       frames (rAF + requestIdleCallback) so the close animation can paint.
+
+   LAYER 2 (CSS, this block):
+     • Freeze the matrix's heavy SVG blur filters + card grid behind the
+       overlay (content-visibility:hidden + contain:strict).
+     • Hardware-accelerate the drawer (will-change + translateZ(0) above,
+       on the .sr-practice-overlay / .sr-practice-modal rules themselves).
+     • DROP backdrop-filter on the overlay when a high streak is running —
+       it's the single biggest GPU cost on WebKit and combines badly with
+       the streak canvas's additive blending.
+
+   LAYER 3 (the streak canvas itself):
+     • If you STILL see residual jank after v2, the next step is a
+       particle-count cap in the streak visualizer file (the one that
+       defines window.updateStreakVisualizer). Not addressed here.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── LAYER 2A: freeze the matrix background while the drawer is open ──
+   content-visibility:hidden skips layout, paint, AND compositing for these
+   containers — including the SVG feGaussianBlur filters (#decay-glow-green,
+   #erm-dot-glow, #p0-glow) and the stacked box-shadow glows on the progress
+   bars. contain:strict reinforces that their contents can't affect the page. */
 body.matrix-drawer-open #chapter-decay-grid,
 body.matrix-drawer-open #error-momentum-svg-container,
 body.matrix-drawer-open #error-list-container,
@@ -4446,3 +4488,37 @@ body.matrix-drawer-open #sr-practice-overlay {
     content-visibility: visible;
     contain: layout paint;
 }
+
+/* ── LAYER 2C: drop backdrop-filter when a high streak is running ──
+   The overlay's backdrop-filter:blur(10px) (set above) is a per-frame GPU
+   sampler over the ENTIRE viewport. On WebKit/iPad it combines
+   catastrophically with the streak canvas's globalCompositeOperation='lighter'
+   additive passes at blue/purple tiers.
+
+   We swap to a plain high-opacity dark background whenever <body> has
+   `streak-fire-high` — added by your streak visualizer once the user crosses
+   into the blue/purple tier. Drop this snippet into the file that defines
+   updateStreakVisualizer, in the branch that upgrades the fire color:
+
+       if (streak >= BLUE_TIER_THRESHOLD) {
+           document.body.classList.add('streak-fire-high');
+       } else {
+           document.body.classList.remove('streak-fire-high');
+       }
+
+   If you'd rather not touch the streak file, uncomment the second rule below
+   to apply the trade-off for the entire matrix-practice session. */
+body.streak-fire-high .sr-practice-overlay,
+body.matrix-drawer-open.streak-fire-high .sr-practice-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(8, 10, 18, 0.92) !important;
+}
+
+/* Optional: apply the backdrop-filter drop unconditionally on the matrix
+   (uncomment if you don't want to wire up the streak-fire-high body class):
+   body.matrix-drawer-open .sr-practice-overlay {
+       backdrop-filter: none !important;
+       -webkit-backdrop-filter: none !important;
+       background: rgba(8, 10, 18, 0.92) !important;
+   } */
