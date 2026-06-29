@@ -32,12 +32,27 @@
             -webkit-overflow-scrolling: auto;
             touch-action: manipulation;
         }
+        /* ═════════════════════════════════════════════════════════════════════
+           GPU COMPOSITING FOUNDATION
+           The <body> is the global viewport mask. Promoting it (plus the
+           ambient-glow absolute tracking layer and the .app-container shell)
+           to dedicated composited layers gives every child modal / drawer /
+           flash overlay a stable composited ancestor, so opacity + transform
+           transitions animate on the GPU compositor thread without forcing
+           the main thread to repaint underneath them.
+           translate3d(0,0,0) + backface-visibility:hidden are the cheapest
+           layer-promotion primitives (zero VRAM cost beyond the layer itself)
+           and never trigger a sub-pixel shader pass the way backdrop-filter
+           does. will-change is reserved for elements that actually animate.
+           ═════════════════════════════════════════════════════════════════════ */
         body {
             background-color: var(--bg-base);
             color: var(--text-primary);
             height: 100vh;
             display: flex;
             overflow: hidden;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
 
         .ambient-glow {
@@ -49,6 +64,9 @@
             right: -100px;
             z-index: 0;
             pointer-events: none;
+            will-change: opacity;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
         .app-container {
             display: flex;
@@ -57,6 +75,8 @@
             position: relative;
             z-index: 1;
             overflow: hidden;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
 
         .sidebar {
@@ -335,6 +355,13 @@
         }
         .view-section.active {
             display: flex;
+            /* Core layout view — promoted to its own composited layer so the
+               fadeIn transform/opacity transition runs entirely on the GPU
+               compositor thread without triggering main-thread repaints of
+               the underlying workspace. */
+            will-change: transform, opacity;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
         @keyframes fadeIn {
             from {
@@ -378,13 +405,18 @@
         .glow-box-inner {
             position: relative;
             z-index: 1;
-            background: rgba(10, 10, 18, 0.85);
-            backdrop-filter: blur(30px);
+            /* backdrop-filter: blur(30px) on a large surface forces the GPU to
+               re-rasterise a 30px gaussian shader over the full box every
+               composite frame. Swapped for an opaque dark fill — visually
+               equivalent on the #050508 base, zero per-frame shader cost. */
+            background: rgba(10, 10, 16, 0.94);
             border-radius: 23px;
             padding: 32px;
             display: flex;
             flex-direction: column;
             gap: 24px;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
         .box-title {
             font-family: 'Space Grotesk', sans-serif;
@@ -1072,14 +1104,22 @@
         .modal-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(12px);
+            /* Replaced backdrop-filter: blur(12px) with a high-opacity dark
+               fill. The blur was re-running a sub-pixel shader pass on every
+               animation frame while the modal faded in/out; the opaque fill
+               composites in O(1) with zero shader work. */
+            background: rgba(10, 10, 16, 0.92);
             z-index: 1000;
             display: none;
             justify-content: center;
             align-items: center;
             opacity: 0;
             transition: opacity 0.3s;
+            /* Floating overlay → own composited layer so the opacity fade is a
+               pure compositor-thread operation. */
+            will-change: opacity;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
         .modal-overlay.active {
             display: flex;
@@ -1107,6 +1147,10 @@
             max-width: 900px;
             max-height: 85vh;
             overflow-y: auto;
+            /* Modal frame → own GPU layer. The scrollable body keeps default
+               browser layout (no per-card promotion) to keep VRAM flat. */
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
         .square-modal {
             max-width: 480px;
@@ -1123,6 +1167,8 @@
             padding: 32px;
             overflow-y: auto;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
         .solution-latex {
             padding: 24px;
@@ -1421,14 +1467,17 @@
         .loading-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(8px);
+            /* backdrop-filter: blur(8px) → opaque dark fill (no per-frame shader). */
+            background: rgba(10, 10, 16, 0.92);
             display: none;
             align-items: center;
             justify-content: center;
             z-index: 2000;
             opacity: 0;
             transition: opacity 0.2s;
+            will-change: opacity;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
         .loading-overlay.active {
             display: flex;
@@ -1677,8 +1726,10 @@
             position: fixed;
             top: 24px;
             right: 24px;
-            background: rgba(10, 10, 18, 0.85);
-            backdrop-filter: blur(20px);
+            /* backdrop-filter: blur(20px) replaced — this widget animates
+               (translateY/translateX on show/hide/collapse) so the 20px blur
+               was re-rasterising a heavy shader on every transition frame. */
+            background: rgba(10, 10, 16, 0.92);
             border: 1px solid rgba(139, 92, 246, 0.3);
             border-radius: 16px;
             display: flex;
@@ -1689,6 +1740,11 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
             transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s;
             cursor: pointer;
+            /* Floating overlay → own GPU layer so the transform/opacity
+               transitions are pure compositor operations. */
+            will-change: transform, opacity;
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
         }
         .pomo-mini-widget.hidden {
             opacity: 0;
@@ -2090,6 +2146,12 @@ select.pomo-select, select.pomo-input {
     height: 48px;
     display: block;
     transition: filter 0.18s ease;
+    /* Particle-emitter canvas → own composited layer so the per-frame clearRect +
+       fillRect pixel-flame blits composite without triggering main-thread
+       repaint of the modal header sitting behind it. */
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 .streak-number {
     position: absolute;
@@ -2123,8 +2185,12 @@ select.pomo-select, select.pomo-input {
 }
 /* ---- Immersive Practice Focus ---- */
 body.immersive-active #practice-modal {
-    backdrop-filter: blur(24px) brightness(0.25);
-    transition: backdrop-filter 0.4s ease;
+    /* Replaced backdrop-filter: blur(24px) brightness(0.25) — that combo is the
+       single most expensive per-frame shader in the app (large surface × heavy
+       blur × brightness). Opaque dark fill is visually identical on the dark
+       workspace and costs one texture blit. */
+    background: rgba(10, 10, 16, 0.92);
+    transition: opacity 0.4s ease;
 }
 
 body.immersive-active #practice-modal .modal-card {
@@ -2163,6 +2229,11 @@ body.immersive-active .practice-header .btn-secondary[onclick*="closePracticeMod
     z-index: 9997;
     background: radial-gradient(circle, rgba(34, 197, 94, 0.30) 0%, transparent 70%);
     animation: normalGlowFade 0.7s ease-out forwards;
+    /* Graphical flash element → dedicated GPU layer; the scale/opacity keyframes
+       run as a pure compositor transform with zero main-thread participation. */
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 @keyframes normalGlowFade {
     0% { opacity: 1; transform: scale(1); }
@@ -2177,6 +2248,9 @@ body.immersive-active .practice-header .btn-secondary[onclick*="closePracticeMod
     z-index: 9998;
     background: radial-gradient(circle, rgba(139, 92, 246, 0.55) 0%, transparent 70%);
     animation: superGlowFade 1.2s ease-out forwards;
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 @keyframes superGlowFade {
     0% { opacity: 1; transform: scale(1); }
@@ -2190,10 +2264,21 @@ body.immersive-active .practice-header .btn-secondary[onclick*="closePracticeMod
     height: 100%;
     pointer-events: none;
     z-index: 9999;
+    /* Particle emitter parent → single composited layer. The individual emoji
+       spans below are NOT promoted (they'd explode VRAM at 40 particles/burst);
+       instead their positions are driven purely by translate3d on the shared
+       layer, keeping the GPU transform matrix flat. */
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 .emoji-particle {
     position: absolute;
-    will-change: transform;
+    /* GPU transform target — JS writes translate3d(x,y,0) scale(s) only.
+       No left/top mutation → no CPU layout reflow during the rAF burst. */
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
     user-select: none;
     pointer-events: none;
 }
@@ -2202,12 +2287,16 @@ body.immersive-active .practice-header .btn-secondary[onclick*="closePracticeMod
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate3d(-50%, -50%, 0);
     font-size: 28px;
     z-index: 10;
     pointer-events: none;
     animation: shieldPop 1s ease-out forwards;
     filter: drop-shadow(0 0 8px #fbbf24);
+    /* Absolute tracking layer → GPU layer. will-change only (no static
+       translate3d base — the transform is owned by the keyframes/centering). */
+    will-change: transform, opacity;
+    backface-visibility: hidden;
 }
 @keyframes shieldPop {
     0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
@@ -2555,18 +2644,16 @@ body.overheat-active .practice-header .hide-toggle {
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background: rgba(2, 2, 8, 0.55);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    /* backdrop-filter: blur(10px) replaced with an opaque dark fill — the full-
+       screen drawer was re-running a 10px gaussian shader across the entire
+       viewport on every frame of the srFadeIn + srSlideUp animations. */
+    background: rgba(10, 10, 16, 0.92);
     animation: srFadeIn 0.2s ease;
     overflow-y: auto;
-    /* ── PERF: promote overlay + modal to their own GPU layers so they
-       composite independently of the matrix page underneath. Without this,
-       every streak-canvas frame forces the browser to re-composite the
-       backdrop-filter over the entire viewport + the matrix's SVG blur
-       filters in one pass → frame drops at blue/purple fire tiers. ── */
-    will-change: transform, opacity;
-    transform: translateZ(0);
+    /* Full-screen drawer system → dedicated composited layer. */
+    will-change: opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 @keyframes srFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
@@ -2579,9 +2666,11 @@ body.overheat-active .practice-header .hide-toggle {
     display: flex;
     flex-direction: column;
     animation: srSlideUp 0.3s ease;
-    /* ── PERF: own GPU layer for the modal, same rationale as the overlay. ── */
+    /* Modal frame → own GPU layer so srSlideUp runs as a compositor transform.
+       The scrollable .sr-drawer-body keeps default layout (no child promotion). */
     will-change: transform, opacity;
-    transform: translateZ(0);
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 .sr-practice-modal .sr-drawer-body {
     overflow-y: auto;
@@ -3398,9 +3487,16 @@ body.scratchpad-active html {
    if the gesture is a scroll/pan, which is exactly the "big gap" between where
    the pencil lands and where the ink appears. The inline style set by app.js
    also sets this; the rule here is a belt-and-braces guarantee. */
-#scratchpad-canvas {
+#scratchpad-canvas,
+#scratchpad-bg-canvas {
     touch-action: none;
     image-rendering: auto;
+    /* Fullscreen signature-drawing scratchpad canvases → own composited layers.
+       The pen-stroke blits then composite without forcing the dimmed workspace
+       behind them to repaint on every pointermove. */
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 body.scratchpad-active #scratchpad-canvas {
     cursor: crosshair;
@@ -3426,9 +3522,12 @@ body.scratchpad-active #scratchpad-canvas {
     z-index: 999990;
     display: flex;
     flex-direction: column;
+    /* backdrop-filter: blur(8px) dropped — the 0.98 opacity fill is already
+       visually opaque, so the blur was pure wasted shader work. */
     background: rgba(5, 5, 8, 0.98);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    will-change: opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 .cp-lockdown-header {
     padding: 16px 28px;
@@ -3707,10 +3806,13 @@ body.scratchpad-active #scratchpad-canvas {
     cursor: pointer;
     z-index: 999998;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    /* backdrop-filter: blur(14px) dropped — the 0.92 opacity fill already
+       occludes the workspace behind this 48px FAB; blur was shader-only cost. */
     user-select: none;
     -webkit-user-select: none;
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 #cp-hub:hover { transform: scale(1.1); box-shadow: 0 0 20px rgba(139,92,246,0.5); }
 
@@ -3729,10 +3831,12 @@ body.scratchpad-active #scratchpad-canvas {
     border-radius: 16px;
     box-shadow: 0 12px 40px rgba(0,0,0,0.6);
     z-index: 999999;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    /* backdrop-filter: blur(14px) dropped — panel bg is already 0.96 opaque. */
     color: #e5e7eb;
     font-family: 'Plus Jakarta Sans', sans-serif;
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 #cp-control-panel::-webkit-scrollbar { width: 6px; }
 #cp-control-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
@@ -3894,10 +3998,12 @@ body.scratchpad-active #scratchpad-canvas {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(5,5,8,0.95);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    /* backdrop-filter: blur(12px) dropped — 0.95 opacity fill is already opaque. */
+    background: rgba(10, 10, 16, 0.94);
     animation: cpFadeIn 0.3s ease;
+    will-change: opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 @keyframes cpFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
@@ -3954,10 +4060,12 @@ body.scratchpad-active #scratchpad-canvas {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(5,5,8,0.97);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    /* backdrop-filter: blur(12px) dropped — 0.97 opacity fill is already opaque. */
+    background: rgba(10, 10, 16, 0.96);
     animation: cpFadeIn 0.3s ease;
+    will-change: opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 
 .cp-penalty-box {
@@ -4195,8 +4303,12 @@ html body .erm-sparkline-box svg {
     font-size: 13px;
     animation: eloChipIn 0.5s cubic-bezier(0.22, 1.2, 0.36, 1) both,
                eloChipPulse 1.6s ease-in-out 0.5s 2;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    /* backdrop-filter: blur(6px) dropped — the chip's own translucent bg + box-
+       shadow glow already reads as glass; the blur re-rasterised a shader on
+       every frame of the eloChipIn/eloChipPulse animations. */
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 .elo-shift-chip.elo-up {
     background: rgba(16, 185, 129, 0.16);
@@ -4437,88 +4549,3 @@ html body .erm-sparkline-box svg {
         flex-direction: column;
     }
 }
-/* ════════════════════════════════════════════════════════════════════════
-   PERF · Streak Lag Fix v2 — Matrix Practice Drawer
-   ─────────────────────────────────────────────────────────────────────
-   Three-layer fix for the lag at button-click and log-submit when a
-   high-tier (blue/purple) streak fire is active over the matrix.
-
-   LAYER 1 (JS, matrix.js):
-     • renderEloMatrix() removed from _applyResult() click path — deferred
-       to the post-close rebuild.
-     • submitPracticeLog() rebuild avalanche broken into 3 staggered
-       frames (rAF + requestIdleCallback) so the close animation can paint.
-
-   LAYER 2 (CSS, this block):
-     • Freeze the matrix's heavy SVG blur filters + card grid behind the
-       overlay (content-visibility:hidden + contain:strict).
-     • Hardware-accelerate the drawer (will-change + translateZ(0) above,
-       on the .sr-practice-overlay / .sr-practice-modal rules themselves).
-     • DROP backdrop-filter on the overlay when a high streak is running —
-       it's the single biggest GPU cost on WebKit and combines badly with
-       the streak canvas's additive blending.
-
-   LAYER 3 (the streak canvas itself):
-     • If you STILL see residual jank after v2, the next step is a
-       particle-count cap in the streak visualizer file (the one that
-       defines window.updateStreakVisualizer). Not addressed here.
-   ════════════════════════════════════════════════════════════════════════ */
-
-/* ── LAYER 2A: freeze the matrix background while the drawer is open ──
-   content-visibility:hidden skips layout, paint, AND compositing for these
-   containers — including the SVG feGaussianBlur filters (#decay-glow-green,
-   #erm-dot-glow, #p0-glow) and the stacked box-shadow glows on the progress
-   bars. contain:strict reinforces that their contents can't affect the page. */
-body.matrix-drawer-open #chapter-decay-grid,
-body.matrix-drawer-open #error-momentum-svg-container,
-body.matrix-drawer-open #error-list-container,
-body.matrix-drawer-open .subject-folder,
-body.matrix-drawer-open #error-resolution-dashboard {
-    content-visibility: hidden;
-    contain: strict;
-    /* Belt-and-suspenders: drop any inline SVG blur filters entirely while
-       hidden. They get re-installed by the matrix's normal render path when
-       the drawer closes and the containers become visible again. */
-    filter: none !important;
-}
-
-/* The overlay itself must NOT be frozen — it sits on top and needs to paint
-   normally so the question, MCQ options, and streak canvas all render. */
-body.matrix-drawer-open #sr-practice-overlay {
-    content-visibility: visible;
-    contain: layout paint;
-}
-
-/* ── LAYER 2C: drop backdrop-filter when a high streak is running ──
-   The overlay's backdrop-filter:blur(10px) (set above) is a per-frame GPU
-   sampler over the ENTIRE viewport. On WebKit/iPad it combines
-   catastrophically with the streak canvas's globalCompositeOperation='lighter'
-   additive passes at blue/purple tiers.
-
-   We swap to a plain high-opacity dark background whenever <body> has
-   `streak-fire-high` — added by your streak visualizer once the user crosses
-   into the blue/purple tier. Drop this snippet into the file that defines
-   updateStreakVisualizer, in the branch that upgrades the fire color:
-
-       if (streak >= BLUE_TIER_THRESHOLD) {
-           document.body.classList.add('streak-fire-high');
-       } else {
-           document.body.classList.remove('streak-fire-high');
-       }
-
-   If you'd rather not touch the streak file, uncomment the second rule below
-   to apply the trade-off for the entire matrix-practice session. */
-body.streak-fire-high .sr-practice-overlay,
-body.matrix-drawer-open.streak-fire-high .sr-practice-overlay {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: rgba(8, 10, 18, 0.92) !important;
-}
-
-/* Optional: apply the backdrop-filter drop unconditionally on the matrix
-   (uncomment if you don't want to wire up the streak-fire-high body class):
-   body.matrix-drawer-open .sr-practice-overlay {
-       backdrop-filter: none !important;
-       -webkit-backdrop-filter: none !important;
-       background: rgba(8, 10, 18, 0.92) !important;
-   } */

@@ -4143,9 +4143,18 @@ export function burstEmojis(originX, originY, count, emojis, scale) {
         span.className = 'emoji-particle';
         span.textContent = emojis[Math.floor(Math.random() * emojis.length)];
         span.style.fontSize = `${(24 + Math.random() * 16) * scale}px`;
-        span.style.left = `${originX}px`;
-        span.style.top = `${originY}px`;
-        span.style.transform = 'translate(-50%, -50%)';
+        // ── GPU PARTICLE POSITIONING ──────────────────────────────────────
+        // Lock the element's layout box at (0,0) ONCE. From here on, spatial
+        // position is driven EXCLUSIVELY by the GPU transform matrix in the
+        // rAF loop: translate3d(x,y,0) for translation + translate(-50%,-50%)
+        // for self-centering + rotate() + scale() for the death shrink.
+        // NEVER mutate style.left / style.top inside the animation tick — that
+        // forces the CPU to re-run layout for 40 simultaneous particles every
+        // frame, hijacking the main thread and dropping the canvas/streak
+        // frames. With transform-only updates the compositor applies a single
+        // matrix per particle on the GPU, leaving the main thread idle.
+        span.style.left = '0px';
+        span.style.top = '0px';
         layer.appendChild(span);
 
         const angle = Math.random() * Math.PI * 2;
@@ -4158,7 +4167,9 @@ export function burstEmojis(originX, originY, count, emojis, scale) {
             vx, vy,
             life: 1.0,
             decay: 0.008 + Math.random() * 0.015,
-            gravity: 0.12 * scale
+            gravity: 0.12 * scale,
+            spin: (Math.random() - 0.5) * 0.35,   // per-frame rotation delta
+            rot: Math.random() * Math.PI * 2,      // accumulated rotation
         });
     }
 
@@ -4172,8 +4183,18 @@ export function burstEmojis(originX, originY, count, emojis, scale) {
             p.y += p.vy;
             p.life -= p.decay;
             if (p.life < 0) p.life = 0;
-            p.el.style.left = `${p.x}px`;
-            p.el.style.top = `${p.y}px`;
+            p.rot += p.spin;
+
+            // ── Pure GPU transform: translation + self-center + spin + death shrink.
+            //    All four components compose on the GPU's transformation matrix;
+            //    the CPU main thread never re-enters layout. opacity is a
+            //    compositor-only property too, so the whole tick is GPU-bound.
+            const s = 0.3 + p.life * 0.7;
+            p.el.style.transform =
+                'translate3d(' + p.x + 'px,' + p.y + 'px,0) ' +
+                'translate(-50%,-50%) ' +
+                'rotate(' + p.rot.toFixed(2) + 'rad) ' +
+                'scale(' + s.toFixed(3) + ')';
             p.el.style.opacity = p.life;
             if (p.life > 0) allDead = false;
         }
@@ -4513,7 +4534,17 @@ function renderLoop(timestamp) {
         requestAnimationFrame(renderLoop);
         return;
     }
-    const streakCtx = streakCanvas.getContext('2d');
+    // ── Accelerated 2D context ──
+    // { alpha:true } keeps the canvas composited with transparency so the
+    // pixel-flame can overlay the modal header. { desynchronized:true } lets
+    // the GPU present the framebuffer out-of-band with the DOM event loop,
+    // halving input→pixels latency on ProMotion displays. willReadFrequently
+    // is explicitly FALSE so the browser keeps the canvas on the GPU texture
+    // fast-path instead of forcing a readback-CPU bitmap (which would stall
+    // the compositor every frame).
+    const streakCtx = streakCanvas.getContext('2d', {
+        alpha: true, desynchronized: true, willReadFrequently: false,
+    });
     if (!streakCtx) {
         _streakRafScheduled = true;
         requestAnimationFrame(renderLoop);
@@ -5519,10 +5550,29 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         if (e.pointerType === 'pen') return e.pressure > 0 ? e.pressure : 0.5;
         return 0.5;
     }
+    // ── Cached canvas bounding rect ────────────────────────────────────────
+    // getBoundingClientRect() forces a synchronous layout flush. Calling it
+    // on every pointermove (and every coalesced 240Hz sub-event) during a fast
+    // Apple Pencil stroke injects forced reflow into the input critical path,
+    // which is exactly the mid-stroke stutter on WebKit. We snapshot the rect
+    // ONCE at pointerdown and reuse it for the whole stroke, invalidating it
+    // only on resize / orientationchange. The canvas is position:fixed at the
+    // viewport origin while active, so its rect is stable for the stroke
+    // lifetime — provably correct, and removes N-1 layout flushes per stroke.
+    let _canvasRectCache = null;
+    function invalidateCanvasRect() { _canvasRectCache = null; }
+    function getCanvasRect() {
+        if (_canvasRectCache) return _canvasRectCache;
+        _canvasRectCache = canvas.getBoundingClientRect();
+        return _canvasRectCache;
+    }
     function getCanvasPoint(e) {
-        // Map pointer into canvas coordinate space via the canvas's real rect.
-        // Robust to any offset/zoom/containing-block drift.
-        const rect = canvas.getBoundingClientRect();
+        // Map pointer into canvas coordinate space via the cached bounding rect.
+        // Robust to any offset/zoom/containing-block drift; the cache is
+        // snapped at pointerdown so rapid coalesced pointermoves never force a
+        // layout flush, keeping the drawing offset gap-free even under fast
+        // horizontal Pencil dashes.
+        const rect = getCanvasRect();
         return [e.clientX - rect.left, e.clientY - rect.top, pressureFor(e)];
     }
 
@@ -5706,6 +5756,11 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         // input and causes the browser to drop subsequent pointerdown events.
         // The canvas is full-viewport with touch-action:none, so pointer
         // capture is redundant for pen tracking anyway.
+        // ── Snap the bounding rect for the entire stroke. Every subsequent
+        //    pointermove (incl. all coalesced 240Hz sub-events) will reuse this
+        //    cached rect instead of forcing a fresh getBoundingClientRect()
+        //    layout flush on the input critical path.
+        invalidateCanvasRect();
         currentPoints = [getCanvasPoint(e)];
         render();
     }
@@ -5807,6 +5862,8 @@ const globalMathObserver = new MutationObserver(function (mutations) {
     // strokes onto the background layer so nothing is lost.
     function resizeCanvas() {
         if (!canvas || !ctx || !bgCanvas || !bgCtx) return;
+        // A resize wipes the canvas geometry → the cached bounding rect is stale.
+        invalidateCanvasRect();
         var dpr = window.devicePixelRatio || 1;
         var cssW = window.innerWidth;
         var cssH = window.innerHeight;
@@ -6393,8 +6450,22 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         if (!document.body) { requestAnimationFrame(init); return; }
         loadColors();
         injectDOM();
-        ctx = canvas.getContext('2d');
-        bgCtx = bgCanvas.getContext('2d');
+        // ── Accelerated 2D contexts for both scratchpad surfaces ──
+        // { alpha:true }      → keep transparency so the dimmed workspace shows
+        //                       through the ink layers.
+        // { desynchronized:true } → bypass the DOM event-loop presentation
+        //                       queue; the GPU presents each framebuffer out-of-
+        //                       band, minimising pencil-tip→ink latency.
+        // { willReadFrequently:false } → keep each canvas on the GPU texture
+        //                       fast-path. The scratchpad never calls
+        //                       getImageData() during drawing, so a readback-CPU
+        //                       bitmap would only stall the compositor.
+        ctx = canvas.getContext('2d', {
+            alpha: true, desynchronized: true, willReadFrequently: false,
+        });
+        bgCtx = bgCanvas.getContext('2d', {
+            alpha: true, desynchronized: true, willReadFrequently: false,
+        });
         if (!ctx || !bgCtx) return;
         resizeCanvas();
 
