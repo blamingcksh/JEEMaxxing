@@ -563,10 +563,19 @@ function _applyResult(result, source, q) {
         }
     }
 
-    // Refresh the dashboard MMR matrix so the new rating is visible immediately.
-    if (typeof window.renderEloMatrix === 'function') {
-        try { window.renderEloMatrix(); } catch (_) { /* never block */ }
-    }
+    // ── PERF: renderEloMatrix() used to run synchronously here on the button-
+    // click frame. That forced a full dashboard repaint WHILE the heavy
+    // practice drawer was still on screen + the streak canvas was firing
+    // particles + red/green flash + sound — main-thread block, dropped frames.
+    //
+    // The Elo chip in the header (injected above) already shows the user
+    // their +/- delta + tier, so they get instant feedback. The dashboard
+    // matrix can safely wait until the drawer closes — it's deferred to the
+    // staggered post-close rebuild in submitPracticeLog().
+    //
+    // (If you need the dashboard updated mid-session for some reason, call
+    // window.renderEloMatrix() yourself from the console — but don't put it
+    // back on the click path.)
 
     _updateDrawerUI();
 }
@@ -860,39 +869,69 @@ export function submitPracticeLog() {
     saveAllAsync().catch(console.error);
     closePracticeDrawer();
 
-    // ── Deferred UI rebuild: let the drawer close animation finish on the
-    //    compositor thread before running heavy synchronous DOM work
-    //    (renderErrorMatrixFromBank wipes & rebuilds N cards via innerHTML,
-    //    filterErrors forces layout reads, renderErrorResolutionDashboard
-    //    recalculates sparkline SVG). On mobile/WebKit this prevents the
-    //    close-transition frames from being dropped.
+    // ═══════════════════════════════════════════════════════════════════════
+    // PERF: STAGGERED POST-CLOSE REBUILD
+    // ─────────────────────────────────────────────────────────────────────
+    // Previously every heavy DOM rebuild ran inside a single nested rAF
+    // callback — renderErrorMatrixFromBank (innerHTML wipe of N cards) +
+    // filterErrors (forced layout reads) + renderErrorResolutionDashboard
+    // (SVG sparkline regen) + updateUI + renderGraph + renderEloMatrix all
+    // executed on the SAME frame, right as the drawer's close animation was
+    // trying to paint. That's a 50–200ms main-thread block on a populated
+    // matrix → the close animation visibly stutters.
     //
-    //    ✅ FIX: Also unconditionally repaint the home-screen HUD, daily
-    //    line charts, and overall progress metrics so the dashboard reflects
-    //    the just-injected study time the instant the drawer closes. ──
+    // The new schedule breaks the work into three priority bands, each on
+    // its own frame, so the close animation can paint between them:
+    //
+    //   Frame 1 (next paint after close): user-critical — the matrix grid
+    //     itself, so the question they just solved visibly updates.
+    //   Frame 2 (idle): secondary HUD + sparkline.
+    //   Frame 3 (idle): global graph + Elo matrix. These are the most
+    //     expensive and the least time-sensitive.
+    //
+    // requestIdleCallback is used when available so the browser can
+    // schedule Frame 2/3 work during a naturally idle period rather than
+    // racing the next input event. Falls back to setTimeout(…, 16) on Safari.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ── Frame 1: critical — must show on the very next paint after close.
+    //    Two rAFs deep so the drawer's close transition has actually started
+    //    on the compositor before we start thrashing the DOM underneath it.
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
             renderErrorMatrixFromBank();
             filterErrors();
-            renderErrorResolutionDashboard();
-
-            // ── Global HUD / graph repaint (bridged via window surface) ──
-            if (typeof window.updateUI === 'function')   window.updateUI();
-            if (typeof window.renderGraph === 'function') window.renderGraph();
-
-            // ── Cognitive MMR: refresh the dashboard Elo matrix so the new
-            // subject + global ratings are visible immediately after the
-            // drawer closes. updateUI() above already calls renderEloMatrix()
-            // internally, but we re-run it explicitly so the subject monitors
-            // + deficit lockdown overlay reflect the just-migrated state even
-            // if updateUI short-circuited on a stale DOM cache. ──
-            if (typeof window.renderEloMatrix === 'function') {
-                try { window.renderEloMatrix(); } catch (_) { /* never block */ }
-            }
-
-            // (Tier transition celebration + Elo chip injection now happen
-            //  in _applyResult() at the moment of truth — nothing to do here.)
         });
+    });
+
+    // ── Frame 2: idle — secondary HUD + sparkline. Non-blocking.
+    const _scheduleIdle = (fn) => {
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(fn, { timeout: 200 });
+        } else {
+            setTimeout(fn, 16);
+        }
+    };
+
+    _scheduleIdle(() => {
+        renderErrorResolutionDashboard();
+        if (typeof window.updateUI === 'function') {
+            try { window.updateUI(); } catch (_) { /* never block */ }
+        }
+    });
+
+    // ── Frame 3: idle — heaviest, least time-sensitive. Run AFTER Frame 2
+    //    so they don't share a frame. updateUI() above already calls
+    //    renderEloMatrix() internally; this re-run guarantees the subject
+    //    monitors + deficit lockdown overlay reflect the just-migrated state
+    //    even if updateUI short-circuited on a stale DOM cache.
+    _scheduleIdle(() => {
+        if (typeof window.renderGraph === 'function') {
+            try { window.renderGraph(); } catch (_) { /* never block */ }
+        }
+        if (typeof window.renderEloMatrix === 'function') {
+            try { window.renderEloMatrix(); } catch (_) { /* never block */ }
+        }
     });
 }
 
