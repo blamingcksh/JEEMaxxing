@@ -4427,3 +4427,22 @@ html body .erm-sparkline-box svg {
         flex-direction: column;
     }
 }
+body.matrix-drawer-open #chapter-decay-grid,
+body.matrix-drawer-open #error-momentum-svg-container,
+body.matrix-drawer-open #error-list-container,
+body.matrix-drawer-open .subject-folder,
+body.matrix-drawer-open #error-resolution-dashboard {
+    content-visibility: hidden;
+    contain: strict;
+    /* Belt-and-suspenders: drop any inline SVG blur filters entirely while
+       hidden. They get re-installed by the matrix's normal render path when
+       the drawer closes and the containers become visible again. */
+    filter: none !important;
+}
+
+/* The overlay itself must NOT be frozen — it sits on top and needs to paint
+   normally so the question, MCQ options, and streak canvas all render. */
+body.matrix-drawer-open #sr-practice-overlay {
+    content-visibility: visible;
+    contain: layout paint;
+}
