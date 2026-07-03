@@ -106,7 +106,7 @@ class Arena {
           const row = payload.new || payload.old;
           if (!row || row.peer_id === this.peerId) return;
 
-          // If a peer record drops or hasn't updated in 5 minutes, delete it
+          // If a peer record drops explicitly, remove it completely from visibility mapping
           if (payload.eventType === 'DELETE') {
             this.telemetry.delete(row.peer_id);
             this.prevElo.delete(row.peer_id);
@@ -139,7 +139,7 @@ class Arena {
     if (this._heartbeatInterval) { clearInterval(this._heartbeatInterval); this._heartbeatInterval = null; }
     if (this.supabaseChannel) { supabase.removeChannel(this.supabaseChannel); this.supabaseChannel = null; }
     
-    // Cleanly delete our own database row when clicking disconnect so the boards clear for friends
+    // Cleanly delete our own database row when clicking disconnect so the boards clear for friends[cite: 1]
     if (this.peerId && this.status === 'online') {
       supabase.from('arena_leaderboard').delete().eq('peer_id', this.peerId).then(() => {});
     }
@@ -276,13 +276,17 @@ class Arena {
     if (!grid) return;
     
     const rows = [];
+    const now = Date.now();
     
-    // Prune entries older than 3 minutes (handles users forcefully closing tabs)
-    const cutoffTime = Date.now() - 3 * 60 * 1000;
+    // Inactivity threshold configuration
+    const offlineThreshold = 45 * 1000; // 45 seconds missing heartbeat = offline state label
     
     this.telemetry.forEach((t, id) => {
-      if (!t.self && new Date(t.timestamp).getTime() < cutoffTime) return;
-      rows.push({ ...t, id });
+      // Calculate active timeline state metrics without dropping/pruning structural elements[cite: 1]
+      const timeSinceUpdate = now - new Date(t.timestamp).getTime();
+      const isOnline = t.self ? (this.status === 'online') : (timeSinceUpdate <= offlineThreshold);
+      
+      rows.push({ ...t, id, isOnline });
     });
 
     rows.sort((a, b) => (b.globalElo || 0) - (a.globalElo || 0));
@@ -310,14 +314,14 @@ class Arena {
       `<div class="lb-card${r.self ? ' self' : ''}">` +
         `<div class="lb-card-head">` +
           `<span class="lb-nick">${r.self ? '<span class="lb-self-tag">YOU</span> ' : ''}<span>${name}</span></span>` +
-          `<span class="lb-presence online"></span>` +
+          `<span class="lb-presence ${r.isOnline ? 'online' : 'offline'}"></span>` +
         `</div>` +
         `<div class="lb-card-body">` +
           `<div class="lb-metric"><span class="lb-label">Global ELO</span><span class="lb-value">${elo} ${trend}</span></div>` +
           `<div class="lb-metric"><span class="lb-label">Target Progress</span><span class="lb-value">${dv}</span></div>` +
           `<div class="lb-metric"><span class="lb-label">Study Duration</span><span class="lb-value">${studyH}</span></div>` +
         `</div>` +
-        `<div class="lb-ts">Sync check: ${escapeHTML(timeString)}</div>` +
+        `<div class="lb-ts">Last sync: ${escapeHTML(timeString)}</div>` +
       `</div>`
     );
   }
@@ -335,6 +339,7 @@ const LB_SHELL_HTML = `
     .lb-dot{width:8px;height:8px;border-radius:50%;background:var(--glow-dim);}
     .lb-dot.online{background:var(--glow);box-shadow:0 0 10px var(--glow);animation:lb-pulse 2s infinite;}
     .lb-dot.connecting{background:#f5a623;animation:lb-blink 1s infinite;}
+    .lb-dot.offline{background:var(--danger);box-shadow:0 0 10px var(--danger);}
     @keyframes lb-pulse{0%{transform:scale(0.9);opacity:0.6;}50%{transform:scale(1.1);opacity:1;}100%{transform:scale(0.9);opacity:0.6;}}
     @keyframes lb-blink{0%,100%{opacity:1}50%{opacity:.3}}
     .lb-status-text{font-size:11px;font-weight:700;letter-spacing:1px;}
@@ -357,6 +362,7 @@ const LB_SHELL_HTML = `
     .lb-self-tag{font-size:9px;font-weight:800;background:#3b82f6;color:#fff;padding:2px 6px;border-radius:4px;margin-right:4px;}
     .lb-presence{width:8px;height:8px;border-radius:50%;}
     .lb-presence.online{background:var(--glow);box-shadow:0 0 6px var(--glow);}
+    .lb-presence.offline{background:var(--danger);box-shadow:0 0 6px var(--danger);}
     .lb-card-body{display:flex;flex-direction:column;gap:10px;}
     .lb-metric{display:flex;justify-content:space-between;align-items:center;}
     .lb-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
