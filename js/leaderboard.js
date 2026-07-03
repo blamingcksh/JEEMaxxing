@@ -39,18 +39,36 @@ class Arena {
     this.getState = opts.getState || (() => ({
       nickname: 'Anon', globalElo: 1200, dailyVariation: '0%', studyHours: 0,
     }));
+
+    // Pre-hydrate internal nickname configuration state if it exists locally
+    const savedNick = localStorage.getItem('jeemax_arena_last_nickname');
+    if (savedNick) this.nickname = savedNick;
+
     this._buildShell();
     this._shellBuilt = true;
     this._render();
+
+    // Trigger explicit Auto-Connect sequence if token matrix matches active state
+    const savedRoomRaw = localStorage.getItem('jeemax_arena_last_room_raw');
+    const shouldAutoConnect = localStorage.getItem('jeemax_arena_auto_connect');
+    
+    if (savedRoomRaw && shouldAutoConnect === 'true') {
+      this.connect(savedRoomRaw, this.nickname);
+    }
   }
 
   async connect(roomKey, nickname) {
-    if (this.status !== 'offline') this.disconnect();
+    if (this.status !== 'offline') this.disconnect(false);
     
     this.roomKey = roomKey.trim().toLowerCase().replace(/\s+/g, '-');
     this.nickname = nickname.trim() || ('Anon-' + Math.floor(Math.random() * 9000 + 1000));
     this.peerId = localStorage.getItem('jeemax_arena_peer_id') || crypto.randomUUID();
     localStorage.setItem('jeemax_arena_peer_id', this.peerId);
+
+    // Save configuration states to local disk architecture for refresh resilience
+    localStorage.setItem('jeemax_arena_last_room_raw', roomKey);
+    localStorage.setItem('jeemax_arena_last_nickname', this.nickname);
+    localStorage.setItem('jeemax_arena_auto_connect', 'true');
 
     this._setStatus('connecting');
 
@@ -113,11 +131,11 @@ class Arena {
 
     } catch (err) {
       console.error('Arena connection error:', err);
-      this.disconnect();
+      this.disconnect(false);
     }
   }
 
-  disconnect() {
+  disconnect(isManualClick = true) {
     if (this._heartbeatInterval) { clearInterval(this._heartbeatInterval); this._heartbeatInterval = null; }
     if (this.supabaseChannel) { supabase.removeChannel(this.supabaseChannel); this.supabaseChannel = null; }
     
@@ -128,8 +146,13 @@ class Arena {
 
     this.telemetry.clear();
     this.prevElo.clear();
-    this.roomKey = null; this.peerId = null;
+    this.roomKey = null;
     this._setStatus('offline');
+
+    // If leaving intentionally via button click, kill auto-connect flag
+    if (isManualClick) {
+      localStorage.setItem('jeemax_arena_auto_connect', 'false');
+    }
   }
 
   async broadcastTelemetry() {
@@ -197,8 +220,14 @@ class Arena {
     const nick = this.container.querySelector('#lb-nick');
     const key = this.container.querySelector('#lb-key');
     const btn = this.container.querySelector('#lb-btn');
-    const info = this.container.querySelector('#lb-room-info');
-    if (nick) nick.value = this.nickname || '';
+
+    // Retrieve storage backups to make sure inputs remain visible post-refresh
+    const savedNick = localStorage.getItem('jeemax_arena_last_nickname') || this.nickname;
+    const savedRoomRaw = localStorage.getItem('jeemax_arena_last_room_raw') || '';
+    
+    if (nick) nick.value = savedNick;
+    if (key) key.value = savedRoomRaw;
+
     if (btn) {
       btn.addEventListener('click', async () => {
         if (this.status === 'offline') {
@@ -206,10 +235,8 @@ class Arena {
           const n = (nick && nick.value || '').trim();
           if (!k) { if (key) key.focus(); return; }
           await this.connect(k, n);
-          if (info) info.innerHTML = `Room: <code>${escapeHTML(this.roomKey)}</code>`;
         } else {
-          this.disconnect();
-          if (info) info.textContent = '';
+          this.disconnect(true);
         }
       });
     }
@@ -221,7 +248,17 @@ class Arena {
     const statusText = this.container.querySelector('#lb-status-text');
     const btn = this.container.querySelector('#lb-btn');
     const grid = this.container.querySelector('#lb-grid');
+    const info = this.container.querySelector('#lb-room-info');
     
+    // Centralized Room Info Render Management
+    if (info) {
+      if (this.status !== 'offline' && this.roomKey) {
+        info.innerHTML = `Room: <code>${escapeHTML(this.roomKey)}</code>`;
+      } else {
+        info.textContent = '';
+      }
+    }
+
     const map = {
       online: { dot: 'lb-dot online', text: 'ONLINE / LIVE MATCHING', cls: 'glow' },
       connecting: { dot: 'lb-dot connecting', text: 'SYNCING ATOMICS…', cls: 'dim' },
