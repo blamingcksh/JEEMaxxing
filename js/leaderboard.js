@@ -106,7 +106,7 @@ class Arena {
           const row = payload.new || payload.old;
           if (!row || row.peer_id === this.peerId) return;
 
-          // If a peer record drops explicitly, remove it completely from visibility mapping
+          // If a peer record drops explicitly, remove it completely from visibility mapping[cite: 1]
           if (payload.eventType === 'DELETE') {
             this.telemetry.delete(row.peer_id);
             this.prevElo.delete(row.peer_id);
@@ -152,6 +152,20 @@ class Arena {
     // If leaving intentionally via button click, kill auto-connect flag
     if (isManualClick) {
       localStorage.setItem('jeemax_arena_auto_connect', 'false');
+    }
+  }
+
+  async purgePeer(peerId) {
+    // Optimistically purge local cache registers for instant visual response[cite: 1]
+    this.telemetry.delete(peerId);
+    this.prevElo.delete(peerId);
+    this._scheduleRender();
+
+    // Force deletion query inside Supabase architecture to notify all active room pairs[cite: 1]
+    try {
+      await supabase.from('arena_leaderboard').delete().eq('peer_id', peerId);
+    } catch (err) {
+      console.error('Failed to remotely drop peer from cloud matrix:', err);
     }
   }
 
@@ -220,6 +234,7 @@ class Arena {
     const nick = this.container.querySelector('#lb-nick');
     const key = this.container.querySelector('#lb-key');
     const btn = this.container.querySelector('#lb-btn');
+    const grid = this.container.querySelector('#lb-grid');
 
     // Retrieve storage backups to make sure inputs remain visible post-refresh
     const savedNick = localStorage.getItem('jeemax_arena_last_nickname') || this.nickname;
@@ -237,6 +252,18 @@ class Arena {
           await this.connect(k, n);
         } else {
           this.disconnect(true);
+        }
+      });
+    }
+
+    // Direct performance event delegation on the grid block for capturing cross button actions[cite: 1]
+    if (grid) {
+      grid.addEventListener('click', async (e) => {
+        const crossBtn = e.target.closest('.lb-cross-btn');
+        if (!crossBtn) return;
+        const targetId = crossBtn.getAttribute('data-peer-id');
+        if (targetId) {
+          await this.purgePeer(targetId);
         }
       });
     }
@@ -279,7 +306,7 @@ class Arena {
     const now = Date.now();
     
     // Inactivity threshold configuration
-    const offlineThreshold = 45 * 1000; // 45 seconds missing heartbeat = offline state label
+    const offlineThreshold = 45 * 1000; // 45 seconds missing heartbeat = offline state label[cite: 1]
     
     this.telemetry.forEach((t, id) => {
       // Calculate active timeline state metrics without dropping/pruning structural elements[cite: 1]
@@ -310,11 +337,19 @@ class Arena {
     const name = escapeHTML(r.nickname);
     const timeString = r.timestamp ? new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Now';
     
+    // Render an absolute positioned action item for purging un-dropped slots manually[cite: 1]
+    const crossButton = !r.self 
+      ? `<button class="lb-cross-btn" data-peer-id="${escapeHTML(r.id)}" title="Purge entry from arena room">×</button>` 
+      : '';
+
     return (
       `<div class="lb-card${r.self ? ' self' : ''}">` +
         `<div class="lb-card-head">` +
           `<span class="lb-nick">${r.self ? '<span class="lb-self-tag">YOU</span> ' : ''}<span>${name}</span></span>` +
-          `<span class="lb-presence ${r.isOnline ? 'online' : 'offline'}"></span>` +
+          `<div class="lb-head-actions">` +
+            `<span class="lb-presence ${r.isOnline ? 'online' : 'offline'}"></span>` +
+            crossButton +
+          `</div>` +
         `</div>` +
         `<div class="lb-card-body">` +
           `<div class="lb-metric"><span class="lb-label">Global ELO</span><span class="lb-value">${elo} ${trend}</span></div>` +
@@ -360,9 +395,12 @@ const LB_SHELL_HTML = `
     .lb-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
     .lb-nick{font-weight:700;font-size:16px;color:#fff;}
     .lb-self-tag{font-size:9px;font-weight:800;background:#3b82f6;color:#fff;padding:2px 6px;border-radius:4px;margin-right:4px;}
+    .lb-head-actions{display:flex;align-items:center;gap:10px;}
     .lb-presence{width:8px;height:8px;border-radius:50%;}
     .lb-presence.online{background:var(--glow);box-shadow:0 0 6px var(--glow);}
     .lb-presence.offline{background:var(--danger);box-shadow:0 0 6px var(--danger);}
+    .lb-cross-btn{background:none;border:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:0 4px;font-family:inherit;transition:color 0.15s, transform 0.15s;display:inline-flex;align-items:center;}
+    .lb-cross-btn:hover{color:var(--danger);transform:scale(1.15);}
     .lb-card-body{display:flex;flex-direction:column;gap:10px;}
     .lb-metric{display:flex;justify-content:space-between;align-items:center;}
     .lb-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
