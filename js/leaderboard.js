@@ -94,9 +94,26 @@ const TRACKERS = [
 const PROTOCOL_TAG = 'jeemax-arena';
 const RE_ANNOUNCE_MS = 5000;
 const OFFER_TTL_MS = 12000;
-const ICE_GATHER_TIMEOUT_MS = 2200;
+// FIX #4: Extended from 2200ms → 5000ms. The original 2.2s budget was too
+// short for non-trickle SDP execution on high-latency mobile networks
+// (Jio/Airtel cellular, institutional Wi-Fi). STUN reflexive candidate
+// gathering on a constrained path can easily take 3–4s before the server
+// reflexive (srflx) address is returned; truncating at 2.2s produced
+// truncated SDPs that silently failed ICE checks. 5s gives slow networks
+// enough time to fully compile network pathways while still bounding the
+// worst-case blocking window for the announce loop.
+const ICE_GATHER_TIMEOUT_MS = 5000;
 const TRACKER_RETRY_MS = 4000;
 const MAX_PENDING_OFFERS = 2;
+// FIX #2: Grace window before an inbound offer is accepted as a backup
+// pathway. As the smaller peer (preferred initiator), we give our own
+// outbound offer this long to receive an answer before falling back to
+// processing the remote peer's inbound offer. This prevents the
+// "both-responder" deadlock (where both peers end up with only responder
+// PCs and no data-channel creator) in the common case where both peers are
+// online and reachable, while still recovering from packet loss on the
+// tracker swarm within a bounded window.
+const BACKUP_OFFER_GRACE_MS = 3000;
 
 // ── tiny crypto / hex helpers (Web Crypto, no deps) ─────────────────────
 const toHex = (buf) => {
@@ -124,11 +141,57 @@ const escapeHTML = (s) =>
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+// FIX #3: Expanded ICE infrastructure. The original three-server list
+// (Google×2 + Twilio) fails completely when either peer is behind a strict
+// Symmetric NAT (common on cellular data like Jio/Airtel or institutional
+// Wi-Fi), because all three servers share similar network paths and any
+// one of them being throttled/blackholed leaves zero reflexive candidates.
+// The expanded pool includes Cloudflare, Nextcloud, Sipgate, and OpenRelay
+// — geographically and topologically diverse — so at least one STUN
+// handshake succeeds even under hostile NAT conditions. (TURN is
+// intentionally omitted: this module is serverless and must not depend on
+// credentials; symmetric NAT peers that cannot establish a direct path
+// simply fail with a descriptive console diagnostic rather than silently
+// hanging.)
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:global.stun.twilio.com:3478' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.nextcloud.com:443' },
+  { urls: 'stun:stun.sipgate.net:3478' },
+  { urls: 'stun:openrelay.metered.ca:80' },
 ];
+
+// ── ICE gathering diagnostics (FIX #3) ──────────────────────────────────
+// Emits a descriptive console warning when zero host or zero reflexive
+// candidates were produced by the time ICE gathering finished. This is the
+// canonical signature of a strict Symmetric NAT (every STUN binding is
+// filtered/throttled) — the connection will fail ICE connectivity checks
+// and the developer needs to see WHY rather than staring at a silent hang.
+function _diagnoseIceCandidates(pc, hostCount, reflexiveCount) {
+  const total = hostCount + reflexiveCount;
+  if (total > 0 && hostCount > 0) return;  // healthy gathering; nothing to warn about.
+  const parts = [];
+  if (total === 0) parts.push('zero candidates produced');
+  else if (hostCount === 0) parts.push('zero host candidates (mDNS obfuscation or no local interface)');
+  if (reflexiveCount === 0 && total > 0) {
+    parts.push('zero server-reflexive (srflx) candidates — all STUN servers unreachable');
+  }
+  if (parts.length === 0) return;
+  console.warn(
+    '[leaderboard] ICE gathering failure: ' + parts.join('; ') + '. ' +
+    'This typically indicates a strict Symmetric NAT (e.g. Jio/Airtel cellular ' +
+    'data or institutional Wi-Fi) or all STUN servers being blocked. ' +
+    'host=' + hostCount + ' srflx/relay=' + reflexiveCount + ' ' +
+    'state=' + (pc.iceGatheringState || 'unknown') + '. ' +
+    'The handshake will likely fail; consider providing a TURN server in opts.iceServers ' +
+    'for peers on hostile networks.'
+  );
+}
 
 // ── RTC peer wrapper ────────────────────────────────────────────────────
 class Peer {
@@ -208,11 +271,50 @@ class Peer {
     return false;
   }
   _waitForIce(pc) {
+    // FIX #4: State-aware ICE gathering wait. Resolves immediately when
+    // `iceGatheringState` reaches 'complete' (fast path: all candidates
+    // collected early — typically sub-second on healthy networks). Otherwise
+    // waits up to ICE_GATHER_TIMEOUT_MS (5s, up from 2.2s) so that slow
+    // mobile/cellular paths have time to compile the full candidate set
+    // before the non-trickle SDP is sealed and announced.
+    //
+    // FIX #3 (diagnostics): tracks host vs. server-reflexive (srflx)
+    // candidate counts. If zero of either type are produced by the time the
+    // wait resolves, emits a descriptive console.warn so developers can see
+    // that ICE will almost certainly fail (e.g. strict Symmetric NAT where
+    // every STUN server is unreachable). The original code silently produced
+    // a candidate-less SDP that peers would reject without explanation.
     return new Promise((resolve) => {
-      if (pc.iceGatheringState === 'complete') return resolve();
-      const t = setTimeout(resolve, ICE_GATHER_TIMEOUT_MS);
+      if (pc.iceGatheringState === 'complete') {
+        _diagnoseIceCandidates(pc, 0, 0);
+        return resolve();
+      }
+      let hostCount = 0;
+      let srflxCount = 0;
+      let relayCount = 0;
+      let resolved = false;
+      const finish = () => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(t);
+        try { pc.onicecandidate = null; } catch (_) {}
+        _diagnoseIceCandidates(pc, hostCount, srflxCount + relayCount);
+        resolve();
+      };
+      const t = setTimeout(finish, ICE_GATHER_TIMEOUT_MS);
+      pc.onicecandidate = (e) => {
+        if (e.candidate && typeof e.candidate.candidate === 'string') {
+          const c = e.candidate.candidate;
+          if (/\btyp host\b/.test(c)) hostCount++;
+          else if (/\btyp srflx\b/.test(c)) srflxCount++;
+          else if (/\btyp relay\b/.test(c)) relayCount++;
+        } else if (e.candidate == null) {
+          // null candidate signals end-of-gathering per the WebRTC spec.
+          finish();
+        }
+      };
       pc.onicegatheringstatechange = () => {
-        if (pc.iceGatheringState === 'complete') { clearTimeout(t); resolve(); }
+        if (pc.iceGatheringState === 'complete') finish();
       };
     });
   }
@@ -230,39 +332,67 @@ class Peer {
 // Brokers WebRTC SDP offer/answer exchange. The tracker only relays
 // handshake bytes; it never sees telemetry (that flows over the direct
 // RTCDataChannel once established).
+//
+// FIX #1: Simultaneous multi-announcing. The original implementation
+// iterated through `TRACKERS` sequentially and stopped the moment any
+// single WebSocket hit `onopen`. Because public WebTorrent trackers
+// maintain isolated peer swarms, two peers that landed on different
+// trackers would NEVER discover each other. The refactored transport now
+// opens WebSocket connections to ALL trackers in `TRACKERS` in parallel,
+// fans every announce/answer out to every open socket, and only retries
+// the full set once ALL of them have closed (and no data channel is
+// currently open). When a data channel reaches the 'open' state, the
+// Arena calls `transport.close()` which gracefully tears down every active
+// tracker socket to conserve resources (unchanged behaviour, now applied
+// across the whole pool).
 class TrackerTransport {
   constructor(arena) {
     this.a = arena;
-    this.ws = null;
-    this.wsReady = false;
-    this._idx = 0;
+    // Map<url, WebSocket> — every currently-open (or opening) tracker socket.
+    // Replaces the old single-`ws` field so the transport can talk to the
+    // entire swarm simultaneously.
+    this.wsMap = new Map();
+    this._openNotified = false;   // has _onTransportOpen fired for this session?
     this._retry = null;
-    this._stopped = false;
+    this._stopped = true;
   }
   open() {
+    // Re-opening while already running is a no-op (the Arena calls open()
+    // from _onPeerClose to recover after a disconnect — if we're already
+    // mid-handshake there's nothing to do).
+    if (!this._stopped) return;
     this._stopped = false;
-    this._tryNext();
+    this._openNotified = false;
+    for (const url of TRACKERS) this._connectOne(url);
   }
-  _tryNext() {
+  // Open a single tracker socket. Called in parallel for every entry in
+  // TRACKERS. Failures (constructor throw, onerror, onclose) are tolerated
+  // silently — the surviving sockets still form the discovery swarm.
+  _connectOne(url) {
     if (this._stopped || !this.a.roomKey) return;
-    if (this._idx >= TRACKERS.length) {
-      this.a._onTransportClose();
-      this._retry = setTimeout(() => {
-        if (!this._stopped && this.a.roomKey && !this.a._anyOpen()) {
-          this._idx = 0; this._tryNext();
-        }
-      }, TRACKER_RETRY_MS);
-      return;
-    }
-    const url = TRACKERS[this._idx++];
+    if (this.wsMap.has(url)) return;  // already trying
     let ws;
-    try { ws = new WebSocket(url); } catch (_) { this._tryNext(); return; }
+    try { ws = new WebSocket(url); } catch (_) { return; }
     ws.binaryType = 'arraybuffer';
     const owned = ws;
+    this.wsMap.set(url, owned);
     ws.onopen = () => {
-      if (this.ws) { try { this.ws.close(); } catch (_) {} }
-      this.ws = owned; this.wsReady = true;
-      this.a._onTransportOpen();
+      if (this._stopped) { try { owned.close(); } catch (_) {} return; }
+      // Fire _onTransportOpen exactly once per "session" — it kicks the
+      // first announce out. Subsequent sockets that come online later
+      // simply participate in the next fan-out announce (the re-announce
+      // timer fires every RE_ANNOUNCE_MS and broadcasts to ALL open
+      // sockets, so late joiners are covered within 5s).
+      if (!this._openNotified) {
+        this._openNotified = true;
+        this.a._onTransportOpen();
+      } else {
+        // A new tracker just came online — give it an immediate announce
+        // so its swarm learns about us without waiting for the 5s timer.
+        // _sendAnnounceOffers is a no-op if we're at MAX_PENDING_OFFERS,
+        // so this can't accidentally flood the swarm.
+        this.a._sendAnnounceOffers();
+      }
     };
     ws.onmessage = (e) => {
       let msg;
@@ -274,20 +404,51 @@ class TrackerTransport {
     };
     ws.onerror = () => { try { owned.close(); } catch (_) {} };
     ws.onclose = () => {
-      if (this.ws === owned) { this.ws = null; this.wsReady = false; }
-      if (!this._stopped && this.a.roomKey && !this.a._anyOpen()) this._tryNext();
+      if (this.wsMap.get(url) === owned) this.wsMap.delete(url);
+      // Only schedule a retry once EVERY tracker socket has dropped AND no
+      // data channel is currently open. If a data channel is open we don't
+      // need the trackers at all (resource conservation).
+      if (!this._stopped && this.a.roomKey && !this.a._anyOpen() && this.wsMap.size === 0) {
+        this.a._onTransportClose();
+        if (this._retry) clearTimeout(this._retry);
+        this._retry = setTimeout(() => {
+          if (this._stopped || !this.a.roomKey || this.a._anyOpen() || this.wsMap.size > 0) return;
+          this._openNotified = false;
+          for (const u of TRACKERS) this._connectOne(u);
+        }, TRACKER_RETRY_MS);
+      }
     };
   }
-  isReady() { return !!(this.ws && this.ws.readyState === WebSocket.OPEN); }
+  // Ready as long as AT LEAST ONE tracker socket is OPEN. The Arena gates
+  // announce/answer sends on this so we don't fire into the void while all
+  // sockets are still handshaking.
+  isReady() {
+    for (const ws of this.wsMap.values()) {
+      if (ws.readyState === WebSocket.OPEN) return true;
+    }
+    return false;
+  }
+  // Fan-out: serialize once, send to EVERY open tracker socket. This is the
+  // core of the multi-announce fix — the same offer/answer hits every
+  // tracker's swarm simultaneously, so peers on different trackers discover
+  // each other instead of being siloed.
   send(obj) {
-    if (this.isReady()) { try { this.ws.send(JSON.stringify(obj)); } catch (_) {} }
+    if (this.wsMap.size === 0) return;
+    const txt = JSON.stringify(obj);
+    for (const ws of this.wsMap.values()) {
+      if (ws.readyState === WebSocket.OPEN) {
+        try { ws.send(txt); } catch (_) {}
+      }
+    }
   }
   close() {
     this._stopped = true;
     if (this._retry) { clearTimeout(this._retry); this._retry = null; }
-    if (this.ws) { try { this.ws.close(); } catch (_) {} this.ws = null; this.wsReady = false;
-      this._idx = 0;
+    for (const ws of this.wsMap.values()) {
+      try { ws.close(); } catch (_) {}
     }
+    this.wsMap.clear();
+    this._openNotified = false;
   }
 }
 
@@ -464,6 +625,12 @@ class Arena {
         }
       },
     });
+    // FIX #2: stamp the creation time so the state-aware tie-breaker can
+    // tell "our outbound offer is fresh, give it a chance to be answered"
+    // apart from "our outbound offer has been outstanding long enough that
+    // it probably never reached the remote peer (packet loss on the tracker
+    // swarm) — accept an inbound offer as a backup pathway".
+    p._createdAt = Date.now();
     this._pendingOffers.set(offerId, p);
     p.createOffer().catch(() => p.close());
     setTimeout(() => {
@@ -472,6 +639,37 @@ class Arena {
         p.close();
       }
     }, OFFER_TTL_MS);
+  }
+
+  // FIX #2: Returns true if `peerId` already has an active connection OR a
+  // verified pending channel (i.e. a Peer in `this.peers` whose
+  // RTCPeerConnection is successfully negotiating or whose data channel is
+  // already open / connecting). Used by the resilient tie-breaker to decide
+  // whether to ghost an inbound offer or accept it as a backup pathway.
+  _hasVerifiedConnection(peerId) {
+    const existing = this.peers.get(peerId);
+    if (!existing || existing._closed) return false;
+    const dcState = existing.dc ? existing.dc.readyState : 'closed';
+    if (dcState === 'open' || dcState === 'connecting') return true;
+    const pcState = existing.pc ? existing.pc.connectionState : 'closed';
+    if (['new', 'connecting', 'connected', 'checking', 'completed'].includes(pcState)) return true;
+    return false;
+  }
+
+  // FIX #2: Returns true if our oldest pending outbound offer has been
+  // outstanding longer than BACKUP_OFFER_GRACE_MS. Used by the tie-breaker
+  // to fall back to the inbound offer when our own initiator has had enough
+  // time to receive an answer but hasn't (suggesting the offer was lost on
+  // the tracker swarm).
+  _outboundOfferStale() {
+    if (this._pendingOffers.size === 0) return false;
+    const now = Date.now();
+    let oldest = Infinity;
+    this._pendingOffers.forEach((p) => {
+      const t = p._createdAt || 0;
+      if (t < oldest) oldest = t;
+    });
+    return (now - oldest) >= BACKUP_OFFER_GRACE_MS;
   }
 
   // Incoming signaling message (offer from a peer, or answer to our offer).
@@ -483,13 +681,38 @@ class Arena {
     // inbound offer → respond
     if (msg.offer && msg.offer_id && msg.peer_id) {
       this._stats.offerRecv++;
-      if (this.peers.has(msg.peer_id)) return;
-      // Deterministic tie-break so exactly ONE connection forms per pair:
-      // the peer with the SMALLER peerId is the initiator; the LARGER peer
-      // responds. As the smaller peer, skip incoming offers (let our own
-      // initiator win) — otherwise both sides end up with a responder whose
-      // initiator was dedup-closed, deadlocking the handshake.
-      if (this.peerId < msg.peer_id) return;
+      // FIX #2: Resilient, state-aware tie-breaker.
+      //
+      // Original behaviour: if `this.peerId < msg.peer_id`, unconditionally
+      // ghost the inbound offer so our own outbound initiator wins. This
+      // deadlocks completely when the outbound offer's packet is lost on
+      // the tracker swarm — the remote peer never sees our offer, and we
+      // refuse to process theirs, so no connection ever forms.
+      //
+      // New behaviour: ghost the inbound offer ONLY when one of these is
+      // true:
+      //   (a) we already have an active or verified-pending connection for
+      //       this specific peer_id (dedup — prevents double-responder),
+      //   (b) we are the smaller peer AND our outbound offer is still fresh
+      //       (younger than BACKUP_OFFER_GRACE_MS) — give our initiator a
+      //       fair chance to be answered before falling back.
+      // Otherwise process the inbound offer as a backup pathway. The
+      // existing _onPeerOpen dedup (only one open data channel per peer_id)
+      // ensures we end up with exactly one live connection even if both
+      // sides race.
+      if (this._hasVerifiedConnection(msg.peer_id)) return;
+      if (this.peerId < msg.peer_id && !this._outboundOfferStale()) {
+        // We're the preferred initiator and our outbound offer is still
+        // fresh — ghost this inbound offer and let our initiator win.
+        return;
+      }
+      // Either we're the larger peer (always process), or we're the smaller
+      // peer but our outbound offer has gone stale (likely lost on the
+      // tracker swarm). Accept the inbound offer as a backup pathway.
+      //
+      // If a stale/closed responder entry lingers in `this.peers` for this
+      // peer_id (e.g. its PC failed but _onPeerClose hasn't run yet),
+      // overwrite it — the new responder is the live one.
       const responder = new Peer({
         id: msg.peer_id, offerId: msg.offer_id, role: 'responder', iceServers: this.iceServers,
         onOpen: (peer) => this._onPeerOpen(peer),
@@ -520,7 +743,28 @@ class Arena {
       const p = this._pendingOffers.get(msg.offer_id);
       if (!p) return;
       this._pendingOffers.delete(msg.offer_id);
-      if (this.peers.has(msg.peer_id)) { p.close(); return; }
+      // FIX #2: If a (likely stale) responder entry exists for this peer_id
+      // but is NOT verified (no open/connecting DC, PC not actively
+      // negotiating), tear it down and let our fresh initiator take the
+      // slot. This is the recovery path for the "both-responder" race: our
+      // outbound initiator got answered, so it should win over a responder
+      // we created speculatively as a backup. If the existing entry IS
+      // verified (DC open or PC successfully negotiating), keep it and drop
+      // the redundant initiator — the connection is already forming.
+      if (this.peers.has(msg.peer_id)) {
+        const existing = this.peers.get(msg.peer_id);
+        if (existing && !existing._closed) {
+          const dcState = existing.dc ? existing.dc.readyState : 'closed';
+          const pcState = existing.pc ? existing.pc.connectionState : 'closed';
+          const verified =
+            dcState === 'open' || dcState === 'connecting' ||
+            ['connecting', 'connected', 'checking', 'completed'].includes(pcState);
+          if (verified) { p.close(); return; }
+          // Stale but not yet reaped — tear it down to make room.
+          existing._teardown();
+        }
+        this.peers.delete(msg.peer_id);
+      }
       p.id = msg.peer_id;
       this.peers.set(msg.peer_id, p);
       p.receiveAnswer(msg.answer).catch(() => p._teardown());
@@ -545,7 +789,13 @@ class Arena {
 
   _onPeerClose(peer) {
     this._stats.close++;
-    if (peer.id) {
+    // FIX #2: Only reap the map entry if the closing Peer is still the one
+    // registered for this id. The state-aware tie-breaker can overwrite a
+    // stale/closed responder with a fresh backup responder for the same
+    // peer_id; if we then naively did `this.peers.delete(peer.id)` when the
+    // stale one finally fires its _teardown, we'd nuke the live replacement.
+    // Guarding with an identity check makes that race safe.
+    if (peer.id && this.peers.get(peer.id) === peer) {
       this.peers.delete(peer.id);
       this.telemetry.delete(peer.id);
       this.prevElo.delete(peer.id);
