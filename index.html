@@ -86,6 +86,7 @@
                 <li><a class="nav-item" onclick="switchTab('pomodoro', this)"><span class="icon">⚡</span><span class="text-label">Focus Mode</span></a></li>
                 <li><a class="nav-item" onclick="switchTab('errors', this)"><span class="icon">☣</span><span class="text-label">The Vault</span></a></li>
                 <li><a class="nav-item" onclick="switchTab('practice', this)"><span class="icon">📖</span><span class="text-label">Grind Station</span></a></li>
+                <li><a class="nav-item" onclick="switchTab('leaderboard', this)"><span class="icon">🏆</span><span class="text-label">Arena</span></a></li>
                 <li><a class="nav-item" onclick="switchTab('settings', this)"><span class="icon">⚙</span><span class="text-label">Config</span></a></li>
             </ul>
 
@@ -553,6 +554,30 @@
                                 <div id="cp-status-msg" style="margin-top:8px; font-size:12px;"></div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ════════════════════════════════════════════════════════════════
+                 P2P LEADERBOARD ARENA  ·  #view-leaderboard
+                 ────────────────────────────────────────────────────────────
+                 Serverless WebRTC competitive leaderboard. Peers discover each
+                 other through public WebTorrent WebSocket trackers and exchange
+                 a 4-field telemetry packet (globalElo / dailyVariance /
+                 studyHours / timestamp) over a direct RTCDataChannel. No
+                 signaling backend, no OAuth. The arena mounts itself into this
+                 container via LeaderboardNet.init() in app.js (initApp), and
+                 re-renders on switchTab('leaderboard'). Strictly isolated from
+                 AppState.questionBank, API keys, and the saveAllAsync pipeline.
+                 ════════════════════════════════════════════════════════════════ -->
+            <div id="view-leaderboard" class="view-section">
+                <div class="glow-wrapper">
+                    <div class="glow-box-inner">
+                        <h2 class="box-title">P2P Leaderboard Arena</h2>
+                        <p class="box-desc">Serverless WebRTC · WebTorrent tracker signaling · zero-auth friend rooms. Share a Friend Connection Key with a rival — they appear here the instant the data channel opens.</p>
+                        <!-- leaderboard.js injects the connection panel, status beacon,
+                             and ranked telemetry card grid into this container. -->
+                        <div id="leaderboard-mount"></div>
                     </div>
                 </div>
             </div>
