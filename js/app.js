@@ -650,6 +650,156 @@ export async function updateStreakDisplay() {
     }
 }
 
+// ==================== FRICTION-INVERSE COGNITIVE YIELD (Y_day) ====================
+//
+// Replaces the raw scalar question counters fed to the candlestick momentum
+// engine. Every solved problem is weighed by its running implied difficulty
+// (qElo), temporal divergence (τ = actual / chapter-average time) and a vault
+// re-attempt coefficient, then aggregated through the asymmetric Model B
+// subject portfolio:
+//
+//   W_i   = (qElo_i / 1200) · (2 / (1 + τ_i)) · W_vault
+//   Y_day = 0.50 · ΣW_Math + 0.30 · ΣW_Phys + 0.20 · ΣW_Chem
+//
+// Vault rules:
+//   • Spaced-Repetition re-attempt (active errorReason + firstAttemptResult) → 0.25
+//   • Fresh, cold problem → 1.0
+//
+// ── State & Sync Integrity ──
+// This module is a PURE READ over AppState.questionBank. It NEVER mutates the
+// bank, the `solved` counters, `studySecs`, or any Cloud/IndexedDB serialised
+// shape — the yield is synthesised on the fly inside renderGraph() so the sync
+// schema definitions remain uncorrupted.
+const YIELD_SUBJECT_WEIGHTS = { maths: 0.50, physics: 0.30, chemistry: 0.20 };
+
+/**
+ * Vault re-attempt coefficient — mirrors the re-solve decay rule inside
+ * calculateEloMigration(). A question that already carries an `errorReason`
+ * AND a locked `firstAttemptResult` is a Spaced-Repetition vault re-attempt
+ * (you have already seen the solution), so its cognitive footprint collapses
+ * to 25%. Fresh, cold problems weigh in at full strength (1.0).
+ */
+function _vaultWeight(q) {
+    return (q && q.errorReason && q.firstAttemptResult) ? 0.25 : 1.0;
+}
+
+/**
+ * Individual cognitive footprint of a single solved problem.
+ *
+ *   W_i = (qElo_i / 1200) · (2 / (1 + τ_i)) · W_vault
+ *
+ * where τ_i = actual time / chapter average time. Untimed solves (timeTaken
+ * ≤ 0) collapse τ to 1 (neutral), so they neither inflate nor deflate the
+ * friction-inverse term instead of doubling it.
+ */
+function _cognitiveItemWeight(q) {
+    const qElo = (typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0)
+        ? q.qElo : 1200;
+    const difficulty = qElo / 1200;
+
+    const T_act = Math.max(0, Number(q.timeTaken) || 0);
+    const T_avg = Math.max(1, _getChapterAvgTime(q.subject, q.chapter));
+    const tau = T_act > 0 ? (T_act / T_avg) : 1;        // temporal divergence
+    const frictionInverse = 2 / (1 + Math.max(0, tau));  // 2/(1+τ)
+
+    return difficulty * frictionInverse * _vaultWeight(q);
+}
+
+/**
+ * Granular Friction-Inverse Cognitive Yield for a single calendar date.
+ *
+ * Scans AppState.questionBank for questions with status 'solved' whose
+ * `lastReviewedAt` (the canonical review stamp attached at solve time) falls
+ * on `dateStr` (YYYY-MM-DD), computes each item's weight, buckets it by
+ * subject, and applies the Model B asymmetric multipliers.
+ *
+ * @param {string} dateStr  ISO calendar date (YYYY-MM-DD).
+ * @returns {{yield:number, hasGranular:boolean, bySubject:Object, matched:number}}
+ *          `hasGranular` is true when at least one solved bank question matched
+ *          the date — otherwise the caller must fall back to macro-imputation.
+ */
+function _computeYieldForDate(dateStr) {
+    const bySubject = { maths: 0, physics: 0, chemistry: 0 };
+    let matched = 0;
+
+    for (const q of AppState.questionBank) {
+        if (!q || q.status !== 'solved') continue;
+        // Resolve the solve date from lastReviewedAt. The field is an ISO
+        // string stamped at solve/review time (see calculateEloMigration /
+        // practiceSubmit); slicing the first 10 chars yields YYYY-MM-DD.
+        const stamp = q.lastReviewedAt;
+        if (!stamp || typeof stamp !== 'string') continue;
+        if (stamp.slice(0, 10) !== dateStr) continue;
+
+        const subj = _normalizeSubjectKey(q.subject);
+        if (!(subj in bySubject)) continue;
+        bySubject[subj] += _cognitiveItemWeight(q);
+        matched++;
+    }
+
+    const yieldVal =
+        YIELD_SUBJECT_WEIGHTS.maths     * bySubject.maths +
+        YIELD_SUBJECT_WEIGHTS.physics   * bySubject.physics +
+        YIELD_SUBJECT_WEIGHTS.chemistry * bySubject.chemistry;
+
+    return { yield: yieldVal, hasGranular: matched > 0, bySubject, matched };
+}
+
+/**
+ * Historical Log Imputation Protocol — global macro conversion scalar.
+ *
+ * When a daily-history log entry lacks granular subject breakdowns (i.e. no
+ * live bank question can be dated to it), we do NOT fall back to the raw
+ * scalar count. Instead we synthesise a global conversion factor from the
+ * live solved-bank state:
+ *
+ *   C_macro = 0.50·β_Math·(Q̄_Math/1200)
+ *           + 0.30·β_Phys·(Q̄_Phys/1200)
+ *           + 0.20·β_Chem·(Q̄_Chem/1200)
+ *
+ * where β_s is the solved-count distribution ratio and Q̄_s the average qElo of
+ * solved questions in subject s. Every legacy flat count is then multiplied by
+ * C_macro so it lands on the same value matrix as the live yield points.
+ *
+ * @returns {number} C_macro (≥0). Returns 1 when the bank has no solved items,
+ *                   preserving the legacy count verbatim so rendering never
+ *                   fails on a totally fresh install.
+ */
+function _computeMacroImputationScalar() {
+    const counts = { maths: 0, physics: 0, chemistry: 0 };
+    const eloSums = { maths: 0, physics: 0, chemistry: 0 };
+    let total = 0;
+
+    for (const q of AppState.questionBank) {
+        if (!q || q.status !== 'solved') continue;
+        const subj = _normalizeSubjectKey(q.subject);
+        if (!(subj in counts)) continue;
+        counts[subj]++;
+        eloSums[subj] += (typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0)
+            ? q.qElo : 1200;
+        total++;
+    }
+
+    if (total === 0) return 1; // empty bank → keep raw counts (safe baseline)
+
+    const beta = {
+        maths: counts.maths / total,
+        physics: counts.physics / total,
+        chemistry: counts.chemistry / total,
+    };
+    const qBar = {
+        maths: counts.maths > 0 ? eloSums.maths / counts.maths : 1200,
+        physics: counts.physics > 0 ? eloSums.physics / counts.physics : 1200,
+        chemistry: counts.chemistry > 0 ? eloSums.chemistry / counts.chemistry : 1200,
+    };
+
+    return (
+        YIELD_SUBJECT_WEIGHTS.maths     * beta.maths     * (qBar.maths     / 1200) +
+        YIELD_SUBJECT_WEIGHTS.physics   * beta.physics   * (qBar.physics   / 1200) +
+        YIELD_SUBJECT_WEIGHTS.chemistry * beta.chemistry * (qBar.chemistry / 1200)
+    );
+}
+
 // ==================== PREDICTIVE MOMENTUM ENGINE (candlestick edition) ====================
 export async function renderGraph() {
     const svg = document.getElementById('dynamic-graph');
@@ -668,8 +818,20 @@ export async function renderGraph() {
     const penaltySet = new Set(penaltyDates);
     const penaltyFlags = history.map(h => penaltySet.has(h.date));
 
-    // Raw scalar series (P0 enforcement is applied inside drawCandlesticks).
-    const counts = history.map(h => h.count);
+    // ── Friction-Inverse Cognitive Yield series (Y_day) ──
+    // Replaces the legacy raw scalar `h.count` counters. For every history
+    // entry we attempt a granular yield computation from the live solved
+    // question bank (questions whose lastReviewedAt falls on that date);
+    // entries with NO bank backing (legacy / pre-yield logs) are normalised
+    // through the macro-imputation scalar C_macro so they land on the same
+    // value matrix as the live yield points instead of reverting to raw
+    // integer tallies. P0 enforcement is still applied inside drawCandlesticks.
+    const C_macro = _computeMacroImputationScalar();
+    const counts = history.map(h => {
+        const granular = _computeYieldForDate(h.date);
+        if (granular.hasGranular) return granular.yield;          // live Y_day
+        return (Number(h.count) || 0) * C_macro;                  // imputed Y_day
+    });
 
     // ── Label formatter: "Mon 12" style ──
     const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -681,13 +843,24 @@ export async function renderGraph() {
         return `${DOW[d.getDay()]} ${d.getDate()}`;
     };
 
+    // ── Equivalent Target Lock Adjustment ──
+    // The cyan LOCK line must match the value matrix of the new daily yield
+    // points, so the legacy arithmetic target sum is replaced by the
+    // equivalently scaled yield boundary:
+    //   Target_Yield = 0.50·maths + 0.30·physics + 0.20·chemistry
+    const targetYield =
+        YIELD_SUBJECT_WEIGHTS.maths     * baseTargets.maths +
+        YIELD_SUBJECT_WEIGHTS.physics   * baseTargets.physics +
+        YIELD_SUBJECT_WEIGHTS.chemistry * baseTargets.chemistry;
+
     // ── Render as OHLC candlesticks ──
     // Internal coordinate space is wider/taller than the old 320x80 so candles
     // are legible. The SVG's viewBox is set by drawCandlesticks; CSS on
     // #dynamic-graph stretches it to fill the card.
     //
-    // Target Compliance: the combined absolute daily targets across all three
-    // subjects becomes the green/red threshold for every candle.
+    // Target Compliance: the scaled yield target becomes the green/red
+    // threshold for every candle, and the tooltip formats the OHLC values as
+    // "Yield Points" (2-dp precision) rather than raw integer tallies.
     const metrics = drawCandlesticks(svg, counts, {
         width: 360,
         height: 170,
@@ -696,9 +869,10 @@ export async function renderGraph() {
         predDays: 5,
         compact: false,
         invert: false,
-        valueLabel: 'solves',
+        valueLabel: 'Yield Points',
+        valuePrecision: 2,
         labelFn,
-        targetValue: (baseTargets.physics + baseTargets.chemistry + baseTargets.maths),
+        targetValue: targetYield,
     });
 
     // ── Loss Aversion / Projection Slope Flasher ──

@@ -157,6 +157,12 @@ function showTooltip(tip, candle, index, opts, px, py, width, height) {
   const isPred = opts.predStart != null && index >= opts.predStart;
   const change = candle.close - candle.open;
   const pct = candle.open !== 0 ? (change / candle.open) * 100 : 0;
+  // Decimal precision for the OHLC + delta readouts. Defaults to 1 (legacy
+  // integer-count behaviour); callers passing fractional series — e.g. the
+  // Friction-Inverse Cognitive Yield points from renderGraph() — set
+  // opts.valuePrecision = 2 so values like 7.45 render cleanly instead of
+  // collapsing to a single decimal.
+  const prec = Number.isFinite(opts.valuePrecision) ? opts.valuePrecision : 1;
   const chgColor =
     change > 0 ? (opts.invert ? COLOR.down : COLOR.up)
     : change < 0 ? (opts.invert ? COLOR.up : COLOR.down)
@@ -172,13 +178,13 @@ function showTooltip(tip, candle, index, opts, px, py, width, height) {
       ${candle.isPenalty ? '<span style="font-size:8px;padding:2px 5px;border-radius:3px;font-weight:700;letter-spacing:0.6px;background:rgba(248,113,113,0.3);color:#fca5a5;">P0</span>' : ""}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:11px;">
-      <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#4a4a6a;font-size:10px;">Open</span><b style="color:#fff;">${candle.open.toFixed(1)}</b></div>
-      <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#4a4a6a;font-size:10px;">High</span><b style="color:#22c55e;">${candle.high.toFixed(1)}</b></div>
-      <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#4a4a6a;font-size:10px;">Low</span><b style="color:#f87171;">${candle.low.toFixed(1)}</b></div>
-      <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#4a4a6a;font-size:10px;">Close</span><b style="color:#fff;">${candle.close.toFixed(1)} ${escapeHtml(opts.valueLabel || "")}</b></div>
+      <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#4a4a6a;font-size:10px;">Open</span><b style="color:#fff;">${candle.open.toFixed(prec)}</b></div>
+      <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#4a4a6a;font-size:10px;">High</span><b style="color:#22c55e;">${candle.high.toFixed(prec)}</b></div>
+      <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#4a4a6a;font-size:10px;">Low</span><b style="color:#f87171;">${candle.low.toFixed(prec)}</b></div>
+      <div style="display:flex;justify-content:space-between;gap:8px;"><span style="color:#4a4a6a;font-size:10px;">Close</span><b style="color:#fff;">${candle.close.toFixed(prec)} ${escapeHtml(opts.valueLabel || "")}</b></div>
     </div>
     <div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;font-weight:700;color:${chgColor};">
-      ${arrow} ${Math.abs(change).toFixed(1)} (${Math.abs(pct).toFixed(1)}%)
+      ${arrow} ${Math.abs(change).toFixed(prec)} (${Math.abs(pct).toFixed(1)}%)
     </div>`;
   // position
   const tipW = 168, tipH = 132;
@@ -258,6 +264,7 @@ export function drawCandlesticks(svg, counts, opts = {}) {
     compact = false,
     invert = false,
     valueLabel = "solves",
+    valuePrecision = 1,
     labelFn,
     targetValue,
   } = opts;
