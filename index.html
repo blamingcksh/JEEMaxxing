@@ -1,1121 +1,1247 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="JEEMaxxing">
+    <script>try{var _fx=JSON.parse(localStorage.getItem('jeemax_fx_prefs')||'null');if(_fx&&_fx.effects===false)document.documentElement.classList.add('fx-effects-off');}catch(e){}</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#050508">
+<title>JEEMaxxing · Locked In</title>
 
+<!-- Favicon (app.js upgrades this to a generated PNG apple-touch-icon) -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>JEEMaxxing | Locked In</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,…">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.7/dist/katex.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.7/dist/katex.min.js"></script>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://apis.google.com/js/api.js" async defer></script>
-    <link rel="stylesheet" href="css/styles.css">
-    <script>
-  (function() {
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">'
-      + '<defs><linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%">'
-      + '<stop offset="0%" style="stop-color:#ff2d95"/>'
-      + '<stop offset="100%" style="stop-color:#00f0ff"/>'
-      + '</linearGradient></defs>'
-      + '<g stroke="url(#fg)" stroke-width="2" fill="none" opacity="0.8">'
-      + '<path d="M100 160 Q80 120 60 100"/>'
-      + '<path d="M100 160 Q90 110 80 80"/>'
-      + '<path d="M100 160 Q100 100 100 60"/>'
-      + '<path d="M100 160 Q110 110 120 80"/>'
-      + '<path d="M100 160 Q120 120 140 100"/>'
-      + '<path d="M100 160 Q70 130 50 120"/>'
-      + '<path d="M100 160 Q130 130 150 120"/>'
-      + '<path d="M100 160 Q85 140 75 130"/>'
-      + '<path d="M100 160 Q115 140 125 130"/>'
-      + '</g>'
-      + '<ellipse cx="100" cy="140" rx="20" ry="25" fill="none" stroke="url(#fg)" stroke-width="2"/>'
-      + '<circle cx="100" cy="110" r="16" fill="none" stroke="url(#fg)" stroke-width="2"/>'
-      + '<polygon points="90,95 85,75 98,90" fill="url(#fg)" opacity="0.8"/>'
-      + '<polygon points="110,95 115,75 102,90" fill="url(#fg)" opacity="0.8"/>'
-      + '<circle cx="96" cy="108" r="3" fill="#ff2d95"/>'
-      + '<circle cx="104" cy="108" r="3" fill="#ff2d95"/>'
-      + '<circle cx="60" cy="100" r="1.5" fill="#00f0ff">'
-      + '<animate attributeName="cy" values="100;90;100" dur="2s" repeatCount="indefinite"/></circle>'
-      + '<circle cx="140" cy="100" r="1.5" fill="#00f0ff">'
-      + '<animate attributeName="cy" values="100;90;100" dur="1.8s" repeatCount="indefinite"/></circle>'
-      + '</svg>';
-    const encoded = btoa(svg);
-    const favicon = document.createElement('link');
-    favicon.rel = 'icon';
-    favicon.type = 'image/svg+xml';
-    favicon.href = 'data:image/svg+xml;base64,' + encoded;
-    document.head.appendChild(favicon);
-    // Apple touch icon (iOS)
-    const appleIcon = document.createElement('link');
-    appleIcon.rel = 'apple-touch-icon';
-    appleIcon.href = 'data:image/svg+xml;base64,' + encoded;
-    document.head.appendChild(appleIcon);
-  })();
-</script>
+<!-- ── Type system: Chakra Petch (display) · IBM Plex Sans (body) · Space Grotesk (numerics / chart SVG) ── -->
+<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-500.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-600.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-700.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-400.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-500.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-600.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/fontsource/css/space-grotesk@latest/latin-500.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/fontsource/css/space-grotesk@latest/latin-700.css" rel="stylesheet">
+
+<!-- KaTeX — window.katex is consumed by app.js's global math engine -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <!-- Mini Pomodoro Widget HUD -->
-    <div class="pomo-mini-widget hidden" id="pomo-mini-widget" onclick="toggleMiniWidget()">
-        <button class="mini-collapse-btn" onclick="event.stopPropagation(); toggleMiniWidget()">❯</button>
-        <div class="mini-content">
-            <div class="mini-status" id="mini-status">FOCUS</div>
-            <div class="mini-time" id="mini-time">00:00</div>
-        </div>
+<!-- ═══════════════ AMBIENT BACKGROUND LAYERS ═══════════════ -->
+<div class="ambient-glow"></div>
+<div class="ambient-glow glow-secondary"></div>
+<div class="bg-grid-overlay"></div>
+
+<!-- ═══════════════ MINI POMO WIDGET (floats over everything) ═══════════════
+     IDs verified against pomodoro.js: #mini-status / #mini-time are written
+     every tick by executeTimerTick() and every phase transition. -->
+<div id="pomo-mini-widget" class="pomo-mini-widget hidden" onclick="switchTab('pomodoro', document.querySelector('[data-tab=pomodoro]'))">
+    <button class="mini-collapse-btn" onclick="event.stopPropagation(); toggleMiniWidget()" aria-label="Collapse widget">❯</button>
+    <div class="mini-content">
+        <span class="mini-status study" id="mini-status">FOCUS</span>
+        <span class="mini-time" id="mini-time">00:00</span>
     </div>
-
-    <div class="ambient-glow"></div>
-
-    <div class="app-container">
-        <aside class="sidebar" id="sidebar">
-            <div class="logo-container">
-                <span class="logo-text">JEEMaxxing</span>
-                <span class="logo-icon-alt">JM</span>
-            </div>
-
-            <ul class="nav-menu">
-                <li><a class="nav-item active" onclick="switchTab('dashboard', this)"><span class="icon">⌗</span><span class="text-label">Grind Hub</span></a></li>
-                <li><a class="nav-item" onclick="switchTab('pomodoro', this)"><span class="icon">⚡</span><span class="text-label">Focus Mode</span></a></li>
-                <li><a class="nav-item" onclick="switchTab('errors', this)"><span class="icon">☣</span><span class="text-label">The Vault</span></a></li>
-                <li><a class="nav-item" onclick="switchTab('practice', this)"><span class="icon">📖</span><span class="text-label">Grind Station</span></a></li>
-                <li><a class="nav-item" onclick="switchTab('leaderboard', this)"><span class="icon">🏆</span><span class="text-label">Arena</span></a></li>
-                <li><a class="nav-item" onclick="switchTab('settings', this)"><span class="icon">⚙</span><span class="text-label">Config</span></a></li>
-            </ul>
-
-            <div class="user-profile">
-                <img id="display-pfp" class="pfp-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23666'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/></svg>">
-                <span id="display-username" class="username-txt">Grindset</span>
-            </div>
-            <button class="collapse-btn" onclick="toggleSidebar()">Shrink</button>
-        </aside>
-
-        <main class="main-content">
-
-            <div class="cat-banner" id="cat-banner">
-                <span class="cat-emoji">🐱</span>
-                <span class="cat-text glow-orange" id="cat-text">Current focus vector: 0% cooked. Keep feeding the machine ⚙️</span>
-            </div>
-
-            <header class="header-section" id="main-header">
-                <div>
-                    <h1>Grind Dashboard</h1>
-                    <p>Welcome back. You're locked in and loaded. No cap.</p>
-                </div>
-                <div class="header-badges">
-                    <div class="badge">
-                        <span class="icon">🔥</span>
-                        <span class="val" id="top-streak" style="color: #f97316;">0 Days</span>
-                    </div>
-                    <div class="badge" onclick="openModal('calendar-modal')">
-                        <span class="icon">📅</span>
-                        <span class="val" id="top-date">Today</span>
-                    </div>
-                    <div class="badge" onclick="switchTab('pomodoro', document.querySelectorAll('.nav-item')[1])">
-                        <span class="icon">⏱️</span>
-                        <span class="val" id="top-study-time">0m</span>
-                    </div>
-                </div>
-            </header>
-
-            <div id="view-dashboard" class="view-section active">
-               <div class="sync-hud-container" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; background: rgba(255,255,255,0.02); padding: 10px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.04); width: max-content;">
-    <button id="manual-sync-btn" class="manual-sync-btn" onclick="executeUnifiedSync()" title="Force Sync Workspace">↻</button>
-    <div style="display: flex; flex-direction: column;">
-        <span id="sync-status-text" style="font-size: 11px; color: var(--text-secondary); font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px;">Cloud Link</span>
-        <span id="sync-sub-text" style="font-size: 13px; color: #fff; font-weight: 600;">Chilling</span>
-    </div>
-    <button id="cache-images-btn" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px; border-radius: 10px; margin-left: 12px;" onclick="cacheAllDriveImages()" title="Download all cloud images for offline grind">📦 Stash Offline</button>
-
 </div>
-                <div class="glow-wrapper">
-                    <div class="glow-box-inner">
+
+<div class="app-container">
+
+    <!-- ═══════════════ SIDEBAR ═══════════════ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="logo-container">
+            <span class="logo-text">JEEMaxxing</span>
+            <span class="logo-icon-alt">JM</span>
+        </div>
+
+        <ul class="nav-menu">
+            <li><a class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard', this)"><span class="icon">⌗</span><span class="text-label">Grind Hub</span></a></li>
+            <li><a class="nav-item" data-tab="pomodoro" onclick="switchTab('pomodoro', this)"><span class="icon">⚡</span><span class="text-label">Focus Mode</span></a></li>
+            <li><a class="nav-item" data-tab="errors" onclick="switchTab('errors', this)"><span class="icon">☣</span><span class="text-label">The Vault</span></a></li>
+            <li><a class="nav-item" data-tab="practice" onclick="switchTab('practice', this)"><span class="icon">📖</span><span class="text-label">Grind Station</span></a></li>
+            <li><a class="nav-item" data-tab="leaderboard" onclick="switchTab('leaderboard', this)"><span class="icon">🏆</span><span class="text-label">Arena</span></a></li>
+            <li><a class="nav-item" data-tab="settings" onclick="switchTab('settings', this)"><span class="icon">⚙</span><span class="text-label">Config</span></a></li>
+        </ul>
+
+        <!-- app.js injects #global-mmr-row into .user-profile -->
+        <div class="user-profile">
+            <img id="display-pfp" class="pfp-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='100%' height='100%' fill='%232a2a3a'/><text x='50%' y='58%' font-size='30' text-anchor='middle'>🦊</text></svg>" alt="Profile">
+            <span class="username-txt" id="display-username">Grindset</span>
+        </div>
+
+        <button class="collapse-btn" onclick="toggleSidebar()">Shrink</button>
+    </aside>
+
+    <!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+    <main class="main-content">
+
+        <!-- ── Cat Banner (telemetry rotation target) ── -->
+        <div class="cat-banner" id="cat-banner">
+            <span class="cat-emoji" id="cat-emoji">🐱</span>
+            <span class="cat-text glow-orange" id="cat-text">Current focus vector: 0% cooked. Keep feeding the machine ⚙️</span>
+        </div>
+
+        <!-- ── Header + badge cluster ──
+             #top-study-time is written by pomodoro.js updateStudyTimeHeader(). -->
+        <header class="header-section" id="main-header">
+            <div>
+                <h1>Grind Dashboard</h1>
+                <p>Welcome back. <span id="top-date">Today</span> · locked in and loaded. No cap.</p>
+            </div>
+            <div class="header-badges">
+                <div class="badge" title="Consistency streak">🔥 <span class="val" id="top-streak">0 Days</span></div>
+                <div class="badge" onclick="openModal('calendar-modal')" title="Open calendar">📅 <span class="val">Today</span></div>
+                <div class="badge" title="Total study time today">⏱️ <span class="val" id="top-study-time">0m</span></div>
+                <div class="badge sync-cluster" title="Cloud sync">
+                    <button class="manual-sync-btn" id="manual-sync-btn" onclick="executeUnifiedSync()" aria-label="Force cloud sync">↻</button>
+                    <span class="val" id="sync-sub-text">Cloud Link</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ═══════════════════════════════════════════
+             VIEW · DASHBOARD
+        ════════════════════════════════════════════ -->
+        <section id="view-dashboard" class="view-section active">
+            <div class="dash-grid">
+
+                <!-- Daily Grind Tracker -->
+                <div class="dash-card dash-card-tracker">
+                    <div class="dash-card-head">
+                        <span class="kicker">// DAILY OUTPUT</span>
+                        <h2 class="box-title">Daily Grind Tracker</h2>
+                        <p class="box-desc">Track your daily damage output. Quotas load from Config.</p>
+                    </div>
+
+                    <div class="subject-card-group">
+                        <div class="compact-subject-card" data-subject="physics">
+                            <h4>Physics <span class="subj-glyph">P</span></h4>
+                            <div class="compact-stats">
+                                <span class="counter" id="physics-count">0</span>
+                                <span class="target" id="tgt-phys-lbl">/ 10</span>
+                            </div>
+                            <div class="distribution-pill"><div class="distribution-fill" id="physics-bar" style="width:0%"></div></div>
+                            <div class="counter-controls">
+                                <button class="counter-btn" onclick="changeCount('physics', -1)" aria-label="Decrement physics">−</button>
+                                <button class="counter-btn" onclick="changeCount('physics', 1)" aria-label="Increment physics">+</button>
+                            </div>
+                        </div>
+
+                        <div class="compact-subject-card" data-subject="chemistry">
+                            <h4>Chemistry <span class="subj-glyph">C</span></h4>
+                            <div class="compact-stats">
+                                <span class="counter" id="chemistry-count">0</span>
+                                <span class="target" id="tgt-chem-lbl">/ 10</span>
+                            </div>
+                            <div class="distribution-pill"><div class="distribution-fill" id="chemistry-bar" style="width:0%"></div></div>
+                            <div class="counter-controls">
+                                <button class="counter-btn" onclick="changeCount('chemistry', -1)" aria-label="Decrement chemistry">−</button>
+                                <button class="counter-btn" onclick="changeCount('chemistry', 1)" aria-label="Increment chemistry">+</button>
+                            </div>
+                        </div>
+
+                        <div class="compact-subject-card" data-subject="maths">
+                            <h4>Maths <span class="subj-glyph">M</span></h4>
+                            <div class="compact-stats">
+                                <span class="counter" id="maths-count">0</span>
+                                <span class="target" id="tgt-math-lbl">/ 10</span>
+                            </div>
+                            <div class="distribution-pill"><div class="distribution-fill" id="maths-bar" style="width:0%"></div></div>
+                            <div class="counter-controls">
+                                <button class="counter-btn" onclick="changeCount('maths', -1)" aria-label="Decrement maths">−</button>
+                                <button class="counter-btn" onclick="changeCount('maths', 1)" aria-label="Increment maths">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="variance-card">
+                        <span class="lbl">Output Variance</span>
+                        <span class="val" id="variance-val">0.0%</span>
+                    </div>
+                </div>
+
+                <!-- Momentum Tracker (candlestick engine target) -->
+                <div class="dash-card dash-card-momentum">
+                    <div class="dash-card-head">
+                        <span class="kicker">// TRAJECTORY</span>
+                        <h2 class="box-title">Momentum Tracker</h2>
+                        <p class="box-desc">Friction-inverse yield candles · 5-day projection · cyan line = target lock.</p>
+                    </div>
+                    <div class="graph-display">
+                        <svg id="dynamic-graph" class="graph-svg" viewBox="0 0 360 170" preserveAspectRatio="none"></svg>
+                    </div>
+                </div>
+
+                <!-- Error Bounty Board (Error Resolution Matrix)
+                     #erm-today-total MUST keep its inner <div> — matrix.js does
+                     totalEl.querySelector('div').textContent = totalToday. -->
+                <div class="dash-card dash-card-bounty">
+                    <div class="dash-card-head">
+                        <span class="kicker">// BUG HUNT</span>
+                        <h2 class="box-title">Error Bounty Board</h2>
+                        <p class="box-desc">Mistakes crushed today vs your daily fix quota.</p>
+                    </div>
+
+                    <div class="erm-scoreline">
+                        <div class="erm-total" id="erm-today-total">
+                            <div>0</div>
+                            <span>Bugs Squashed Today</span>
+                        </div>
+                        <span class="erm-avg" id="erm-avg-label">avg 0.0/day</span>
+                    </div>
+
+                    <div class="erm-layout">
+                        <div class="erm-progress-col">
+                            <div class="erm-subject-row">
+                                <div class="erm-subj-header">
+                                    <span class="erm-subj-icon">⚛️</span>
+                                    <span class="erm-subj-name">Physics</span>
+                                    <span class="erm-subj-count" id="erm-phys-val">0</span>
+                                    <span class="erm-subj-target" id="erm-phys-tgt">/ 5</span>
+                                </div>
+                                <div class="erm-track"><div class="erm-fill" id="erm-phys-bar" style="width:0%"></div></div>
+                                <span class="erm-pct" id="erm-phys-pct">0%</span>
+                            </div>
+                            <div class="erm-subject-row">
+                                <div class="erm-subj-header">
+                                    <span class="erm-subj-icon">🧪</span>
+                                    <span class="erm-subj-name">Chemistry</span>
+                                    <span class="erm-subj-count" id="erm-chem-val">0</span>
+                                    <span class="erm-subj-target" id="erm-chem-tgt">/ 5</span>
+                                </div>
+                                <div class="erm-track"><div class="erm-fill" id="erm-chem-bar" style="width:0%"></div></div>
+                                <span class="erm-pct" id="erm-chem-pct">0%</span>
+                            </div>
+                            <div class="erm-subject-row">
+                                <div class="erm-subj-header">
+                                    <span class="erm-subj-icon">📐</span>
+                                    <span class="erm-subj-name">Maths</span>
+                                    <span class="erm-subj-count" id="erm-math-val">0</span>
+                                    <span class="erm-subj-target" id="erm-math-tgt">/ 5</span>
+                                </div>
+                                <div class="erm-track"><div class="erm-fill" id="erm-math-bar" style="width:0%"></div></div>
+                                <span class="erm-pct" id="erm-math-pct">0%</span>
+                            </div>
+                        </div>
+                        <div class="erm-sparkline-col">
+                            <span class="kicker">// 15-DAY FIX STREAK</span>
+                            <div class="erm-sparkline-box" id="error-momentum-svg-container"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chapter Health Grid -->
+                <div class="dash-card dash-card-decay">
+                    <div class="dash-card-head">
+                        <span class="kicker">// MEMORY DECAY</span>
+                        <h2 class="box-title">Chapter Health Grid</h2>
+                        <p class="box-desc">Skill retention per chapter. Lower = you're literally forgetting everything. Fix it.</p>
+                        <div class="decay-legend">
+                            <span class="legend-chip legend-green">Based &gt;75%</span>
+                            <span class="legend-chip legend-yellow">Mid 45–75%</span>
+                            <span class="legend-chip legend-red">Cooked &lt;45%</span>
+                        </div>
+                    </div>
+                    <div id="chapter-decay-grid"></div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             VIEW · POMODORO (LOCK-IN MODE)
+             All IDs verified against pomodoro.js:
+             #pomo-study / #pomo-break / #pomo-sessions / #pomo-subject,
+             #btn-start / #btn-pause (doubles as Resume) / #btn-quit,
+             #pomo-progress (inside #vis-bar), #pomo-beaker-fill (inside #vis-beaker).
+        ════════════════════════════════════════════ -->
+        <section id="view-pomodoro" class="view-section">
+            <div class="glow-wrapper">
+                <div class="glow-box-inner">
+                    <div class="pomo-header">
                         <div>
-                            <h2 class="box-title">Daily Grind Tracker</h2>
-                            <p class="box-desc">Track your daily damage output. Quotas load from Config.</p>
-                        </div>
-                        <div class="mini-card-grid">
-                            <div class="subject-card-group">
-                                <div class="compact-subject-card">
-                                    <h4>Physics (P)</h4>
-                                    <div class="compact-stats">
-                                        <div><span class="counter" id="physics-count">0</span><span class="target" id="tgt-phys-lbl">/ 10</span></div>
-                                        <div class="counter-controls">
-                                            
-                                           
-                                        </div>
-                                    </div>
-                                    <div class="distribution-pill"><div class="distribution-fill" id="physics-bar" style="--start:#3b82f6; --end:#8b5cf6; width: 0%;"></div></div>
-                                </div>
-                                <div class="compact-subject-card">
-                                    <h4>Chemistry (C)</h4>
-                                    <div class="compact-stats">
-                                        <div><span class="counter" id="chemistry-count">0</span><span class="target" id="tgt-chem-lbl">/ 10</span></div>
-                                        <div class="counter-controls">
-                                            
-                                            
-                                        </div>
-                                    </div>
-                                    <div class="distribution-pill"><div class="distribution-fill" id="chemistry-bar" style="--start:#14b8a6; --end:#06b6d4; width: 0%;"></div></div>
-                                </div>
-                                <div class="compact-subject-card">
-                                    <h4>Maths (M)</h4>
-                                    <div class="compact-stats">
-                                        <div><span class="counter" id="maths-count">0</span><span class="target" id="tgt-math-lbl">/ 10</span></div>
-                                        <div class="counter-controls">
-                                            
-                                        </div>
-                                    </div>
-                                    <div class="distribution-pill"><div class="distribution-fill" id="maths-bar" style="--start:#f97316; --end:#fb7185; width: 0%;"></div></div>
-                                </div>
-
-                                <div class="variance-card">
-                                    <span class="lbl">Output Variance</span>
-                                    <span class="val" id="variance-val">0.0%</span>
-                                </div>
-                            </div>
-
-                            <div class="graph-card">
-                                <div>
-                                    <h3 style="font-size: 16px;">Momentum Tracker</h3>
-                                    <p style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;">Your grind momentum visualized. Past performance = future Ws.</p>
-                                </div>
-                                <div class="graph-display">
-                                    <svg viewBox="0 0 320 80" class="graph-svg" id="dynamic-graph"></svg>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Chapter Decay Grid — Visual Health System -->
-                <div class="glow-wrapper" style="margin-top: 16px;">
-                    <div class="glow-box-inner">
-                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-                            <div>
-                                <h2 class="box-title">Chapter Health Grid</h2>
-                                <p class="box-desc">Skill retention per chapter. Lower = you're literally forgetting everything. Fix it.</p>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 12px; font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;">
-                                <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:2px;background:var(--glow-green);display:inline-block;"></span> Based &gt;75%</span>
-                                <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:2px;background:var(--glow-yellow);display:inline-block;"></span> Mid 45–75%</span>
-                                <span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:2px;background:var(--glow-red);display:inline-block;"></span> Cooked &lt;45%</span>
-                            </div>
-                        </div>
-                        <div id="chapter-decay-grid" style="margin-top: 16px; overflow-x: auto;"></div>
-                    </div>
-                </div>
-
-                <!-- Error Resolution Matrix — Telemetry Engine -->
-                <div class="glow-wrapper" style="margin-top: 16px;">
-                    <div class="glow-box-inner">
-                        <div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                            <div>
-                                <h2 class="box-title">Error Bounty Board</h2>
-                                <p class="box-desc">Track which mistakes you've crushed today vs your daily fix quota.</p>
-                            </div>
-                            <div id="erm-today-total" style="text-align: right;">
-                                <div style="font-size: 28px; font-weight: 800; font-family: 'Space Grotesk', monospace; line-height: 1; color: var(--text-primary);">0</div>
-                                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; margin-top: 2px;">Bugs Squashed Today</div>
-                            </div>
-                        </div>
-
-                        <div class="erm-layout">
-                            <!-- Left: Subject progress rows -->
-                            <div class="erm-progress-col">
-                                <div class="erm-subject-row" id="erm-physics">
-                                    <div class="erm-subj-header">
-                                        <span class="erm-subj-icon" style="color: #3b82f6;">⚛️</span>
-                                        <span class="erm-subj-name">Physics</span>
-                                        <span class="erm-subj-count" id="erm-phys-val">0</span>
-                                        <span class="erm-subj-target" id="erm-phys-tgt">/ 5</span>
-                                    </div>
-                                    <div class="erm-track">
-                                        <div class="erm-fill" id="erm-phys-bar" style="width: 0%;"></div>
-                                    </div>
-                                    <span class="erm-pct" id="erm-phys-pct">0%</span>
-                                </div>
-
-                                <div class="erm-subject-row" id="erm-chemistry">
-                                    <div class="erm-subj-header">
-                                        <span class="erm-subj-icon" style="color: #14b8a6;">🧪</span>
-                                        <span class="erm-subj-name">Chemistry</span>
-                                        <span class="erm-subj-count" id="erm-chem-val">0</span>
-                                        <span class="erm-subj-target" id="erm-chem-tgt">/ 5</span>
-                                    </div>
-                                    <div class="erm-track">
-                                        <div class="erm-fill" id="erm-chem-bar" style="width: 0%;"></div>
-                                    </div>
-                                    <span class="erm-pct" id="erm-chem-pct">0%</span>
-                                </div>
-
-                                <div class="erm-subject-row" id="erm-maths">
-                                    <div class="erm-subj-header">
-                                        <span class="erm-subj-icon" style="color: #f97316;">📐</span>
-                                        <span class="erm-subj-name">Maths</span>
-                                        <span class="erm-subj-count" id="erm-math-val">0</span>
-                                        <span class="erm-subj-target" id="erm-math-tgt">/ 5</span>
-                                    </div>
-                                    <div class="erm-track">
-                                        <div class="erm-fill" id="erm-math-bar" style="width: 0%;"></div>
-                                    </div>
-                                    <span class="erm-pct" id="erm-math-pct">0%</span>
-                                </div>
-                            </div>
-
-                            <!-- Right: 15-day momentum sparkline -->
-                            <div class="erm-sparkline-col">
-                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                                    <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;">15-Day Fix Streak</span>
-                                    <span id="erm-avg-label" style="font-size: 10px; color: var(--text-secondary); font-weight: 700; letter-spacing: 0.5px;">avg 0.0/day</span>
-                                </div>
-                                <div id="error-momentum-svg-container" class="erm-sparkline-box"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="view-pomodoro" class="view-section">
-                <div class="glow-wrapper">
-                    <div class="glow-box-inner" style="align-items: center;">
-                        <div class="pomo-header">
+                            <span class="kicker">// DEEP WORK PROTOCOL</span>
                             <h2 class="box-title">Lock-In Mode</h2>
-                            <button class="pomo-settings-btn" onclick="openModal('pomo-settings-modal')">⚙</button>
+                            <p class="box-desc">Timed grind blocks. The beaker fills as you cook.</p>
                         </div>
+                        <button class="pomo-settings-btn" onclick="openModal('visualizer-modal')" aria-label="Timer display settings">⚙</button>
+                    </div>
 
-                        <div class="pomodoro-controls">
-                            <div class="input-group">
-                                <label>Pick Your Poison</label>
-                                <select class="pomo-select" id="pomo-subject">
-                                    <option value="physics">Physics</option>
-                                    <option value="chemistry">Chemistry</option>
-                                    <option value="maths">Maths</option>
-                                </select>
-                            </div>
-                            <div class="input-group"><label>Grind (min)</label><input type="number" class="pomo-input" id="pomo-study" value="50"></div>
-                            <div class="input-group"><label>Chill (min)</label><input type="number" class="pomo-input" id="pomo-break" value="10"></div>
-                            <div class="input-group"><label>Rounds</label><input type="number" class="pomo-input" id="pomo-sessions" value="4"></div>
+                    <div class="pomodoro-controls">
+                        <div class="input-group">
+                            <label for="pomo-subject">Pick Your Poison</label>
+                            <select id="pomo-subject" class="pomo-select">
+                                <option value="physics">Physics</option>
+                                <option value="chemistry">Chemistry</option>
+                                <option value="maths">Maths</option>
+                            </select>
                         </div>
-
-                        <div class="timer-container">
-                            <div class="timer-status" id="timer-status">Ready to Lock In</div>
-                            <div class="progress-bar-container" id="vis-bar"><div class="progress-bar-fill" id="pomo-progress"></div></div>
-                            <div class="beaker-container" id="vis-beaker"><div class="beaker-liquid" id="pomo-beaker-fill"></div></div>
-                            <div class="timer-display" id="timer-display">50:00</div>
-
-                            <div class="break-actions" id="break-actions">
-                                <button class="btn-break-opt" onclick="skipBreak()">Skip Chill ⏭</button>
-                                <button class="btn-break-opt" onclick="addBreakTime(1)">+1 Min</button>
-                                <button class="btn-break-opt" onclick="addBreakTime(5)">+5 Min</button>
-                            </div>
+                        <div class="input-group">
+                            <label for="pomo-study">Grind (min)</label>
+                            <input id="pomo-study" class="pomo-input" type="number" value="50" min="1">
                         </div>
+                        <div class="input-group">
+                            <label for="pomo-break">Chill (min)</label>
+                            <input id="pomo-break" class="pomo-input" type="number" value="10" min="1">
+                        </div>
+                        <div class="input-group">
+                            <label for="pomo-sessions">Rounds</label>
+                            <input id="pomo-sessions" class="pomo-input" type="number" value="1" min="1">
+                        </div>
+                    </div>
 
+                    <div class="timer-container">
+                        <div class="beaker-container" id="vis-beaker">
+                            <div class="beaker-liquid" id="pomo-beaker-fill"></div>
+                        </div>
+                        <div id="timer-display" class="timer-display">50:00</div>
+                        <div id="timer-status" class="timer-status">Ready to Lock In</div>
+                        <div class="progress-bar-container" id="vis-bar">
+                            <div class="progress-bar-fill" id="pomo-progress"></div>
+                        </div>
                         <div class="timer-actions">
-                            <button class="btn btn-start" id="btn-start" onclick="startTimer()">Lock In</button>
-                            <button class="btn btn-pause" id="btn-pause" onclick="pauseTimer()" style="display:none;">Hold Up</button>
-                            <button class="btn btn-quit" id="btn-quit" onclick="quitTimer()" style="display:none;">Rage Quit</button>
+                            <button id="btn-start" class="btn btn-start" onclick="startTimer()">Lock In</button>
+                            <button id="btn-pause" class="btn btn-pause" onclick="pauseTimer()" style="display:none">Hold Up</button>
+                            <button id="btn-quit" class="btn btn-quit" onclick="quitTimer()" style="display:none">Rage Quit</button>
                         </div>
-                    </div>
-                </div>
-
-                <div class="hours-box">
-                    <div class="hour-stat"><h4>Physics Grind Time</h4><span class="val" id="stat-hrs-physics">0m</span></div>
-                    <div class="hour-stat"><h4>Chemistry Grind Time</h4><span class="val" id="stat-hrs-chemistry">0m</span></div>
-                    <div class="hour-stat"><h4>Maths Grind Time</h4><span class="val" id="stat-hrs-maths">0m</span></div>
-                </div>
-            </div>
-
-            <div id="view-errors" class="view-section">
-                <h1 style="font-family:'Space Grotesk'; font-size:32px;">The Vault · Spaced Repetition</h1>
-                <p style="color:var(--text-secondary); margin-top:-16px; margin-bottom:8px;">Pick a domain to access your logged mistakes. Time to fix what's broken.</p>
-
-                <div class="subject-folder-grid">
-                    <div class="subject-folder active" onclick="openErrorMatrix('physics', this)">
-                        <span class="folder-icon">🌌</span>
-                        <h3>Physics</h3>
-                    </div>
-                    <div class="subject-folder" onclick="openErrorMatrix('chemistry', this)">
-                        <span class="folder-icon">🧪</span>
-                        <h3>Chemistry</h3>
-                    </div>
-                    <div class="subject-folder" onclick="openErrorMatrix('maths', this)">
-                        <span class="folder-icon">📐</span>
-                        <h3>Maths</h3>
-                    </div>
-                </div>
-
-                <div class="error-matrix-container active" id="active-error-matrix">
-                    <div class="glow-wrapper" style="border-radius: 16px;">
-                        <div class="glow-box-inner" style="border-radius: 15px; padding: 24px;">
-                            <div class="error-controls">
-                                <h2 class="box-title" id="error-matrix-title" style="text-transform: capitalize;">Physics Vault</h2>
-                                <div class="error-actions">
-                                    <button class="btn btn-start" style="padding: 8px 16px; font-size: 13px;" onclick="openModal('add-error-modal')">+ Log Mistake</button>
-                                </div>
-                            </div>
-
-                            <div class="error-filters" style="margin-bottom: 8px;">
-                                <!-- Hidden value carriers — preserve contract with existing filterErrors() -->
-                                <input type="hidden" id="filter-type" value="all">
-                                <input type="hidden" id="filter-status" value="all">
-
-                                <!-- Row 0 · Priority — Daily Core Queue -->
-                                <div class="emf-row" style="margin-bottom: 4px;">
-                                    <span class="emf-row-label">Urgency</span>
-                                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                        <button class="sr-toggle-btn daily-queue-master-btn" id="daily-queue-btn">⚡ Daily Fix Queue</button>
-                                        <span id="daily-queue-badge" class="daily-queue-badge" style="display: none;">20 problems · 5P + 5M + 10C</span>
-                                    </div>
-                                </div>
-
-                                <!-- Row 1 · Status Matrix -->
-                                <div class="emf-row">
-                                    <span class="emf-row-label">Status Filter</span>
-                                    <div class="emf-pill-group" data-emf-filter="status">
-                                        <button type="button" class="matrix-pill active" data-emf-value="all">All</button>
-                                        <button type="button" class="matrix-pill" data-emf-value="ready">🟢 Ready</button>
-                                        <button type="button" class="matrix-pill" data-emf-value="due_soon">⏳ Due Soon</button>
-                                        <button type="button" class="matrix-pill" data-emf-value="scheduled">🗓️ Scheduled</button>
-                                        <button type="button" class="matrix-pill" data-emf-value="mastered">💤 Ghosted</button>
-                                    </div>
-                                </div>
-
-                                <!-- Row 2 · Tag Categories -->
-                                <div class="emf-row">
-                                    <span class="emf-row-label">Mistake Type</span>
-                                    <div class="emf-pill-group" data-emf-filter="type">
-                                        <button type="button" class="matrix-pill active" data-emf-value="all">All Types</button>
-                                        <button type="button" class="matrix-pill" data-emf-value="calculation">Calc Fumble</button>
-                                        <button type="button" class="matrix-pill" data-emf-value="conceptual">Brain Fade</button>
-                                        <button type="button" class="matrix-pill" data-emf-value="misread">Read Fail</button>
-                                    </div>
-                                </div>
-
-                                <!-- Row 3 · Search -->
-                                <div class="emf-row emf-row-search">
-                                    <span class="emf-row-label">Search</span>
-                                    <div class="emf-search-wrap">
-                                        <svg class="emf-search-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                                            <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"></circle>
-                                            <line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"></line>
-                                        </svg>
-                                        <input type="text" class="matrix-search" id="filter-tag" placeholder="Hunt chapters..." oninput="filterErrors()">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="error-list" id="error-list-container">
-                            </div>
+                        <div class="break-actions" id="break-actions">
+                            <button class="btn-break-opt" onclick="skipBreak()">Skip Chill ⏭</button>
+                            <button class="btn-break-opt" onclick="addBreakTime(1)">+1 Min</button>
+                            <button class="btn-break-opt" onclick="addBreakTime(5)">+5 Min</button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div id="view-practice" class="view-section">
-                <div class="glow-wrapper"><div class="glow-box-inner">
-                    <div id="practice-subject-view" class="practice-subview active">
-                        <h2>📖 Pick Your Arena</h2>
-                        <div class="subject-cards">
-                            <div class="subject-card" onclick="selectSubject('physics')"><div class="subject-icon">⚛️</div><h3>Physics</h3></div>
-                            <div class="subject-card" onclick="selectSubject('chemistry')"><div class="subject-icon">🧪</div><h3>Chemistry</h3></div>
-                            <div class="subject-card" onclick="selectSubject('maths')"><div class="subject-icon">📐</div><h3>Maths</h3></div>
-                        </div>
-                    </div>
-                    <div id="practice-chapters-view" class="practice-subview">
-                        <div style="display:flex; justify-content:space-between; align-items:center;"><button class="btn btn-secondary" onclick="goToSubjects()">← Dip</button><button class="btn btn-secondary" onclick="openModal('add-chapter-modal')">+ New Chapter</button></div>
-                        <h3 id="chapters-subject-title" style="margin:20px 0;">Chapters</h3><div id="chapters-list-container" class="chapter-list"></div>
-                    </div>
-                    <div id="practice-chapter-detail-view" class="practice-subview">
-                        <div style="display:flex; justify-content:space-between; align-items:center;"><button class="btn btn-secondary" onclick="goToChapters()">← Back</button><button class="btn btn-primary" onclick="openModal('upload-modal')">+ Feed Questions</button></div>
-                        <div style="margin-top:20px;"><h3 id="detail-chapter-name"></h3>
-                            <div class="glow-practice-box" onclick="showQuestionList()"><span style="font-size:32px;">📋</span><h3>Start Grinding Existing Questions</h3><p>Browse & solve everything</p></div>
-                        </div>
-                    </div>
-                    <div id="practice-question-list-view" class="practice-subview">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-        <button class="btn btn-secondary" onclick="goToChapterDetail()">← Back</button>
-        <h3 id="question-list-title">All Questions</h3>
-        <select id="question-filter" class="pomo-select" style="width:auto; padding:8px 12px; font-size:13px;" onchange="applyFilter()">
-            <option value="all">All</option>
-            <option value="unsolved">Untouched</option>
-            <option value="solved">Clutched</option>
-            <option value="wrong">Fumbled</option>
-        </select>
-    </div>
-    <div id="stats-row" class="stats-row" style="display:none;"></div>
-    <div id="questions-grid-container" class="questions-grid"></div>
-</div>
-                </div></div>
+            <div class="hours-box">
+                <div class="hour-stat"><h4>Physics Grind Time</h4><span class="val" id="stat-hrs-physics">0m</span></div>
+                <div class="hour-stat"><h4>Chemistry Grind Time</h4><span class="val" id="stat-hrs-chemistry">0m</span></div>
+                <div class="hour-stat"><h4>Maths Grind Time</h4><span class="val" id="stat-hrs-maths">0m</span></div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             VIEW · THE VAULT (ERROR MATRIX)
+        ════════════════════════════════════════════ -->
+        <section id="view-errors" class="view-section">
+            <div class="subject-folder-grid">
+                <div class="subject-folder active" onclick="openErrorMatrix('physics', this)">
+                    <span class="folder-icon">🌌</span><span>Physics</span>
+                </div>
+                <div class="subject-folder" onclick="openErrorMatrix('chemistry', this)">
+                    <span class="folder-icon">🧪</span><span>Chemistry</span>
+                </div>
+                <div class="subject-folder" onclick="openErrorMatrix('maths', this)">
+                    <span class="folder-icon">📐</span><span>Maths</span>
+                </div>
             </div>
 
-            <div id="view-settings" class="view-section">
-                <div class="glow-wrapper">
-                    <div class="glow-box-inner">
-                        <h2 class="box-title">Config Panel</h2>
-                        <div class="settings-grid">
-                            <div class="settings-card">
-    <h3>Cloud Storage</h3>
-    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
-        Link Google Drive to go unlimited. Data syncs to 'JEEMaxxing_Cloud'. No more storage caps.
-    </p>
-    <button class="btn btn-primary" id="btn-drive-auth" onclick="handleDriveAuth()">Link Google Drive</button>
-    <div id="drive-status" style="margin-top:12px; font-size:13px; color: var(--glow-green); display: none;">
-        ✔ Cloud Sync Locked In
-    </div>
-</div>
+            <div class="error-matrix-container active" id="error-matrix-container">
+                <div class="vault-head">
+                    <div>
+                        <span class="kicker">// SPACED REPETITION</span>
+                        <h2 class="box-title" id="error-matrix-title">Physics Matrix</h2>
+                    </div>
+                    <div class="error-actions">
+                        <button class="btn btn-primary" onclick="openModal('add-error-modal')">+ Log Mistake</button>
+                        <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()">⚡ Daily Fix Queue</button>
+                        <span class="daily-queue-badge" id="daily-queue-badge" style="display:none">20 problems · 5P + 5M + 10C</span>
+                    </div>
+                </div>
 
-                            <div class="settings-card">
-                                <h3>Your Build</h3>
-                                <div class="input-group">
-                                    <label>Gamer Tag</label>
-                                    <input type="text" class="pomo-input" id="set-username" value="Grindset">
-                                </div>
-                                <div class="input-group">
-                                    <label>PFP</label>
-                                    <div class="file-upload-wrapper">
-                                        <input type="file" id="set-pfp-file" accept="image/*" style="display:none;" onchange="previewImage(event, 'pfp')">
-                                        <button class="file-upload-btn" onclick="document.getElementById('set-pfp-file').click()">Upload PFP</button>
-                                        <span style="font-size: 12px; color: var(--text-secondary);" id="file-name-lbl">No file selected</span>
-                                    </div>
-                                </div>
-                                <button class="btn-save" onclick="saveProfile()">Save Build</button>
-                            </div>
+                <!-- Tactical filter stack — hidden carriers feed matrix.js filterErrors() -->
+                <div class="error-filters">
+                    <input type="hidden" id="filter-status" value="all">
+                    <input type="hidden" id="filter-type" value="all">
+                    <input type="hidden" id="filter-tag" value="">
 
-                            <div class="settings-card">
-                                <div class="lock-indicator" id="target-lock-lbl">🔒 LOCKED (24h)</div>
-                                <h3>Daily Grind Quota</h3>
-                                <div class="input-group"><label>Physics Quota</label><input type="number" class="pomo-input" id="set-tgt-phys" value="10"></div>
-                                <div class="input-group"><label>Chemistry Quota</label><input type="number" class="pomo-input" id="set-tgt-chem" value="10"></div>
-                                <div class="input-group"><label>Maths Quota</label><input type="number" class="pomo-input" id="set-tgt-math" value="10"></div>
-                                <button class="btn-save-glow" id="btn-save-settings" onclick="saveTargets()">Lock In Quotas</button>
-                            </div>
+                    <div class="emf-row">
+                        <span class="emf-row-label">Status Filter</span>
+                        <div class="emf-pill-group" data-emf-filter="status">
+                            <button class="matrix-pill active" data-emf-value="all" onclick="setMatrixFilter('status','all',this)">All</button>
+                            <button class="matrix-pill" data-emf-value="ready" onclick="setMatrixFilter('status','ready',this)">🟢 Ready</button>
+                            <button class="matrix-pill" data-emf-value="due_soon" onclick="setMatrixFilter('status','due_soon',this)">⏳ Due Soon</button>
+                            <button class="matrix-pill" data-emf-value="scheduled" onclick="setMatrixFilter('status','scheduled',this)">🗓️ Scheduled</button>
+                            <button class="matrix-pill" data-emf-value="mastered" onclick="setMatrixFilter('status','mastered',this)">💤 Ghosted</button>
+                        </div>
+                    </div>
 
-                            <div class="settings-card">
-                                <div class="lock-indicator" id="err-target-lock-lbl">🔒 LOCKED (24h)</div>
-                                <h3>Daily Fix Quota</h3>
-                                <div class="input-group"><label>Physics Fix Quota</label><input type="number" class="pomo-input" id="set-err-phys" value="5"></div>
-                                <div class="input-group"><label>Chemistry Fix Quota</label><input type="number" class="pomo-input" id="set-err-chem" value="5"></div>
-                                <div class="input-group"><label>Maths Fix Quota</label><input type="number" class="pomo-input" id="set-err-math" value="5"></div>
-                                <button class="btn-save-glow" id="btn-save-err-settings" onclick="saveErrTargets()">Lock In Fix Quotas</button>
-                            </div>
+                    <div class="emf-row">
+                        <span class="emf-row-label">Mistake Type</span>
+                        <div class="emf-pill-group" data-emf-filter="type">
+                            <button class="matrix-pill active" data-emf-value="all" onclick="setMatrixFilter('type','all',this)">All Types</button>
+                            <button class="matrix-pill" data-emf-value="calculation" onclick="setMatrixFilter('type','calculation',this)">Calc Fumble</button>
+                            <button class="matrix-pill" data-emf-value="conceptual" onclick="setMatrixFilter('type','conceptual',this)">Brain Fade</button>
+                            <button class="matrix-pill" data-emf-value="misread" onclick="setMatrixFilter('type','misread',this)">Read Fail</button>
+                        </div>
+                    </div>
 
-                            <div class="settings-card">
-                                <h3>Gemini API Setup</h3>
-                                <div class="input-group">
-                                    <label>API Key</label>
-                                    <input type="password" id="gemini-key" class="pomo-input" placeholder="Drop your Gemini API key">
-                                </div>
-                                <button class="btn btn-secondary" onclick="testGeminiKey()">🔑 Verify Key</button>
-                                <div id="key-test-result" style="margin-top:8px; font-size:13px;"></div>
-                            </div>
-
-                            <!-- ── 4-Pillar Accountability Checkpoint Configuration ── -->
-                            <div class="settings-card">
-                                <h3>🔒 Anti-Slump Checkpoints</h3>
-                                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
-                                    Set when the Anti-Slump System checks if you're goofing off. 10 min before each checkpoint you get a warning. Go past the idle limit and a 15-min grace period starts ticking.
-                                </p>
-                                <div id="cp-times-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;"></div>
-                                <button class="btn btn-secondary" style="font-size:12px; padding:6px 12px;" onclick="cpAddTime()">+ Add Checkpoint</button>
-
-                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;">
-                                    <div class="input-group">
-                                        <label style="font-size:11px;">Goof-Off Limit (min)</label>
-                                        <input type="number" class="pomo-input" id="cp-idle-threshold" value="120" min="5" style="font-size:13px;">
-                                    </div>
-                                    <div class="input-group">
-                                        <label style="font-size:11px;">Grace Period (min)</label>
-                                        <input type="number" class="pomo-input" id="cp-grace-min" value="15" min="1" style="font-size:13px;">
-                                    </div>
-                                    <div class="input-group">
-                                        <label style="font-size:11px;">Early Warning (min)</label>
-                                        <input type="number" class="pomo-input" id="cp-pre-notify" value="10" min="1" style="font-size:13px;">
-                                    </div>
-                                    <div class="input-group">
-                                        <label style="font-size:11px;">Proof-of-Grind (min)</label>
-                                        <input type="number" class="pomo-input" id="cp-pow-min" value="10" min="1" style="font-size:13px;">
-                                    </div>
-                                </div>
-
-                                <div style="display:flex; gap:8px; align-items:center; margin-top:16px;">
-                                    <button class="btn-save-glow" onclick="cpSaveConfig()">Save Anti-Slump Config</button>
-                                    <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
-                                        <input type="checkbox" id="cp-enabled-toggle" onchange="cpToggleEnabled()"> Arm Anti-Slump
-                                    </label>
-                                </div>
-                                <div id="cp-status-msg" style="margin-top:8px; font-size:12px;"></div>
-                            </div>
+                    <div class="emf-row emf-row-search">
+                        <span class="emf-row-label">Search</span>
+                        <div class="emf-search-wrap">
+                            <span class="emf-search-icon">⌕</span>
+                            <input class="matrix-search" type="text" placeholder="Hunt by chapter or tag…" oninput="setMatrixSearch(this.value)" autocomplete="off">
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- ════════════════════════════════════════════════════════════════
-                 P2P LEADERBOARD ARENA  ·  #view-leaderboard
-                 ────────────────────────────────────────────────────────────
-                 Serverless WebRTC competitive leaderboard. Peers discover each
-                 other through public WebTorrent WebSocket trackers and exchange
-                 a 4-field telemetry packet (globalElo / dailyVariance /
-                 studyHours / timestamp) over a direct RTCDataChannel. No
-                 signaling backend, no OAuth. The arena mounts itself into this
-                 container via LeaderboardNet.init() in app.js (initApp), and
-                 re-renders on switchTab('leaderboard'). Strictly isolated from
-                 AppState.questionBank, API keys, and the saveAllAsync pipeline.
-                 ════════════════════════════════════════════════════════════════ -->
-            <div id="view-leaderboard" class="view-section">
-                <div class="glow-wrapper">
-                    <div class="glow-box-inner">
-                      
-                           
-                        <div id="leaderboard-mount"></div>
+                <div class="error-list" id="error-list-container"></div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             VIEW · GRIND STATION (PRACTICE)
+        ════════════════════════════════════════════ -->
+        <section id="view-practice" class="view-section">
+
+            <!-- Subview: subject select -->
+            <div id="practice-subject-view" class="practice-subview active">
+                <span class="kicker">// QUESTION BANK</span>
+                <h2 class="box-title center-head">Pick Your Arena</h2>
+                <div class="subject-cards">
+                    <div class="subject-card" onclick="selectSubject('physics')">
+                        <div class="subject-icon">⚛️</div><h3>Physics</h3>
+                    </div>
+                    <div class="subject-card" onclick="selectSubject('chemistry')">
+                        <div class="subject-icon">🧪</div><h3>Chemistry</h3>
+                    </div>
+                    <div class="subject-card" onclick="selectSubject('maths')">
+                        <div class="subject-icon">📐</div><h3>Maths</h3>
                     </div>
                 </div>
             </div>
 
-        </main>
-    </div>
-
-    <div class="modal-overlay" id="lightbox-modal" onclick="closeModal(event, 'lightbox-modal')">
-        <button class="close-btn" onclick="closeModal(null, 'lightbox-modal', true)">×</button>
-        <div class="lightbox-img-container">
-            <img id="lightbox-img" src="">
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="mood-modal">
-        <div class="modal-content wide" style="text-align: center;">
-            <h2 style="font-family:'Space Grotesk';">Vibe Check</h2>
-            <p style="color:var(--text-secondary); margin-top:8px;">How's the brain battery? Rate your current capacity.</p>
-            <div class="mood-container">
-                <span class="mood-emoji sad" onclick="calibrateMood('sad')">🥱</span>
-                <span class="mood-emoji neutral" onclick="calibrateMood('neutral')">😐</span>
-                <span class="mood-emoji happy" onclick="calibrateMood('happy')">🔥</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="add-error-modal" onclick="closeModal(event, 'add-error-modal')">
-        <div class="modal-content">
-            <button class="close-btn" onclick="closeModal(null, 'add-error-modal', true)">×</button>
-            <h3 style="font-family:'Space Grotesk'; margin-bottom: 24px;">Log a Mistake</h3>
-            <div class="input-group" style="margin-bottom:16px;">
-                <label>Question Screenshot</label>
-                <div class="file-upload-wrapper" style="width:100%;">
-                    <input type="file" id="new-err-img-file" accept="image/*" style="display:none;" onchange="previewImage(event, 'error')">
-                    <button class="file-upload-btn" style="width:100%;" onclick="document.getElementById('new-err-img-file').click()">Upload Screenshot</button>
+            <!-- Subview: chapter list -->
+            <div id="practice-chapters-view" class="practice-subview">
+                <div class="practice-header">
+                    <button class="btn btn-secondary" onclick="goToSubjects()">← Dip</button>
+                    <h2 id="chapters-subject-title">Chapters</h2>
+                    <button class="btn btn-primary" onclick="openModal('add-chapter-modal')">+ New Chapter</button>
                 </div>
-                <span style="font-size: 11px; color: var(--glow-green); display:none;" id="err-img-success">✔ Screenshot Locked</span>
-            </div>
-            <div class="input-group" style="margin-bottom:16px;">
-                <label>Chapter / Topic</label>
-                <input type="text" class="pomo-input" id="new-err-chapter" placeholder="e.g. Thermodynamics">
-            </div>
-            <div class="input-group" style="margin-bottom:24px;">
-                <label>Mistake Type</label>
-                <select class="pomo-select" id="new-err-type">
-                    <option value="conceptual">Brain Fade</option>
-                    <option value="calculation">Calc Fumble</option>
-                    <option value="misread">Read Fail</option>
-                </select>
-            </div>
-            <button class="btn btn-start" style="width:100%;" onclick="addErrorBlock()">Add to the Vault</button>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="calendar-modal" onclick="closeModal(event, 'calendar-modal')">
-        <div class="modal-overlay" id="date-details-modal" onclick="closeModal(event, 'date-details-modal')">
-        <div class="modal-content wide">
-            <button class="close-btn" onclick="closeModal(null, 'date-details-modal', true)">×</button>
-            <div style="text-align: center; margin-bottom: 24px;">
-                <h2 style="font-family:'Space Grotesk'; font-size: 28px;" id="detail-modal-date">Date</h2>
-                <p style="font-size: 14px; font-weight: 600; margin-top: 4px;" id="detail-modal-status">Grind Status</p>
+                <div class="chapter-list" id="chapters-list-container"></div>
             </div>
 
-            <div class="variance-card" style="margin-bottom: 24px; background: rgba(0,0,0,0.4);">
-                <span class="lbl">Output Variance</span>
-                <span class="val" id="detail-variance-val">0.0%</span>
-            </div>
-
-            <div class="date-detail-grid">
-                <div class="date-detail-card">
-                    <div class="stat-lbl">Physics</div>
-                    <div class="stat-val" id="detail-phys-q">0 done</div>
-                    <div class="sub-stat" id="detail-phys-time">⏱ 0m</div>
+            <!-- Subview: chapter detail -->
+            <div id="practice-chapter-detail-view" class="practice-subview">
+                <div class="practice-header">
+                    <button class="btn btn-secondary" onclick="goToChapters()">← Back</button>
+                    <h2 id="detail-chapter-name">Chapter</h2>
                 </div>
-                <div class="date-detail-card">
-                    <div class="stat-lbl">Chemistry</div>
-                    <div class="stat-val" id="detail-chem-q">0 done</div>
-                    <div class="sub-stat" id="detail-chem-time">⏱ 0m</div>
+                <div class="glow-practice-box" onclick="openModal('upload-modal')">
+                    <div style="font-size:44px">📸</div>
+                    <h3>Feed Questions</h3>
+                    <p>Crop screenshots or dump Gem text — fresh problems straight into the bank.</p>
                 </div>
-                <div class="date-detail-card">
-                    <div class="stat-lbl">Maths</div>
-                    <div class="stat-val" id="detail-math-q">0 done</div>
-                    <div class="sub-stat" id="detail-math-time">⏱ 0m</div>
+                <div style="text-align:center">
+                    <button class="btn btn-primary" onclick="showQuestionList()">Start Grinding Existing Questions</button>
                 </div>
             </div>
 
-            <div style="text-align: center; margin-top: 28px; background: rgba(255,255,255,0.02); padding: 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05);">
-                <div class="stat-lbl">Total Lock-In Time</div>
-                <div style="font-family: 'Space Grotesk'; font-size: 36px; font-weight: 700; color: #fff; margin-top: 8px;" id="detail-total-time">0h 0m</div>
-            </div>
-        </div>
-    </div>
-        <div class="modal-content">
-            <button class="close-btn" onclick="closeModal(null, 'calendar-modal', true)">×</button>
-            <div class="cal-header">
-                <button class="cal-nav-btn" onclick="shiftMonth(-1)">❮</button>
-                <span id="cal-month-lbl">Month</span>
-                <button class="cal-nav-btn" onclick="shiftMonth(1)">❯</button>
-            </div>
-            <div class="cal-weekdays"><span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span></div>
-            <div class="cal-grid" id="cal-grid"></div>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="pomo-settings-modal" onclick="closeModal(event, 'pomo-settings-modal')">
-        <div class="modal-content">
-            <button class="close-btn" onclick="closeModal(null, 'pomo-settings-modal', true)">×</button>
-            <h3 style="font-family:'Space Grotesk'; margin-bottom: 24px;">Display Settings</h3>
-            <div class="toggle-row">
-                <span style="font-size: 14px; font-weight: 600;">Stopwatch Mode</span>
-                <button class="btn btn-secondary" id="stopwatch-toggle-btn" onclick="toggleStopwatchMode(this)" style="padding: 6px 16px; font-size: 13px; min-width: 60px;">Off</button>
-            </div>
-            <div class="toggle-row">
-                <span style="font-size: 14px; font-weight: 600;">Blur Timer</span>
-                <button class="file-upload-btn" onclick="document.getElementById('timer-display').classList.toggle('hidden')">Toggle</button>
-            </div>
-            <div class="toggle-row">
-                <span style="font-size: 14px; font-weight: 600;">Liquid Beaker Visualizer</span>
-                <button class="file-upload-btn" onclick="toggleVisualizer()">Toggle</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal-overlay" id="upload-modal">
-        <div class="modal-card square-modal">
-            <button class="close-btn" onclick="closeModalStr('upload-modal')">×</button>
-            <h3 style="margin-bottom:20px;">Feed Questions</h3>
-
-            <!-- ═══ Dual-Engine Ingestion Toggle ═══ -->
-            <div class="ingestion-toggle-row">
-                <button class="btn ingestion-toggle-btn active" id="toggle-multicrop" onclick="switchIngestionTrack('multicrop')">🖼️ Traditional Multicrop</button>
-                <button class="btn ingestion-toggle-btn" id="toggle-texttrack" onclick="switchIngestionTrack('texttrack')">⚡ Gemini Gem Text Track</button>
-            </div>
-
-            <!-- ── Panel A: Traditional Multicrop (legacy bounding-box crop flow) ── -->
-            <div id="ingestion-panel-multicrop" class="ingestion-panel active">
-                <div class="file-upload-wrapper">
-                    <label for="upload-images" class="file-upload-label">
-                        <span class="file-icon">📤</span>
-                        <span class="file-text">Tap to select images</span>
-                        <span class="file-hint">or drag & drop 'em</span>
-                    </label>
-                    <input type="file" id="upload-images" accept="image/*" multiple>
-                    <div id="file-selected-text" class="file-selected-text"></div>
+            <!-- Subview: question list -->
+            <div id="practice-question-list-view" class="practice-subview">
+                <div class="practice-header">
+                    <button class="btn btn-secondary" onclick="goToChapterDetail()">← Back</button>
+                    <h2 id="question-list-title">All Questions</h2>
+                    <select id="question-filter" class="pomo-select filter-select" onchange="applyFilter()">
+                        <option value="all">All</option>
+                        <option value="unsolved">Untouched</option>
+                        <option value="solved">Clutched</option>
+                        <option value="wrong">Fumbled</option>
+                    </select>
                 </div>
-                <div class="progress-bar"><div class="progress-fill" id="upload-progress"></div></div>
-                <div id="upload-status-text" style="margin-top:8px; font-size:13px;"></div>
-                <div style="display:flex; gap:12px; margin-top:24px; justify-content:center;">
-                    <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Nvm</button>
-                    <button class="btn btn-primary" onclick="startManualCrop()">Crop & Process</button>
+                <div class="stats-row" id="stats-row" style="display:none"></div>
+                <div class="questions-grid" id="questions-grid-container"></div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             VIEW · ARENA (P2P LEADERBOARD)
+        ════════════════════════════════════════════ -->
+        <section id="view-leaderboard" class="view-section">
+            <div class="glow-wrapper">
+                <div class="glow-box-inner">
+                    <span class="kicker">// LIVE TELEMETRY</span>
+                    <h2 class="box-title">P2P Leaderboard Arena</h2>
+                    <p class="box-desc">Serverless WebRTC · WebTorrent tracker signaling · zero-auth friend rooms. Share a Friend Connection Key with a rival — they appear here the instant the data channel opens.</p>
+                    <!-- leaderboard.js injects its full shell here -->
+                    <div id="leaderboard-mount"></div>
                 </div>
             </div>
+        </section>
 
-            <!-- ── Panel B: Gemini Gem Text Track (pre-schematized JSON dump) ── -->
-            <div id="ingestion-panel-texttrack" class="ingestion-panel">
-                <div class="text-track-terminal">
-                    <div class="text-track-header">
-                        <span class="text-track-badge">⚡ GEM TEXT DUMP</span>
-                        <small style="color:var(--text-muted);">Paste raw JSON array from your custom Gemini Gem</small>
+        <!-- ═══════════════════════════════════════════
+             VIEW · CONFIG
+             NOTE: The Anti-Slump / Checkpoint system builds its ENTIRE UI
+             (#cp-hub, #cp-control-panel, lockdown overlays, toasts) at
+             runtime via checkpoint.js — no static markup here, or IDs collide.
+        ════════════════════════════════════════════ -->
+        <section id="view-settings" class="view-section">
+            <span class="kicker">// SYSTEM CONFIG</span>
+            <h2 class="box-title" style="margin-bottom:20px">Config Panel</h2>
+
+            <div class="settings-grid">
+
+                <!-- Cloud Storage -->
+                <div class="settings-card">
+                    <h3>☁ Cloud Storage</h3>
+                    <p class="box-desc">Link Google Drive to go unlimited. Data syncs to 'JEEMaxxing_Cloud'. No more storage caps.</p>
+                    <button id="btn-drive-auth" class="btn btn-primary" onclick="handleDriveAuth()">Link Google Drive</button>
+                    <div id="drive-status" class="drive-ok" style="display:none">✔ Cloud Sync Locked In</div>
+                    <button class="btn btn-secondary" onclick="cacheAllDriveImages()">📦 Cache All Images Locally</button>
+                </div>
+
+                <!-- Profile -->
+                <div class="settings-card">
+                    <h3>🦊 Your Build</h3>
+                    <div class="input-group">
+                        <label for="set-username">Gamer Tag</label>
+                        <input id="set-username" class="pomo-input" type="text" placeholder="Grindset" maxlength="20">
                     </div>
-                    <textarea id="text-add-terminal" class="pomo-input text-track-terminal-input" style="width:100%; height:200px; font-family:monospace;" placeholder="Paste the raw JSON array string from your Gemini Gem here..."></textarea>
-                    <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="window.processGemTextDump()">Execute Ingestion Track →</button>
+                    <div class="input-group">
+                        <label>PFP</label>
+                        <div class="file-upload-wrapper">
+                            <label class="file-upload-label compact-upload" for="set-pfp">
+                                <span class="file-icon">🖼️</span>
+                                <span class="file-text">Upload PFP</span>
+                            </label>
+                            <input type="file" id="set-pfp" accept="image/*" style="display:none" onchange="previewImage(event, 'pfp')">
+                        </div>
+                        <span class="file-selected-text" id="file-name-lbl">No file selected</span>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveProfile()">Save Build</button>
                 </div>
-                <div style="display:flex; gap:12px; margin-top:16px; justify-content:center;">
-                    <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Nvm</button>
+
+                <!-- Daily Output Quota -->
+                <div class="settings-card">
+                    <h3>🎯 Daily Grind Quota</h3>
+                    <span class="lock-indicator" id="target-lock-lbl">🔒 LOCKED (24h)</span>
+                    <div class="input-group"><label for="set-tgt-phys">Physics Quota</label><input id="set-tgt-phys" class="pomo-input" type="number" value="10" min="1"></div>
+                    <div class="input-group"><label for="set-tgt-chem">Chemistry Quota</label><input id="set-tgt-chem" class="pomo-input" type="number" value="10" min="1"></div>
+                    <div class="input-group"><label for="set-tgt-math">Maths Quota</label><input id="set-tgt-math" class="pomo-input" type="number" value="10" min="1"></div>
+                    <button id="btn-save-settings" class="btn btn-primary" onclick="saveTargets()">Lock In Quotas</button>
                 </div>
-            </div>
-        </div>
-    </div>
-    <!-- Timer Notification Modal -->
-<div class="modal-overlay" id="timer-notify-modal">
-    <div class="modal-content" style="width: 380px; text-align: center; padding: 40px; background: rgba(10, 10, 18, 0.95); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 24px;">
-        <div style="font-size: 48px; margin-bottom: 16px;" id="notify-icon"></div>
-        <h3 id="notify-title" style="font-family: 'Space Grotesk', sans-serif; font-size: 24px; margin-bottom: 8px;">Round Complete</h3>
-        <p id="notify-message" style="color: var(--text-secondary); margin-bottom: 32px;">Ready for the next round?</p>
-        <button class="btn btn-primary" id="notify-ok-btn" onclick="confirmTimerNotification()" style="width: 100%; padding: 14px;">Let's Go</button>
+
+                <!-- Daily Fix Quota -->
+                <div class="settings-card">
+                    <h3>🩹 Daily Fix Quota</h3>
+                    <span class="lock-indicator" id="err-target-lock-lbl">🔒 LOCKED (24h)</span>
+                    <div class="input-group"><label for="set-err-phys">Physics Fix Quota</label><input id="set-err-phys" class="pomo-input" type="number" value="5" min="1"></div>
+                    <div class="input-group"><label for="set-err-chem">Chemistry Fix Quota</label><input id="set-err-chem" class="pomo-input" type="number" value="5" min="1"></div>
+                    <div class="input-group"><label for="set-err-math">Maths Fix Quota</label><input id="set-err-math" class="pomo-input" type="number" value="5" min="1"></div>
+                    <button id="btn-save-err-settings" class="btn btn-primary" onclick="saveErrTargets()">Lock In Fix Quotas</button>
+                </div>
+
+                <!-- Gemini API -->
+                <div class="settings-card">
+                    <h3>🤖 Gemini API Setup</h3>
+                    <div class="input-group">
+                        <label for="gemini-key">API Key</label>
+                        <input id="gemini-key" class="pomo-input" type="password" placeholder="AIza…" autocomplete="off">
+                    </div>
+                    <button class="btn btn-secondary" onclick="testGeminiKey()">🔑 Verify Key</button>
+                    <div id="key-test-result" class="key-test-result"></div>
+                </div>
+                <!-- Audio & Visual FX -->
+<div class="settings-card" id="fx-settings-card">
+    <h3>🎛️ Audio &amp; Visual FX</h3>
+    <p class="box-desc">Tune the dopamine. Sound, motion and haptics are fully modular. Turning off <b>Visual FX</b> also calms the UI for photosensitivity / low‑power (it mirrors your OS reduced‑motion setting on first load).</p>
+    <div class="fx-row"><span class="fx-row-label">🔊 Sound Effects</span><label class="fx-switch"><input type="checkbox" id="fx-sound"><span class="fx-slider"></span></label></div>
+    <div class="fx-row"><span class="fx-row-label">🎚️ UI Volume</span><input type="range" id="fx-volume" class="fx-range" min="0" max="100" value="70"></div>
+    <div class="fx-row"><span class="fx-row-label">✨ Visual Effects</span><label class="fx-switch"><input type="checkbox" id="fx-effects"><span class="fx-slider"></span></label></div>
+    <div class="fx-row"><span class="fx-row-label">📳 Haptics (vibration)</span><label class="fx-switch"><input type="checkbox" id="fx-haptics"><span class="fx-slider"></span></label></div>
+    <div class="fx-row"><span class="fx-row-label">🔈 Hover &amp; Chart Ticks</span><label class="fx-switch"><input type="checkbox" id="fx-hover"><span class="fx-slider"></span></label></div>
+    <div class="fx-test-row">
+        <button type="button" class="btn btn-secondary btn-sm" id="fx-test-sound">🔊 Test Sound</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="fx-test-fx">✨ Test Effects</button>
     </div>
 </div>
 
-    <div class="modal-overlay" id="crop-modal">
+                <!-- Anti-Slump Checkpoints — launcher only; checkpoint.js owns the UI -->
+                <div class="settings-card">
+                    <h3>🔒 Anti-Slump Checkpoints</h3>
+                    <p class="box-desc">4-pillar accountability engine: scheduled checkpoints, goof-off detection, grace-period ignition, and Protocol Zero graph scarring. The whole system lives in the floating 🔒 Sentry Hub at the bottom-left corner — arm it, set times, and test-fire from there.</p>
+                    <button class="btn btn-secondary" onclick="var h=document.getElementById('cp-hub'); if(h){h.click()}else{alert('Sentry hub still booting — give it a sec.')}">Open Sentry Control Center</button>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MODALS
+════════════════════════════════════════════ -->
+
+<!-- Vibe Check (mood calibration) -->
+<div id="mood-modal" class="modal-overlay" onclick="closeModal(event, 'mood-modal')">
+    <div class="modal-content">
+        <button class="close-btn" onclick="closeModalStr('mood-modal')" aria-label="Close">✕</button>
+        <h2>Vibe Check</h2>
+        <p class="box-desc">How's the brain battery? Rate your current capacity.</p>
+        <div class="mood-container">
+            <span class="mood-emoji sad" onclick="calibrateMood('sad')" title="Fried — targets ×0.70">🥱</span>
+            <span class="mood-emoji neutral" onclick="calibrateMood('neutral')" title="Baseline — targets ×1.0">😐</span>
+            <span class="mood-emoji happy" onclick="calibrateMood('happy')" title="Locked — targets ×1.20">🔥</span>
+        </div>
+    </div>
+</div>
+
+<!-- Timer Notification (pomodoro.js phase transitions)
+     Class-controlled ONLY — pomodoro.js toggles .active, never inline display. -->
+<div id="timer-notify-modal" class="modal-overlay">
+    <div class="modal-content timer-notify-card">
+        <div class="notify-icon" id="notify-icon">🍅</div>
+        <h2 id="notify-title">Focus Session Done!</h2>
+        <p class="box-desc" id="notify-message">Take a break. You earned it.</p>
+        <button class="btn btn-primary" style="width:100%;margin-top:16px" onclick="confirmTimerNotification()">Let's Go</button>
+    </div>
+</div>
+
+<!-- Log a Mistake -->
+<div id="add-error-modal" class="modal-overlay" onclick="closeModal(event, 'add-error-modal')">
+    <div class="modal-content">
+        <button class="close-btn" onclick="closeModalStr('add-error-modal')" aria-label="Close">✕</button>
+        <h2>Log a Mistake</h2>
+        <div class="input-group" style="margin-top:16px">
+            <label>Question Screenshot</label>
+            <div class="file-upload-wrapper">
+                <label class="file-upload-label" for="err-img-input">
+                    <span class="file-icon">📷</span>
+                    <span class="file-text">Upload Screenshot</span>
+                    <span class="file-hint">PNG / JPG straight from the paper</span>
+                </label>
+                <input type="file" id="err-img-input" accept="image/*" style="display:none" onchange="previewImage(event, 'error')">
+            </div>
+            <span class="file-selected-text" id="err-img-success" style="display:none">✔ Screenshot Locked</span>
+        </div>
+        <div class="input-group"><label for="new-err-chapter">Chapter / Topic</label><input id="new-err-chapter" class="pomo-input" type="text" placeholder="e.g. Rotational Motion"></div>
+        <div class="input-group">
+            <label for="new-err-type">Mistake Type</label>
+            <select id="new-err-type" class="pomo-select">
+                <option value="conceptual">Brain Fade (Conceptual)</option>
+                <option value="calculation">Calc Fumble (Calculation)</option>
+                <option value="misread">Read Fail (Misread)</option>
+            </select>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="addErrorBlock()">Add to the Vault</button>
+    </div>
+</div>
+
+<!-- Calendar -->
+<div id="calendar-modal" class="modal-overlay" onclick="closeModal(event, 'calendar-modal')">
+    <div class="modal-content">
+        <button class="close-btn" onclick="closeModalStr('calendar-modal')" aria-label="Close">✕</button>
+        <h2>Date</h2>
+        <div class="cal-header">
+            <button class="cal-nav-btn" onclick="shiftMonth(-1)" aria-label="Previous month">❮</button>
+            <span id="cal-month-lbl">Month</span>
+            <button class="cal-nav-btn" onclick="shiftMonth(1)" aria-label="Next month">❯</button>
+        </div>
+        <div class="cal-weekdays"><span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span></div>
+        <div class="cal-grid" id="cal-grid"></div>
+    </div>
+</div>
+
+<!-- Display Settings (timer visualizers)
+     #stopwatch-toggle-btn is the fallback target of toggleStopwatchMode(). -->
+<div id="visualizer-modal" class="modal-overlay" onclick="closeModal(event, 'visualizer-modal')">
+    <div class="modal-content">
+        <button class="close-btn" onclick="closeModalStr('visualizer-modal')" aria-label="Close">✕</button>
+        <h2>Display Settings</h2>
+        <div class="toggle-row"><span>Stopwatch Mode</span><button id="stopwatch-toggle-btn" class="btn btn-secondary" onclick="toggleStopwatchMode(this)">Off</button></div>
+        <div class="toggle-row"><span>Blur Timer</span><button class="btn btn-secondary" onclick="document.getElementById('timer-display').classList.toggle('hidden')">Toggle</button></div>
+        <div class="toggle-row"><span>Liquid Beaker Visualizer</span><button class="btn btn-secondary" onclick="toggleVisualizer()">Toggle</button></div>
+    </div>
+</div>
+
+<!-- Feed Questions (dual-engine ingestion) -->
+<div id="upload-modal" class="modal-overlay" onclick="closeModal(event, 'upload-modal')">
+    <div class="modal-content wide">
+        <button class="close-btn" onclick="closeModalStr('upload-modal')" aria-label="Close">✕</button>
+        <h2>Feed Questions</h2>
+
+        <div class="ingestion-toggle-row">
+            <button class="ingestion-toggle-btn active" id="toggle-multicrop" onclick="switchIngestionTrack('multicrop')">🖼️ Traditional Multicrop</button>
+            <button class="ingestion-toggle-btn" id="toggle-texttrack" onclick="switchIngestionTrack('texttrack')">⚡ Gemini Gem Text Track</button>
+        </div>
+
+        <!-- Track A: Multicrop -->
+        <div id="ingestion-panel-multicrop" class="ingestion-panel active">
+            <div class="file-upload-wrapper">
+                <label class="file-upload-label" for="upload-images">
+                    <span class="file-icon">📤</span>
+                    <span class="file-text">Tap to select images</span>
+                    <span class="file-hint">or drag & drop 'em</span>
+                </label>
+                <input type="file" id="upload-images" accept="image/*" multiple style="display:none">
+            </div>
+            <div class="file-selected-text" id="file-selected-text"></div>
+            <div class="progress-bar"><div class="progress-fill" id="upload-progress"></div></div>
+            <div id="upload-status-text" class="upload-status"></div>
+            <div style="display:flex;gap:12px;margin-top:16px">
+                <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Nvm</button>
+                <button class="btn btn-primary" onclick="startManualCrop()">Crop & Process</button>
+            </div>
+        </div>
+
+        <!-- Track B: Gem Text Dump -->
+        <div id="ingestion-panel-texttrack" class="ingestion-panel">
+            <div class="text-track-terminal">
+                <div class="text-track-header">
+                    <span class="text-track-badge">⚡ GEM TEXT DUMP</span>
+                    <span style="font-size:11px;color:var(--text-muted)">Paste raw JSON array from your custom Gemini Gem</span>
+                </div>
+                <textarea id="text-add-terminal" class="pomo-input text-track-terminal-input" rows="8" placeholder='[{"extractedText":"...","options":["A) ..."],"correctAnswer":"C","type":"mcq","solution":"..."}]'></textarea>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:16px">
+                <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Nvm</button>
+                <button class="btn btn-primary" onclick="processGemTextDump()">Execute Ingestion Track →</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Crop Studio -->
+<div id="crop-modal" class="modal-overlay">
     <div class="modal-card crop-modal-card">
-        <div class="crop-instruction" id="crop-instruction">Draw boxes around questions (multi-crop on)</div>
-        <div class="source-images-strip" id="source-strip">
-            <!-- dynamically filled -->
-        </div>
-        <div class="segments-bar" id="segments-bar">
-            <!-- thumbnails appear here -->
-        </div>
+        <button class="close-btn" onclick="closeCropModal()" aria-label="Close">✕</button>
+        <p id="crop-instruction" class="crop-instruction">Draw boxes around questions (multi-crop on)</p>
+        <div class="source-images-strip" id="source-strip"></div>
+        <div class="segments-bar" id="segments-bar"></div>
         <div class="crop-buttons">
-            <button class="btn btn-secondary" id="crop-cancel" onclick="cancelCropSession()">Nuke All</button>
-            <button class="btn btn-secondary" id="crop-redraw" onclick="clearLastSegment()" style="display:none;">Undo Last</button>
+            <button class="btn btn-danger" onclick="cancelCropSession()">Nuke All</button>
+            <button class="btn btn-secondary" id="crop-redraw" onclick="clearLastSegment()" style="display:none">Undo Last</button>
             <button class="btn btn-primary" id="crop-confirm-question" onclick="confirmMultiCropQuestion()">✓ Lock Question</button>
-            <button class="btn btn-secondary" id="crop-next-question" onclick="nextQuestionInSession()" style="display:none;">Next Question ➔</button>
-            <button class="btn btn-success" id="crop-finish" onclick="finishAllQuestions()" style="display:none;">Finish & Save All</button>
+            <button class="btn btn-primary" id="crop-next-question" onclick="nextQuestionInSession()" style="display:none">Next Question ➔</button>
+            <button class="btn btn-success" id="crop-finish" onclick="finishAllQuestions()" style="display:none">Finish & Save All</button>
         </div>
     </div>
 </div>
 
-    
-
-    <div class="modal-overlay" id="preview-modal">
-        
-        <div class="modal-card" style="max-width:900px;">
-            <button class="close-btn" onclick="closeModalStr('preview-modal')">×</button>
-            <h3>📝 Captured Questions</h3><div id="extracted-questions-list"></div><div style="margin-top:20px;">
-                <button class="btn btn-secondary" onclick="extractTextForAll()">🔍 Extract Text (Run This First)</button>
-                <div class="answer-key-upload-wrapper">
-                    <div class="file-upload-wrapper" style="display:inline-block; width:auto;">
-                        <label for="answer-key-image" class="file-upload-label" style="padding:12px 24px; display:inline-flex; align-items:center; gap:8px; border-radius:12px;">
-                            <span>📎</span><span class="file-text">Upload Answer Key</span>
-                        </label>
-                        <input type="file" id="answer-key-image" accept="image/*">
-                    </div>
-                    <button class="btn btn-secondary" style="margin-top:8px;" onclick="processAnswerKey()">Map Answers via Image</button>
-                </div>
-                <div style="margin-top:16px;">
-                    <label>Or paste the answer key below (AI will figure it out):</label>
-                    <textarea id="answer-key-text" class="pomo-input" style="height:100px;" placeholder="Drop the answer key in any format...&#10;e.g. 1. A, 2. B, 3. 42"></textarea>
-                    <button class="btn btn-primary" style="margin-top:8px;" onclick="processAnswerKeyFromText()">🤖 Map Answers via Text</button>
-                </div>
-            </div><div style="display:flex; gap:12px; margin-top:20px;"><button class="btn btn-secondary" onclick="closeModalStr('preview-modal')">Nvm</button><button class="btn btn-primary" onclick="saveAllQuestions()">Import All Questions</button></div>
+<!-- Preview / Validate extracted questions -->
+<div id="preview-modal" class="modal-overlay" onclick="closeModal(event, 'preview-modal')">
+    <div class="modal-card">
+        <button class="close-btn" onclick="closeModalStr('preview-modal')" aria-label="Close">✕</button>
+        <h2>📝 Captured Questions</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0">
+            <button class="btn btn-primary" onclick="extractTextForAll()">🔍 Extract Text (Run This First)</button>
+            <label class="file-upload-btn" for="answer-key-image">📎 Upload Answer Key</label>
+            <input type="file" id="answer-key-image" accept="image/*" style="display:none">
+            <button class="btn btn-secondary" onclick="processAnswerKey()">Map Answers via Image</button>
         </div>
+        <textarea id="answer-key-text" class="pomo-input" rows="3" placeholder="Or paste the answer key below (AI will figure it out)…"></textarea>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0">
+            <button class="btn btn-secondary" onclick="processAnswerKeyFromText()">🤖 Map Answers via Text</button>
+            <button class="btn btn-secondary" onclick="closeModalStr('preview-modal')">Nvm</button>
+            <button class="btn btn-success" onclick="saveAllQuestions()">Import All Questions</button>
+        </div>
+        <div id="extracted-questions-list"></div>
     </div>
+</div>
 
-   <div class="modal-overlay" id="practice-modal">
-    <div class="modal-card" style="max-width:800px;">
-        <div class="practice-header"><div class="timer-display-sm" id="question-timer">00:00</div><div style="display: flex; align-items: center;"><div class="streak-visualizer" id="streak-visualizer"><canvas id="streak-canvas" width="16" height="16"></canvas></div><div id="elo-header-slot" class="elo-header-slot"></div><button class="hide-toggle" id="hide-photo-toggle" onclick="toggleOriginalPhoto()">📷 Hide Image</button><button class="hide-toggle immersive-focus-btn" id="immersive-focus-btn" onclick="toggleImmersive()">🕶 Immersive</button></div><button class="btn-secondary" style="padding:6px 16px;" onclick="closePracticeModal()">✕ Close</button></div>
+<!-- Practice Modal -->
+<div id="practice-modal" class="modal-overlay" onclick="closeModal(event, 'practice-modal')">
+    <div class="modal-card">
+        <div class="practice-header">
+            <div style="display:flex;align-items:center">
+                <div class="streak-visualizer" id="streak-visualizer">
+                    <canvas id="streak-canvas" width="16" height="16"></canvas>
+                    <span class="streak-number" id="streak-number">0</span>
+                </div>
+                <div id="elo-header-slot" class="elo-header-slot"></div>
+            </div>
+            <span class="timer-display-sm" id="question-timer">00:00</span>
+            <div style="display:flex;gap:8px;align-items:center">
+                <button class="hide-toggle" id="hide-photo-toggle" onclick="toggleOriginalPhoto()">📷 Hide Image</button>
+                <button class="hide-toggle" id="immersive-focus-btn" onclick="toggleImmersive()">🕶 Lock In</button>
+                <button class="hide-toggle" onclick="closePracticeModal()">✕ Close</button>
+            </div>
+        </div>
         <div id="practice-modal-content"></div>
-        <div style="display:flex; gap:12px; justify-content:center; margin-top:24px;"><button class="btn btn-secondary" onclick="practicePrev()">← Previous</button><button class="btn btn-primary" id="practice-submit-btn" onclick="practiceSubmit()">Lock In Answer</button><button class="btn btn-secondary" onclick="practiceNext()">Next →</button></div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="solution-modal">
-    <div class="modal-card solution-modal-card">
-        <button class="close-btn" onclick="closeModalStr('solution-modal')">×</button>
-        <h3 style="color: #fff; margin-bottom: 8px;">Full Solution Breakdown</h3>
-        <div id="solution-content" class="solution-latex"></div>
-        <div style="margin-top:24px; text-align:right;"><button class="btn btn-primary" onclick="closeModalStr('solution-modal')">Close</button></div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="error-reason-modal">
-    <div class="modal-card"><h3>What went wrong?</h3><select id="error-reason-select" class="pomo-select"><option value="conceptual">Brain Fade</option><option value="calculation">Calc Fumble</option><option value="misread">Read Fail</option></select><button class="btn btn-primary" style="margin-top:16px;" onclick="confirmErrorLog()">Send to the Vault (Log Error)</button></div>
-</div>
-
-<div class="modal-overlay" id="bounty-modal">
-    <div class="modal-card" style="max-width:420px;">
-        <button class="close-btn" onclick="closeModalStr('bounty-modal')">×</button>
-        <h3>⚔️ Bounty Boss Fight</h3>
-        <p style="color:#e5e7eb; line-height:1.5;">Clutch this mistake before time runs out to earn <strong>3 guaranteed critical hits</strong> and instant <strong>Purple Fire</strong>.</p>
-        <p style="color:#fecaca; font-size:13px; margin-top:8px;">Fail and you're cooked: 24h lock + daily quota goes up.</p>
-        <div class="bounty-time-box" style="margin-top:14px; display:flex; align-items:center; gap:8px; color:#ddd6fe; font-weight:700;">
-            <span>⏳ Time limit:</span>
-            <span id="bounty-time-limit">0:00</span>
-        </div>
-        <button class="btn btn-primary" style="margin-top:18px; width:100%;" onclick="startBountySessionFromModal()">⚡ Start the Clock</button>
-    </div>
-</div>
-
-    <div class="modal-overlay" id="edit-question-modal">
-        <div class="modal-card" style="max-width:500px;">
-            <button class="close-btn" onclick="closeModalStr('edit-question-modal')">×</button>
-            <h3>Edit Question</h3><input type="hidden" id="edit-question-id"><div style="margin-top:16px;"><label>Question (LaTeX)</label><textarea id="edit-text" class="pomo-input" style="height:100px;"></textarea></div><div style="margin-top:12px;"><label>Options (comma sep)</label><input id="edit-options" class="pomo-input" placeholder="A) Option 1, B) Option 2"></div><div style="margin-top:12px;"><label>Right Answer</label><input id="edit-answer" class="pomo-input" placeholder="A / 42.5"></div><div style="display:flex; gap:12px; margin-top:20px; justify-content:flex-end;"><button class="btn btn-secondary" onclick="closeModalStr('edit-question-modal')">Nvm</button><button class="btn btn-primary" onclick="saveEditQuestion()">Save</button></div>
+        <div style="display:flex;justify-content:space-between;gap:12px;margin-top:20px">
+            <button class="btn btn-secondary" onclick="practicePrev()">← Previous</button>
+            <button class="btn btn-primary" id="practice-submit-btn" onclick="practiceSubmit()">Lock In Answer</button>
+            <button class="btn btn-secondary" onclick="practiceNext()">Next →</button>
         </div>
     </div>
+</div>
 
-    <div class="modal-overlay" id="add-chapter-modal">
-        <div class="modal-card"><h3>New Chapter</h3><input id="new-chapter-input" class="pomo-input" placeholder="Chapter name"><div style="display:flex; gap:12px; margin-top:16px;"><button class="btn btn-secondary" onclick="closeModalStr('add-chapter-modal')">Nvm</button><button class="btn btn-primary" onclick="addChapter()">Create</button></div></div>
+<!-- Solution Breakdown -->
+<div id="solution-modal" class="modal-overlay" onclick="closeModal(event, 'solution-modal')">
+    <div class="solution-modal-card">
+        <button class="close-btn" onclick="closeModalStr('solution-modal')" aria-label="Close">✕</button>
+        <h2>Full Solution Breakdown</h2>
+        <div id="solution-content" class="solution-latex latex"></div>
+        <button class="btn btn-secondary" style="margin-top:16px" onclick="closeModalStr('solution-modal')">Close</button>
     </div>
+</div>
 
-    <div class="loading-overlay" id="loading-overlay">
-        <div class="loading-card"><div class="loading-text" id="loading-text">Cooking...</div><div class="loading-bar"><div class="loading-fill"></div></div></div>
+<!-- Error Reason -->
+<div id="error-reason-modal" class="modal-overlay" onclick="closeModal(event, 'error-reason-modal')">
+    <div class="modal-content">
+        <button class="close-btn" onclick="closeModalStr('error-reason-modal')" aria-label="Close">✕</button>
+        <h2>What went wrong?</h2>
+        <select id="error-reason-select" class="pomo-select" style="margin-top:16px">
+            <option value="conceptual">Brain Fade (Conceptual)</option>
+            <option value="calculation">Calc Fumble (Calculation)</option>
+            <option value="misread">Read Fail (Misread)</option>
+        </select>
+        <button class="btn btn-danger" style="width:100%;margin-top:16px" onclick="confirmErrorLog()">Send to the Vault (Log Error)</button>
     </div>
+</div>
 
-    <script>
-(function() {
-    // Only do this once
-    if (document.getElementById('apple-icon-png')) return;
+<!-- Bounty Boss Fight -->
+<div id="bounty-modal" class="modal-overlay" onclick="closeModal(event, 'bounty-modal')">
+    <div class="modal-content square-modal">
+        <button class="close-btn" onclick="closeModalStr('bounty-modal')" aria-label="Close">✕</button>
+        <h2>⚔️ Bounty Boss Fight</h2>
+        <p class="box-desc" style="margin-top:12px">Clutch this mistake before time runs out to earn 3 guaranteed critical hits and instant Purple Fire.</p>
+        <p class="box-desc">Fail and you're cooked: 24h lock + daily quota goes up.</p>
+        <div style="text-align:center;margin:24px 0">
+            <span style="font-size:14px;color:var(--text-secondary)">⏳ Time limit:</span>
+            <span class="timer-display-sm" id="bounty-time-limit" style="margin-left:8px">0:00</span>
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="startBountySessionFromModal()">⚡ Start the Clock</button>
+    </div>
+</div>
 
-    const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 200 200">
-      <defs>
-        <linearGradient id="foxGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#ff2d95"/>
-          <stop offset="100%" style="stop-color:#00f0ff"/>
-        </linearGradient>
-      </defs>
-      <g stroke="url(#foxGrad)" stroke-width="2" fill="none" opacity="0.8">
-        <path d="M100 160 Q80 120 60 100"/>
-        <path d="M100 160 Q90 110 80 80"/>
-        <path d="M100 160 Q100 100 100 60"/>
-        <path d="M100 160 Q110 110 120 80"/>
-        <path d="M100 160 Q120 120 140 100"/>
-        <path d="M100 160 Q70 130 50 120"/>
-        <path d="M100 160 Q130 130 150 120"/>
-        <path d="M100 160 Q85 140 75 130"/>
-        <path d="M100 160 Q115 140 125 130"/>
-      </g>
-      <ellipse cx="100" cy="140" rx="20" ry="25" fill="none" stroke="url(#foxGrad)" stroke-width="2"/>
-      <circle cx="100" cy="110" r="16" fill="none" stroke="url(#foxGrad)" stroke-width="2"/>
-      <polygon points="90,95 85,75 98,90" fill="url(#foxGrad)" opacity="0.8"/>
-      <polygon points="110,95 115,75 102,90" fill="url(#foxGrad)" opacity="0.8"/>
-      <circle cx="96" cy="108" r="3" fill="#ff2d95"/>
-      <circle cx="104" cy="108" r="3" fill="#ff2d95"/>
-      <circle cx="60" cy="100" r="1.5" fill="#00f0ff">
-        <animate attributeName="cy" values="100;90;100" dur="2s" repeatCount="indefinite"/>
-      </circle>
-      <circle cx="140" cy="100" r="1.5" fill="#00f0ff">
-        <animate attributeName="cy" values="100;90;100" dur="1.8s" repeatCount="indefinite"/>
-      </circle>
-    </svg>`;
+<!-- Edit Question -->
+<div id="edit-question-modal" class="modal-overlay" onclick="closeModal(event, 'edit-question-modal')">
+    <div class="modal-content wide">
+        <button class="close-btn" onclick="closeModalStr('edit-question-modal')" aria-label="Close">✕</button>
+        <h2>Edit Question</h2>
+        <input type="hidden" id="edit-question-id">
+        <div class="input-group" style="margin-top:16px"><label for="edit-text">Question (LaTeX)</label><textarea id="edit-text" class="pomo-input" rows="5"></textarea></div>
+        <div class="input-group"><label for="edit-options">Options (comma sep)</label><input id="edit-options" class="pomo-input" type="text"></div>
+        <div class="input-group"><label for="edit-answer">Right Answer</label><input id="edit-answer" class="pomo-input" type="text"></div>
+        <div style="display:flex;gap:12px;margin-top:16px">
+            <button class="btn btn-secondary" onclick="closeModalStr('edit-question-modal')">Nvm</button>
+            <button class="btn btn-primary" onclick="saveEditQuestion()">Save</button>
+        </div>
+    </div>
+</div>
 
-    const canvas = document.createElement('canvas');
-    canvas.width = 180;
-    canvas.height = 180;
-    const ctx = canvas.getContext('2d');
+<!-- Add Chapter -->
+<div id="add-chapter-modal" class="modal-overlay" onclick="closeModal(event, 'add-chapter-modal')">
+    <div class="modal-content">
+        <button class="close-btn" onclick="closeModalStr('add-chapter-modal')" aria-label="Close">✕</button>
+        <h2>New Chapter</h2>
+        <input id="new-chapter-input" class="pomo-input" type="text" placeholder="e.g. Thermodynamics" style="margin-top:16px">
+        <div style="display:flex;gap:12px;margin-top:16px">
+            <button class="btn btn-secondary" onclick="closeModalStr('add-chapter-modal')">Nvm</button>
+            <button class="btn btn-primary" onclick="addChapter()">Create</button>
+        </div>
+    </div>
+</div>
 
-    const img = new Image();
-    const blob = new Blob([svg], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    img.onload = function() {
-        ctx.drawImage(img, 0, 0, 180, 180);
-        const pngData = canvas.toDataURL('image/png');
+<!-- Lightbox -->
+<div id="lightbox-modal" class="modal-overlay" onclick="closeModal(event, 'lightbox-modal')">
+    <div class="lightbox-img-container">
+        <img id="lightbox-img" src="" alt="Question full view">
+    </div>
+</div>
 
-        // Remove any existing apple-touch-icon
-        const existing = document.querySelector('link[rel="apple-touch-icon"]');
-        if (existing) existing.remove();
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay">
+    <div class="loading-card">
+        <p class="loading-text" id="loading-text">Cooking…</p>
+        <div class="loading-bar"><div class="loading-fill"></div></div>
+    </div>
+</div>
 
-        const link = document.createElement('link');
-        link.id = 'apple-icon-png';
-        link.rel = 'apple-touch-icon';
-        link.href = pngData;
-        document.head.appendChild(link);
-
-        URL.revokeObjectURL(url);
-    };
-    img.src = url;
-})();
-</script>
-
-<!-- ============================================================= -->
-<!--  Checkpoint Config UI (bridges Settings card to checkpoint.js) -->
-<!--  Waits for window.__checkpoint to be ready, then populates the  -->
-<!--  time-list + threshold inputs from persisted config.            -->
-<!-- ============================================================= -->
+<!-- ═══════════════ SCRIPTS ═══════════════ -->
 <script>
+/* ── Vault filter glue ─────────────────────────────────────────────
+   matrix.js reads hidden carriers #filter-status / #filter-type /
+   #filter-tag inside filterErrors(). The neon pill UI writes to those
+   carriers, flips .active within its group, then re-runs the filter.
+   Pure DOM glue — zero changes to the filtering logic itself. */
+window.setMatrixFilter = function (group, value, el) {
+    var carrier = document.getElementById('filter-' + group);
+    if (carrier) carrier.value = value;
+    var group_el = el.closest('.emf-pill-group');
+    if (group_el) {
+        group_el.querySelectorAll('.matrix-pill').forEach(function (p) {
+            p.classList.toggle('active', p === el);
+        });
+    }
+    if (typeof window.filterErrors === 'function') window.filterErrors();
+};
+window.setMatrixSearch = function (value) {
+    var carrier = document.getElementById('filter-tag');
+    if (carrier) carrier.value = value;
+    if (typeof window.filterErrors === 'function') window.filterErrors();
+};
+</script>
+
+<!-- KaTeX engine (window.katex) — must precede the app module -->
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<!-- Google Identity Services — storage.js initDrive() needs google.accounts.oauth2 -->
+<script defer src="https://accounts.google.com/gsi/client"></script>
+<!-- Main controller module — imports storage / pomodoro / matrix / candlestick / leaderboard -->
+<script type="module" src="./app.js"></script>
+<!-- 4-Pillar Accountability Checkpoint System — self-mounting (hub, control
+     panel, lockdown overlays, toasts are all injected at runtime) -->
+<script type="module" src="./checkpoint.js"></script>
+<script type="module" src="./fx.js"></script>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     BENTO RESIZE CONTROLLER v4 — persistence + drag-release hardened.
+     Inline module (runs after app.js). Replaces v3. Drag move/release are
+     bound to `window` (not the thin handle) so the end-of-drag cleanup + the
+     localStorage write ALWAYS fire — fixing: refresh-reset, stuck/dead cards,
+     and the flattened tracker edge. A blur/tab-hide safety net force-ends any
+     orphaned drag and saves the last snapped size. Layout prefs stay device-
+     local in localStorage('jeemax_bento_layout'); storage.js / cloud untouched.
+     ════════════════════════════════════════════════════════════════════════ -->
+<script type="module">
+/* ════════════════════════════════════════════════════════════════════════
+   BENTO RESIZE CONTROLLER v5 — width + height + reorder + masonry packing.
+   REPLACES v4. Two fixes over v4:
+     (1) Widths persist correctly — stored as an exact integer the instant
+         they are set (dataset.bentoSpan); never re-read from computed style
+         (the v4 `parseInt("span N")` → NaN → fallback-6 bug is gone).
+     (2) Vertical compaction — a height-map packer pins each card to its own
+         column band and stacks each column from the top, so shortening a
+         card lifts the card below it in the SAME column (cards never jump
+         sideways). Driven by grid-auto-rows:1px + row-gap:0 (set inline
+         only while the dashboard is active & wide); cleared below 901px so
+         the responsive mobile stack is untouched.
+   Layout prefs stay device-local in localStorage('jeemax_bento_layout');
+   storage.js / cloud / IndexedDB are intentionally untouched.
+   ════════════════════════════════════════════════════════════════════════ */
 (function () {
-    // Temp store for time inputs (added/removed before save)
-    let cpTimes = [];
+    const LS = 'jeemax_bento_layout';
+    const BP = 901;                       // resize / masonry is a wide-screen feature
+    const BP2 = 1101;                     // mirrors the themed 2-col ↔ 1-col breakpoint
+    const V_MIN = 140, V_MAX = 1600;
+    const COLS = 12;
+    const IDS = ['tracker', 'momentum', 'bounty', 'decay'];
 
-    function cpReady() { return window.__checkpoint && typeof window.__checkpoint.getConfig === 'function'; }
+    const wide     = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
+    const twoCol   = () => window.matchMedia(`(min-width: ${BP2}px)`).matches;
+    const clamp    = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+    const editing  = () => { const d = document.getElementById('view-dashboard'); return d && d.classList.contains('bento-edit'); };
+    const dashActive = () => { const d = document.getElementById('view-dashboard'); return d && d.classList.contains('active'); };
+    const gridOf   = () => document.querySelector('#view-dashboard .dash-grid');
+    const cardById = id => document.querySelector(`#view-dashboard .dash-card-${id}`);
+    const idOf     = card => IDS.find(k => card.classList.contains('dash-card-' + k));
+    function ready(fn){ if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn(); }
+    function load(){ try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
+    function save(o){ try { localStorage.setItem(LS, JSON.stringify(o)); } catch (e) {} }
 
-    function cpRenderTimes() {
-        const list = document.getElementById('cp-times-list');
-        if (!list) return;
-        list.innerHTML = '';
-        cpTimes.forEach(function (t, i) {
-            const row = document.createElement('div');
-            row.style.cssText = 'display:flex; align-items:center; gap:8px;';
-            const inp = document.createElement('input');
-            inp.type = 'time';
-            inp.value = t;
-            inp.className = 'pomo-input';
-            inp.style.cssText = 'font-size:13px; flex:1;';
-            inp.addEventListener('change', function () { cpTimes[i] = inp.value; });
-            const x = document.createElement('button');
-            x.textContent = '✕';
-            x.style.cssText = 'width:30px; height:30px; border-radius:8px; background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.3); color:#f87171; cursor:pointer; font-size:14px;';
-            x.onclick = function () { cpTimes.splice(i, 1); cpRenderTimes(); };
-            row.appendChild(inp);
-            row.appendChild(x);
-            list.appendChild(row);
+    // The width a card SHOULD be right now: a user-set value wins, otherwise
+    // the themed responsive default (2 columns above 1100px, 1 below).
+    function defaultW(){ return twoCol() ? 6 : 12; }
+    function widthOf(card){ const v = parseInt(card.dataset.bentoSpan, 10); return clamp(Number.isFinite(v) ? v : defaultW(), 3, 12); }
+
+    // Vertical scroll layer (exists ONLY while a card has a fixed height).
+    const isInjected = el => el.classList && (el.classList.contains('bento-handle') || el.classList.contains('bento-handle-v') || el.classList.contains('bento-card-ctrls'));
+    function ensureWrap(card){
+        if (card._bentoScroll) return card._bentoScroll;
+        const w = document.createElement('div'); w.className = 'bento-scroll';
+        [...card.childNodes].filter(n => !(n.nodeType === 1 && isInjected(n))).forEach(n => w.appendChild(n));
+        card.appendChild(w); card._bentoScroll = w; card.classList.add('bento-vset');
+        wireOverflowHint(card, w);
+        return w;
+    }
+    function clearWrap(card){
+        const w = card._bentoScroll; if (!w) return;
+        const ref = [...card.children].find(isInjected);
+        [...w.childNodes].forEach(n => { if (ref) card.insertBefore(n, ref); else card.appendChild(n); });
+        w.remove(); card._bentoScroll = null; card.classList.remove('bento-vset', 'bento-overflowing');
+    }
+    function wireOverflowHint(card, w){
+        if (w._ro) return;
+        const check = () => card.classList.toggle('bento-overflowing', w.scrollHeight > w.clientHeight + 2);
+        w._ro = new ResizeObserver(check); w._ro.observe(w);
+        w.addEventListener('scroll', check, { passive: true }); requestAnimationFrame(check);
+    }
+
+    // ── ONE writer — widths + heights + order, consistent, never torn ──────
+    function persistAll(){
+        const o = load(); o.spans = o.spans || {}; o.heights = o.heights || {};
+        IDS.forEach(id => {
+            const c = cardById(id); if (!c) return;
+            if (c.dataset.bentoSpan) o.spans[id] = clamp(parseInt(c.dataset.bentoSpan, 10), 3, 12); else delete o.spans[id];
+            if (c._bentoScroll) { const h = parseInt(c._bentoScroll.style.height, 10); if (h > 0) o.heights[id] = h; else delete o.heights[id]; }
+            else delete o.heights[id];
+        });
+        const g = gridOf(); if (g) o.order = [...g.children].map(idOf).filter(Boolean);
+        save(o);
+    }
+
+    // Crisp chart re-render at the FINAL size only, then re-pack.
+    let settleT = 0;
+    function settle(){
+        clearTimeout(settleT);
+        settleT = setTimeout(() => {
+            try { if (typeof window.renderGraph === 'function') window.renderGraph(); } catch (e) {}
+            try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (e) {}
+            try { if (typeof window.renderChapterDecayGrid === 'function') window.renderChapterDecayGrid(); } catch (e) {}
+            scheduleRelayout();
+        }, 180);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  HEIGHT-MAP MASONRY PACKER — the vertical-compaction engine.
+    //  For each card (in DOM order) we know its column WIDTH (tracks). We
+    //  choose the leftmost column band whose tracks are all free earliest,
+    //  place the card there with an explicit grid-column (PINNED — this is
+    //  what stops cards ever migrating sideways), then advance a per-column
+    //  "next free row" map by the card's pixel height + the vertical gap.
+    //  Result: each column stacks from the top independently; shortening a
+    //  card lowers its columns' next-free-row, so the card below it in that
+    //  same column rises flush underneath. No cross-column surprises.
+    // ══════════════════════════════════════════════════════════════════════
+    function relayout(){
+        const grid = gridOf(); if (!grid) return;
+        // Off / hidden → hand control back to CSS (mobile stack or other tab).
+        if (!wide() || !dashActive()) {
+            grid.style.gridAutoRows = ''; grid.style.rowGap = '';
+            [...grid.children].forEach(c => { c.style.gridRow = ''; c.style.gridColumn = ''; });
+            return;
+        }
+        grid.style.gridAutoRows = '1px';   // 1px implicit rows = 1px packing granularity
+        grid.style.rowGap = '0px';         // vertical rhythm is baked into each span instead
+        const cs = getComputedStyle(grid);
+        const colGap = parseFloat(cs.columnGap) || parseFloat(cs.gap) || 22;
+        const gap = colGap > 0 ? colGap : 22;
+
+        const cards = [...grid.children].filter(c => c.classList.contains('dash-card'));
+        // Step A — assign each card its WIDTH and measure its natural height.
+        // (A temp grid-column start is fine; width depends only on the span.)
+        const info = cards.map(c => {
+            const w = widthOf(c);
+            const wantCol = '1 / span ' + w;
+            if (c.style.gridColumn !== wantCol) c.style.gridColumn = wantCol;
+            return { c, w, h: 0 };
+        });
+        void grid.offsetHeight;                       // single forced layout
+        info.forEach(o => { o.h = o.c.offsetHeight; });
+
+        // Step B — pack top-down with the per-column height map.
+        const hmap = new Array(COLS + 1).fill(1);     // 1-based next-free row line per track
+        info.forEach(o => {
+            const w = o.w; let bestC = 1, bestR = Infinity;
+            for (let c = 1; c <= COLS - w + 1; c++) {
+                let r = 1; for (let k = c; k < c + w; k++) r = Math.max(r, hmap[k]);
+                if (r < bestR) { bestR = r; bestC = c; }   // earliest row, leftmost on tie
+            }
+            const rows = o.h + gap;                   // card height + gap baked as empty tracks
+            const colStr = bestC + ' / span ' + w;
+            const rowStr = bestR + ' / span ' + rows;
+            if (o.c.style.gridColumn !== colStr) o.c.style.gridColumn = colStr;  // compare → no spurious RO
+            if (o.c.style.gridRow !== rowStr) o.c.style.gridRow = rowStr;
+            for (let k = bestC; k < bestC + w; k++) hmap[k] = bestR + rows;
+        });
+    }
+    let _rlRaf = 0;
+    function scheduleRelayout(){ if (_rlRaf) return; _rlRaf = requestAnimationFrame(() => { _rlRaf = 0; relayout(); }); }
+
+    // Re-pack when a card's own height changes (vertical drag, content, charts).
+    function watchCards(){
+        if (!('ResizeObserver' in window)) return;
+        IDS.forEach(id => {
+            const c = cardById(id); if (!c || c._bentoRO) return;
+            c._bentoRO = new ResizeObserver(() => scheduleRelayout());
+            c._bentoRO.observe(c);
+        });
+    }
+    // Re-pack the instant the dashboard becomes visible (offsetHeight is 0 while hidden).
+    function watchVisibility(){
+        const dash = document.getElementById('view-dashboard'); if (!dash || !('MutationObserver' in window)) return;
+        new MutationObserver(() => { if (dashActive()) scheduleRelayout(); }).observe(dash, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    // ── Drag engine: move + release on WINDOW so they can't be lost ────────
+    let _dragActive = false;
+    function startDrag(onMove, onEnd){
+        _dragActive = true;
+        document.body.classList.add('bento-dragging');
+        const move = ev => { if (!_dragActive) return; try { onMove(ev); } catch (e) {} };
+        const end = ev => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', end);
+            window.removeEventListener('pointercancel', end);
+            if (!_dragActive) return;
+            _dragActive = false;
+            document.body.classList.remove('bento-dragging');
+            document.querySelectorAll('#view-dashboard .dash-card.bento-drag-target').forEach(c => { c.classList.remove('bento-drag-target'); c.style.pointerEvents = ''; });
+            try { onEnd(ev); } catch (e) {}
+        };
+        window.addEventListener('pointermove', move, { passive: false });
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+    }
+    function forceEndAllDrags(){
+        if (!_dragActive) return;
+        _dragActive = false;
+        document.body.classList.remove('bento-dragging');
+        document.querySelectorAll('#view-dashboard .dash-card.bento-drag-target').forEach(c => { c.classList.remove('bento-drag-target'); c.style.pointerEvents = ''; });
+        try { persistAll(); } catch (e) {}
+        scheduleRelayout(); settle();
+    }
+
+    // ── Toolbar ────────────────────────────────────────────────────────────
+    function buildToolbar(dash){
+        const tb = document.createElement('div'); tb.className = 'bento-toolbar';
+        tb.innerHTML = `
+            <span class="bt-label">Layout</span>
+            <div class="bento-seg" data-bento-density>
+                <button type="button" data-d="compact">Compact</button>
+                <button type="button" data-d="cozy" class="active">Cozy</button>
+                <button type="button" data-d="spacious">Spacious</button>
+            </div>
+            <button type="button" class="bento-edit-btn" data-bento-edit>✛ Resize</button>
+            <button type="button" class="bento-reset-btn" data-bento-reset>↺ Reset</button>
+            <span class="bento-hint">Right edge = width · bottom edge = height (dbl‑click = fit) · ⠿ = reorder · the box below auto‑fills gaps · auto‑saved</span>`;
+        dash.insertBefore(tb, dash.firstChild);
+
+        const grid = gridOf();
+        const applyDensity = d => {
+            grid.classList.remove('bento-density-compact','bento-density-cozy','bento-density-spacious');
+            if (d && d !== 'cozy') grid.classList.add('bento-density-' + d);
+            tb.querySelectorAll('[data-d]').forEach(b => b.classList.toggle('active', b.dataset.d === d));
+            const s = load(); s.density = d; save(s); scheduleRelayout(); settle();
+        };
+        applyDensity((load().density) || 'cozy');
+        tb.querySelector('[data-bento-density]').addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (b) applyDensity(b.dataset.d); });
+
+        const editBtn = tb.querySelector('[data-bento-edit]');
+        editBtn.addEventListener('click', () => { const on = dash.classList.toggle('bento-edit'); editBtn.classList.toggle('active', on); });
+
+        tb.querySelector('[data-bento-reset]').addEventListener('click', () => {
+            IDS.forEach(id => { const c = cardById(id); if (c) { clearWrap(c); delete c.dataset.bentoSpan; delete c.dataset.bentoPrevSpan; } });
+            IDS.forEach(id => { const c = cardById(id); if (c) grid.appendChild(c); });   // default order
+            persistAll();
+            relayout(); settle();
+        });
+        return tb;
+    }
+
+    // ── Per-card handles + grip + focus ────────────────────────────────────
+    function equipCard(card){
+        if (card.dataset.bentoEquip) return; card.dataset.bentoEquip = '1';
+
+        const ctrls = document.createElement('div'); ctrls.className = 'bento-card-ctrls';
+        const grip = document.createElement('button'); grip.className = 'bento-ctrl-btn bento-ctrl-grip'; grip.type = 'button'; grip.title = 'Drag to reorder'; grip.textContent = '⠿';
+        const focus = document.createElement('button'); focus.className = 'bento-ctrl-btn'; focus.type = 'button'; focus.title = 'Expand / restore width'; focus.textContent = '⤢';
+        focus.addEventListener('click', () => {
+            const cur = widthOf(card);
+            if (cur >= 12) {
+                const prev = card.dataset.bentoPrevSpan;
+                if (prev === 'auto' || prev === undefined) delete card.dataset.bentoSpan; else card.dataset.bentoSpan = prev;
+            } else {
+                card.dataset.bentoPrevSpan = card.dataset.bentoSpan ? card.dataset.bentoSpan : 'auto';
+                card.dataset.bentoSpan = '12';
+            }
+            persistAll(); scheduleRelayout();
+        });
+        ctrls.appendChild(grip); ctrls.appendChild(focus); card.appendChild(ctrls);
+
+        // Horizontal (right edge) — changes WIDTH only; the packer re-derives the column.
+        const handle = document.createElement('div'); handle.className = 'bento-handle'; handle.tabIndex = 0;
+        handle.setAttribute('role','slider'); handle.setAttribute('aria-label','Resize card width'); card.appendChild(handle);
+        handle.addEventListener('pointerdown', e => {
+            if (!editing()) return; e.preventDefault();
+            const grid = gridOf();
+            const cs = getComputedStyle(grid); const colGap = parseFloat(cs.columnGap) || parseFloat(cs.gap) || 22;
+            const trackW = (grid.clientWidth - colGap * (COLS - 1)) / COLS;
+            const step = Math.max(1, trackW + colGap);
+            const start = widthOf(card), x0 = e.clientX; let cur = start;
+            card.classList.add('bento-drag-target');
+            startDrag(
+                ev => { const ns = clamp(start + Math.round((ev.clientX - x0) / step), 3, 12); if (ns !== cur) { cur = ns; card.dataset.bentoSpan = String(ns); scheduleRelayout(); } },
+                () => { card.classList.remove('bento-drag-target'); persistAll(); scheduleRelayout(); settle(); }
+            );
+        });
+        handle.addEventListener('keydown', e => {
+            if (!editing() || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return; e.preventDefault();
+            card.dataset.bentoSpan = String(clamp(widthOf(card) + (e.key === 'ArrowRight' ? 1 : -1), 3, 12));
+            persistAll(); scheduleRelayout();
+        });
+
+        // Vertical (bottom edge) — sets a fixed height; the packer lifts the card below.
+        const handleV = document.createElement('div'); handleV.className = 'bento-handle-v'; handleV.tabIndex = 0;
+        handleV.setAttribute('role','slider'); handleV.setAttribute('aria-label','Resize card height'); card.appendChild(handleV);
+        handleV.addEventListener('pointerdown', e => {
+            if (!editing()) return; e.preventDefault(); e.stopPropagation();
+            const cs = getComputedStyle(card); const vpad = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
+            const startH = card.getBoundingClientRect().height, y0 = e.clientY; const w = ensureWrap(card);
+            card.classList.add('bento-drag-target');
+            startDrag(
+                ev => { w.style.height = Math.max(40, clamp(startH + (ev.clientY - y0), V_MIN, V_MAX) - vpad) + 'px'; scheduleRelayout(); },
+                () => { card.classList.remove('bento-drag-target'); persistAll(); scheduleRelayout(); settle(); }
+            );
+        });
+        handleV.addEventListener('dblclick', () => { if (!editing()) return; clearWrap(card); persistAll(); scheduleRelayout(); });
+
+        // Reorder grip — physical DOM move; the packer re-packs in the new order.
+        grip.addEventListener('pointerdown', e => {
+            if (!editing()) return; e.preventDefault(); e.stopPropagation();
+            const grid = gridOf(); let dragged = card, lastTarget = null, lastBefore = null, raf = 0, lastEv = e;
+            card.style.pointerEvents = 'none'; card.classList.add('bento-drag-target');
+            startDrag(
+                ev => {
+                    lastEv = ev; if (raf) return;
+                    raf = requestAnimationFrame(() => {
+                        raf = 0;
+                        const el = document.elementFromPoint(lastEv.clientX, lastEv.clientY);
+                        const t = el && el.closest ? el.closest('.dash-card') : null;
+                        if (!t || t === dragged) return;
+                        const r = t.getBoundingClientRect(); const before = lastEv.clientY < r.top + r.height / 2;
+                        if (t === lastTarget && before === lastBefore) return;
+                        lastTarget = t; lastBefore = before;
+                        grid.insertBefore(dragged, before ? t : t.nextSibling);
+                        scheduleRelayout();
+                    });
+                },
+                () => { if (raf) { cancelAnimationFrame(raf); raf = 0; } card.style.pointerEvents = ''; card.classList.remove('bento-drag-target'); dragged = null; persistAll(); scheduleRelayout(); settle(); }
+            );
         });
     }
 
-    // Expose to window for onclick handlers
-    window.cpAddTime = function () {
-        if (cpTimes.length >= 8) { cpShowMsg('Max 8 checkpoints. Chill.', 'warn'); return; }
-        cpTimes.push('12:00');
-        cpRenderTimes();
-    };
-
-    window.cpSaveConfig = function () {
-        if (!cpReady()) { cpShowMsg('Anti-Slump module still loading. Hold up.', 'danger'); return; }
-        const valid = cpTimes.filter(function (t) { return /^\d{1,2}:\d{2}$/.test(t); });
-        if (!valid.length) { cpShowMsg('Drop at least one valid time (HH:MM).', 'warn'); return; }
-        const idleEl = document.getElementById('cp-idle-threshold');
-        const graceEl = document.getElementById('cp-grace-min');
-        const preEl = document.getElementById('cp-pre-notify');
-        const powEl = document.getElementById('cp-pow-min');
-        const cfg = window.__checkpoint.getConfig();
-        window.__checkpoint.setConfig({
-            checkpoints: valid,
-            idleThresholdMin: parseInt(idleEl.value) || 120,
-            graceMin: parseInt(graceEl.value) || 15,
-            preNotifyMin: parseInt(preEl.value) || 10,
-            powMin: parseInt(powEl.value) || 10,
-            enabled: cfg.enabled,
+    // ── Apply saved layout (order → widths → heights → pack) ───────────────
+    function applySaved(){
+        if (document.body.classList.contains('bento-dragging')) return;
+        const o = load(); const grid = gridOf(); if (!grid) return;
+        if (Array.isArray(o.order) && o.order.length) {
+            const seen = new Set();
+            o.order.forEach(id => { const c = cardById(id); if (c) { grid.appendChild(c); seen.add(id); } });
+            IDS.forEach(id => { if (!seen.has(id)) { const c = cardById(id); if (c) grid.appendChild(c); } });
+        }
+        const spans = o.spans || {}, heights = o.heights || {};
+        IDS.forEach(id => {
+            const c = cardById(id); if (!c) return;
+            if (typeof spans[id] === 'number') c.dataset.bentoSpan = String(spans[id]); else delete c.dataset.bentoSpan;
+            if (wide() && heights[id]) ensureWrap(c).style.height = heights[id] + 'px'; else clearWrap(c);
         });
-        cpShowMsg('✅ Anti-Slump config locked in.', 'ok');
-    };
-
-    window.cpToggleEnabled = function () {
-        if (!cpReady()) return;
-        const cb = document.getElementById('cp-enabled-toggle');
-        const cfg = window.__checkpoint.getConfig();
-        window.__checkpoint.setConfig({ enabled: cb.checked });
-        cpShowMsg(cb.checked ? '🚨 Anti-Slump System ACTIVATED.' : '○ Anti-Slump off. You\'re on your own.', cb.checked ? 'warn' : 'ok');
-        // Request notification permission on arm
-        if (cb.checked && 'Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission().catch(function () {});
-        }
-    };
-
-    function cpShowMsg(msg, kind) {
-        const el = document.getElementById('cp-status-msg');
-        if (!el) return;
-        el.textContent = msg;
-        el.style.color = kind === 'danger' ? '#f87171' : kind === 'warn' ? '#fbbf24' : '#22c55e';
-        setTimeout(function () { el.textContent = ''; }, 4000);
+        relayout();
     }
 
-    // Populate the UI from the checkpoint config once it's loaded
-    function cpPopulate() {
-        if (!cpReady()) { setTimeout(cpPopulate, 300); return; }
-        const cfg = window.__checkpoint.getConfig();
-        cpTimes = (cfg.checkpoints && cfg.checkpoints.length) ? cfg.checkpoints.slice() : ['11:00', '17:00', '21:00'];
-        cpRenderTimes();
-        const set = function (id, val) { const el = document.getElementById(id); if (el) el.value = val; };
-        set('cp-idle-threshold', cfg.idleThresholdMin);
-        set('cp-grace-min', cfg.graceMin);
-        set('cp-pre-notify', cfg.preNotifyMin);
-        set('cp-pow-min', cfg.powMin);
-        const cb = document.getElementById('cp-enabled-toggle');
-        if (cb) cb.checked = !!cfg.enabled;
+    function boot(){
+        const dash = document.getElementById('view-dashboard'); if (!dash || dash.dataset.bentoInit) return; dash.dataset.bentoInit = '1';
+        buildToolbar(dash);
+        IDS.forEach(id => { const c = cardById(id); if (c) equipCard(c); });
+        applySaved();
+        watchCards();
+        watchVisibility();
+        // Re-assert after first paint + a safety timeout (kills the load race),
+        // and again once charts have drawn (their height changes the pack).
+        requestAnimationFrame(() => requestAnimationFrame(() => { applySaved(); scheduleRelayout(); }));
+        setTimeout(() => { applySaved(); scheduleRelayout(); }, 160);
+        window.addEventListener('load', scheduleRelayout);
+        window.matchMedia(`(min-width: ${BP}px)`).addEventListener('change', applySaved);   // masonry on/off
+        window.matchMedia(`(min-width: ${BP2}px)`).addEventListener('change', scheduleRelayout); // 2-col ↔ 1-col default
+        window.addEventListener('resize', scheduleRelayout);
+        // Persistence + drag safety.
+        window.addEventListener('beforeunload', () => { try { persistAll(); } catch (e) {} });
+        window.addEventListener('blur', forceEndAllDrags);
+        document.addEventListener('visibilitychange', () => { if (document.hidden) forceEndAllDrags(); else scheduleRelayout(); });
     }
-
-    // Run when Settings tab is opened OR on load
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', cpPopulate);
-    } else {
-        cpPopulate();
-    }
-    // Also re-populate when the user switches to the Settings tab
-    document.addEventListener('click', function (e) {
-        const a = e.target.closest && e.target.closest('.nav-item');
-        if (a && a.getAttribute('onclick') && a.getAttribute('onclick').indexOf('switchTab(\'settings\'') >= 0) {
-            setTimeout(cpPopulate, 100);
-        }
-    });
+    ready(boot);
 })();
 </script>
-    <script type="module" src="js/app.js"></script>
-    <script type="module" src="js/checkpoint.js"></script>
 
-    <!-- ============================================================= -->
-    <!--  Error Matrix · Filter Pill Wiring (UI skin only)             -->
-    <!--  Does NOT touch matrix.js. Bridges new pill buttons to the    -->
-    <!--  existing hidden #filter-type / #filter-status carriers and   -->
-    <!--  invokes the already-global filterErrors() function.          -->
-    <!-- ============================================================= -->
-    <script>
-    (function () {
-        function syncPills() {
-            var groups = document.querySelectorAll('.emf-pill-group');
-            groups.forEach(function (group) {
-                var filter = group.getAttribute('data-emf-filter');
-                var targetId = filter === 'status' ? 'filter-status' : 'filter-type';
-                var target = document.getElementById(targetId);
-                if (!target) return;
-
-                group.querySelectorAll('.matrix-pill').forEach(function (pill) {
-                    pill.addEventListener('click', function () {
-                        // deactivate siblings within this group
-                        group.querySelectorAll('.matrix-pill').forEach(function (p) {
-                            p.classList.remove('active');
-                        });
-                        pill.classList.add('active');
-                        // write value into the hidden carrier that filterErrors() reads
-                        target.value = pill.getAttribute('data-emf-value');
-                        // trigger the existing native filter routine
-                        if (typeof window.filterErrors === 'function') {
-                            window.filterErrors();
-                        } else if (typeof filterErrors === 'function') {
-                            filterErrors();
-                        }
-                    });
-                });
-            });
-        }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', syncPills);
-        } else {
-            syncPills();
-        }
-    })();
-    </script>
-
-    <!-- ============================================================= -->
-    <!--  Feature Wiring · Daily Queue + Chapter Decay Grid             -->
-    <!--  Bridges new module exports to window scope for HTML onclick.  -->
-    <!-- ============================================================= -->
-    <script type="module">
-    import { toggleDailyQueue, renderChapterDecayGrid, renderErrorResolutionDashboard } from './js/matrix.js';
-
-    // Expose to global scope for inline onclick fallback
-    window.toggleDailyQueue = toggleDailyQueue;
-    window.renderChapterDecayGrid = renderChapterDecayGrid;
-    window.renderErrorResolutionDashboard = renderErrorResolutionDashboard;
-
-    // Wire daily queue button
-    const dqb = document.getElementById('daily-queue-btn');
-    if (dqb) dqb.addEventListener('click', toggleDailyQueue);
-
-    // Render dashboards on load (deferred for DB hydration)
-    setTimeout(function () {
-        renderChapterDecayGrid();
-        renderErrorResolutionDashboard();
-    }, 3000);
-
-    // Re-render when dashboard tab becomes active
-    document.addEventListener('click', function (e) {
-        const target = e.target.closest('[onclick*="switchTab"]');
-        if (target && target.getAttribute('onclick') && target.getAttribute('onclick').includes('dashboard')) {
-            setTimeout(function () {
-                renderChapterDecayGrid();
-                renderErrorResolutionDashboard();
-            }, 200);
-        }
-    });
-
-    // Periodic refresh while dashboard is visible (catches async DB loads)
-    setInterval(function () {
-        var dash = document.getElementById('view-dashboard');
-        if (dash && dash.classList.contains('active')) {
-            renderChapterDecayGrid();
-            renderErrorResolutionDashboard();
-        }
-    }, 30000);
-    </script>
 </body>
-</html>                    
+</html>
