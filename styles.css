@@ -4350,3 +4350,1826 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
    ════════════════════════════════════════════════════════════════════════ */
 .nav-ck-loop,
 .sidebar.collapsed .nav-ck-loop { display: none !important; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   TOP COMMAND BAR — converts the left sidebar into a glass top bar.
+   APPEND-ONLY override block. Reversible: delete this entire section.
+   No JS/DOM changes — toggleSidebar()'s .collapsed class still works.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  --topbar-h: 72px;
+  --topbar-h-collapsed: 54px;
+}
+
+/* ── Shell: stack vertically, let main content own the scroll ─────────── */
+.app-container { flex-direction: column; }
+.main-content {
+  height: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;              /* critical: lets the scroller shrink */
+}
+
+/* ── The glass bar ─────────────────────────────────────────────────────── */
+#sidebar, .sidebar {
+  width: 100% !important;
+  height: var(--topbar-h) !important;
+  flex: 0 0 auto !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px;
+  padding: 0 clamp(12px, 2vw, 26px) !important;
+  border-right: none !important;
+  background: linear-gradient(180deg, rgba(17,20,30,0.62), rgba(9,11,17,0.48)) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+  box-shadow: 0 14px 44px -20px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.055) !important;
+  overflow: visible !important;          /* lets the hairline + glows escape */
+  position: relative;
+  z-index: 100;
+  contain: layout style;                 /* isolate layout/paint from scroll */
+  transition: height 0.32s cubic-bezier(0.25,1,0.5,1) !important;
+}
+/* aurora gradient hairline under the glass */
+#sidebar::after, .sidebar::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+  pointer-events: none; opacity: 0.55;
+  background: linear-gradient(90deg, transparent,
+    rgba(255,178,36,0.5) 18%, rgba(61,220,255,0.45) 50%,
+    rgba(167,139,250,0.45) 82%, transparent);
+}
+/* opaque fallback where backdrop-filter is unsupported */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  #sidebar, .sidebar { background: rgba(12,14,21,0.97) !important; }
+}
+
+/* ── Logo ──────────────────────────────────────────────────────────────── */
+#sidebar .logo-container { margin: 0 8px 0 0 !important; padding: 0 6px !important; flex: 0 0 auto; }
+#sidebar .logo-text { font-size: 19px !important; }
+#sidebar .logo-icon-alt { position: static !important; display: none; }
+#sidebar.collapsed .logo-text { display: none; }
+#sidebar.collapsed .logo-icon-alt { display: block; opacity: 1; }
+
+/* ── Nav rail — centered horizontal pill cluster ───────────────────────── */
+#sidebar .nav-menu {
+  flex: 1 1 auto !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: center;
+  gap: 5px !important;
+  margin: 0 6px;
+  min-width: 0;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;                 /* invisible scroll on overflow */
+}
+#sidebar .nav-menu::-webkit-scrollbar { display: none; }
+#sidebar .nav-item {
+  padding: 10px 15px !important;
+  border-radius: 12px !important;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition: background .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease !important;
+}
+#sidebar .nav-item .icon { margin-right: 8px !important; }
+#sidebar .nav-item:hover {
+  transform: translateY(-1px) !important;
+  background: rgba(255,255,255,0.055) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+#sidebar .nav-item.active {
+  background: linear-gradient(180deg, rgba(255,178,36,0.17), rgba(255,178,36,0.05)) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,178,36,0.3), 0 6px 20px -8px rgba(255,178,36,0.5) !important;
+}
+/* active marker: vertical bar → glowing underline */
+#sidebar .nav-item.active::before {
+  top: auto !important; bottom: 4px !important;
+  left: 24% !important; right: 24% !important;
+  width: auto !important; height: 2.5px !important;
+  background: linear-gradient(90deg, var(--furnace), var(--telemetry)) !important;
+  box-shadow: 0 0 12px rgba(255,178,36,0.75) !important;
+}
+
+/* ── Profile chip — single-row glass pill (PFP + name + MMR inline) ────── */
+#sidebar .user-profile {
+  margin: 0 !important; padding: 6px 10px !important;
+  flex: 0 0 auto !important; flex-wrap: nowrap !important; gap: 9px !important;
+  width: auto !important; height: auto !important;
+  border-radius: 14px !important;
+  background: rgba(255,255,255,0.045) !important;
+  border: 1px solid rgba(255,255,255,0.09) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+#sidebar .global-mmr-row {
+  flex: 0 0 auto !important;             /* inline chip, no second line */
+  margin: 0 !important; padding: 4px 9px !important;
+  animation: none !important;            /* kill the infinite pulse loop */
+}
+#sidebar .nav-ck-ladder { display: none !important; }  /* vertical mini-map can't live in a 72px bar */
+
+/* ── Collapse control — direction-correct glyphs (JS text kept, hidden) ── */
+#sidebar .collapse-btn {
+  margin: 0 !important; flex: 0 0 auto;
+  padding: 9px 12px !important;
+  font-size: 0 !important;               /* hides '→'/'Shrink' set by app.js */
+}
+#sidebar .collapse-btn::after { content: '▲'; font-size: 11px; letter-spacing: 1px; }
+#sidebar.collapsed .collapse-btn::after { content: '▼'; }
+
+/* ── Collapsed state — slim icon rail ──────────────────────────────────── */
+#sidebar.collapsed { height: var(--topbar-h-collapsed) !important; }
+#sidebar.collapsed .nav-item { padding: 9px 12px !important; }
+#sidebar.collapsed .nav-item .icon { margin-right: 0 !important; }
+#sidebar.collapsed .user-profile {
+  width: 42px !important; height: 42px !important;
+  padding: 4px !important; border-radius: 12px !important;
+  justify-content: center !important; margin: 0 !important;
+}
+
+/* ── Floating HUDs: dock below the bar instead of overlapping it ───────── */
+.pomo-mini-widget { top: calc(var(--topbar-h) + 14px) !important; }
+#scratchpad-root  { top: calc(var(--topbar-h) + 12px) !important; }
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 1080px) {
+  #sidebar .username-txt { display: none; }
+  #sidebar .nav-item { padding: 10px 11px !important; }
+}
+@media (max-width: 860px) {
+  #sidebar .nav-item .text-label { display: none; }   /* icon-only nav */
+  #sidebar .nav-item .icon { margin-right: 0 !important; }
+  #sidebar .global-mmr-row { display: none !important; }
+  #sidebar .nav-menu { justify-content: flex-start !important; }
+}
+@media (max-width: 560px) {
+  :root { --topbar-h: 62px; }
+  #sidebar .logo-text { display: none; }
+  #sidebar .logo-icon-alt { display: block; opacity: 1; }
+  #sidebar, .sidebar { padding: 0 10px !important; gap: 6px; }
+  #sidebar .user-profile { padding: 3px !important; }
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════
+   THEME ENGINE — global re-skin via [data-theme] on <html>.
+   Append-only. Reversible: delete this block + theme.js + its script tag.
+   Status colors (green/red/yellow) stay semantic across all themes.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Palettes ──────────────────────────────────────────────────────────── */
+:root, html[data-theme="furnace"] {
+  --furnace: #ffb224;  --furnace-hot: #ff7a1a;  --telemetry: #3ddcff;  --vault: #a78bfa;
+  --grad-furnace: linear-gradient(100deg, #ffb224, #ff7a1a);
+  --grad-flow: linear-gradient(90deg, #ffb224, #ff7a1a, #3ddcff, #ffb224);
+  --aes-amber: #ffb224; --aes-amber2: #ff7a1a; --aes-cyan: #3ddcff; --aes-violet: #a78bfa;
+  --aur-1: rgba(255,178,36,0.10); --aur-2: rgba(61,220,255,0.08); --aur-3: rgba(167,139,250,0.07);
+  --accent-soft: rgba(255,178,36,0.35);
+  --accent-ink: #1a1206;
+}
+html[data-theme="synthwave"] {
+  --furnace: #c084fc;  --furnace-hot: #e879f9;  --telemetry: #818cf8;  --vault: #f472b6;
+  --grad-furnace: linear-gradient(100deg, #c084fc, #e879f9);
+  --grad-flow: linear-gradient(90deg, #c084fc, #e879f9, #818cf8, #c084fc);
+  --aes-amber: #c084fc; --aes-amber2: #e879f9; --aes-cyan: #818cf8; --aes-violet: #f472b6;
+  --aur-1: rgba(192,132,252,0.11); --aur-2: rgba(129,140,248,0.09); --aur-3: rgba(244,114,182,0.08);
+  --accent-soft: rgba(192,132,252,0.38);
+  --accent-ink: #170a26;
+}
+html[data-theme="glacier"] {
+  --furnace: #38bdf8;  --furnace-hot: #0ea5e9;  --telemetry: #22d3ee;  --vault: #818cf8;
+  --grad-furnace: linear-gradient(100deg, #38bdf8, #0ea5e9);
+  --grad-flow: linear-gradient(90deg, #38bdf8, #0ea5e9, #22d3ee, #38bdf8);
+  --aes-amber: #38bdf8; --aes-amber2: #0ea5e9; --aes-cyan: #22d3ee; --aes-violet: #818cf8;
+  --aur-1: rgba(56,189,248,0.10); --aur-2: rgba(34,211,238,0.08); --aur-3: rgba(129,140,248,0.08);
+  --accent-soft: rgba(56,189,248,0.38);
+  --accent-ink: #04131d;
+}
+html[data-theme="overgrowth"] {
+  --furnace: #34d399;  --furnace-hot: #10b981;  --telemetry: #a3e635;  --vault: #2dd4bf;
+  --grad-furnace: linear-gradient(100deg, #34d399, #10b981);
+  --grad-flow: linear-gradient(90deg, #34d399, #10b981, #a3e635, #34d399);
+  --aes-amber: #34d399; --aes-amber2: #10b981; --aes-cyan: #a3e635; --aes-violet: #2dd4bf;
+  --aur-1: rgba(52,211,153,0.10); --aur-2: rgba(163,230,53,0.07); --aur-3: rgba(45,212,191,0.07);
+  --accent-soft: rgba(52,211,153,0.38);
+  --accent-ink: #03150d;
+}
+html[data-theme="bloodmoon"] {
+  --furnace: #ef4444;  --furnace-hot: #f97316;  --telemetry: #fbbf24;  --vault: #fb7185;
+  --grad-furnace: linear-gradient(100deg, #ef4444, #f97316);
+  --grad-flow: linear-gradient(90deg, #ef4444, #f97316, #fbbf24, #ef4444);
+  --aes-amber: #ef4444; --aes-amber2: #f97316; --aes-cyan: #fbbf24; --aes-violet: #fb7185;
+  --aur-1: rgba(239,68,68,0.10); --aur-2: rgba(251,191,36,0.07); --aur-3: rgba(251,113,133,0.07);
+  --accent-soft: rgba(239,68,68,0.38);
+  --accent-ink: #1c0505;
+}
+html[data-theme="sakura"] {
+  --furnace: #f472b6;  --furnace-hot: #fb7185;  --telemetry: #c4b5fd;  --vault: #fda4af;
+  --grad-furnace: linear-gradient(100deg, #f472b6, #fb7185);
+  --grad-flow: linear-gradient(90deg, #f472b6, #fb7185, #c4b5fd, #f472b6);
+  --aes-amber: #f472b6; --aes-amber2: #fb7185; --aes-cyan: #c4b5fd; --aes-violet: #fda4af;
+  --aur-1: rgba(244,114,182,0.10); --aur-2: rgba(196,181,253,0.08); --aur-3: rgba(253,164,175,0.07);
+  --accent-soft: rgba(244,114,182,0.38);
+  --accent-ink: #200812;
+}
+html[data-theme="stealth"] {
+  --furnace: #e5e7eb;  --furnace-hot: #9ca3af;  --telemetry: #cbd5e1;  --vault: #94a3b8;
+  --grad-furnace: linear-gradient(100deg, #e5e7eb, #9ca3af);
+  --grad-flow: linear-gradient(90deg, #e5e7eb, #9ca3af, #cbd5e1, #e5e7eb);
+  --aes-amber: #e5e7eb; --aes-amber2: #9ca3af; --aes-cyan: #cbd5e1; --aes-violet: #94a3b8;
+  --aur-1: rgba(229,231,235,0.06); --aur-2: rgba(203,213,225,0.05); --aur-3: rgba(148,163,184,0.05);
+  --accent-soft: rgba(229,231,235,0.30);
+  --accent-ink: #0b0d12;
+}
+
+/* ── Aurora backdrop + ambient orbs follow the active palette ──────────── */
+body::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
+    radial-gradient(46rem 36rem at 12% -8%,  var(--aur-1), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%,  var(--aur-2), transparent 60%),
+    radial-gradient(48rem 40rem at 50% 116%, var(--aur-3), transparent 62%),
+    radial-gradient(120% 120% at 50% 0%, #0b0d14 0%, #070809 60%, #050507 100%);
+}
+.ambient-glow                { background: radial-gradient(circle, var(--aur-1), transparent 68%) !important; }
+.ambient-glow.glow-secondary { background: radial-gradient(circle, var(--aur-2), transparent 68%) !important; }
+
+/* ── Ink-on-accent + soft glow spots the premium pass hardcoded ────────── */
+.btn-primary, .btn-save-glow, .ingestion-toggle-btn.active,
+.sr-submit-btn, .sr-confirm-btn, .cpcc-save-btn { color: var(--accent-ink) !important; }
+::selection { background: var(--furnace); color: var(--accent-ink); }
+.pfp-img { box-shadow: 0 0 0 2px var(--accent-soft), 0 0 16px var(--accent-soft); }
+.logo-text { text-shadow: 0 0 26px var(--accent-soft); }
+.global-mmr-row { box-shadow: 0 0 18px var(--accent-soft), inset 0 1px 0 rgba(255,255,255,0.08) !important; }
+
+/* ── Bento editor chrome follows the accent too ────────────────────────── */
+.bento-seg button.active { background: var(--grad-furnace) !important; color: var(--accent-ink) !important; box-shadow: 0 2px 10px var(--accent-soft) !important; }
+.bento-handle:hover::before, .bento-handle:focus-visible::before,
+.bento-handle-v:hover::before, .bento-handle-v:focus-visible::before { background: var(--furnace); box-shadow: 0 0 16px var(--accent-soft); }
+.bento-ctrl-btn:hover { border-color: var(--furnace); box-shadow: 0 0 12px var(--accent-soft); }
+.bento-edit-btn.active { background: var(--accent-soft); border-color: var(--furnace); color: #fff; }
+#view-dashboard .dash-card.bento-drag-target { box-shadow: 0 26px 60px -22px rgba(0,0,0,0.9), 0 0 0 1px var(--accent-soft) !important; }
+
+/* ── The theme pill button ─────────────────────────────────────────────── */
+.theme-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  flex: 0 0 auto; margin: 0 4px; padding: 8px 12px;
+  background: var(--aes-glass, rgba(255,255,255,0.05));
+  border: 1px solid var(--aes-line, rgba(255,255,255,0.08));
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.4px;
+  cursor: pointer; white-space: nowrap;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+.theme-btn:hover { border-color: var(--accent-soft); box-shadow: 0 0 16px var(--accent-soft); transform: translateY(-1px); }
+.theme-btn[aria-expanded="true"] { border-color: var(--furnace); box-shadow: 0 0 18px var(--accent-soft); }
+.theme-btn-dot {
+  width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto;
+  box-shadow: 0 0 10px var(--accent-soft), inset 0 0 0 1px rgba(255,255,255,0.25);
+}
+.theme-btn-chev { font-size: 9px; opacity: 0.6; transition: transform 0.2s ease; }
+.theme-btn[aria-expanded="true"] .theme-btn-chev { transform: rotate(180deg); }
+.sidebar.collapsed .theme-btn-label, .sidebar.collapsed .theme-btn-chev { display: none; }
+.sidebar.collapsed .theme-btn { padding: 8px; }
+
+/* ── The dropdown panel ────────────────────────────────────────────────── */
+.theme-panel {
+  position: fixed; z-index: 100000; width: 264px; padding: 10px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(18,20,30,0.92), rgba(10,12,18,0.94));
+  -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 24px 60px -20px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 0 1px rgba(0,0,0,0.3);
+  opacity: 0; transform: translateY(-8px) scale(0.96); transform-origin: top left;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.22,1.2,0.36,1);
+}
+.theme-panel.open { opacity: 1; transform: none; pointer-events: auto; }
+.theme-panel-head {
+  font-family: var(--aes-display, sans-serif);
+  font-size: 9.5px; font-weight: 700; letter-spacing: 2.2px;
+  color: var(--text-secondary); padding: 6px 8px 10px;
+}
+.theme-opt {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 9px 10px; border-radius: 12px; text-align: left;
+  background: transparent; border: 1px solid transparent;
+  color: var(--text-primary); cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.theme-opt:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.09); transform: translateX(2px); }
+.theme-opt.active { background: linear-gradient(90deg, var(--accent-soft), transparent 75%); border-color: var(--accent-soft); }
+.theme-opt-dot {
+  width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28), 0 0 12px rgba(0,0,0,0.4);
+}
+.theme-opt-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.theme-opt-name { font-family: var(--aes-display, sans-serif); font-size: 12.5px; font-weight: 700; }
+.theme-opt-desc { font-size: 10px; color: var(--text-secondary); }
+.theme-opt-check {
+  margin-left: auto; opacity: 0; font-weight: 800;
+  color: var(--furnace); text-shadow: 0 0 10px var(--accent-soft);
+  transition: opacity 0.15s ease;
+}
+.theme-opt.active .theme-opt-check { opacity: 1; }
+
+@media (max-width: 560px) {
+  .theme-btn-label { display: none; }
+  .theme-btn { padding: 8px 9px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   DUSK MODE — "evening" appearance (~65% dark, warm ivory, heavy glass).
+   Orthogonal to accent themes: [data-mode] drives surfaces/ink/lines,
+   [data-theme] keeps driving accents — all 7 themes work in both modes.
+   Append-only + reversible: delete this block to remove Dusk.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Surface / ink / line retune ───────────────────────────────────────── */
+html[data-mode="dusk"] {
+  --bg-base: #262a3c;
+  --bg-raise: #2f3449;
+  --bg-inset: #202434;
+  --bg-surface: rgba(255, 250, 240, 0.075);
+  --bg-surface-hover: rgba(255, 250, 240, 0.13);
+  --text-primary: #f5f0e4;
+  --text-secondary: #bcb5a6;
+  --text-muted: #837d70;
+  --line: rgba(255, 246, 228, 0.13);
+  --line-strong: rgba(255, 246, 228, 0.24);
+  --aes-ink: #f8f3e8;
+  --aes-dim: #b8b1a2;
+  --aes-line: rgba(255, 246, 228, 0.16);
+  --aes-glass: linear-gradient(180deg, rgba(255,250,240,0.14), rgba(255,250,240,0.055));
+}
+
+/* ── Evening sky backdrop: lifted indigo + warm horizon glow + theme aurora ── */
+html[data-mode="dusk"] body::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E"),
+    radial-gradient(46rem 36rem at 12% -8%,  var(--aur-1), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%,  var(--aur-2), transparent 60%),
+    radial-gradient(62rem 42rem at 50% 118%, rgba(255,190,120,0.13), transparent 62%),
+    linear-gradient(180deg, #2c3049 0%, #272b40 48%, #21253a 100%);
+  background-attachment: fixed;
+}
+html[data-mode="dusk"] .bg-grid-overlay {
+  background-image:
+    repeating-linear-gradient(0deg,  rgba(255,246,228,0.05) 0 1px, transparent 1px 52px),
+    repeating-linear-gradient(90deg, rgba(255,246,228,0.05) 0 1px, transparent 1px 52px);
+}
+
+/* ── Warm scrollbars ───────────────────────────────────────────────────── */
+html[data-mode="dusk"] { scrollbar-color: rgba(255,205,130,0.42) transparent; }
+html[data-mode="dusk"] ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(255,210,140,0.5), rgba(255,160,90,0.4));
+}
+
+/* ── Sidebar: brighter frosted rail ────────────────────────────────────── */
+html[data-mode="dusk"] #sidebar,
+html[data-mode="dusk"] .sidebar {
+  background: linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.045)) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(165%);
+  backdrop-filter: blur(26px) saturate(165%);
+  box-shadow: inset -1px 0 0 rgba(255,255,255,0.10), 8px 0 40px -28px rgba(20,16,40,0.5) !important;
+}
+
+/* ── Dashboard glass, turned all the way up ────────────────────────────── */
+html[data-mode="dusk"] #view-dashboard .dash-card {
+  background: var(--aes-glass) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(155%);
+  backdrop-filter: blur(22px) saturate(155%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.16),
+    inset 0 0 0 1px rgba(255,255,255,0.03),
+    0 24px 50px -30px rgba(15,12,35,0.6) !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.2),
+    0 34px 64px -28px rgba(15,12,35,0.65),
+    0 0 0 1px rgba(255,246,228,0.10) !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-tracker {
+  background:
+    linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.04)) padding-box,
+    conic-gradient(from var(--aes-angle), var(--furnace), var(--telemetry), var(--vault), var(--furnace)) border-box !important;
+}
+html[data-mode="dusk"] #view-dashboard .compact-subject-card {
+  background: linear-gradient(180deg, rgba(255,250,240,0.09), rgba(255,250,240,0.03)) !important;
+}
+html[data-mode="dusk"] #view-dashboard .erm-subject-row,
+html[data-mode="dusk"] #view-dashboard .erm-sparkline-col,
+html[data-mode="dusk"] .variance-card {
+  background: rgba(255,250,240,0.05) !important;
+}
+html[data-mode="dusk"] .graph-display {
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255,240,210,0.06), transparent 60%),
+    linear-gradient(180deg, rgba(255,250,240,0.05), rgba(24,26,44,0.35)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 60px -40px rgba(255,220,170,0.35) !important;
+}
+
+/* ── Modals / drawers / overlays as floating glass slabs ───────────────── */
+html[data-mode="dusk"] .modal-overlay {
+  background: rgba(24,26,42,0.72) !important;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+html[data-mode="dusk"] .modal-content,
+html[data-mode="dusk"] .modal-card,
+html[data-mode="dusk"] .solution-modal-card {
+  background: linear-gradient(180deg, rgba(50,54,80,0.92), rgba(38,42,64,0.94)) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  border-color: var(--aes-line) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 30px 60px rgba(12,10,30,0.55) !important;
+}
+html[data-mode="dusk"] .sr-practice-drawer {
+  background: rgba(42,46,70,0.92) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
+}
+html[data-mode="dusk"] .sr-drawer-footer { background: rgba(32,35,56,0.88) !important; }
+html[data-mode="dusk"] .sr-question-text,
+html[data-mode="dusk"] .error-block,
+html[data-mode="dusk"] .error-filters,
+html[data-mode="dusk"] .question-preview-item { background: rgba(255,250,240,0.05) !important; }
+html[data-mode="dusk"] .loading-overlay { background: rgba(28,30,48,0.85) !important; }
+html[data-mode="dusk"] .loading-card {
+  background: rgba(46,50,76,0.94) !important;
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+}
+
+/* ── Inputs / terminal / cockpit ───────────────────────────────────────── */
+html[data-mode="dusk"] .pomo-input,
+html[data-mode="dusk"] .pomo-select,
+html[data-mode="dusk"] .matrix-search,
+html[data-mode="dusk"] .sr-stopwatch,
+html[data-mode="dusk"] .sr-manual-input {
+  background: rgba(16,18,32,0.5) !important;
+  border-color: var(--line-strong) !important;
+}
+html[data-mode="dusk"] .text-track-terminal { background: rgba(18,20,36,0.5) !important; }
+html[data-mode="dusk"] .glow-box-inner {
+  background: rgba(40,44,68,0.86) !important;
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+}
+html[data-mode="dusk"] .practice-cockpit {
+  --ck-surface: #333852;
+  background: linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.04)) !important;
+  border-color: var(--aes-line) !important;
+}
+html[data-mode="dusk"] .pomo-mini-widget { background: rgba(42,46,70,0.9) !important; }
+html[data-mode="dusk"] .bento-toolbar { background: rgba(255,250,240,0.07) !important; }
+html[data-mode="dusk"] .bento-ctrl-btn { background: rgba(24,26,44,0.8) !important; }
+
+/* ── Misc floating surfaces ────────────────────────────────────────────── */
+html[data-mode="dusk"] .lb-shell {
+  --card: rgba(255,250,240,0.07);
+  --card-2: rgba(255,250,240,0.04);
+  --line: rgba(255,246,228,0.14);
+}
+html[data-mode="dusk"] .air-popup {
+  background: linear-gradient(160deg, rgba(58,62,92,0.96), rgba(44,48,74,0.97)) !important;
+}
+html[data-mode="dusk"] #cp-control-panel { background: rgba(46,50,76,0.95) !important; }
+
+/* ── The theme picker itself follows the mode ──────────────────────────── */
+html[data-mode="dusk"] .theme-panel {
+  background: linear-gradient(180deg, rgba(54,58,86,0.92), rgba(42,46,68,0.95)) !important;
+}
+html[data-mode="dusk"] .theme-btn { background: rgba(255,250,240,0.09) !important; }
+
+/* ── Mode switcher segment (inside the dropdown) ───────────────────────── */
+.theme-panel-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 2px 2px 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.theme-mode-btn {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 8px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  color: var(--text-primary);
+  font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.3px;
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.theme-mode-btn:hover { background: rgba(255,255,255,0.08); transform: translateY(-1px); }
+.theme-mode-btn.active {
+  background: linear-gradient(180deg, var(--accent-soft), transparent 135%);
+  border-color: var(--furnace);
+  color: #fff;
+  box-shadow: 0 0 16px var(--accent-soft), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.theme-mode-ic { font-size: 14px; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   DASHBOARD DECLUTTER + LAYOUT FAB — pairs with dashboard-clean.js.
+   Gated on body.dc-active → reversible: delete dashboard-clean.js, its
+   <script> tag, and this block. Chrome is hidden (not removed) so the
+   cat-telemetry loop, streak/date writers and switchTab() never crash.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Hidden top chrome ─────────────────────────────────────────────────── */
+body.dc-active #cat-banner,
+body.dc-active .cat-banner { display: none !important; }   /* beats switchTab's inline display:flex */
+body.dc-active .header-badges { display: none !important; } /* 📅 date · 🔥 streak · ⏱ time · (cloud moved out) */
+
+/* ── Cloud Link cluster, at home inside the Cloud Storage settings card ── */
+.sync-cluster.dc-cloud-row {
+  width: 100%;
+  margin-top: 6px;
+  justify-content: space-between;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 12px;
+}
+
+/* ── Neutralise the fixed-position containing block so the FAB + panel
+      anchor to the viewport instead of the scrolling dashboard ─────────── */
+body.dc-active #view-dashboard { will-change: auto; }
+
+/* ── Pencil FAB (lives inside #view-dashboard → only visible on Home) ──── */
+#dc-layout-fab {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 950;                       /* below modals (1000) + drawers */
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffd9a0;
+  background: linear-gradient(180deg, rgba(20,22,32,0.85), rgba(12,14,20,0.92));
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(255,178,36,0.35);
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.8), 0 0 18px -6px rgba(255,178,36,0.45),
+              inset 0 1px 0 rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease, color .2s ease,
+              transform .2s ease, background .2s ease;
+}
+#dc-layout-fab:hover {
+  border-color: rgba(255,178,36,0.75);
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px -10px rgba(0,0,0,0.85), 0 0 26px -4px rgba(255,178,36,0.65),
+              inset 0 1px 0 rgba(255,255,255,0.1);
+}
+#dc-layout-fab svg { transition: transform .25s cubic-bezier(.22,1.2,.36,1); }
+#dc-layout-fab.active {
+  color: #171207;
+  background: linear-gradient(100deg, #ffb224, #ff7a1a);
+  border-color: transparent;
+  box-shadow: 0 10px 30px -8px rgba(255,122,26,0.55);
+}
+#dc-layout-fab.active svg { transform: rotate(-45deg) scale(1.08); }
+
+/* ── Bento toolbar, reborn as a floating glass panel ───────────────────── */
+body.dc-active .bento-toolbar:not(.dc-fab-panel) { display: none !important; } /* no flash pre-adoption */
+.bento-toolbar.dc-fab-panel {
+  position: fixed;
+  right: 22px;
+  bottom: 82px;
+  z-index: 960;
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 238px;
+  margin: 0;
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(18,20,30,0.92), rgba(10,12,18,0.95));
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 24px 60px -20px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.07);
+  transform-origin: bottom right;
+}
+body.dc-active .bento-toolbar.dc-fab-panel.open {
+  display: flex !important;           /* beats the <900px media-query kill */
+  animation: dcPanelPop .22s cubic-bezier(.22,1.2,.36,1);
+}
+@keyframes dcPanelPop {
+  from { opacity: 0; transform: translateY(10px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.bento-toolbar.dc-fab-panel .bt-label { font-size: 9.5px; letter-spacing: 2.2px; opacity: .8; }
+.bento-toolbar.dc-fab-panel .bento-seg { width: 100%; }
+.bento-toolbar.dc-fab-panel .bento-seg button { flex: 1; padding: 7px 6px; }
+.bento-toolbar.dc-fab-panel .bento-edit-btn,
+.bento-toolbar.dc-fab-panel .bento-reset-btn { width: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  #dc-layout-fab, #dc-layout-fab svg, .bento-toolbar.dc-fab-panel.open {
+    transition: none !important; animation: none !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   DASHBOARD v2 — header removal · Time Bank card · bounty declutter ·
+   momentum glow-up. Pairs with dashboard-clean.js v2. Append-only +
+   reversible: delete that file, its <script> tag, and this block.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── "Grind Dashboard / Welcome back" header — gone on the dashboard only
+      (other tabs keep it; the flag tracks which view is active) ────────── */
+body.dc-dash-active #main-header { display: none !important; }
+
+/* ── Bounty board: drop the 15-day fix streak sparkline column ─────────── */
+#view-dashboard .dash-card-bounty .erm-sparkline-col { display: none !important; }
+#view-dashboard .dash-card-bounty .erm-layout { grid-template-columns: 1fr !important; }
+
+/* ── Time Bank card ────────────────────────────────────────────────────── */
+.dc-time-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 26px;
+  flex-wrap: wrap;
+  padding: 18px 24px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(16,20,30,0.80), rgba(10,13,20,0.84)) padding-box,
+    conic-gradient(from var(--aes-angle, 0deg),
+      var(--telemetry, #3ddcff), rgba(61,220,255,0.10),
+      var(--vault, #a78bfa), rgba(61,220,255,0.10),
+      var(--telemetry, #3ddcff)) border-box;
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), 0 22px 46px -28px rgba(0,0,0,0.9);
+  animation: aesSpin 12s linear infinite;      /* slow-rotating cyan edge */
+  container-type: inline-size;
+  container-name: dctime;
+}
+html[data-mode="dusk"] .dc-time-card {
+  background:
+    linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.04)) padding-box,
+    conic-gradient(from var(--aes-angle, 0deg),
+      var(--telemetry), rgba(61,220,255,0.14), var(--vault),
+      rgba(61,220,255,0.14), var(--telemetry)) border-box;
+}
+.dc-time-main { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.dc-time-icon {
+  width: 46px; height: 46px; border-radius: 14px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--telemetry, #3ddcff);
+  background: rgba(61,220,255,0.10);
+  border: 1px solid rgba(61,220,255,0.30);
+  box-shadow: 0 0 18px -4px rgba(61,220,255,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.dc-time-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dc-time-kicker {
+  font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+  font-size: 9.5px; font-weight: 700; letter-spacing: 2.4px;
+  color: var(--text-secondary);
+}
+.dc-time-total {
+  font-family: var(--aes-num, 'Space Grotesk', monospace);
+  font-size: clamp(26px, 3.4vw, 38px);
+  font-weight: 800; line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, #ffffff, var(--telemetry, #3ddcff));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px rgba(61,220,255,0.25));
+}
+.dc-time-subs { display: flex; gap: 10px; flex-wrap: wrap; }
+.dc-time-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-radius: 12px;
+  background: rgba(255,255,255,0.045);
+  border: 1px solid rgba(255,255,255,0.09);
+  font-size: 12px; color: var(--text-secondary);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.dc-time-chip:hover { transform: translateY(-2px); }
+.dc-time-chip i { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.dc-time-chip b {
+  font-family: var(--aes-num, monospace); font-size: 13.5px; font-weight: 700;
+  color: var(--text-primary); font-variant-numeric: tabular-nums;
+}
+.dc-time-chip.dc-phys i { background: var(--telemetry); box-shadow: 0 0 10px var(--telemetry); }
+.dc-time-chip.dc-phys:hover { border-color: rgba(61,220,255,0.45); box-shadow: 0 6px 18px -8px rgba(61,220,255,0.5); }
+.dc-time-chip.dc-chem i { background: var(--glow-green); box-shadow: 0 0 10px var(--glow-green); }
+.dc-time-chip.dc-chem:hover { border-color: rgba(34,197,94,0.45); box-shadow: 0 6px 18px -8px rgba(34,197,94,0.5); }
+.dc-time-chip.dc-math i { background: var(--furnace); box-shadow: 0 0 10px var(--furnace); }
+.dc-time-chip.dc-math:hover { border-color: rgba(255,178,36,0.45); box-shadow: 0 6px 18px -8px rgba(255,178,36,0.5); }
+/* card-width aware (container queries) + viewport fallback */
+@container dctime (max-width: 560px) {
+  .dc-time-main, .dc-time-subs { width: 100%; }
+  .dc-time-subs { justify-content: space-between; }
+  .dc-time-chip { flex: 1 1 0; justify-content: center; padding: 8px 10px; }
+}
+@media (max-width: 640px) {
+  .dc-time-card { flex-direction: column; align-items: stretch; padding: 16px 18px; }
+  .dc-time-subs { justify-content: space-between; }
+  .dc-time-chip { flex: 1 1 0; justify-content: center; padding: 8px 10px; }
+}
+
+/* ── Momentum Tracker glow-up ──────────────────────────────────────────── */
+/* cyan→violet gradient frame instead of the flat hairline */
+#view-dashboard .dash-card-momentum {
+  border: 1px solid transparent !important;
+  background:
+    linear-gradient(180deg, rgba(14,18,28,0.84), rgba(9,12,19,0.88)) padding-box,
+    linear-gradient(150deg, rgba(61,220,255,0.55), rgba(61,220,255,0.06) 45%,
+      rgba(167,139,250,0.45)) border-box !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-momentum {
+  background:
+    linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.04)) padding-box,
+    linear-gradient(150deg, rgba(61,220,255,0.6), rgba(61,220,255,0.10) 45%,
+      rgba(167,139,250,0.5)) border-box !important;
+}
+#view-dashboard .dash-card-momentum::before {
+  width: 64px !important; opacity: 1 !important;
+  background: linear-gradient(90deg, var(--telemetry), rgba(167,139,250,0.8), transparent) !important;
+  box-shadow: 0 0 14px rgba(61,220,255,0.55);
+}
+/* LIVE pulse on the kicker */
+#view-dashboard .dash-card-momentum .kicker { color: var(--telemetry) !important; }
+#view-dashboard .dash-card-momentum .kicker::before {
+  content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--telemetry); box-shadow: 0 0 9px var(--telemetry);
+  margin-right: 8px; vertical-align: 1px;
+  animation: dcLivePulse 1.8s ease-in-out infinite;
+}
+@keyframes dcLivePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+/* HUD corner brackets + soft glow on the chart frame */
+#view-dashboard .dash-card-momentum .graph-display { position: relative; }
+#view-dashboard .dash-card-momentum .graph-display::before,
+#view-dashboard .dash-card-momentum .graph-display::after {
+  content: ''; position: absolute; width: 15px; height: 15px;
+  pointer-events: none; opacity: 0.75; z-index: 2;
+}
+#view-dashboard .dash-card-momentum .graph-display::before {
+  top: 7px; left: 7px;
+  border-top: 2px solid rgba(61,220,255,0.65);
+  border-left: 2px solid rgba(61,220,255,0.65);
+  border-radius: 4px 0 0 0;
+}
+#view-dashboard .dash-card-momentum .graph-display::after {
+  bottom: 7px; right: 7px;
+  border-bottom: 2px solid rgba(61,220,255,0.65);
+  border-right: 2px solid rgba(61,220,255,0.65);
+  border-radius: 0 0 4px 0;
+}
+#view-dashboard .dash-card-momentum #dynamic-graph {
+  filter: drop-shadow(0 0 16px rgba(61,220,255,0.10));
+}
+/* legend (injected by dashboard-clean.js) */
+.dc-mom-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; }
+.dc-lg {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 600; color: var(--text-secondary);
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+}
+.dc-lg i { width: 9px; height: 9px; border-radius: 3px; flex: 0 0 auto; }
+.dc-lg .lg-bull   { background: var(--glow-green); box-shadow: 0 0 8px rgba(34,197,94,0.7); }
+.dc-lg .lg-bear   { background: var(--glow-red);   box-shadow: 0 0 8px rgba(248,113,113,0.7); }
+.dc-lg .lg-target { width: 16px; height: 0; border-radius: 0; border-top: 2px dashed var(--telemetry); box-shadow: none; }
+.dc-lg .lg-proj   { background: var(--vault); box-shadow: 0 0 8px rgba(167,139,250,0.7); opacity: 0.8; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-time-card, #view-dashboard .dash-card-momentum .kicker::before { animation: none !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   PRACTICE MODAL POLISH — quieter cockpit, cleaner question sheet.
+   Pairs with the combo-reset FIX in app.js. Append-only + reversible:
+   delete this block to restore the old look. Scoped to #practice-modal;
+   every control, ring, meter and button stays fully functional.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Shell: tighter, glassier slab ─────────────────────────────────────── */
+#practice-modal .modal-card {
+  max-width: 780px;
+  padding: 22px 24px 26px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(17,19,30,0.92), rgba(10,12,19,0.95));
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 40px 90px -30px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+html[data-mode="dusk"] #practice-modal .modal-card {
+  background: linear-gradient(180deg, rgba(48,52,78,0.92), rgba(36,40,62,0.95));
+}
+
+/* ── Cockpit: one calm glass strip with a clear hierarchy ──────────────── */
+#practice-modal .practice-cockpit {
+  padding: 11px 14px;
+  gap: 10px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+  border: 1px solid rgba(255,255,255,0.09);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 12px 30px -22px rgba(0,0,0,0.9);
+}
+html[data-mode="dusk"] #practice-modal .practice-cockpit { --ck-surface: #31364e; }
+#practice-modal .ck-row.ck-top { gap: 14px; justify-content: space-between; align-items: center; }
+
+/* identity */
+#practice-modal .ck-identity { min-width: 118px; gap: 8px; }
+#practice-modal .ck-tier-icon { font-size: 21px; }
+#practice-modal .ck-tier-name { font-size: 12px; }
+#practice-modal .ck-xpbar { width: 92px; height: 4px; }
+#practice-modal .ck-xp-label { font-size: 8.5px; opacity: 0.75; }
+
+/* combo + crit — the hero of the strip */
+#practice-modal .ck-ring { width: 50px; height: 50px; }
+#practice-modal .ck-ring-hole { width: 38px; height: 38px; }
+#practice-modal .ck-combo-x { font-size: 14px; }
+#practice-modal .ck-combo-lbl,
+#practice-modal .ck-session-lbl { font-size: 7px; letter-spacing: 1.1px; opacity: 0.7; }
+#practice-modal .ck-crit { width: 58px; }
+#practice-modal .ck-crit-lbl { font-size: 7px; }
+
+/* streak flame + shields */
+#practice-modal .ck-streak-slot .streak-visualizer { width: 40px; height: 40px; }
+#practice-modal .ck-streak-slot #streak-canvas { width: 40px; height: 40px; }
+#practice-modal .ck-streak-slot .streak-number { font-size: 13px; }
+#practice-modal .ck-shields { font-size: 10.5px; padding: 2px 8px; }
+
+/* session ring — quieter, still readable */
+#practice-modal .ck-session-ring { width: 46px; height: 46px; }
+#practice-modal .ck-session-ring .ck-ring-hole { width: 34px; height: 34px; }
+#practice-modal .ck-session-n { font-size: 10.5px; }
+
+/* focus depth — slim + quiet */
+#practice-modal .ck-depth { min-width: 84px; gap: 3px; }
+#practice-modal .ck-depth-tier { font-size: 8.5px; letter-spacing: 0.8px; opacity: 0.85; }
+#practice-modal .ck-depth-meter { height: 4px; }
+
+/* timer — promoted back to a legible telemetry pill */
+#practice-modal .ck-timer-slot .timer-display-sm {
+  font-size: 14px !important;
+  padding: 4px 12px !important;
+  border-radius: 999px !important;
+  background: rgba(61,220,255,0.08) !important;
+  border: 1px solid rgba(61,220,255,0.28) !important;
+  color: #c9f3ff !important;
+  opacity: 1 !important;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 14px -4px rgba(61,220,255,0.5);
+}
+
+/* utility buttons — ghost chips, far right */
+#practice-modal .ck-utils { gap: 6px; }
+#practice-modal .ck-utils .hide-toggle {
+  height: 30px !important;
+  padding: 4px 11px !important;
+  font-size: 11px !important;
+  border-radius: 9px !important;
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  color: var(--text-secondary) !important;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+#practice-modal .ck-utils .hide-toggle:hover {
+  background: rgba(255,255,255,0.09) !important;
+  color: #fff !important;
+  border-color: rgba(255,255,255,0.22) !important;
+}
+
+/* ── Question sheet ────────────────────────────────────────────────────── */
+#practice-modal #practice-modal-img {
+  border-radius: 16px !important;
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 14px 34px -18px rgba(0,0,0,0.85);
+}
+#practice-modal #latex-render {
+  text-align: left;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-left: 3px solid var(--aes-amber, #ffb224);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 14px 0 4px;
+  font-size: 15px;
+  line-height: 1.75;
+}
+#practice-modal .diagram-hint {
+  border-radius: 10px;
+  background: rgba(61,220,255,0.08);
+  border: 1px solid rgba(61,220,255,0.22);
+}
+
+/* ── MCQ options — clean selectable rows ───────────────────────────────── */
+#practice-modal .mcq-option {
+  text-align: left;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 14px;
+  padding: 13px 16px;
+  margin: 9px 0;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+#practice-modal .mcq-option:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.20);
+  transform: translateX(3px);
+}
+#practice-modal .mcq-option.selected {
+  background: linear-gradient(90deg, rgba(61,220,255,0.16), rgba(61,220,255,0.03));
+  border-color: rgba(61,220,255,0.55);
+  box-shadow: 0 0 22px -8px rgba(61,220,255,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+/* numeric answer — centered monospace */
+#practice-modal #numeric-answer-input {
+  max-width: 220px;
+  margin: 0 auto;
+  text-align: center;
+  font-family: var(--aes-num, 'Space Grotesk', monospace);
+  font-size: 18px;
+}
+
+/* ── Actions + feedback ────────────────────────────────────────────────── */
+#practice-modal #practice-submit-btn {
+  width: 100%;
+  margin-top: 16px !important;
+  padding: 14px 24px !important;
+  border-radius: 14px !important;
+  font-size: 14px !important;
+  letter-spacing: 0.6px;
+}
+#practice-modal .result-banner { border-radius: 14px; padding: 14px 18px; margin: 16px 0 4px; }
+#practice-modal .show-solution-btn { border-radius: 10px; }
+#practice-modal .elo-shift-chip { margin: 14px auto 2px; }
+
+/* ── Small screens: let the strip wrap instead of cramming ─────────────── */
+@media (max-width: 720px) {
+  #practice-modal .modal-card { padding: 16px 14px 20px; border-radius: 20px; }
+  #practice-modal .ck-row.ck-top { gap: 10px; }
+  #practice-modal .ck-identity { min-width: 0; }
+  #practice-modal .ck-utils { margin-left: auto; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   ELO CHIP FIX — kill the header-slot chip that CK_ENGINE wedged inside
+   .ck-combo (it broke the cockpit row alignment). The bottom-of-modal
+   .elo-shift-chip stays. SR drawer's #sr-elo-header-slot is untouched.
+   Reversible: delete this rule.
+   ════════════════════════════════════════════════════════════════════════ */
+#practice-modal .practice-cockpit #elo-header-slot { display: none !important; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   LIVING WORLD WALLPAPER + DAILY ISLAND — pairs with forest-bg.js and
+   forest-island.js. Append-only + reversible: delete this block AND the
+   two <script> tags to fully remove both features (the grid + the
+   momentum graph come straight back). Nothing in the app core is touched.
+   ════════════════════════════════════════════════════════════════════════ */
+/* ── the wallpaper canvas sits behind the whole app shell (z 0) ── */
+#forest-bg-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: 0; transition: opacity .7s ease; display: block; }
+body.forest-bg-on #forest-bg-canvas { opacity: var(--forest-bg-op, .5); }
+.bg-grid-overlay { transition: opacity .7s ease; }
+body.forest-bg-on .bg-grid-overlay { opacity: 0; }
+body.forest-bg-on .ambient-glow { opacity: 0; transition: opacity .7s ease; }
+
+/* ── the 🌲 World toggle (top of the sidebar / nav header) ── */
+.forest-bg-btn { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; margin: 0 4px; padding: 8px 12px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; color: var(--text-primary,#eef1f6); font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 12px; font-weight: 700; letter-spacing: .4px; cursor: pointer; white-space: nowrap; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); transition: border-color .18s, box-shadow .18s, transform .18s, background .18s; }
+.forest-bg-btn:hover { border-color: rgba(61,220,255,.5); box-shadow: 0 0 16px rgba(61,220,255,.3); transform: translateY(-1px); }
+.forest-bg-btn.active { border-color: rgba(34,197,94,.6); background: rgba(34,197,94,.14); box-shadow: 0 0 16px rgba(34,197,94,.35); }
+.fb-dot { font-size: 14px; line-height: 1; }
+.fb-chev { font-size: 9px; opacity: .6; transition: transform .2s; }
+.forest-bg-btn[aria-expanded="true"] .fb-chev { transform: rotate(180deg); }
+.sidebar.collapsed .fb-lbl, .sidebar.collapsed .fb-chev { display: none; }
+.sidebar.collapsed .forest-bg-btn { padding: 8px; }
+
+/* ── the opacity / on-off popover ── */
+.forest-bg-pop { position: fixed; z-index: 100001; width: 230px; padding: 14px; border-radius: 16px; background: linear-gradient(180deg, rgba(18,20,30,.94), rgba(10,12,18,.96)); -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%); border: 1px solid rgba(255,255,255,.10); box-shadow: 0 24px 60px -20px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.07); opacity: 0; transform: translateY(-8px) scale(.96); transform-origin: top left; pointer-events: none; transition: opacity .18s, transform .22s cubic-bezier(.22,1.2,.36,1); }
+.forest-bg-pop.open { opacity: 1; transform: none; pointer-events: auto; }
+.fb-pop-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.fb-pop-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #fff; }
+.fb-switch { position: relative; width: 42px; height: 24px; flex: 0 0 auto; }
+.fb-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.fb-slider { position: absolute; inset: 0; border-radius: 99px; background: rgba(255,255,255,.12); cursor: pointer; transition: .2s; }
+.fb-slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; border-radius: 50%; background: #fff; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.fb-switch input:checked + .fb-slider { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.fb-switch input:checked + .fb-slider:before { transform: translateX(18px); }
+.fb-pop-l { display: block; font-size: 9px; letter-spacing: 1.4px; color: var(--text-secondary,#9aa3b5); font-weight: 700; margin-bottom: 6px; text-transform: uppercase; }
+#fb-op { width: 100%; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 99px; background: rgba(255,255,255,.12); outline: none; cursor: pointer; }
+#fb-op::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(34,197,94,.4); cursor: pointer; }
+#fb-op::-moz-range-thumb { width: 16px; height: 16px; border: none; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(34,197,94,.4); }
+.fb-pop-note { margin-top: 10px; font-size: 10px; color: var(--text-muted,#5b6478); line-height: 1.4; }
+
+/* ── the daily island (inside the old momentum card) ── */
+#forest-island-host { position: relative; display: flex; flex-direction: column; gap: 10px; }
+#forest-island-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.fi-titlewrap { display: flex; flex-direction: column; gap: 2px; }
+.fi-kicker { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 9.5px; font-weight: 700; letter-spacing: 2.4px; color: var(--telemetry,#3ddcff); }
+.fi-title { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 16px; font-weight: 700; color: #fff; }
+.fi-right { text-align: right; }
+.fi-count { font-family: var(--font-num,'Space Grotesk',monospace); font-size: 24px; font-weight: 800; color: #fff; line-height: 1; }
+.fi-sub { font-size: 8.5px; letter-spacing: 1.2px; color: var(--text-secondary,#9aa3b5); text-transform: uppercase; }
+#forest-island-canvas { width: 100%; height: 220px; display: block; border-radius: 14px; background: radial-gradient(120% 90% at 50% 0%, rgba(61,220,255,.05), transparent 60%), linear-gradient(180deg, #070910, #0a0d16); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 0 60px -40px rgba(61,220,255,.35); }
+.fi-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted,#5b6478); font-size: 12px; pointer-events: none; text-align: center; padding: 0 16px; }
+/* hide the original momentum content ONLY while the island is mounted,
+   without deleting a single node (so a failure restores it cleanly) */
+#view-dashboard .dash-card-momentum.island-active .fi-orig { display: none !important; }
+/* ════════════════════════════════════════════════════════════════════════
+   LIVING WORLD → FULL-DASHBOARD GLASS  +  DAILY-ISLAND LAYOUT (zoom).
+   Append-only + reversible: delete this block. The glass rules are gated
+   on body.forest-bg-on so the default (grid) look is untouched; the island
+   layout rules are ungated (they only style the island card's own nodes).
+   Specificity (body.forest-bg-on #view-dashboard …) + !important beats the
+   premium-pass !important rules, so the hero card's opaque conic FILL is
+   finally swapped for a see-through one while KEEPING its animated edge.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Every card = the same frosted glass the bounty/decay cards use ── */
+body.forest-bg-on #view-dashboard .dash-card {
+  background: var(--aes-glass, linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.022))) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+  border: 1px solid rgba(255,255,255,.12) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 20px 46px -26px rgba(0,0,0,.75) !important;
+}
+/* ── 2. The hero tracker: see-through fill, but keep the spinning edge ── */
+body.forest-bg-on #view-dashboard .dash-card-tracker {
+  background:
+    var(--aes-glass, linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.022))) padding-box,
+    conic-gradient(from var(--aes-angle, 0deg),
+      rgba(255,178,36,.45), rgba(61,220,255,.35),
+      rgba(167,139,250,.35), rgba(255,178,36,.45)) border-box !important;
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+}
+/* ── 3. Nested tiles: a touch lighter so they layer as glass-on-glass ─── */
+body.forest-bg-on #view-dashboard .compact-subject-card,
+body.forest-bg-on #view-dashboard .erm-subject-row,
+body.forest-bg-on #view-dashboard .erm-sparkline-col,
+body.forest-bg-on #view-dashboard .variance-card {
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.016)) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+  backdrop-filter: blur(10px) saturate(130%);
+  border: 1px solid rgba(255,255,255,.10) !important;
+}
+/* ── 4. The dark inner wells (chart frame / tracks / pills) → clear glass */
+body.forest-bg-on #view-dashboard .graph-display,
+body.forest-bg-on #view-dashboard .erm-track,
+body.forest-bg-on #view-dashboard .distribution-pill {
+  background: rgba(8,10,16,.28) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+/* safety: if the island's own hide-rule ever went missing, this guarantees
+   the old momentum content stays hidden while the island owns the card */
+#view-dashboard .dash-card-momentum.island-active .fi-orig { display: none !important; }
+
+/* ── 5. Daily-island layout (compact, ungated) — also sets the ZOOM height */
+#forest-island-host { position: relative; display: flex; flex-direction: column; gap: 10px; }
+#forest-island-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+#forest-island-head .fi-titlewrap { display: flex; flex-direction: column; gap: 2px; }
+#forest-island-head .fi-kicker { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 9.5px; font-weight: 700; letter-spacing: 2.4px; color: var(--telemetry,#3ddcff); }
+#forest-island-head .fi-title { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 16px; font-weight: 700; color: #fff; }
+#forest-island-head .fi-right { text-align: right; }
+#forest-island-head .fi-count { font-family: var(--font-num,'Space Grotesk',monospace); font-size: 24px; font-weight: 800; color: #fff; line-height: 1; }
+#forest-island-head .fi-sub { font-size: 8.5px; letter-spacing: 1.2px; color: var(--text-secondary,#9aa3b5); text-transform: uppercase; }
+/* taller canvas = part of the "zoomed-in" feel */
+#forest-island-canvas {
+  width: 100%; height: 260px; display: block; border-radius: 14px;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(61,220,255,.05), transparent 60%), linear-gradient(180deg, #070910, #0a0d16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), inset 0 0 60px -40px rgba(61,220,255,.35);
+}
+#forest-island-host .fi-empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted,#5b6478); font-size: 12px; pointer-events: none; text-align: center; padding: 0 16px;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   LIVING WORLD → UNIFORM GLASS (fix pass). Append-only + reversible.
+   When the 🌲 World wallpaper is ON, the hero Tracker card's animated
+   rainbow edge and the Momentum card's cyan→violet frame used to outrank
+   the glass rule (they carry !important at a higher specificity), so
+   those two kept "glowing with their own colours". This block re-asserts
+   ONE identical frosted-glass look on EVERY card by adding #view-dashboard
+   to the selector (one extra id = it wins) + !important, and strips the
+   conic edge, the gradient frame, the corner ticks, the chart's cyan glow
+   and the spin animation. Gated on body.forest-bg-on → the default (grid)
+   premium look is 100% untouched when the wallpaper is OFF.
+   ════════════════════════════════════════════════════════════════════════ */
+body.forest-bg-on #view-dashboard .dash-card,
+body.forest-bg-on #view-dashboard .dash-card-tracker,
+body.forest-bg-on #view-dashboard .dash-card-momentum,
+body.forest-bg-on #view-dashboard .dash-card-bounty,
+body.forest-bg-on #view-dashboard .dash-card-decay {
+  background: var(--aes-glass, linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.022))) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  animation: none !important;
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 20px 46px -26px rgba(0,0,0,.75) !important;
+}
+/* kill the rainbow edge + cyan/violet gradient frames + the corner ticks */
+body.forest-bg-on #view-dashboard .dash-card::before,
+body.forest-bg-on #view-dashboard .dash-card::after {
+  background: rgba(255,255,255,.10) !important;
+  box-shadow: none !important;
+  animation: none !important;
+  opacity: .5 !important;
+}
+body.forest-bg-on #view-dashboard .dash-card-tracker::after { display: none !important; }
+/* the momentum chart well → clear glass, no cyan inset glow / HUD brackets */
+body.forest-bg-on #view-dashboard .graph-display {
+  background: rgba(8,10,16,.28) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+body.forest-bg-on #view-dashboard .graph-display::before,
+body.forest-bg-on #view-dashboard .graph-display::after { display: none !important; }
+body.forest-bg-on #view-dashboard .dash-card-momentum .kicker { color: var(--text-secondary, #9aa3b5) !important; }
+/* subject tiles inside the tracker → uniform glass, no coloured frame */
+body.forest-bg-on #view-dashboard .compact-subject-card {
+background: rgba(255,255,255,.04) !important;
+border: 1px solid rgba(255,255,255,.10) !important;
+box-shadow: none !important;
+}
+#forest-island-canvas {
+filter: saturate(1.35) contrast(1.06) brightness(1.02);
+}
+   /* ════════════════════════════════════════════════════════════════════════
+DAILY ISLAND → FULL-SCREEN GROWTH FOREST LAB OVERLAY
+════════════════════════════════════════════════════════════════════════ */
+
+/* make the island feel clickable */
+#forest-island-canvas {
+  cursor: pointer;
+  transition: filter .18s ease, transform .18s ease;
+}
+
+#forest-island-canvas:hover {
+  filter: saturate(1.12) brightness(1.03);
+}
+
+#forest-island-canvas:active {
+  transform: scale(.995);
+}
+
+#forest-island-canvas:focus-visible {
+  outline: 2px solid var(--telemetry, #3ddcff);
+  outline-offset: 3px;
+}
+
+/* small expand button in the island header */
+.fi-expand {
+  appearance: none;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  color: #dbe4ff;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+  transition: all .16s ease;
+}
+
+.fi-expand:hover {
+  border-color: var(--telemetry, #3ddcff);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(61,220,255,.35);
+  transform: translateY(-1px);
+}
+
+/* lock body scroll while lab is open */
+body.forest-lab-open {
+  overflow: hidden;
+}
+
+/* full-screen overlay */
+.forest-lab-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  padding: clamp(10px, 3vw, 34px);
+  background: rgba(5, 6, 10, .82);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .28s ease;
+}
+
+.forest-lab-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* the lab window */
+.forest-lab-shell {
+  position: relative;
+  width: min(1320px, 100%);
+  height: min(900px, 100%);
+  margin: auto;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.14);
+  background: #070910;
+  box-shadow:
+    0 50px 120px -40px rgba(0,0,0,.9),
+    0 0 60px -30px rgba(61,220,255,.35),
+    inset 0 1px 0 rgba(255,255,255,.08);
+  transform: scale(.96) translateY(16px);
+  transition: transform .32s cubic-bezier(.22,1,.36,1);
+}
+
+.forest-lab-overlay.open .forest-lab-shell {
+  transform: none;
+}
+
+/* iframe */
+.forest-lab-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  opacity: 0;
+  transition: opacity .35s ease;
+  background: #070910;
+}
+
+.forest-lab-overlay.loaded .forest-lab-frame {
+  opacity: 1;
+}
+
+/* loading state */
+.forest-lab-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #9fb3d9;
+  font-family: var(--font-display, 'Chakra Petch', sans-serif);
+  letter-spacing: 2px;
+  font-size: 12px;
+  text-transform: uppercase;
+  background: #070910;
+  transition: opacity .3s ease;
+}
+
+.forest-lab-overlay.loaded .forest-lab-loading {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* overlay controls */
+.forest-lab-actions {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+}
+
+.forest-lab-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(8,10,16,.72);
+  color: #e8eefc;
+  font-size: 16px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition: all .16s ease;
+}
+
+.forest-lab-btn:hover {
+  border-color: rgba(61,220,255,.55);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(61,220,255,.35);
+  transform: translateY(-1px);
+}
+
+/* mobile: make it full-bleed */
+@media (max-width: 640px) {
+  .forest-lab-overlay {
+    padding: 0;
+  }
+
+  .forest-lab-shell {
+    border-radius: 0;
+    height: 100%;
+  }
+}
+   /* ════════════════════════════════════════════════════════════════════════
+FULL-SCREEN GROWTH ISLAND EXPLORER
+════════════════════════════════════════════════════════════════════════ */
+
+/* expand button on the daily island card */
+.fi-full-open-btn {
+  appearance: none;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  color: #dbe4ff;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+  transition: all .16s ease;
+}
+
+.fi-full-open-btn:hover {
+  border-color: var(--telemetry, #3ddcff);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(61,220,255,.35);
+  transform: translateY(-1px);
+}
+
+/* lock body scroll while full island is open */
+body.fi-full-open {
+  overflow: hidden;
+}
+
+/* overlay */
+.fi-full-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .28s ease;
+  background: rgba(5, 6, 10, .92);
+}
+
+.fi-full-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.fi-full-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+#fi-full-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+
+#fi-full-canvas:active {
+  cursor: grabbing;
+}
+
+/* top bar */
+.fi-full-top {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  border: 1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 18px 50px -20px rgba(0,0,0,.8);
+}
+
+.fi-full-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+}
+
+.fi-full-kicker {
+  font-family: var(--font-display, 'Chakra Petch', sans-serif);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 2.4px;
+  color: var(--telemetry, #3ddcff);
+}
+
+.fi-full-title {
+  font-family: var(--font-display, 'Chakra Petch', sans-serif);
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.fi-full-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fi-full-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary, #9aa3b5);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fi-full-date input {
+  min-width: 150px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(8,10,16,.72);
+  color: #fff;
+  outline: none;
+  color-scheme: dark;
+}
+
+.fi-full-periods {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fi-full-periods button {
+  appearance: none;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  color: var(--dim, #9aa3b5);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .8px;
+  cursor: pointer;
+  transition: all .16s ease;
+}
+
+.fi-full-periods button:hover {
+  color: #fff;
+  border-color: rgba(61,220,255,.45);
+  box-shadow: 0 0 16px rgba(61,220,255,.18);
+  transform: translateY(-1px);
+}
+
+.fi-full-periods button.active {
+  color: #081014;
+  background: linear-gradient(100deg, var(--telemetry, #3ddcff), #78e6ff);
+  border-color: transparent;
+  box-shadow: 0 0 22px rgba(61,220,255,.35);
+}
+
+.fi-full-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fi-full-icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(8,10,16,.72);
+  color: #e8eefc;
+  font-size: 16px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all .16s ease;
+}
+
+.fi-full-icon-btn:hover {
+  border-color: rgba(61,220,255,.55);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(61,220,255,.35);
+  transform: translateY(-1px);
+}
+
+/* side stats panel */
+.fi-full-side {
+  position: absolute;
+  top: 96px;
+  right: 16px;
+  bottom: 16px;
+  width: 290px;
+  z-index: 5;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  border: 1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 18px 50px -20px rgba(0,0,0,.8);
+  overflow: hidden;
+  transition: transform .28s ease, opacity .28s ease;
+}
+
+.fi-full-side-inner {
+  height: 100%;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fi-full-stat-hero {
+  text-align: center;
+  padding: 14px 10px;
+  border-radius: 16px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.fi-full-stat-value {
+  font-family: var(--font-num, 'Space Grotesk', monospace);
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+}
+
+.fi-full-stat-label {
+  margin-top: 8px;
+  font-size: 10px;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: var(--text-secondary, #9aa3b5);
+  font-weight: 800;
+}
+
+.fi-full-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.fi-full-stat-grid > div {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.fi-full-stat-grid b {
+  display: block;
+  font-family: var(--font-num, 'Space Grotesk', monospace);
+  font-size: 22px;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.fi-full-stat-grid span {
+  font-size: 9.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--text-secondary, #9aa3b5);
+  font-weight: 800;
+}
+
+.fi-full-subject {
+  display: grid;
+  grid-template-columns: 70px 1fr 34px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.fi-full-subject span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary, #eef1f6);
+}
+
+.fi-full-subject b {
+  text-align: right;
+  font-family: var(--font-num, 'Space Grotesk', monospace);
+  color: #fff;
+}
+
+.fi-full-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  overflow: hidden;
+}
+
+.fi-full-bar i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  transition: width .35s ease;
+}
+
+.fi-full-subject[data-subject="physics"] .fi-full-bar i {
+  background: linear-gradient(90deg, #3ddcff, #3b82f6);
+}
+
+.fi-full-subject[data-subject="chemistry"] .fi-full-bar i {
+  background: linear-gradient(90deg, #2dd4bf, #22c55e);
+}
+
+.fi-full-subject[data-subject="maths"] .fi-full-bar i {
+  background: linear-gradient(90deg, #ffb224, #ff7a1a);
+}
+
+.fi-full-hint {
+  margin-top: auto;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.07);
+  color: var(--text-muted, #5b6478);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* floating stats toggle for mobile */
+.fi-full-side-toggle {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 6;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(8,10,16,.82);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  display: none;
+  place-items: center;
+  box-shadow: 0 18px 40px -18px rgba(0,0,0,.9);
+}
+
+/* loading */
+.fi-full-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: rgba(5,6,10,.82);
+  color: #ffd9a0;
+  font-family: var(--font-display, 'Chakra Petch', sans-serif);
+  letter-spacing: 2px;
+  font-size: 13px;
+  font-weight: 800;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease;
+}
+
+.fi-full-loading.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* responsive */
+@media (max-width: 900px) {
+  .fi-full-top {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    padding: 10px 12px;
+  }
+
+  .fi-full-side {
+    top: auto;
+    bottom: 84px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-height: 44vh;
+    transform: translateY(18px);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .fi-full-side.open {
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .fi-full-side-toggle {
+    display: grid;
+  }
+
+  .fi-full-hint {
+    display: none;
+  }
+}
+/* ── Forest Lab Overlay ── */
+body.forest-lab-open { overflow: hidden; }
+.forest-lab-overlay {
+  position: fixed; inset: 0; z-index: 1300;
+  opacity: 0; pointer-events: none;
+  transition: opacity .28s ease;
+  background: rgba(5,6,10,.92);
+}
+.forest-lab-overlay.open { opacity: 1; pointer-events: auto; }
+.forest-lab-shell {
+  position: relative; width: 100%; height: 100%;
+}
+.forest-lab-frame {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border: 0; display: block; background: #070910;
+  opacity: 0; transition: opacity .35s ease;
+}
+.forest-lab-overlay.loaded .forest-lab-frame { opacity: 1; }
+.forest-lab-loading {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: #ffd9a0; font-family: var(--font-display, monospace);
+  letter-spacing: 2px; font-size: 13px; font-weight: 800;
+  background: #070910; transition: opacity .3s ease;
+}
+.forest-lab-overlay.loaded .forest-lab-loading { opacity: 0; pointer-events: none; }
+.forest-lab-actions {
+  position: absolute; top: 14px; right: 14px; z-index: 5;
+  display: flex; gap: 8px;
+}
+.forest-lab-btn {
+  width: 38px; height: 38px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(8,10,16,.72); color: #e8eefc;
+  font-size: 16px; cursor: pointer; display: grid; place-items: center;
+  backdrop-filter: blur(12px); transition: all .16s ease;
+}
+.forest-lab-btn:hover {
+  border-color: rgba(61,220,255,.55); color: #fff;
+  box-shadow: 0 0 18px rgba(61,220,255,.35); transform: translateY(-1px);
+}
+.fi-expand {
+  appearance: none; border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05); color: #dbe4ff;
+  width: 28px; height: 28px; border-radius: 9px; cursor: pointer;
+  font-size: 14px; display: grid; place-items: center;
+  margin-bottom: 4px; transition: all .16s ease;
+}
+.fi-expand:hover {
+  border-color: var(--telemetry, #3ddcff); color: #fff;
+  box-shadow: 0 0 14px rgba(61,220,255,.35); transform: translateY(-1px);
+}
+#forest-island-canvas { cursor: pointer; }
+
+/* Hide the old legacy full-screen lab button */
+#fi-expand {
+  display: none !important;
+}
+/* ═══ Time Bank card → frosted glass when the Living World wallpaper is ON ═══
+   The card sits outside .dash-grid, so the uniform-glass pass never caught it
+   and it kept its spinning conic edge. This re-asserts the same frosted look
+   the other cards get, and calms the two glow sources (icon + chip dots) so it
+   reads as glass-on-glass like the subject tiles. Inner subject colours (the
+   big number, the tiny dots) are kept on purpose — they match the physics
+   tile's cyan number/glyph. Reversible: delete this block. */
+body.forest-bg-on #view-dashboard .dc-time-card {
+  background: var(--aes-glass, linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.022))) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  animation: none !important;                 /* kills the spinning conic edge */
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 20px 46px -26px rgba(0,0,0,.75) !important;
+}
+body.forest-bg-on #view-dashboard .dc-time-icon { box-shadow: none !important; }      /* drop the cyan glow halo */
+body.forest-bg-on #view-dashboard .dc-time-chip i { box-shadow: none !important; }    /* keep dot colour, drop glow */

@@ -68,6 +68,138 @@ import { LeaderboardNet } from './leaderboard.js';
 
 // ==================== LOCAL STATE ====================
 // State that doesn't need to be shared with other modules
+
+// ── Daily counter persistence for forest sync ─────────────────────────────
+const LS_DAILY_FOREST = 'jeemax_forest_daily_v1';
+
+function todayLocalKey() {
+  return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+}
+
+function loadDailyForestStore() {
+  try {
+    const o = JSON.parse(localStorage.getItem(LS_DAILY_FOREST) || '{}');
+    return (o && typeof o === 'object') ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveDailyForestStore(o) {
+  try {
+    localStorage.setItem(LS_DAILY_FOREST, JSON.stringify(o));
+  } catch (e) {}
+}
+
+function persistDailyCountsFromSolved() {
+  try {
+    const today = todayLocalKey();
+    const st = loadDailyForestStore();
+
+    const counts = {
+      physics: Math.max(0, Math.floor(Number(solved.physics) || 0)),
+      chemistry: Math.max(0, Math.floor(Number(solved.chemistry) || 0)),
+      maths: Math.max(0, Math.floor(Number(solved.maths) || 0)),
+      updatedAt: Date.now()
+    };
+
+    const old = st[today] || {};
+    if (
+      old.physics !== counts.physics ||
+      old.chemistry !== counts.chemistry ||
+      old.maths !== counts.maths
+    ) {
+      st[today] = counts;
+      saveDailyForestStore(st);
+    }
+  } catch (e) {}
+}
+
+function restoreDailyCountsIntoSolved() {
+  try {
+    const today = todayLocalKey();
+    const st = loadDailyForestStore();
+    const c = st[today];
+    if (!c) return;
+
+    ['physics', 'chemistry', 'maths'].forEach(sub => {
+      const v = Math.max(0, Math.floor(Number(c[sub]) || 0));
+      if (v > (Number(solved[sub]) || 0)) {
+        solved[sub] = v;
+      }
+    });
+  } catch (e) {}
+}
+// ── Forest growth brain: cumulative study + Elo→difficulty→grow-time ───────
+const LS_CUM = 'jeemax_cum_study_v1';
+const LS_CUM_DAYSTART = 'jeemax_cum_daystart_v1';
+let cumStudy = { physics: 0, chemistry: 0, maths: 0 };
+let cumDayStart = { physics: 0, chemistry: 0, maths: 0 };
+let _lastSeenStudy = { physics: 0, chemistry: 0, maths: 0 };
+let _cumBooted = false;
+function _loadCum() {
+  try { const o = JSON.parse(localStorage.getItem(LS_CUM) || 'null'); if (o && typeof o === 'object') cumStudy = { physics: (+o.physics || 0), chemistry: (+o.chemistry || 0), maths: (+o.maths || 0) }; } catch (e) {}
+  try { const d = JSON.parse(localStorage.getItem(LS_CUM_DAYSTART) || 'null'); if (d && typeof d === 'object') cumDayStart = { physics: (+d.physics || 0), chemistry: (+d.chemistry || 0), maths: (+d.maths || 0) }; } catch (e) {}
+}
+function _saveCum() { try { localStorage.setItem(LS_CUM, JSON.stringify(cumStudy)); } catch (e) {} }
+function _saveCumDayStart() { try { localStorage.setItem(LS_CUM_DAYSTART, JSON.stringify(cumDayStart)); } catch (e) {} }
+function tickCumStudy() {
+  for (const s of ['physics', 'chemistry', 'maths']) {
+    const now = Math.max(0, Math.floor(Number(studySecs[s]) || 0));
+    const delta = Math.max(0, now - (_lastSeenStudy[s] || 0));   // max(0,…) makes the midnight reset a clean 0-delta
+    if (delta > 0) { cumStudy[s] += delta; _saveCum(); }
+    _lastSeenStudy[s] = now;
+  }
+}
+function bootCumStudy() {
+  if (_cumBooted) return; _cumBooted = true;
+  const hadStored = !!localStorage.getItem(LS_CUM);
+  _loadCum();
+  for (const s of ['physics', 'chemistry', 'maths']) {
+    const now = Math.max(0, Math.floor(Number(studySecs[s]) || 0));
+    if (!hadStored) cumStudy[s] = Math.max(cumStudy[s], now);     // first-run baseline (no double count)
+    _lastSeenStudy[s] = now;
+    if (!localStorage.getItem(LS_CUM_DAYSTART)) cumDayStart[s] = Math.max(0, cumStudy[s] - now);
+  }
+  _saveCum(); _saveCumDayStart();
+  setInterval(tickCumStudy, 2000);
+}
+function snapshotCumDayStart() {   // call at the midnight reset, BEFORE studySecs is zeroed
+  tickCumStudy();
+  for (const s of ['physics', 'chemistry', 'maths']) cumDayStart[s] = cumStudy[s] || 0;
+  _saveCumDayStart();
+  for (const s of ['physics', 'chemistry', 'maths']) _lastSeenStudy[s] = 0;
+}
+function _clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+function applyDifficulty(q, subj, eloResult) {
+  if (!q) return;
+  const ns = _normalizeSubjectKey(subj);
+  const oldQ = eloResult ? (eloResult.oldQElo || 1200) : (q.qElo || 1200);
+  const oldU = eloResult ? (eloResult.oldSubjectElo || 1200) : (AppState.elo[ns] || 1200);
+  const d = _clamp01((oldQ - oldU + 400) / 800);
+  q.difficulty = d;
+  q.difficultyLabel = d < 0.34 ? 'easy' : d < 0.67 ? 'mid' : 'tough';
+  q.growSeconds = (5 - 4 * d) * 3600;
+}
+function stampPlantCum(q, subj) {
+  if (!q || q.plantCumStudy != null) return;     // stamp ONCE — the honest "first solved" moment
+  q.plantCumStudy = Math.floor(cumStudy[_normalizeSubjectKey(subj)] || 0);
+}
+window.__forestGrowth = {
+  cum: (s) => Math.floor(cumStudy[_normalizeSubjectKey(s)] || 0),
+  dayStart: (s) => Math.floor(cumDayStart[_normalizeSubjectKey(s)] || 0),
+  difficulty: (qElo, subj) => { const u = AppState.elo[_normalizeSubjectKey(subj)] || 1200; return _clamp01(((qElo || 1200) - u + 400) / 800); },
+  growSecondsFor: (d) => (5 - 4 * _clamp01(d)) * 3600,
+  label: (d) => { d = _clamp01(d); return d < 0.34 ? 'easy' : d < 0.67 ? 'mid' : 'tough'; },
+  sizeFactor: (d) => 0.9 + 0.3 * _clamp01(d),
+  heightScale: (m) => 0.30 + 0.70 * _clamp01(m),
+  maturity: (plantCum, growSec, subj) => {
+    growSec = growSec > 0 ? growSec : 10800;
+    const ns = _normalizeSubjectKey(subj);
+    const base = (plantCum != null) ? plantCum : (cumDayStart[ns] || 0);
+    return _clamp01(((cumStudy[ns] || 0) - base) / growSec);
+  }
+};
 let cropSession = {
     sourceImages: [],
     currentQuestionIdx: 0,
@@ -280,6 +412,8 @@ export async function switchTab(viewId, element) {
     }
 
     await loadDataAsync();
+    bootCumStudy();
+    restoreDailyCountsIntoSolved();
     if (viewId === 'practice') showPracticeSubview('practice-subject-view');
     if (viewId === 'errors') {
         assignDailyBountyIfNeeded();
@@ -609,6 +743,8 @@ export async function updateUI() {
         let pct = sub === 'physics' ? pctP : (sub === 'chemistry' ? pctC : pctM);
         document.getElementById(`${sub}-bar`).style.width = `${pct}%`;
     });
+
+    persistDailyCountsFromSolved();
 
     let overallPct = Math.floor((pctP + pctC + pctM) / 3);
     // Render the progress view into #cat-text. This is factored out so the
@@ -4080,11 +4216,12 @@ export function practiceSubmit() {
             _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
             AppState.currentQ
         );
-    } catch (_eloErr) {
-        console.error('Elo migration fault:', _eloErr);
-    }
-
-    saveAllAsync().catch(console.error);
+     } catch (_eloErr) {
+     console.error('Elo migration fault:', _eloErr);
+ }
+ if (_eloResult) applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloResult);
+ if (AppState.currentQ && AppState.currentQ.status === 'solved') stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
+ saveAllAsync().catch(console.error);
 
     // ── P2P Leaderboard: question-submitted → telemetry broadcast ──
     // Non-blocking. The arena reads AppState.elo.global + #variance-val +
@@ -4149,10 +4286,12 @@ export function addTextQuestionFollowUp() {
                 _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
                 AppState.currentQ
             );
-        } catch (_e) { console.error('Elo migration fault:', _e); }
-        saveAllAsync().catch(console.error);
-        if (AppState.bountyMode) {
-            evaluateBountyOutcome(true);
+             } catch (_e) { console.error('Elo migration fault:', _e); }
+     applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
+     stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
+     saveAllAsync().catch(console.error);
+     if (AppState.bountyMode) {
+         evaluateBountyOutcome(true);
             return;
         }
         if (!wasAlreadySolved) {
@@ -4182,10 +4321,11 @@ export function addTextQuestionFollowUp() {
                 _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
                 AppState.currentQ
             );
-        } catch (_e) { console.error('Elo migration fault:', _e); }
-        saveAllAsync().catch(console.error);
-        if (AppState.bountyMode) {
-            evaluateBountyOutcome(false);
+             } catch (_e) { console.error('Elo migration fault:', _e); }
+     applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
+     saveAllAsync().catch(console.error);
+     if (AppState.bountyMode) {
+         evaluateBountyOutcome(false);
             return;
         }
         btnContainer.remove();
@@ -4836,6 +4976,7 @@ export function deactivateOverheat() {
             changeCount(AppState.currentQ.subject, 1);
             triggerRedFlash();
             playWrongSound();
+            AppState._ckComboBreak = true; // FIX: combo always breaks on a miss
 
             if (Math.random() < 0.2) {
                 triggerStreakShield();
@@ -4923,6 +5064,7 @@ export function deactivateOverheat() {
                 }
                 triggerRedFlash();
                 playWrongSound();
+                AppState._ckComboBreak = true; // FIX: combo always breaks on a miss
 
                 if (Math.random() < 0.2) {
                     triggerStreakShield();
@@ -5062,8 +5204,9 @@ async function initApp() {
             await idbSet('jeemax_last_tax_date', todayStr);
         }
 
-        // Flush tracking parameters for the new daily matrix cycle
-        solved.physics = 0;
+             // Flush tracking parameters for the new daily matrix cycle
+     snapshotCumDayStart();
+     solved.physics = 0;
         solved.chemistry = 0;
         solved.maths = 0;
         studySecs.physics = 0;
@@ -5073,6 +5216,8 @@ async function initApp() {
         await saveAllAsync().catch(console.error);
         openModal('mood-modal');
     }
+    restoreDailyCountsIntoSolved();
+    await saveAllAsync().catch(console.error);
 
     document.getElementById('vis-beaker').style.display = 'none';
     document.getElementById('vis-bar').style.display = 'block';
@@ -5443,7 +5588,26 @@ window.renderMomentumCandles = renderMomentumCandles;
 
 // Expose state for debugging / cross-module access
 window.bounty = AppState.bounty;
-window.questionBank = AppState.questionBank;
+
+// ── Forest sync fix: expose live state safely ─────────────────────────────
+window.AppState = AppState;
+window.solved = solved;
+
+try {
+  Object.defineProperty(window, 'questionBank', {
+    get: function () {
+      return AppState.questionBank;
+    },
+    set: function (v) {
+      try {
+        AppState.questionBank = v;
+      } catch (e) {}
+    },
+    configurable: true
+  });
+} catch (e) {
+  window.questionBank = AppState.questionBank;
+}
 window.currentSubject = AppState.currentSubject;
 window.currentChapter = AppState.currentChapter;
 window.imageFetchCache = AppState.imageFetchCache;
@@ -6868,6 +7032,13 @@ const globalMathObserver = new MutationObserver(function (mutations) {
           CK.sessionTarget = Math.max(1, (AppState.practiceQuestions && AppState.practiceQuestions.length) || 1);
           CK.crit = 0; CK.critPrimed = false;
         }
+        // FIX: event-driven combo break — fires even when a rare streak-freeze
+        // shield saves the flame, so a wrong answer ALWAYS drops the combo.
+        if (AppState._ckComboBreak) {
+          AppState._ckComboBreak = false;
+          CK.combo = 0; CK.critPrimed = false;
+          pop($('ck-combo'));
+        }
         const st = AppState.practiceCorrectStreak || 0;
         if (st > CK.lastStreak) {
           if (CK.critPrimed) { critPayout(); CK.critPrimed = false; CK.crit = 0; }
@@ -6879,12 +7050,16 @@ const globalMathObserver = new MutationObserver(function (mutations) {
           if (CK.combo > 0 && CK.combo % 5 === 0) { CK.shields += 1; persistShields(); setT('ck-shield-n', String(CK.shields)); pop($('ck-shields')); }
           pop($('ck-combo'));
         } else if (st < CK.lastStreak && CK.lastStreak > 0) {
+          // FIX: a broken streak ALWAYS resets the combo. Persisted shields now
+          // save the CRIT charge (visible 🛡 SAVED), never the combo — previously
+          // shields silently swallowed every miss and the combo never reset.
+          CK.combo = 0; CK.critPrimed = false;
           if (CK.shields > 0) {
             CK.shields -= 1; persistShields(); setT('ck-shield-n', String(CK.shields));
             setT('ck-crit-lbl', '🛡 SAVED'); pop($('ck-shields'));
             setTimeout(() => setT('ck-crit-lbl', '⚡ CRIT'), 1000);
           } else {
-            CK.combo = 0; CK.crit = Math.max(0, CK.crit - 50); CK.critPrimed = false;
+            CK.crit = Math.max(0, CK.crit - 50);
           }
         }
         CK.lastStreak = st;

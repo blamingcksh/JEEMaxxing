@@ -159,16 +159,8 @@
                 </div>
 
                 <!-- Momentum Tracker (candlestick engine target) -->
-                <div class="dash-card dash-card-momentum">
-                    <div class="dash-card-head">
-                        <span class="kicker">// TRAJECTORY</span>
-                        <h2 class="box-title">Momentum Tracker</h2>
-                        <p class="box-desc">Friction-inverse yield candles · 5-day projection · cyan line = target lock.</p>
-                    </div>
-                    <div class="graph-display">
-                        <svg id="dynamic-graph" class="graph-svg" viewBox="0 0 360 170" preserveAspectRatio="none"></svg>
-                    </div>
-                </div>
+                        <!-- Daily Grove island mounts here (forest-island.js) -->
+        <div class="dash-card dash-card-momentum"></div>
 
                 <!-- Error Bounty Board (Error Resolution Matrix)
                      #erm-today-total MUST keep its inner <div> — matrix.js does
@@ -883,6 +875,8 @@ window.setMatrixSearch = function (value) {
      panel, lockdown overlays, toasts are all injected at runtime) -->
 <script type="module" src="./checkpoint.js"></script>
 <script type="module" src="./fx.js"></script>
+<script src="theme.js" defer></script>
+<script src="dashboard-clean.js" defer></script>
 
 <!-- ════════════════════════════════════════════════════════════════════════
      BENTO RESIZE CONTROLLER v4 — persistence + drag-release hardened.
@@ -1242,6 +1236,10 @@ window.setMatrixSearch = function (value) {
     ready(boot);
 })();
 </script>
+
+<script src="forest-bg.js" defer></script>
+<script src="forest-island.js" defer></script>
+<script src="forest-island-full.js" defer></script>
 
 </body>
 </html>

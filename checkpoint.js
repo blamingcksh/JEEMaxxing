@@ -1361,29 +1361,38 @@ function updateIgniteButton() {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 function init() {
-    if (!document.body) { requestAnimationFrame(init); return; }
-    loadConfig();
-    restoreState();
-    restorePenalties();
-    injectControlCenter();
-    injectIgniteButton();
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
-    window.addEventListener('focus', tick);
-    tickInterval = setInterval(tick, TICK_MS);
-    if (cfg.enabled && 'Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().catch(function () {});
-    }
-    tick();
-    window.__checkpoint = {
-        getConfig: getConfig,
-        setConfig: setConfig,
-        reportDrawingActivity: reportDrawingActivity,
-        reportTypingActivity: reportTypingActivity,
-        initiate: initiateCheckpoint,
-        submit: submitAnswer,
-        abandon: abandonCheckpoint,
-        getPhase: function () { return phase; },
-    };
+  if (!document.body) { requestAnimationFrame(init); return; }
+
+  // ── TODAY'S LOOP: REMOVED ─────────────────────────────────────────────
+  // The 1s monitoring tick + its restore/penalty paths are gone. That loop
+  // was writing Protocol-Zero hard-zeros into the 15-day Fix Streak and
+  // re-arming itself on every reload, so "closing it" never stuck and the
+  // streak stayed scarred. To actually keep the streak we (1) wipe every
+  // stored penalty date so both graphs render whole again, and (2) never
+  // start the interval / never tick / never restore saved grace-penalty
+  // state / never bind the refocus listeners — so nothing can re-scar.
+  try { localStorage.setItem(PENALTY_KEY, '[]'); } catch (_) { /* ignore */ }
+  openIDB().then(function () { cpIdbSet(PENALTY_KEY, []); });
+  try { idbSet(PENALTY_KEY, []); } catch (_) { /* ignore */ }
+
+  loadConfig();           // harmless config read; does NOT touch penalties
+  injectControlCenter();  // panel stays display:none + inert (no loop drives it)
+  injectIgniteButton();   // float stays display:none (phase never leaves disarmed)
+
+  // Repaint both graphs NOW so the cleared streak shows without a reload.
+  try { if (typeof renderErrorResolutionDashboard === 'function') renderErrorResolutionDashboard(); } catch (_) {}
+  try { window.dispatchEvent(new CustomEvent('checkpoint:penalty', { detail: { date: null } })); } catch (_) {}
+
+  window.__checkpoint = {
+    getConfig: getConfig,
+    setConfig: setConfig,
+    reportDrawingActivity: reportDrawingActivity,
+    reportTypingActivity: reportTypingActivity,
+    initiate: initiateCheckpoint,
+    submit: submitAnswer,
+    abandon: abandonCheckpoint,
+    getPhase: function () { return phase; },
+  };
 }
 
 if (document.readyState === 'loading') {
