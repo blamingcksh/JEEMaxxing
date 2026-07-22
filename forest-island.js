@@ -106,7 +106,7 @@ function addIsland(q,instant){
   if(window.__forestIslandAPI){var interactive=!instant&&!window.__forestIslandAPI.initialSync;for(var h=0;h<window.__forestIslandAPI.onPlanted.length;h++){try{window.__forestIslandAPI.onPlanted[h](s,interactive);}catch(e){}}}
 }
 function iTotal(){return plantedBySubj.physics+plantedBySubj.chemistry+plantedBySubj.maths;}
-function setCount(n){if(countEl)countEl.textContent=n;if(emptyEl)emptyEl.style.display=n>0?'none':'flex';}
+function setCount(n){if(emptyEl)emptyEl.style.display=n>0?'none':'flex';}
 function todayBySubject(){var tk=todayKey(),out={physics:[],chemistry:[],maths:[]};var qb=(window.AppState&&window.AppState.questionBank)||window.questionBank||[];for(var i=0;i<qb.length;i++){var q=qb[i];if(!q||q.status!=='solved')continue;if(!q.lastReviewedAt||q.lastReviewedAt.slice(0,10)!==tk)continue;var s=normSub(q.subject);if(out[s])out[s].push(q);}return out;}
 function syncToLive(){if(!iBuilt)return;var live=readVisual(),today=todayBySubject();var totalWant=(live.physics||0)+(live.chemistry||0)+(live.maths||0);while(iBuilt&&landCapacity()<totalWant&&LAND_R<MAX_LAND_R)expandIsland();['physics','chemistry','maths'].forEach(function(subj){var want=live[subj]||0,have=plantedBySubj[subj];while(have<want){var q=(today[subj]&&today[subj][have])||{subject:subj,qElo:1200};addIsland(q,false);have++;plantedBySubj[subj]=have;}if(have>want){var drop=have-want;for(var dd=0;dd<drop;dd++)iState[subj].pop();plantedBySubj[subj]=want;if(iMeshes[subj]){iMeshes[subj].count=iState[subj].length;iMeshes[subj].instanceMatrix.needsUpdate=true;}}});setCount(iTotal());}
 function iframe(t){
@@ -131,10 +131,9 @@ function mount(){
   if(!card){toast('Momentum card not found; daily island not mounted.');return;}
   var kids=Array.prototype.slice.call(card.children);kids.forEach(function(c){if(c.id==='forest-island-host')return;var cl=c.className||'';if(/bento-handle|bento-handle-v|bento-card-ctrls|bento-scroll/.test(cl))return;c.classList.add('fi-orig');});
   card.__fiOrig=true;
-  host=el('div',{id:'forest-island-host',html:'<div id="forest-island-head"><div class="fi-titlewrap"><span class="fi-kicker">// TODAY\'S BIOME</span><span class="fi-title">Daily Grove</span></div><div class="fi-right"><div class="fi-count" id="fi-count">0</div><div class="fi-sub">resets at midnight</div></div></div><div style="position:relative;"><canvas id="forest-island-canvas"></canvas><div class="fi-empty" id="fi-empty">No trees yet — solve a question or tap + to plant one 🌱</div></div>'});
+  host=el('div',{id:'forest-island-host',html:'<div class="fi-canvas-wrap"><canvas id="forest-island-canvas"></canvas><div class="fi-empty" id="fi-empty">No trees yet — solve a question or tap + to plant one 🌱</div></div>'});
   card.appendChild(host);card.classList.add('island-active');
-  cvs=document.getElementById('forest-island-canvas');countEl=document.getElementById('fi-count');emptyEl=document.getElementById('fi-empty');
-  try{var headRight=host.querySelector('.fi-right');if(headRight){var expandBtn=el('button',{id:'fi-expand',class:'fi-expand',type:'button',title:'Open full Growth Island',html:'⛶'});headRight.insertBefore(expandBtn,headRight.firstChild);expandBtn.addEventListener('click',function(e){e.stopPropagation();openBestFullScreen();});}}catch(e){}
+  cvs=document.getElementById('forest-island-canvas');countEl=null;emptyEl=document.getElementById('fi-empty');
   if(cvs){cvs.title='Click to open full Growth Island';cvs.setAttribute('tabindex','0');cvs.setAttribute('role','button');cvs.setAttribute('aria-label','Open full Growth Island');cvs.addEventListener('click',function(e){e.stopPropagation();openBestFullScreen();});cvs.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openBestFullScreen();}});}
   try{new ResizeObserver(function(){sizeCanvas();}).observe(cvs);}catch(e){}
   try{new IntersectionObserver(function(es){iVisible=es[0].isIntersecting&&!!document.getElementById('view-dashboard').classList.contains('active');if(iVisible&&iBuilt)startILoop();}).observe(cvs);}catch(e){}
