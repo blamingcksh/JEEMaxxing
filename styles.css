@@ -6460,3 +6460,59 @@ body.fi-full-open { overflow: hidden; }
        margin-top: env(safe-area-inset-top, 20px) !important;
   */
 }
+/* ════════════════════════════════════════════════════════════════════════
+   DAILY GROVE CARD — kill the vertical runaway + the "island at the bottom"
+   stack. The old Momentum tracker was surviving the hide (bento nested it
+   one level too deep) and sitting ON TOP of the island, and its height was
+   what made the resize handle grow instead of shrink. This block:
+     1. hides the old tracker by descendant (works at any nesting depth),
+     2. dissolves the .bento-scroll wrapper so it can't hold space open,
+     3. pins the island to FILL the card (absolute) so nothing can push it
+        down, and the card's flow-content height drops to ~0 → the resize
+        handle finally tracks 1:1 with no min-content floor fighting it.
+   Append-only + reversible: delete this block to undo. Does NOT clip the
+   card (so the bento resize handles stay clickable).
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* 1. hide the original Momentum content wherever bento buried it -------- */
+#view-dashboard .dash-card-momentum.island-active .dash-card-head,
+#view-dashboard .dash-card-momentum.island-active .graph-display,
+#view-dashboard .dash-card-momentum.island-active #dynamic-graph,
+#view-dashboard .dash-card-momentum.island-active .dc-mom-legend,
+#view-dashboard .dash-card-momentum.island-active .fi-orig {
+  display: none !important;
+}
+
+/* 2. dissolve the wrapper the layout system put around the card body ---- */
+#view-dashboard .dash-card-momentum .bento-scroll { display: contents !important; }
+#view-dashboard .dash-card-momentum > .bento-scroll:empty { display: none !important; }
+
+/* 3. card = positioning context + a sane default height ----------------- */
+#view-dashboard .dash-card-momentum {
+  position: relative !important;
+  min-height: 340px;          /* ← THE ONE KNOB: the un-resized "normal" height */
+}
+
+/* island fills the whole card → can never be pushed down ---------------- */
+#view-dashboard .dash-card-momentum #forest-island-host {
+  position: absolute !important;
+  inset: 0 !important;        /* fills the padding box; anchored to the card */
+  display: flex !important;
+  flex-direction: column !important;
+  margin: 0 !important;
+}
+/* the canvas wrapper takes all the space under the header --------------- */
+#view-dashboard .dash-card-momentum #forest-island-host > div:not(#forest-island-head) {
+  position: relative !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;   /* lets it shrink below its content → handle works */
+  height: auto !important;    /* kills any leftover fixed 260px */
+}
+/* canvas + empty-state fill that wrapper -------------------------------- */
+#view-dashboard .dash-card-momentum #forest-island-canvas,
+#view-dashboard .dash-card-momentum #forest-island-host .fi-empty {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
