@@ -5501,9 +5501,7 @@ background: rgba(255,255,255,.04) !important;
 border: 1px solid rgba(255,255,255,.10) !important;
 box-shadow: none !important;
 }
-#forest-island-canvas {
-filter: saturate(1.35) contrast(1.06) brightness(1.02);
-}
+#forest-island-canvas { filter: saturate(1.35) contrast(1.06) brightness(1.02); }
    /* ════════════════════════════════════════════════════════════════════════
 DAILY ISLAND → FULL-SCREEN GROWTH FOREST LAB OVERLAY
 ════════════════════════════════════════════════════════════════════════ */
@@ -6285,3 +6283,149 @@ body.forest-bg-on #view-dashboard .dc-time-chip i { box-shadow: none !important;
   box-shadow: 0 0 16px rgba(61,220,255,.45);
 }
 #fi-full-open-btn:active { transform: scale(.94); }/* keep dot colour, drop glow */
+} /* closes any block left dangling by the broken nesting above */
+
+/* ════════════════════════════════════════════════════════════════════════
+   ISLAND CARD — hard height lock (kills the wide-screen runaway loop).
+   The canvas + its wrapper get a FIXED height the bento packer can never
+   stretch, so the WebGL buffer is always correct (no black / glitch slab)
+   and the card can't grow past its content on any screen width.
+   Vertical drag-resize is intentionally locked for this card (a 3D view
+   has no sensible vertical crop); horizontal resize still works.
+   ════════════════════════════════════════════════════════════════════════ */
+#view-dashboard .dash-card-momentum {
+  height: auto !important;          /* beats the packer's inline height */
+  align-self: start !important;     /* beats any inline align-self:stretch */
+  overflow: hidden !important;      /* clip any stray tall child */
+}
+#forest-island-host { flex: none !important; height: auto !important; }
+#forest-island-host > div:not(#forest-island-head) {
+  position: relative !important;
+  flex: none !important;            /* neutralise any flex:1 from earlier rules */
+  height: 260px !important;         /* FIXED — never 100% of a stretched parent */
+  min-height: 0 !important;
+  overflow: hidden;
+  border-radius: 14px;
+}
+#forest-island-canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;          /* 100% of the fixed 260 wrapper = stable 260 */
+  display: block !important;
+}
+
+/* the single full-screen button → glass control pinned to the canvas corner
+   (it lives in .fi-right, so we anchor it to the card, which is position:relative) */
+#fi-full-open-btn {
+  position: absolute !important;
+  right: 14px !important;
+  bottom: 14px !important;
+  z-index: 4;
+  margin: 0 !important;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: rgba(8,10,16,.55);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.18);
+  color: #e8eefc; font-size: 15px; line-height: 1;
+  display: grid; place-items: center; cursor: pointer;
+  box-shadow: 0 6px 18px -8px rgba(0,0,0,.75);
+  opacity: .82; transition: opacity .18s, transform .18s, border-color .18s, background .18s;
+}
+#fi-full-open-btn:hover {
+  opacity: 1; transform: translateY(-1px);
+  border-color: rgba(61,220,255,.6); color: #fff;
+  background: rgba(61,220,255,.16); box-shadow: 0 0 16px rgba(61,220,255,.45);
+}
+#fi-expand { display: none !important; }   /* hide the legacy iframe button */
+
+/* ════════════════════════════════════════════════════════════════════════
+   RE-ADD the full-screen explorer CSS that the broken block swallowed.
+   (Harmless duplicates if FIX 1 already restored them — last one wins.)
+   ════════════════════════════════════════════════════════════════════════ */
+body.fi-full-open { overflow: hidden; }
+.fi-full-overlay {
+  position: fixed; inset: 0; z-index: 1300;
+  opacity: 0; pointer-events: none; transition: opacity .28s ease;
+  background: rgba(5,6,10,.92);
+}
+.fi-full-overlay.open { opacity: 1; pointer-events: auto; }
+.fi-full-shell { position: relative; width: 100%; height: 100%; }
+#fi-full-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+#fi-full-canvas:active { cursor: grabbing; }
+.fi-full-top {
+  position: absolute; top: 16px; left: 16px; right: 16px; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 12px 14px; border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  border: 1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 18px 50px -20px rgba(0,0,0,.8);
+}
+.fi-full-brand { display: flex; flex-direction: column; gap: 2px; min-width: 140px; }
+.fi-full-kicker { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 9.5px; font-weight: 700; letter-spacing: 2.4px; color: var(--telemetry,#3ddcff); }
+.fi-full-title { font-family: var(--font-display,'Chakra Petch',sans-serif); font-size: 18px; font-weight: 800; color: #fff; }
+.fi-full-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fi-full-date { display: flex; align-items: center; gap: 8px; color: var(--text-secondary,#9aa3b5); font-size: 12px; font-weight: 700; }
+.fi-full-date input { min-width: 150px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.14); background: rgba(8,10,16,.72); color: #fff; outline: none; color-scheme: dark; }
+.fi-full-periods { display: flex; gap: 8px; flex-wrap: wrap; }
+.fi-full-periods button {
+  appearance: none; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05);
+  color: var(--text-secondary,#9aa3b5); border-radius: 999px; padding: 8px 12px;
+  font: inherit; font-size: 11px; font-weight: 800; letter-spacing: .8px; cursor: pointer; transition: all .16s ease;
+}
+.fi-full-periods button:hover { color: #fff; border-color: rgba(61,220,255,.45); box-shadow: 0 0 16px rgba(61,220,255,.18); transform: translateY(-1px); }
+.fi-full-periods button.active { color: #081014; background: linear-gradient(100deg, var(--telemetry,#3ddcff), #78e6ff); border-color: transparent; box-shadow: 0 0 22px rgba(61,220,255,.35); }
+.fi-full-top-actions { display: flex; align-items: center; gap: 8px; }
+.fi-full-icon-btn {
+  width: 38px; height: 38px; border-radius: 12px; border: 1px solid rgba(255,255,255,.16);
+  background: rgba(8,10,16,.72); color: #e8eefc; font-size: 16px; cursor: pointer;
+  display: grid; place-items: center; transition: all .16s ease;
+}
+.fi-full-icon-btn:hover { border-color: rgba(61,220,255,.55); color: #fff; box-shadow: 0 0 18px rgba(61,220,255,.35); transform: translateY(-1px); }
+.fi-full-side {
+  position: absolute; top: 96px; right: 16px; bottom: 16px; width: 290px; z-index: 5;
+  border-radius: 20px; overflow: hidden; transition: transform .28s ease, opacity .28s ease;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  border: 1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 18px 50px -20px rgba(0,0,0,.8);
+}
+.fi-full-side-inner { height: 100%; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.fi-full-stat-hero { text-align: center; padding: 14px 10px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+.fi-full-stat-value { font-family: var(--font-num,'Space Grotesk',monospace); font-size: 42px; font-weight: 800; line-height: 1; color: #fff; }
+.fi-full-stat-label { margin-top: 8px; font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase; color: var(--text-secondary,#9aa3b5); font-weight: 800; }
+.fi-full-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fi-full-stat-grid > div { padding: 12px; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+.fi-full-stat-grid b { display: block; font-family: var(--font-num,'Space Grotesk',monospace); font-size: 22px; color: #fff; margin-bottom: 6px; }
+.fi-full-stat-grid span { font-size: 9.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-secondary,#9aa3b5); font-weight: 800; }
+.fi-full-subject { display: grid; grid-template-columns: 70px 1fr 34px; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+.fi-full-subject span { font-size: 12px; font-weight: 700; color: var(--text-primary,#eef1f6); }
+.fi-full-subject b { text-align: right; font-family: var(--font-num,'Space Grotesk',monospace); color: #fff; }
+.fi-full-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+.fi-full-bar i { display: block; height: 100%; width: 0%; border-radius: 999px; transition: width .35s ease; }
+.fi-full-subject[data-subject="physics"] .fi-full-bar i { background: linear-gradient(90deg,#3ddcff,#3b82f6); }
+.fi-full-subject[data-subject="chemistry"] .fi-full-bar i { background: linear-gradient(90deg,#2dd4bf,#22c55e); }
+.fi-full-subject[data-subject="maths"] .fi-full-bar i { background: linear-gradient(90deg,#ffb224,#ff7a1a); }
+.fi-full-hint { margin-top: auto; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); color: var(--text-muted,#5b6478); font-size: 11px; line-height: 1.5; }
+.fi-full-side-toggle {
+  position: absolute; right: 16px; bottom: 16px; z-index: 6; width: 52px; height: 52px;
+  border-radius: 16px; border: 1px solid rgba(255,255,255,.16); background: rgba(8,10,16,.82);
+  color: #fff; font-size: 20px; cursor: pointer; display: none; place-items: center;
+  box-shadow: 0 18px 40px -18px rgba(0,0,0,.9);
+}
+.fi-full-loading {
+  position: absolute; inset: 0; z-index: 8; display: grid; place-items: center;
+  background: rgba(5,6,10,.82); color: #ffd9a0;
+  font-family: var(--font-display,'Chakra Petch',sans-serif); letter-spacing: 2px; font-size: 13px; font-weight: 800;
+  opacity: 0; pointer-events: none; transition: opacity .2s ease;
+}
+.fi-full-loading.visible { opacity: 1; pointer-events: auto; }
+@media (max-width: 900px) {
+  .fi-full-top { top: 10px; left: 10px; right: 10px; padding: 10px 12px; }
+  .fi-full-side { top: auto; bottom: 84px; right: 10px; left: 10px; width: auto; max-height: 44vh; transform: translateY(18px); opacity: 0; pointer-events: none; }
+  .fi-full-side.open { transform: none; opacity: 1; pointer-events: auto; }
+  .fi-full-side-toggle { display: grid; }
+  .fi-full-hint { display: none; }
+}
