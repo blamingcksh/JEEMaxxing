@@ -6283,7 +6283,6 @@ body.forest-bg-on #view-dashboard .dc-time-chip i { box-shadow: none !important;
   box-shadow: 0 0 16px rgba(61,220,255,.45);
 }
 #fi-full-open-btn:active { transform: scale(.94); }/* keep dot colour, drop glow */
-} /* closes any block left dangling by the broken nesting above */
 
 /* ════════════════════════════════════════════════════════════════════════
    ISLAND CARD — hard height lock (kills the wide-screen runaway loop).
@@ -6428,4 +6427,36 @@ body.fi-full-open { overflow: hidden; }
   .fi-full-side.open { transform: none; opacity: 1; pointer-events: auto; }
   .fi-full-side-toggle { display: grid; }
   .fi-full-hint { display: none; }
+}
+/* ════════════════════════════════════════════════════════════════════════
+   TOP-BAR COLLAPSED → top clearance for iPad / tablet status bar.
+   Collapsed, the icon-only top bar puts its icons ~27px from the top
+   edge, exactly where the iPadOS status / notification bar sits — so the
+   chrome blurs the icons. We drop the collapsed bar by a blank band equal
+   to HALF the collapsed bar height; the OS chrome then overlaps empty
+   backdrop instead of the icons.
+   Gated to touch devices (pointer: coarse) so a *desktop* collapse still
+   reclaims vertical space the way collapsing is supposed to (otherwise
+   collapsed would oddly become taller than expanded on a monitor).
+   Append-only + reversible: delete this block to remove the clearance.
+   ════════════════════════════════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  /* blank band above the collapsed top bar = half its height */
+  #sidebar.collapsed,
+  .sidebar.collapsed {
+    margin-top: calc(var(--topbar-h-collapsed, 54px) / 2) !important;
+  }
+  /* slide the band in/out together with the height change (no jump) */
+  #sidebar, .sidebar {
+    transition:
+      height   .32s cubic-bezier(.25,1,.5,1),
+      width    .35s cubic-bezier(.25,1,.5,1),
+      margin-top .32s cubic-bezier(.25,1,.5,1) !important;
+  }
+
+  /* OPTIONAL — Apple-blessed alternative that auto-matches the real status
+     bar height (and adapts to orientation / notch). Swap the margin-top
+     line above for this one if you'd rather track the OS inset exactly:
+       margin-top: env(safe-area-inset-top, 20px) !important;
+  */
 }
