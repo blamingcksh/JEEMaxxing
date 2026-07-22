@@ -39,7 +39,43 @@ function dailyCounts(dk){var sv=storedOf(dk);if(dk===todayISO()){var l=readLive(
 function solvedBankCount(){var b=getBank(),n=0;for(var i=0;i<b.length;i++)if(b[i]&&b[i].status==='solved')n++;return n;}
 function qcumSig(){var fg=_FG();if(!fg)return '0_0_0';return Math.floor(fg.cum('physics')/300)+'_'+Math.floor(fg.cum('chemistry')/300)+'_'+Math.floor(fg.cum('maths')/300);}
 function fullSig(){var c=readLive();var st='';try{st=localStorage.getItem(LS)||'';}catch(e){}return st+'|'+c.physics+','+c.chemistry+','+c.maths+'|'+getBank().length+'|'+solvedBankCount()+'|'+qcumSig();}
-function tryMount(){var host=document.getElementById('forest-island-host');if(!host)return false;if(document.getElementById('fi-full-open-btn'))return true;var right=host.querySelector('.fi-right');var btn=el('button',{id:'fi-full-open-btn',class:'fi-full-open-btn',type:'button',title:'Open full Growth Island',html:'⛶'});if(right)right.insertBefore(btn,right.firstChild);else host.appendChild(btn);btn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();openFull();});var cvs=document.getElementById('forest-island-canvas');if(cvs)cvs.addEventListener('dblclick',function(e){e.preventDefault();openFull();});return true;}
+function tryMount() {
+var host = document.getElementById('forest-island-host');
+if (!host) return false;
+if (document.getElementById('fi-full-open-btn')) return true;
+var cvs = document.getElementById('forest-island-canvas');
+var wrap = cvs ? cvs.parentElement : null;          // the canvas box (position:relative)
+var right = host.querySelector('.fi-right');
+var btn = el('button', {
+id: 'fi-full-open-btn',
+class: 'fi-full-open-btn',
+type: 'button',
+title: 'Open full Growth Island',
+html: '⛶'
+});
+// Anchor the button to the canvas box so it sits as a clean corner control
+// on the 3D view instead of floating in the title row.
+if (wrap) wrap.appendChild(btn);
+else if (right) right.insertBefore(btn, right.firstChild);
+else host.appendChild(btn);
+btn.addEventListener('click', function (e) {
+e.preventDefault();
+e.stopPropagation();
+openFull();
+});
+// A single click on the island opens the embedded explorer. Capture phase
+// wins over the legacy handler that opened the iframe lab.
+if (cvs && !cvs.__fiFullClick) {
+cvs.__fiFullClick = true;
+cvs.addEventListener('click', function (e) {
+e.stopImmediatePropagation();
+e.preventDefault();
+openFull();
+}, true);
+cvs.addEventListener('dblclick', function (e) { e.preventDefault(); openFull(); });
+}
+return true;
+}
 function watchMount(){if(tryMount())return;var mo=new MutationObserver(function(){if(tryMount())mo.disconnect();});mo.observe(document.documentElement,{childList:true,subtree:true});}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',watchMount);else watchMount();
 function ensureOverlay(){
