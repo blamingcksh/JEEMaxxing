@@ -214,6 +214,14 @@ export function openPracticeDrawer(qId) {
 
     overlay.innerHTML = `
         <div class="sr-practice-drawer sr-practice-modal" id="sr-drawer-${qId}" role="dialog" aria-modal="true">
+            <!-- ── Flow Lifeline ribbon: thin banner along top when CNS_LOAD fires ── -->
+            <div class="sr-lifeline-ribbon" id="sr-lifeline-ribbon" style="display:none">
+                <span style="margin-right:8px">🌊 Lifeline active for 1× solve. Aim 80%+ first.</span>
+                <button class="sr-lifeline-dismiss" style="font-size:11px;padding:2px 8px;background:none;border:1px solid rgba(147,197,253,0.4);color:#93c5fd;border-radius:3px;cursor:pointer"
+                        onclick="if(window.__lifeline){window.__lifeline.dismissForCurrentSolve();document.getElementById('sr-lifeline-ribbon').style.display='none';}">
+                    I'd rather keep grinding
+                </button>
+            </div>
             <div class="sr-drawer-header">
                 <div>
                     <div class="sr-drawer-title">${_esc(q.chapter || 'Unknown')} · Practice</div>
@@ -256,6 +264,19 @@ export function openPracticeDrawer(qId) {
     `;
 
     document.body.appendChild(overlay);
+
+    // ── Flow Lifeline: show the ribbon if CNS_LOAD is above threshold ──
+    requestAnimationFrame(() => {
+        try {
+            if (window.__lifeline) {
+                const ls = window.__lifeline.getStatus();
+                const ribbon = document.getElementById('sr-lifeline-ribbon');
+                if (ribbon && ls.active) {
+                    ribbon.style.display = 'flex';
+                }
+            }
+        } catch (_) {}
+    });
     _startStopwatch();
     _postRenderDrawer(q);
 }
@@ -1269,6 +1290,14 @@ export function addErrorBlock() {
         targetTimeMins: 5,
         isMastered: false,
         historyLogs: [],
+        // qElo schema — stamped at creation so a same-session drawer solve
+        // routes through the engine identically to a post-reload one
+        // (migrateQuestionBankSR would otherwise backfill these on next load).
+        qElo: 1200,
+        qEloSource: 'uncalibrated',
+        qEloStampedBy: null,
+        qEloStampedAt: null,
+        solveCount: 0,
     };
 
     AppState.questionBank.push(newErrorQ);
