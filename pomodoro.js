@@ -1,5 +1,7 @@
 // ==================== POMODORO MODULE ====================
 import { formatTime, formatStudyDuration, saveAllAsync, studySecs } from './storage.js';
+import { GalleryBreak } from './gallery-break.js';
+import { NightGuard } from './nightguard.js';
 
 // ---- Pomodoro-specific state (module-scoped) ----
 let timerInterval, secondsLeft, totalSecondsForState, pomoState = 'IDLE',
@@ -11,6 +13,9 @@ let visualMode = 'bar';
 
 let isStopwatchMode = false;
 let timerStartTime = null;        // Date.now() at start/resume
+
+// ── Night Guard bridge: exposes timerStartTime for clock-cheat cross-check ──
+window.__pomodoro = { getTimerStartTime: () => timerStartTime };
 let timerTotalSeconds = 0;        // total seconds for countdown
 let stopwatchAccumulated = 0;    // seconds already counted before pause (stopwatch mode)
 let timerEndTriggered = false;   // prevent multiple handleTimerEnd calls
@@ -37,6 +42,7 @@ document.addEventListener('visibilitychange', async () => {
     } else {
         document.getElementById('pomo-beaker-fill').style.height = `${percent}%`;
     }
+    if (pomoState === 'BREAK') GalleryBreak.setProgress(percent / 100);
 
     // If the timer should have finished while we were away, trigger end now
     if (remaining <= 0 && !timerEndTriggered) {
@@ -160,6 +166,10 @@ export function executeTimerTick() {
             document.getElementById('pomo-beaker-fill').style.height = `${percent}%`;
         }
 
+        // Gallery Break: the burn reveal tracks break progress 1:1 (pause
+        // stops the ticks, freezing the burn mid-char).
+        if (pomoState === 'BREAK') GalleryBreak.setProgress(percent / 100);
+
         // Study time tracking (counts real seconds passed since last tick)
         if (pomoState === 'STUDY') {
             // We don't rely on tick frequency, so we just increment once per call.
@@ -200,12 +210,20 @@ function handleTimerEnd() {
         }
     } else if (pomoState === 'BREAK') {
         currentSession++;
-        showTimerNotification(
-            '☕ Break Over',
-            '⚡',
-            `Ready for session ${currentSession} of ${totalSessions}?`,
-            startStudyAfterBreakPopup
-        );
+        // Gallery Break replaces the "☕ Break Over" popup: full reveal → quote
+        // → Continue → reverse burn → next study session. Falls back to the
+        // classic popup if the overlay never came up (defensive).
+        if (GalleryBreak.isActive()) {
+            playBell();
+            GalleryBreak.finish(startStudyAfterBreakPopup);
+        } else {
+            showTimerNotification(
+                '☕ Break Over',
+                '⚡',
+                `Ready for session ${currentSession} of ${totalSessions}?`,
+                startStudyAfterBreakPopup
+            );
+        }
     }
 }
 
@@ -249,6 +267,8 @@ export function toggleStopwatchMode(btn) {
 // ---- Start timer (real-time initialisation) ----
 export function startTimer() {
     if (pomoState !== 'IDLE') return;
+    // ── Night Guard: log session start for sleep-debt ledger ──
+    try { NightGuard.logSessionStart(); } catch (_) {}
     studySubject = document.getElementById('pomo-subject').value;
     document.querySelectorAll('.pomo-input, .pomo-select').forEach(el => el.disabled = true);
     document.getElementById('btn-start').style.display = 'none';
@@ -348,6 +368,10 @@ export function transitionToBreak() {
     timerStartTime = Date.now();
     timerEndTriggered = false;
     timerInterval = setInterval(executeTimerTick, 1000);
+
+    // Gallery Break: start the burn reveal — whatever is open on screen
+    // begins to char away from the center, revealing the painting.
+    try { GalleryBreak.begin(); } catch (e) { console.warn('GalleryBreak failed to start', e); }
 }
 
 export function pauseTimer() {
@@ -387,7 +411,12 @@ export function resumeTimer() {
 
 export function quitTimer() {
     clearInterval(timerInterval);
+    // ── Night Guard: log session end for sleep-debt ledger ──
+    try { NightGuard.logSessionEnd(); } catch (_) {}
     saveAllAsync().catch(console.error);
+    GalleryBreak.abort();
+    // ── CNS Load: pomodoro quit resets session-length tracking ──
+    try { if (window.__cnsLoad) window.__cnsLoad.onPomodoroQuit(studySubject); } catch (_) {}
     document.getElementById('timer-notify-modal').classList.remove('active');
     _pomoPendingAction = null;
     timerEndTriggered = true; // prevent handleTimerEnd from firing later
@@ -397,6 +426,7 @@ export function quitTimer() {
 
 export function resetPomoUI() {
     pomoState = 'IDLE';
+    GalleryBreak.abort();
     document.getElementById('timer-notify-modal').classList.remove('active');
     _pomoPendingAction = null;
     document.getElementById('pomo-mini-widget').classList.add('hidden');
@@ -427,6 +457,7 @@ export function resetPomoUI() {
 export function skipBreak() {
     clearInterval(timerInterval);
     saveAllAsync().catch(console.error);
+    GalleryBreak.abort();   // skipped breaks don't get the reveal
     // If more sessions remain, go to next study; otherwise finish
     if (currentSession < totalSessions) {
         currentSession++;

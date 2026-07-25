@@ -109,6 +109,9 @@ export const AppState = {
     geminiApiKey: '',
     practiceCorrectStreak: 0,
     extractedItems: [],
+    practiceFlowMode: 'standard',
+    hardcoreDailyCount: 0,
+    hardcoreDailyDate: null,
     // Additional cross-module mutable state
     questionBank: [],
     practiceTimer: null,
@@ -204,6 +207,126 @@ export const SR_AUTONOMY_SCORES = {
 };
 
 export const SR_FRICTION_TYPES = ['PERFECT', 'CALC', 'FORMULA', 'CONCEPT', 'APPROACH'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cognitive MMR / qElo band system
+// ─────────────────────────────────────────────────────────────────────────────
+// 7-band implied-difficulty rating grid (universal across physics / chemistry / maths).
+// The grid is calibrated against JEEMaxxing's existing anchor points:
+//   • forest-juice.js:378 — easy=1000, medium=1600, hard=2500 (±70 noise)
+//   • forest-island-full.js:130 — oak threshold at qElo ≥ 2300
+//   • storage.js:~352 — global qElo fallback = 1200 (used as the chapter
+//     baseline when no chapter history exists)
+//   • app.js:3555 — auto-quarantine (isAnomaly) when |newQ − chapterAvg| > 600
+
+export const ELO_BANDS = {
+    T1_FOUNDATION:   [800, 1099],
+    T2_CORE_MAINS:   [1100, 1299],
+    T3_STD_MAINS:    [1300, 1549],
+    T4_ADV_EASY:     [1550, 1799],
+    T5_PAPER_ADV:    [1800, 2099],
+    T6_ELITE:        [2100, 2299],
+    T7_OLYMP:        [2300, 2550],
+};
+
+export const BAND_TARGET_TIME = { T1: 2, T2: 3, T3: 5, T4: 7, T5: 9, T6: 11, T7: 15 };
+
+/**
+ * Lookup the band key for an integer qElo. Returns 'T1_FOUNDATION' .. 'T7_OLYMP'
+ * or null if the value falls outside the calibrated grid.
+ */
+export function getEloBand(qElo) {
+    if (typeof qElo !== 'number' || !isFinite(qElo)) return null;
+    if (qElo < ELO_BANDS.T1_FOUNDATION[0]) return null;
+    if (qElo <= ELO_BANDS.T1_FOUNDATION[1]) return 'T1_FOUNDATION';
+    if (qElo <= ELO_BANDS.T2_CORE_MAINS[1])   return 'T2_CORE_MAINS';
+    if (qElo <= ELO_BANDS.T3_STD_MAINS[1])    return 'T3_STD_MAINS';
+    if (qElo <= ELO_BANDS.T4_ADV_EASY[1])     return 'T4_ADV_EASY';
+    if (qElo <= ELO_BANDS.T5_PAPER_ADV[1])   return 'T5_PAPER_ADV';
+    if (qElo <= ELO_BANDS.T6_ELITE[1])        return 'T6_ELITE';
+    if (qElo <= ELO_BANDS.T7_OLYMP[1])        return 'T7_OLYMP';
+    return null; // above ceiling — out of calibration
+}
+
+/**
+ * Tune constants for the delta-based ELO reward branch (app.js
+ * calculateEloMigration). These fire when the question's qElo is already
+ * trusted — either because Gemini stamped it during ingestion
+ * (qEloSource === 'gem-stamped') or because the engine has accumulated enough
+ * solves to consider it calibrated (qEloSource === 'learned' and
+ * solveCount ≥ CALIBRATED_SOLVE_THRESHOLD).
+ *
+ *   K_user  = the standard chess-style K-factor for the subject ELO update.
+ *   K_q     = tiny K-factor for the question qElo drift (we trust the stamp,
+ *             so drift is intentionally tiny).
+ *   STINGINESS_MULT = extra penalty on misfires (underdog upset only).
+ *
+ * The math is the canonical ELO update:
+ *   rawSubjectDelta = K_user · (S − P_win) · timeMult   (S=1 for correct, 0 for wrong)
+ *   qEloDrift      = K_q     · ((1 − S) − P_q_win)      (question also moves)
+ * where P_win = 1 / (1 + 10^((Q − E) / 400)) is the user's expected win prob.
+ * This naturally rewards upsets (low E beats high Q) and stingily rewards
+ * favourites (high E beats low Q) without ad-hoc piecewise multipliers.
+ */
+export const ELO_GEM_STAMP_TUNING = {
+    K_user: 32,                 // Subject ELO swing per solve
+    K_q: 6,                     // qElo drift per solve (small — trust the stamp)
+    misfireExtraMult: 1.4,      // Extra penalty on wrong solves on easier-than-you questions
+    timeMin: 0.5,               // τ lower clamp
+    physicsTauBuffer: 0.85,     // Mirror app.js legacy physics calculation buffer
+    chemistrySlowThreshold: 1.25,
+    chemistrySlowPenalty: 0.4,
+    ceiling: 2999.99,           // Hard cap on subject ELO (matches existing cap)
+};
+
+/** Number of solves required before a legacy/uncalibrated qElo is trusted. */
+export const CALIBRATED_SOLVE_THRESHOLD = 1;
+
+// Per-chapter Practice Modes: Flow State vs Hardcore / Overclock
+export const PRACTICE_MODES = ['standard', 'flow', 'hardcore'];
+
+/**
+ * Mode tuning constants. Drive BOTH:
+ *   1. The picker's P_win window filter (which problems the mode surfaces)
+ *   2. The reward deltas during calculateEloMigration (mode multipliers
+ *      on the subject-ELO delta, on the escrow/legendary bonus, and on
+ *      the time-curve inflection points).
+ *
+ * P_win math: P_win = 1 / (1 + 10^((Q − E) / 400))
+ *   • Flow     Pwin 0.75 → 0.85  ≈ qElo in [userElo+50,  userElo+120]
+ *   • Hardcore Pwin 0.35 → 0.50  ≈ qElo in [userElo+300, userElo+500]
+ */
+export const MODE_TUNING = {
+    standard: {
+        winsMultiplier: 1.0,
+        lossMultiplier: 1.0,
+        escrowBonusMultiplier: 1.0,
+        winSweetSpot: 0.8,
+        lossFastGrace: 0.5,
+    },
+    flow: {
+        PwinMin: 0.75, PwinMax: 0.85,
+        PwinFallbackMin: 0.65, PwinFallbackMax: 0.90,
+        winsMultiplier: 1.0,
+        lossMultiplier: 1.0,
+        escrowBonusMultiplier: 1.0,
+        winSweetSpot: 0.6,            // gentle fast bonus zone
+        lossFastGrace: 0.5,
+        label: '🎯 FLOW STATE',
+    },
+    hardcore: {
+        PwinMin: 0.35, PwinMax: 0.50,
+        PwinFallbackMin: 0.20, PwinFallbackMax: 0.65,
+        minQeloFloor: 1800,
+        winsMultiplier: 1.8,            // 1.8× subject-ELO payout on win
+        lossMultiplier: 0.6,            // sympathy multiplier on underdog misfire
+        escrowBonusMultiplier: 2.0,    // doubled legendary drop rate
+        winSweetSpot: 0.45,
+        lossFastGrace: 0.3,
+        capPerDay: 8,                    // anti-grind circuit-breaker
+        label: '⚡ HARDCORE / OVERCLOCK',
+    },
+};
 
 /**
  * Step 1 — Friction Severity Weight (Wf)
@@ -351,6 +474,23 @@ export function migrateQuestionBankSR() {
         // dropped from normal Elo iteration filters. ──
         if (q.qElo === undefined || q.qElo === null) { q.qElo = 1200; dirty = true; }
         if (q.isAnomaly === undefined) { q.isAnomaly = false; dirty = true; }
+        // ── NEW (pre-ELO schema, post-Cognitive MMR): provenance tracking.
+        // qEloSource tells calculateEloMigration whether to use the legacy
+        // R_perf warmup formula (uncalibrated) or the new delta-based reward
+        // (gem-stamped | learned). solveCount flips an 'uncalibrated' question
+        // to 'learned' once it crosses CALIBRATED_SOLVE_THRESHOLD solves —
+        // the existing R_perf migration has produced enough signal at that
+        // point that we can trust qElo and switch to the calibrated branch.
+        if (q.qEloSource  === undefined) { q.qEloSource   = 'uncalibrated'; dirty = true; }
+        if (q.qEloStampedBy === undefined) { q.qEloStampedBy = null; dirty = true; }
+        if (q.qEloStampedAt === undefined) { q.qEloStampedAt = null; dirty = true; }
+        if (typeof q.solveCount !== 'number') { q.solveCount = 0; dirty = true; }
+        if (q.lastSolvedAt === undefined) { q.lastSolvedAt = null; dirty = true; }
+        // Anti-cheat flags populated by processGemTextDump on ingest.
+        if (q.stampBatchSuspiciousDistribution === undefined) { q.stampBatchSuspiciousDistribution = false; dirty = true; }
+        if (q.stampBatchSuspiciousStdev === undefined) { q.stampBatchSuspiciousStdev = false; dirty = true; }
+        // Carry over the canonical tags field so qElo picker can filter later.
+        if (!Array.isArray(q.tags)) { q.tags = []; dirty = true; }
     }
     if (dirty) saveAllAsync().catch(console.error);
 }
@@ -527,6 +667,18 @@ export async function saveAllAsync() {
         maths:     AppState.elo.maths     ?? 1200,
         global:    AppState.elo.global    ?? 1200,
     });
+    // Practice mode + hardcore daily counter persistence
+    await idbSet('jeemax_practice_mode', AppState.practiceFlowMode || 'standard');
+    await idbSet('jeemax_hardcore_daily', {
+        date: AppState.hardcoreDailyDate,
+        count: AppState.hardcoreDailyCount || 0,
+    });
+    // ── Persist active practice mode + hardcore daily counter ──
+    await idbSet('jeemax_practice_mode', AppState.practiceFlowMode || 'standard');
+    await idbSet('jeemax_hardcore_daily', {
+        date: AppState.hardcoreDailyDate,
+        count: AppState.hardcoreDailyCount || 0,
+    });
     await idbSet('jeemax_username', document.getElementById('display-username').textContent);
     await idbSet('bounty_data', AppState.bounty);
 
@@ -593,6 +745,16 @@ export async function loadDataAsync() {
         AppState.elo.chemistry = 1200;
         AppState.elo.maths     = 1200;
         AppState.elo.global    = 1200;
+    }
+
+    // Hydrate active practice mode + hardcore daily counter (resets daily)
+    const savedMode = await idbGet('jeemax_practice_mode');
+    if (savedMode && PRACTICE_MODES.includes(savedMode)) AppState.practiceFlowMode = savedMode;
+    const hcDaily = await idbGet('jeemax_hardcore_daily');
+    if (hcDaily && typeof hcDaily === 'object') {
+        const today = new Date().toISOString().slice(0, 10);
+        AppState.hardcoreDailyDate   = hcDaily.date || null;
+        AppState.hardcoreDailyCount  = (hcDaily.date === today) ? (hcDaily.count || 0) : 0;
     }
 
     const username = await idbGet('jeemax_username');
@@ -1079,6 +1241,8 @@ export async function getDailyHistory() {
     const todayEntry = history.find(entry => entry.date === todayStr);
     if (todayEntry) { todayEntry.count = todayTotal; } else { history.push({ date: todayStr, count: todayTotal }); if (history.length > 15) history.shift(); }
     await idbSet('jeemax_daily_history', history);
+    // ── Seed the sync daily history cache for Deload Engine's 48h missed-day check ──
+    try { window._dailyHistoryCache = history; } catch (_) {}
     return history;
 }
 
