@@ -2393,6 +2393,14 @@ select.pomo-select, select.pomo-input {
 }
 .modal-overlay.active > * { transform: translateY(0) scale(1); }
 
+/* Pomodoro end-of-session notification must overlay every other modal —
+   practice, solution, crop, mood, calendar, etc. — but stay BELOW the
+   Gallery Break burn-reveal (1000600) so the painting's ritual isn't
+   interrupted mid-bloom. ID selector beats .modal-overlay's specificity. */
+#timer-notify-modal {
+    z-index: 1000500 !important;
+}
+
 .modal-content {
     background: rgba(13, 16, 23, 0.97);
     border: 1px solid var(--line-strong);

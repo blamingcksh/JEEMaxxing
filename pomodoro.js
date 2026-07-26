@@ -89,21 +89,74 @@ export function initAudioContext() {
     }
 }
 
+// Soothing singing-bowl style bell — replaces the old sharp 880Hz blip.
+// Pair of pure sines (A3 fundamental + perfect-fifth E4) with a slow
+// attack and ~2.2s exponential decay. Peak gain is well below the prior
+// 0.30 so the chime feels warm rather than piercing.
 export function playBell() {
     if (window.FX && !window.FX.wantSound()) return;
     initAudioContext(); // ensure context exists and is resumed
     if (!bellAudioCtx) return;
 
+    // FX exposes prefs.volume (not a vol() getter); 0.7 mirrors fx.js default.
+    // Bail when muted — exponentialRampToValueAtTime rejects 0-valued targets,
+    // and an inaudible chime doesn't need any oscillators scheduled.
+    const vol = (window.FX && window.FX.prefs && typeof window.FX.prefs.volume === 'number')
+        ? window.FX.prefs.volume : 0.7;
+    if (vol <= 0) return;
+    const floor = 0.0001;
     const now = bellAudioCtx.currentTime;
-    const osc = bellAudioCtx.createOscillator();
-    const gain = bellAudioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(bellAudioCtx.destination);
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
-    osc.start(now);
-    osc.stop(now + 0.5);
+    const partials = [
+        { f: 220.00, g: 0.18, dur: 2.20 },   // A3 — warm fundamental
+        { f: 329.63, g: 0.10, dur: 2.45 },   // E4 — perfect-fifth shimmer, longer tail
+    ];
+    for (const p of partials) {
+        const osc = bellAudioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = p.f;
+        const gain = bellAudioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(bellAudioCtx.destination);
+        gain.gain.setValueAtTime(floor, now);
+        gain.gain.exponentialRampToValueAtTime(p.g * vol, now + 0.06);       // soft attack
+        gain.gain.exponentialRampToValueAtTime(floor, now + p.dur);          // long exhale
+        osc.start(now);
+        osc.stop(now + p.dur + 0.05);
+    }
+}
+
+// Gentle ascending ignition chime played the moment a pomodoro / stopwatch
+// session starts. Two soft sines a fifth apart, second tone staggered so the
+// pair feels like an inhale rather than a ding — matches the soothing tone
+// of playBell() so start and stop share the same emotional register.
+export function playStartChime() {
+    if (window.FX && !window.FX.wantSound()) return;
+    initAudioContext();
+    if (!bellAudioCtx) return;
+
+    const vol = (window.FX && window.FX.prefs && typeof window.FX.prefs.volume === 'number')
+        ? window.FX.prefs.volume : 0.7;
+    if (vol <= 0) return;
+    const floor = 0.0001;
+    const now = bellAudioCtx.currentTime;
+    const partials = [
+        { f: 261.63, g: 0.10, at: 0.00, dur: 1.10 }, // C4 — soft root
+        { f: 392.00, g: 0.10, at: 0.18, dur: 1.30 }, // G4 — staggered perfect-fifth up
+    ];
+    for (const p of partials) {
+        const osc = bellAudioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = p.f;
+        const gain = bellAudioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(bellAudioCtx.destination);
+        const startAt = now + p.at;
+        gain.gain.setValueAtTime(floor, startAt);
+        gain.gain.exponentialRampToValueAtTime(p.g * vol, startAt + 0.05);   // soft attack
+        gain.gain.exponentialRampToValueAtTime(floor, startAt + p.dur);      // gentle decay
+        osc.start(startAt);
+        osc.stop(startAt + p.dur + 0.05);
+    }
 }
 
 // ---- Timer Notification Popup (unchanged UI logic) ----
@@ -275,6 +328,8 @@ export function startTimer() {
 
     // Initialize audio context on user gesture
     initAudioContext();
+    // Soft ignition chord — counterweight to playBell() at session end
+    playStartChime();
 
     if (isStopwatchMode) {
         transitionToStopwatch();
