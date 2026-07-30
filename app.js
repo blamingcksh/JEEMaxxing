@@ -1427,17 +1427,11 @@ export function goToChapterDetail() {
 
 export function openChapterDetail(ch) {
     AppState.currentChapter = ch;
-    // Sticky filter reset: whenever a fresh chapter workspace is mounted, the
-    // active filter choice is reset back to baseline. This prevents a filter
-    // selection carried over from a previous chapter (e.g. "wrong" on a
-    // chapter that had flawed questions) from showing an empty list in a newly
-    // selected chapter whose questions are all unsolved/solved.
     AppState.currentFilter = 'all';
-    document.getElementById('detail-chapter-name').innerHTML =
-        `${ch} <span style="font-size:14px; color:#8a8ad3;">(${AppState.currentSubject})</span>`;
-    showPracticeSubview('practice-chapter-detail-view');
-    // NEW (Flow/Hardcore): mount the two glowing mode buttons on every chapter entry.
+    // ── Go directly to question list — the chapter detail view is deprecated.
+    // Mode buttons + feed button are injected inline into the question-list header.
     _renderModeButtonsIntoChapterDetail();
+    showQuestionList();
 }
 
 export function renderChaptersList() {
@@ -3142,7 +3136,7 @@ export function showQuestionList() {
     AppState.currentFilter = AppState.currentFilter || 'all';
 
     let chapterQuestions = AppState.questionBank.filter(q => q.subject === AppState.currentSubject && q.chapter === AppState.currentChapter);
-    if (!chapterQuestions.length) { alert("This chapter is empty. Feed it some questions."); return; }
+    if (!chapterQuestions.length) { AppState.currentChapterQuestions = []; showPracticeSubview('practice-question-list-view'); return; }
 
     AppState.currentChapterQuestions = chapterQuestions;
 
@@ -4431,87 +4425,173 @@ function _rebuildPracticeQuestionsForMode() {
  * Idempotent — safe to call multiple times.
  */
 function _renderModeButtonsIntoChapterDetail() {
-    const view = document.getElementById('practice-chapter-detail-view');
-    if (!view) return;
-    let row = document.getElementById('mode-buttons-row');
-    if (!row) {
-        row = document.createElement('div');
-        row.id = 'mode-buttons-row';
-        row.className = 'mode-buttons-row';
-        // Inline styles honouring the codebase's pure-vanilla aesthetic
-        row.style.cssText = 'display:flex; gap:14px; margin:18px 0 8px; flex-wrap:wrap; justify-content:center;';
-        const header = view.querySelector('.practice-header');
-        if (header && header.nextSibling) view.insertBefore(row, header.nextSibling);
-        else view.appendChild(row);
-        // Inject the pulse animations exactly once
-        if (!document.getElementById('mode-button-style')) {
-            const style = document.createElement('style');
-            style.id = 'mode-button-style';
-            style.textContent = `
-                @keyframes pulse-flow     { 0%,100%{box-shadow:0 0 0 0 rgba(0,200,255,.55);} 50%{box-shadow:0 0 24px 4px rgba(0,200,255,.45);} }
-                @keyframes pulse-hardcore { 0%,100%{box-shadow:0 0 0 0 rgba(255,80,80,.65);} 50%{box-shadow:0 0 26px 5px rgba(255,60,60,.55);} }
-                .mode-btn { font-family:'Orbitron',sans-serif; font-weight:700; letter-spacing:.5px; padding:18px 22px; border-radius:14px; cursor:pointer; color:#fff; border:none; box-shadow:0 6px 20px rgba(0,0,0,.45); transition:transform .15s ease,box-shadow .25s ease; min-width:260px; text-align:left; }
-                .mode-btn:hover { transform:translateY(-2px); }
-                .mode-btn:active { transform:translateY(0); }
-                .mode-btn .mode-title    { font-size:15px; font-weight:800; margin-bottom:6px; display:block; }
-                .mode-btn .mode-subtitle { font-size:11px; font-weight:400; opacity:.85; line-height:1.35; }
-                .mode-btn-flow     { background:linear-gradient(135deg, rgba(0,200,255,.78), rgba(0,160,210,.55)); animation:pulse-flow 1.7s ease-in-out infinite; }
-                .mode-btn-hardcore { background:linear-gradient(135deg, rgba(255,90,90,.85), rgba(220,40,40,.6)); animation:pulse-hardcore 1.2s ease-in-out infinite; }
-                .mode-exit-pill { margin:8px auto 0; padding:6px 12px; border-radius:999px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.18); font-size:11px; color:var(--text-muted,#bbb); cursor:pointer; display:none; }
-                .mode-exit-pill.active { display:inline-block; }
-            `;
-            document.head.appendChild(style);
-        }
+    const row = document.getElementById('mode-buttons-row');
+    if (!row) return;
+
+    // ── Inject compact header-mode stylesheet once ────────────────────────
+    if (!document.getElementById('mode-button-style')) {
+        const style = document.createElement('style');
+        style.id = 'mode-button-style';
+        style.textContent = `
+@keyframes mode-glow-flow { 0%,100%{box-shadow:0 0 0 0 rgba(0,200,255,.3);} 50%{box-shadow:0 0 8px 2px rgba(0,200,255,.3);} }
+@keyframes mode-glow-hc   { 0%,100%{box-shadow:0 0 0 0 rgba(255,70,70,.35);} 50%{box-shadow:0 0 10px 2px rgba(255,60,60,.35);} }
+@keyframes mode-glow-active-flow { 0%,100%{box-shadow:0 0 6px 1px rgba(0,220,255,.45);} 50%{box-shadow:0 0 14px 3px rgba(0,220,255,.55);} }
+@keyframes mode-glow-active-hc   { 0%,100%{box-shadow:0 0 8px 2px rgba(255,50,50,.5);} 50%{box-shadow:0 0 16px 4px rgba(255,40,40,.6);} }
+@keyframes mode-check-in { 0%{transform:scale(0);opacity:0;} 60%{transform:scale(1.2);opacity:1;} 100%{transform:scale(1);opacity:1;} }
+@keyframes mode-ripple { 0%{transform:scale(0);opacity:.5;} 100%{transform:scale(4);opacity:0;} }
+
+/* Compact header pill — shared base */
+.mode-pill {
+  position:relative; overflow:hidden;
+  font-family:'Orbitron',sans-serif; font-size:10px; font-weight:700;
+  letter-spacing:.4px; padding:5px 11px; border-radius:999px;
+  cursor:pointer; color:#fff; border:1px solid transparent;
+  background:rgba(255,255,255,.04);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 2px 10px rgba(0,0,0,.35);
+  transition:transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, opacity .3s ease;
+  white-space:nowrap; line-height:1;
+}
+.mode-pill:hover { transform:scale(1.06); }
+.mode-pill:active { transform:scale(.94); transition:transform .08s ease; }
+
+/* Feed pill */
+.mode-pill-feed {
+  border-color:rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+}
+.mode-pill-feed:hover { border-color:rgba(255,255,255,.3); box-shadow:0 0 14px rgba(255,255,255,.08); }
+
+/* Flow pill */
+.mode-pill-flow {
+  border-color:rgba(0,200,255,.2);
+  animation:mode-glow-flow 2.8s ease-in-out infinite;
+}
+.mode-pill-flow:hover { border-color:rgba(0,200,255,.45); }
+
+/* Hardcore pill */
+.mode-pill-hc {
+  border-color:rgba(255,70,70,.22);
+  animation:mode-glow-hc 2s ease-in-out infinite;
+}
+.mode-pill-hc:hover { border-color:rgba(255,70,70,.5); }
+
+/* Active states */
+        `;
+        document.head.appendChild(style);
     }
-    if (document.getElementById('btn-mode-flow')) return;
+
+    // ── Already built — just refresh the badge state ──────────────────────
+    if (document.getElementById('btn-mode-feed')) { _renderModeBadge(); return; }
+
+    // ── Feed Question pill ─────────────────────────────────────────────────
+    const feed = document.createElement('button');
+    feed.id = 'btn-mode-feed';
+    feed.className = 'mode-pill mode-pill-feed';
+    feed.textContent = '📸 Feed';
+    feed.title = 'Upload or paste questions';
+    feed.onclick = () => openModal('upload-modal');
+    row.appendChild(feed);
+
+    // ── Flow State pill ────────────────────────────────────────────────────
     const flow = document.createElement('button');
     flow.id = 'btn-mode-flow';
-    flow.className = 'mode-btn mode-btn-flow';
-    flow.innerHTML = '<span class="mode-title">🎯 FLOW STATE</span><span class="mode-subtitle">Default grind · P_win ∈ [0.75, 0.85] · target ≈ qElo+50 to +120 · 45 min lockin</span>';
-    flow.onclick = () => _setPracticeMode('flow');
+    flow.className = 'mode-pill mode-pill-flow';
+    flow.innerHTML = '🎯 Flow';
+    flow.title = 'Flow State · P_win ∈ [0.75, 0.85]';
+    flow.onclick = (e) => {
+        _playModeClickRipple(e, flow); _setPracticeMode('flow'); _playModeSound('flow');
+    };
+    flow.addEventListener('mouseenter', (e) => _spawnModeHoverParticles(e, flow, 'flow'));
+    row.appendChild(flow);
+
+    // ── Hardcore pill ──────────────────────────────────────────────────────
     const hardcore = document.createElement('button');
     hardcore.id = 'btn-mode-hardcore';
-    hardcore.className = 'mode-btn mode-btn-hardcore';
-    hardcore.innerHTML = '<span class="mode-title">⚡ HARDCORE / OVERCLOCK</span><span class="mode-subtitle">Boss-fight · P_win ∈ [0.35, 0.50] · qElo ≥ 1800 · 1.8× wins · +2× cosmetic drops</span>';
-    hardcore.onclick = () => _setPracticeMode('hardcore');
-    row.appendChild(flow);
+    hardcore.className = 'mode-pill mode-pill-hc';
+    hardcore.innerHTML = '⚡ Hardcore';
+    hardcore.title = 'Hardcore / Overclock · P_win ∈ [0.35, 0.50]';
+    hardcore.onclick = (e) => {
+        _playModeClickRipple(e, hardcore); _setPracticeMode('hardcore'); _playModeSound('hardcore');
+    };
+    hardcore.addEventListener('mouseenter', (e) => _spawnModeHoverParticles(e, hardcore, 'hardcore'));
     row.appendChild(hardcore);
-    const exit = document.createElement('button');
-    exit.id = 'mode-exit-pill';
-    exit.className = 'mode-exit-pill';
-    exit.textContent = '↺ Exit Mode (back to standard filter)';
-    exit.onclick = () => _exitPracticeMode();
-    row.appendChild(exit);
+
     _renderModeBadge();
 }
 
-/** Reflect the current mode in the badges/exit-pill without re-rendering buttons. */
+// ── Click ripple effect ────────────────────────────────────────────────────
+function _playModeClickRipple(e, btn) {
+    const ripple = document.createElement('span');
+    ripple.className = 'mode-ripple';
+    const rect = btn.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+    ripple.style.top  = (e.clientY - rect.top  - size / 2) + 'px';
+    btn.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove());
+}
+
+// ── Mode-engage sound cue (FX-gated) ───────────────────────────────────────
+function _playModeSound(mode) {
+    if (!window.FX || !window.FX.wantSound()) return;
+    try {
+        // Reuse a single AudioContext — browsers cap concurrent instances at ~6–12.
+        if (!window.__modeAudioCtx) {
+            window.__modeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ctx = window.__modeAudioCtx;
+        // Resume if suspended (autoplay policy)
+        if (ctx.state === 'suspended') ctx.resume();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        if (mode === 'flow') {
+            // Soft ascending chime
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, now);
+            osc.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        } else {
+            // Deep percussive thud
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(180, now);
+            osc.frequency.exponentialRampToValueAtTime(60, now + 0.12);
+            gain.gain.setValueAtTime(0.18, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        }
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now); osc.stop(now + 0.3);
+    } catch (_) { /* audio not available */ }
+}
+
+// ── Hover particle trail (FX-gated) ────────────────────────────────────────
+function _spawnModeHoverParticles(e, btn, mode) {
+    if (!window.FX || !window.FX.wantEffects()) return;
+    const color = mode === 'flow' ? 'rgba(0,200,255,.7)' : 'rgba(255,90,90,.7)';
+    for (let i = 0; i < 4; i++) {
+        const dot = document.createElement('span');
+        dot.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;width:4px;height:4px;border-radius:50%;' +
+            'background:' + color + ';left:' + (e.clientX + (Math.random()-0.5)*30) + 'px;' +
+            'top:' + (e.clientY + (Math.random()-0.5)*16) + 'px;' +
+            'animation:mode-particle-float .8s ease-out forwards;';
+        document.body.appendChild(dot);
+        dot.addEventListener('animationend', () => dot.remove());
+    }
+    // Inject float keyframe if needed
+    if (!document.getElementById('mode-particle-keyframes')) {
+        const ks = document.createElement('style');
+        ks.id = 'mode-particle-keyframes';
+        ks.textContent = '@keyframes mode-particle-float { 0%{opacity:1;transform:translateY(0) scale(1);} 100%{opacity:0;transform:translateY(-32px) scale(.3);} }';
+        document.head.appendChild(ks);
+    }
+}
+
+/** Reflect the current mode in the badges/exit-pill and button active states. */
 function _renderModeBadge() {
-    const exit = document.getElementById('mode-exit-pill');
-    const mode = AppState.practiceFlowMode;
-    if (exit) {
-        if (mode === 'standard') exit.classList.remove('active');
-        else { exit.textContent = '↺ Exit ' + (mode === 'flow' ? '🎯 Flow' : '⚡ Hardcore') + ' (back to standard)'; exit.classList.add('active'); }
-    }
-    // Header chip — paint a small badge so the user can SEE which mode is active
-    const head = document.querySelector('#practice-chapter-detail-view .practice-header');
-    if (!head) return;
-    let chip = document.getElementById('mode-active-chip');
-    if (mode === 'standard') {
-        if (chip) chip.remove();
-        return;
-    }
-    if (!chip) {
-        chip = document.createElement('span');
-        chip.id = 'mode-active-chip';
-        chip.style.cssText = 'display:inline-block; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.5px; margin-left:10px;';
-        head.appendChild(chip);
-    }
-    chip.textContent = mode === 'flow' ? '🎯 FLOW' : '⚡ HARDCORE';
-    chip.style.background = mode === 'flow'
-        ? 'linear-gradient(135deg, rgba(0,200,255,.8), rgba(0,160,210,.6))'
-        : 'linear-gradient(135deg, rgba(255,90,90,.85), rgba(220,40,40,.6))';
-    chip.style.color = '#fff';
+    // Visual toggle state intentionally removed — pills are plain action buttons.
 }
 
 // Expose the public entry points so the onclick handlers work from inline HTML

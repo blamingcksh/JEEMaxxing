@@ -425,25 +425,14 @@
             </div>
 
             <!-- Subview: chapter detail -->
-            <div id="practice-chapter-detail-view" class="practice-subview">
-                <div class="practice-header">
-                    <button class="btn btn-secondary" onclick="goToChapters()">← Back</button>
-                    <h2 id="detail-chapter-name">Chapter</h2>
-                </div>
-                <div class="glow-practice-box" onclick="openModal('upload-modal')">
-                    <div style="font-size:44px">📸</div>
-                    <h3>Feed Questions</h3>
-                    <p>Crop screenshots or dump Gem text — fresh problems straight into the bank.</p>
-                </div>
-                <div style="text-align:center">
-                    <button class="btn btn-primary" onclick="showQuestionList()">Start Grinding Existing Questions</button>
-                </div>
+            <div id="practice-chapter-detail-view" class="practice-subview" style="display:none">
+                <!-- Deprecated — chapter click now goes directly to question list -->
             </div>
 
             <!-- Subview: question list -->
             <div id="practice-question-list-view" class="practice-subview">
-                <div class="practice-header">
-                    <button class="btn btn-secondary" onclick="goToChapterDetail()">← Back</button>
+                <div class="practice-header" style="flex-wrap:wrap; gap:8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="goToChapters()">← Chapters</button>
                     <h2 id="question-list-title">All Questions</h2>
                     <select id="question-filter" class="pomo-select filter-select" onchange="applyFilter()">
                         <option value="all">All</option>
@@ -451,6 +440,7 @@
                         <option value="solved">Clutched</option>
                         <option value="wrong">Fumbled</option>
                     </select>
+                    <div id="mode-buttons-row" class="mode-buttons-row" style="display:flex; gap:6px; margin-left:auto;"></div>
                 </div>
                 <div class="stats-row" id="stats-row" style="display:none"></div>
                 <div class="questions-grid" id="questions-grid-container"></div>
