@@ -6926,56 +6926,71 @@ window.triggerSurgicalDiagramUpload = function(index) {
     const dynamicInput = document.createElement('input');
     dynamicInput.type = 'file';
     dynamicInput.accept = 'image/*';
+    // ── DOM attachment prevents garbage-collection of the orphaned <input>
+    // before the native file-picker dialog returns. Without this, some
+    // environments (ES module scope, strict CSP, mobile WebViews) reclaim the
+    // element and the onchange callback never fires → "nothing happens".
+    dynamicInput.style.display = 'none';
+    document.body.appendChild(dynamicInput);
     dynamicInput.onchange = async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        // Read the source textbook sheet as a Base64 data URL. Instead of
-        // pasting the whole uncropped image directly into diagramImageUrl, we
-        // load it into the existing #crop-modal bounding-box crop flow so the
-        // user can surgically extract just the diagram region.
-        showLoading('Loading source sheet into crop studio...');
-        const base64String = await readFileAsBase64(file);
-        hideLoading();
+        // ── Always clean up the temp element, success or failure ──
+        try { dynamicInput.remove(); } catch (_) { /* already removed */ }
+        try {
+            const file = event.target.files[0];
+            if (!file) return;
+            // Read the source textbook sheet as a Base64 data URL. Instead of
+            // pasting the whole uncropped image directly into diagramImageUrl, we
+            // load it into the existing #crop-modal bounding-box crop flow so the
+            // user can surgically extract just the diagram region.
+            showLoading('Loading source sheet into crop studio...');
+            const base64String = await readFileAsBase64(file);
+            hideLoading();
 
-        // ── Seed cropSession for surgical single-crop mode ────────────────
-        // Map the single uploaded image into the sourceImages array shape
-        // expected by refreshCropUI() / endDraw(). Seed allQuestions with a
-        // clean slate (one empty placeholder question) so the existing canvas
-        // drawing / redraw machinery has a `_cq.segments` array to read from.
-        // This is critical: leaving allQuestions empty would crash
-        // redrawAllRectangles(), which dereferences _cq.segments.
-        cropSession.surgicalTargetIdx = index;
-        cropSession.sourceImages = [{ id: 0, dataUrl: base64String }];
-        cropSession.allQuestions = [{ segments: [], stitchedImage: null, questionOnly: null }];
-        cropSession.currentQuestionIdx = 0;
-        cropSession.activeCrop = false;
-        cropSession.drawing = { startX: 0, startY: 0, endX: 0, endY: 0, sourceId: null };
-        cropSession.canvasRefs = {};
-        cropSession.ctxRefs = {};
-        cropSession.imgRefs = {};
+            // ── Seed cropSession for surgical single-crop mode ────────────────
+            // Map the single uploaded image into the sourceImages array shape
+            // expected by refreshCropUI() / endDraw(). Seed allQuestions with a
+            // clean slate (one empty placeholder question) so the existing canvas
+            // drawing / redraw machinery has a `_cq.segments` array to read from.
+            // This is critical: leaving allQuestions empty would crash
+            // redrawAllRectangles(), which dereferences _cq.segments.
+            cropSession.surgicalTargetIdx = index;
+            cropSession.sourceImages = [{ id: 0, dataUrl: base64String }];
+            cropSession.allQuestions = [{ segments: [], stitchedImage: null, questionOnly: null }];
+            cropSession.currentQuestionIdx = 0;
+            cropSession.activeCrop = false;
+            cropSession.drawing = { startX: 0, startY: 0, endX: 0, endY: 0, sourceId: null };
+            cropSession.canvasRefs = {};
+            cropSession.ctxRefs = {};
+            cropSession.imgRefs = {};
 
-        // ── Bug 1 fix: modal handoff (synchronous) ────────────────────
-        // The crop modal and the preview modal are both full-screen flex
-        // overlays. If both are visible at once, z-index layering buries
-        // #crop-modal underneath #preview-modal, locking the user out of the
-        // canvas. We MUST dismiss the preview modal synchronously —
-        // closeModalStr() defers display='none' by 300ms for the fade-out
-        // transition, which leaves both overlays capturing pointer events
-        // simultaneously. forceHideModal() sets display='none' inline in a
-        // single tick so the crop modal is the only overlay on stage the
-        // instant it opens. showPreviewModal() is re-invoked from endDraw()
-        // once the surgical crop is committed.
-        forceHideModal('preview-modal');
+            // ── Bug 1 fix: modal handoff (synchronous) ────────────────────
+            // The crop modal and the preview modal are both full-screen flex
+            // overlays. If both are visible at once, z-index layering buries
+            // #crop-modal underneath #preview-modal, locking the user out of the
+            // canvas. We MUST dismiss the preview modal synchronously —
+            // closeModalStr() defers display='none' by 300ms for the fade-out
+            // transition, which leaves both overlays capturing pointer events
+            // simultaneously. forceHideModal() sets display='none' inline in a
+            // single tick so the crop modal is the only overlay on stage the
+            // instant it opens. showPreviewModal() is re-invoked from endDraw()
+            // once the surgical crop is committed.
+            forceHideModal('preview-modal');
 
-        // Open the crop modal and let refreshCropUI() detect surgical mode
-        // (via the surgicalTargetIdx flag we just set) to swap the instruction
-        // copy and hide the multi-crop control row.
-        const cropModal = document.getElementById('crop-modal');
-        if (cropModal) {
-            cropModal.style.display = 'flex';
-            cropModal.classList.add('active');
+            // Open the crop modal and let refreshCropUI() detect surgical mode
+            // (via the surgicalTargetIdx flag we just set) to swap the instruction
+            // copy and hide the multi-crop control row.
+            const cropModal = document.getElementById('crop-modal');
+            if (cropModal) {
+                cropModal.style.display = 'flex';
+                cropModal.classList.add('active');
+            }
+            refreshCropUI();
+        } catch (err) {
+            console.error('[triggerSurgicalDiagramUpload] Failed:', err);
+            hideLoading();
+            // Restore the preview modal so the user isn't stuck
+            try { showPreviewModal(); } catch (_) {}
         }
-        refreshCropUI();
     };
     dynamicInput.click();
 };
