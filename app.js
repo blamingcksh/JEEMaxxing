@@ -6842,6 +6842,183 @@ async function initApp() {
 document.addEventListener('DOMContentLoaded', initApp);
 
 
+// ==================== AI MATRIX DUMP (Export raw data for Google Gemini) ====================
+
+/**
+ * Populate the AI Dump modal with subject→chapter checkboxes.
+ * Called lazily when the modal opens.
+ */
+window.populateAiDumpChapters = function () {
+    const listEl = document.getElementById('ai-dump-chapter-list');
+    if (!listEl) return;
+
+    // Collect ALL unique subject+chapter combos from the full question bank
+    const map = {};
+    AppState.questionBank.forEach(q => {
+        const subj = q.subject || 'Uncategorized';
+        const ch = q.chapter || 'Uncategorized';
+        const key = subj + '||' + ch;
+        if (!map[key]) map[key] = { subject: subj, chapter: ch, count: 0, errorCount: 0 };
+        map[key].count++;
+        if (q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')) {
+            map[key].errorCount++;
+        }
+    });
+
+    const entries = Object.values(map);
+    if (entries.length === 0) {
+        listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px;">No chapters found. Add some questions first.</p>';
+        return;
+    }
+
+    // Group by subject
+    const bySubject = {};
+    entries.forEach(e => {
+        if (!bySubject[e.subject]) bySubject[e.subject] = [];
+        bySubject[e.subject].push(e);
+    });
+
+    const icons = { physics: '🌌', chemistry: '🧪', maths: '📐' };
+    let html = '';
+    for (const [subj, chapters] of Object.entries(bySubject)) {
+        html += `<div style="margin-bottom:12px;">`;
+        html += `<div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--accent-primary);">${icons[subj]||'📋'} ${subj.toUpperCase()}</div>`;
+        chapters.forEach(c => {
+            const id = `dump-${subj}-${c.chapter.replace(/[^a-zA-Z0-9]/g,'_')}`;
+            html += `<label style="display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:13px;cursor:pointer;border-radius:4px;">
+                <input type="checkbox" checked data-dump-subj="${subj}" data-dump-chapter="${c.chapter}" id="${id}" style="accent-color:var(--accent-primary);">
+                ${c.chapter} <span style="color:var(--text-muted);font-size:11px;margin-left:auto;">${c.count} Qs${c.errorCount > 0 ? ' · ' + c.errorCount + ' err' : ''}</span>
+            </label>`;
+        });
+        html += `</div>`;
+    }
+    listEl.innerHTML = html;
+};
+
+/** Select or deselect all chapter checkboxes. */
+window.selectAllDumpChapters = function (select) {
+    const checks = document.querySelectorAll('#ai-dump-chapter-list input[type="checkbox"]');
+    checks.forEach(cb => { cb.checked = select; });
+};
+
+/** Gather raw data for selected chapters and download as a .txt file. */
+window.exportMatrixDump = function () {
+    const checks = document.querySelectorAll('#ai-dump-chapter-list input[type="checkbox"]:checked');
+    if (checks.length === 0) {
+        alert('Select at least one chapter to export.');
+        return;
+    }
+
+    const selected = [];
+    checks.forEach(cb => {
+        selected.push({
+            subject: cb.getAttribute('data-dump-subj'),
+            chapter: cb.getAttribute('data-dump-chapter'),
+        });
+    });
+
+    // Gather ALL questions in selected chapters (with or without errors — full context)
+    const results = [];
+    selected.forEach(({ subject, chapter }) => {
+        const qs = AppState.questionBank.filter(q =>
+            (q.subject || '').toLowerCase() === subject.toLowerCase() &&
+            (q.chapter || '').toLowerCase() === chapter.toLowerCase()
+        );
+        qs.forEach((q, idx) => {
+            const historySummary = (q.historyLogs || []).map(log => {
+                let ft = log.frictionTypes || [];
+                if (typeof ft === 'string') {
+                    try { ft = JSON.parse(ft); } catch (_) { ft = [ft]; }
+                }
+                if (!Array.isArray(ft)) ft = [];
+                return {
+                    date: log.timestamp ? log.timestamp.slice(0, 10) : 'unknown',
+                    result: log.result || 'unknown',
+                    autonomy: log.autonomy || 'unknown',
+                    timeMins: log.timeSpentMins || 0,
+                    friction: ft.join(', ') || 'none',
+                };
+            });
+
+            results.push({
+                index: idx + 1,
+                subject: q.subject || 'unknown',
+                chapter: q.chapter || 'unknown',
+                questionText: q.extractedText || '(no text)',
+                options: q.options || [],
+                correctAnswer: q.correctAnswer || '',
+                type: q.type || 'text',
+                solution: q.solution || '(no solution)',
+                errorReason: q.errorReason || 'none',
+                status: q.status || 'unknown',
+                tags: q.tags || [],
+                qElo: q.qElo || 1200,
+                easeFactor: q.easeFactor || 2.5,
+                currentInterval: q.currentInterval || 0,
+                isMastered: q.isMastered || false,
+                attemptTimeline: historySummary,
+                totalAttempts: historySummary.length,
+            });
+        });
+    });
+
+    if (results.length === 0) {
+        alert('No questions found in selected chapters.');
+        return;
+    }
+
+    // Build a rich human-readable + JSON dump (both formats in one file)
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const header = [
+        '════════════════════════════════════════════════',
+        '  JEEMaxxing Raw Matrix Dump',
+        '  Date: ' + new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }),
+        '  Chapters: ' + selected.map(s => s.subject + ' › ' + s.chapter).join(', '),
+        '  Total Questions: ' + results.length,
+        '════════════════════════════════════════════════',
+        '',
+        '─── HUMAN-READABLE SUMMARY (paste into Google Gemini) ───',
+        '',
+    ].join('\n');
+
+    let summary = header;
+    const subjIcons = { physics: '⚛️', chemistry: '🧪', maths: '📐' };
+    let currentSubject = '';
+    results.forEach(r => {
+        if (r.subject !== currentSubject) {
+            currentSubject = r.subject;
+            summary += `\n━━━ ${(subjIcons[currentSubject] || '📋')} ${currentSubject.toUpperCase()} ━━━\n\n`;
+        }
+        summary += `#${r.index} · ${r.chapter} · qElo:${r.qElo} · ${r.errorReason !== 'none' ? '❌ ' + r.errorReason : '✅ clean'}\n`;
+        if (r.questionText !== '(no text)') summary += `   Q: ${r.questionText.slice(0, 500)}${r.questionText.length > 500 ? '…' : ''}\n`;
+        if (r.options.length > 0) summary += `   Options: ${r.options.join(' | ')}\n`;
+        if (r.correctAnswer) summary += `   Answer: ${Array.isArray(r.correctAnswer) ? r.correctAnswer.join(', ') : r.correctAnswer} (${r.type})\n`;
+        if (r.solution !== '(no solution)') summary += `   Solution: ${r.solution.slice(0, 500)}${r.solution.length > 500 ? '…' : ''}\n`;
+        if (r.tags.length > 0) summary += `   Tags: ${r.tags.join(', ')}\n`;
+        summary += `   Attempts: ${r.totalAttempts} | Interval: ${r.currentInterval}d | EF: ${r.easeFactor} | Mastered: ${r.isMastered}\n`;
+        r.attemptTimeline.forEach(a => {
+            summary += `     ${a.result === 'correct' ? '✅' : '❌'} ${a.date} ${a.timeMins}m ${a.autonomy}(${a.friction})\n`;
+        });
+        summary += `\n`;
+    });
+
+    summary += '\n─── RAW JSON (machine-readable) ───\n\n';
+    summary += JSON.stringify(results, null, 2);
+
+    // Trigger download
+    const blob = new Blob([summary], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `jeemaxxing-matrix-dump-${dateStr}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    closeModalStr('ai-dump-modal');
+};
+
 // ==================== WINDOW GLOBAL WIRING ====================
 window.switchTab = switchTab;
 window.LeaderboardNet = LeaderboardNet;

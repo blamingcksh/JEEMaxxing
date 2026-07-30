@@ -347,6 +347,7 @@
                     </div>
                     <div class="error-actions">
                         <button class="btn btn-primary" onclick="openModal('add-error-modal')">+ Log Mistake</button>
+                        <button class="btn btn-primary" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')" style="background:var(--glow-purple);">🧠 AI Dump</button>
                         <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()">⚡ Daily Fix Queue</button>
                         <span class="daily-queue-badge" id="daily-queue-badge" style="display:none">20 problems · 5P + 5M + 10C</span>
                     </div>
@@ -649,6 +650,23 @@
             </select>
         </div>
         <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="addErrorBlock()">Add to the Vault</button>
+    </div>
+</div>
+
+<!-- AI Dump Modal: export raw matrix data for pasting into Google Gemini -->
+<div id="ai-dump-modal" class="modal-overlay" onclick="closeModal(event, 'ai-dump-modal')">
+    <div class="modal-content" style="max-width:520px;max-height:85vh;overflow-y:auto;">
+        <button class="close-btn" onclick="closeModalStr('ai-dump-modal')" aria-label="Close">✕</button>
+        <h2>🧠 AI Matrix Dump</h2>
+        <p style="color:var(--text-muted);margin:4px 0 16px;font-size:13px;">Select chapters to export. Paste the downloaded file into Google Gemini or ChatGPT for a full diagnosis.</p>
+
+        <div id="ai-dump-chapter-list"></div>
+
+        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+            <button class="btn btn-secondary" onclick="window.selectAllDumpChapters(true)" style="flex:1;">✅ Select All</button>
+            <button class="btn btn-secondary" onclick="window.selectAllDumpChapters(false)" style="flex:1;">❌ Clear All</button>
+        </div>
+        <button class="btn btn-primary" onclick="window.exportMatrixDump()" style="width:100%;margin-top:12px;">📥 Download Raw Dump (.txt)</button>
     </div>
 </div>
 
