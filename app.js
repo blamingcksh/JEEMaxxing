@@ -4197,10 +4197,34 @@ function _modeTimeMultiplier(S, tau, mode) {
 }
 
 /**
+ * A Flow / Hardcore question must be genuinely untouched. Status alone is
+ * not enough because older records can retain an `unsolved` status after an
+ * attempt, while fumbled records use both `wrong` and `error`.
+ */
+function _isUnexecutedModeQuestion(q) {
+    if (!q) return false;
+
+    const status = q.status;
+    const untouchedStatus = status == null || status === 'unsolved' || status === 'unexecuted';
+    const hasAttemptHistory = Array.isArray(q.historyLogs) && q.historyLogs.length > 0;
+    const hasFirstAttempt = q.firstAttemptResult === 'correct' || q.firstAttemptResult === 'incorrect';
+    const hasSolveTelemetry = Number(q.solveCount) > 0
+        || !!q.lastReviewedAt
+        || !!q.lastSolvedAt
+        || (typeof q.timeTaken === 'number' && q.timeTaken > 0);
+
+    return untouchedStatus
+        && !hasAttemptHistory
+        && !hasFirstAttempt
+        && !hasSolveTelemetry
+        && !q.errorReason;
+}
+
+/**
  * Pick a chapter-local question whose P_win falls inside the mode's window,
- * with side preferences for low solveCount (warm handoff) and tag diversity.
- * Returns the question or null if the chapter simply has no candidates even
- * after widening the window.
+ * with side preferences for low solveCount and tag diversity.
+ * Returns the question or null if the chapter simply has no unexecuted
+ * candidates even after widening the window.
  */
 function _pickQuestionForMode(subject, chapter, mode) {
     if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return null;
@@ -4212,7 +4236,7 @@ function _pickQuestionForMode(subject, chapter, mode) {
     subject = _normalizeSubjectKey(subject);
     const bank = AppState.questionBank.filter(q =>
         q.subject === subject && q.chapter === chapter &&
-        q.status !== 'solved' &&    // unsolved only (mirror legacy practice)
+        _isUnexecutedModeQuestion(q) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
         !q.isAnomaly
     );
@@ -4239,7 +4263,7 @@ function _pickQuestionForMode(subject, chapter, mode) {
     }
 
     // ── Best-effort 3rd-pass fallback: when both P_win scans miss, return the
-    // coldest unsolved chapter question regardless of qElo band. Prevents the
+    // coldest unexecuted chapter question regardless of qElo band. Prevents the
     // Flow / Hardcore buttons from looking broken in chapters whose qElo
     // range is too narrow to ever reach the strict P_win window or the
     // minQeloFloor (e.g. fresh maths/3D Geometry with qElo 1250-1600 vs.
