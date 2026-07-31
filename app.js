@@ -3539,7 +3539,7 @@ export function updatePracticeTimerDisplay() {
 export function toggleOriginalPhoto() {
     AppState.photoHidden = !AppState.photoHidden;
     document.getElementById('hide-photo-toggle').textContent = AppState.photoHidden ?
-        '📷 Reveal Image' : '📷 Hide Image';
+        '📷 Reveal' : '📷 Hide';
     renderPracticeQuestionModal();
 }
 
