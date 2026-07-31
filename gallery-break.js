@@ -110,15 +110,22 @@ const TUNING = {
   continueDelayMs: 2000,        // quote → Continue appears
 
   // ── soft-edge system ──
-  pathSamples: 72,              // boundary samples (Catmull-Rom smoothed)
+  pathSamples: 96,              // boundary samples (Catmull-Rom smoothed)
   featherFrac: 0.16,            // falloff band as a fraction of radius
   featherMinPx: 52,             // floor so the very first bloom is pillowy
-  wobble: [                     // low-frequency liquid undulation octaves
+  wobble: [                     // liquid undulation octaves — low-frequency
+                                // body plus mid/high traveling ripples so the
+                                // boundary is never a still, rigid ring.
     { lobes: 2, amp: 0.030, speed:  0.00021, phase: 0.0 },
     { lobes: 3, amp: 0.017, speed: -0.00013, phase: 2.1 },
     { lobes: 5, amp: 0.008, speed:  0.00034, phase: 4.4 },
+    { lobes: 9, amp: 0.011, speed:  0.00055, phase: 0.8 },    // traveling ripple
+    { lobes: 15, amp: 0.006, speed: -0.00080, phase: 3.3 },   // fine edge shimmer
   ],
   breatheAmp: 0.004,            // whole-boundary slow breathing
+  glowBlobs: 22,                // edge-light sprites flickering around the rim
+  glowBase: 0.10,               // blob alpha floor
+  glowTravel: 0.22,             // traveling-wave alpha lift
   bleedSpots: 9,                // seep-through reveals ahead of the edge
   mottleCount: 12,              // fibrous texture dots inside the fade band
   ghostAlpha: 0.07,             // faint moisture-halo mask ahead of the edge
@@ -127,6 +134,16 @@ const TUNING = {
   moteCount: 26,                // dust-in-light particles
   auraOuterAlpha: 0.10,         // wide art-tinted halo
   auraInnerAlpha: 0.16,         // thin wet-edge shimmer
+
+  // ── v3 cinematic layer ──
+  vignetteMax: 0.42,            // screen-edge spotlight dim at full reveal
+  sheenAlpha: 0.10,             // wet-print luminosity while the edge spreads
+  sheenDecay: 0.985,            // sheen settle speed per frame (dries out)
+  raysCount: 4,                 // god-ray beams in the revealed light
+  raysAlpha: 0.06,              // beam luminosity
+  raysSpin: 0.000025,           // beam rotation rad/ms
+  bokehCount: 16,               // full-reveal particle bloom
+  crackleGain: 0.30,            // paper-crackle master volume (was missing!)
 };
 
 // ── Module state ────────────────────────────────────────────────────────────
@@ -146,6 +163,12 @@ let _grainTile = null;    // lazy noise tile
 let _onContinue = null;
 let _reduceMotion = false;
 let _audio = null;        // { ctx, gain, src }
+let _sheen = 0;           // wet-print luminosity — 1 while spreading, settles down
+let _rays = [];           // god-ray descriptors
+let _bokeh = [];          // full-reveal bloom particles
+let _bloomFired = false;  // bokeh burst fires once per break
+let _glowSprite = null;   // cached soft radial light sprite (per art tint)
+let _glowSpriteKey = null;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  PUBLIC API
@@ -254,6 +277,19 @@ function _seedTexture() {
     alpha: 0.05 + Math.random() * 0.16,
     twinkle: 0.0008 + Math.random() * 0.0015,
   }));
+
+  // God-ray beams: a few wide light shafts, each with its own base angle and
+  // rotation direction so no two breaks show the same light.
+  _rays = Array.from({ length: TUNING.raysCount }, (_, i) => ({
+    angle: (i / TUNING.raysCount) * Math.PI * 2 + Math.random() * 0.5,
+    dir: (Math.random() < 0.5 ? -1 : 1),
+    alpha: 0.5 + Math.random() * 0.5,
+  }));
+
+  // Fresh state for the reveal settle + bloom.
+  _sheen = 0;
+  _bokeh = [];
+  _bloomFired = false;
 }
 
 /** Sample the art's average color and lift it toward luminous — this becomes
@@ -336,6 +372,18 @@ function _frame(now) {
   _display += (target - _display) * step;
   if (Math.abs(target - _display) < 0.0004) _display = target;
 
+  // Wet-print sheen: hot while the edge is actively spreading, dries out when
+  // the bloom freezes or finishes — like developer liquid settling on paper.
+  _sheen = (Math.abs(target - _display) > 0.0015) ? 1 : (_sheen * TUNING.sheenDecay);
+
+  // Fully revealed after finish() → one-shot particle bloom over the print.
+  // Gated on motion+FX prefs like every other v3 layer (no motion, no bloom).
+  if (_finishing && !_reversing && _display >= 0.985 && !_bloomFired
+      && !_reduceMotion && _wantEffects()) {
+    _bloomFired = true;
+    _burstBokeh();
+  }
+
   _paint(now);
 
   // The bloom is the enforcement: past the threshold the overlay blocks input
@@ -366,7 +414,7 @@ function _paint(now) {
 
   const fullyOpen = _display >= 0.999;
 
-  // 1 ─ art layer
+  // 1 ─ art layer (static — the slow reveal does the moving)
   _ctx.save();
   _drawArtCover(w, h);
 
@@ -381,24 +429,42 @@ function _paint(now) {
   // 3 ─ print grain, only where art pixels exist
   _ctx.globalCompositeOperation = 'source-atop';
   _drawGrain(w, h, now);
+
+  // 3.5 ─ wet sheen + god rays, confined to revealed art pixels
+  if (!fullyOpen && !_reduceMotion && _wantEffects()) {
+    _ctx.globalCompositeOperation = 'source-atop';
+    _drawSheen(cx, cy, baseR, now);
+    _drawRays(cx, cy, baseR, now);
+  }
   _ctx.restore();
 
-  if (fullyOpen) return;   // fully open — no aura, no motes
+  // 6 ─ museum spotlight: dim the screen edges as the painting takes over.
+  //     Drawn over the art like light falling in a gallery. Runs in BOTH the
+  //     partial and fully-open states so the deepest dim lands at 100%.
+  _drawVignette(cx, cy, maxR, now);
+
+  if (fullyOpen) {
+    _drawBokeh(cx, cy, now);   // settle particles drift over the finished print
+    return;                    // fully open — no aura, no motes
+  }
 
   // 4 ─ art-tinted halo + wet-edge shimmer (additive light, no hard lines)
   _drawAura(cx, cy, baseR, now);
 
   // 5 ─ dust drifting in the revealed light
   _drawMotes(cx, cy, baseR, now);
+
+  // 7 ─ settle bloom drifts over the painting even before the very last frame
+  _drawBokeh(cx, cy, now);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  SOFT EDGE — organic path + feathered mask
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Smooth closed organic boundary: low-frequency multi-octave undulation,
-    Catmull-Rom → Bézier smoothed. Liquid, never jagged. */
-function _organicPath(cx, cy, r, now) {
+/** Sample points of the smooth closed organic boundary: multi-octave undulation
+    including mid/high-frequency traveling ripples, Catmull-Rom smoothed. */
+function _organicPts(cx, cy, r, now) {
   const n = TUNING.pathSamples;
   const breathe = _reduceMotion ? 0 : TUNING.breatheAmp * Math.sin(now * 0.0006);
   const pts = [];
@@ -410,6 +476,11 @@ function _organicPath(cx, cy, r, now) {
     }
     pts.push([cx + Math.cos(th) * r * m, cy + Math.sin(th) * r * m]);
   }
+  return pts;
+}
+
+function _organicPathFromPts(pts) {
+  const n = pts.length;
   const path = new Path2D();
   for (let i = 0; i < n; i++) {
     const p0 = pts[(i - 1 + n) % n], p1 = pts[i];
@@ -421,6 +492,10 @@ function _organicPath(cx, cy, r, now) {
   }
   path.closePath();
   return path;
+}
+
+function _organicPath(cx, cy, r, now) {
+  return _organicPathFromPts(_organicPts(cx, cy, r, now));
 }
 
 /** Compose the alpha mask offscreen: main feathered reveal + ghost halo +
@@ -486,26 +561,66 @@ function _buildMask(cx, cy, r, now) {
 //  AURA · MOTES · GRAIN
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Art-tinted light halo hugging the boundary — two blurred additive strokes,
-    no hard outlines. Breathes slowly. */
+/** Art-tinted light hugging the boundary — a blurred base bed plus living
+    flickering light sprites riding the rim, so the glow reads as uneven,
+    organic light instead of a rigid tube. A slow wave circles the edge. */
 function _drawAura(cx, cy, r, now) {
   const t = _artTint;
   const breathe = _reduceMotion ? 0.8 : (0.7 + 0.3 * Math.sin(now / 1400));
-  const path = _organicPath(cx, cy, r, now);
+  const pts = _organicPts(cx, cy, r, now);
+  const path = _organicPathFromPts(pts);
   _ctx.save();
   _ctx.globalCompositeOperation = 'lighter';
-  // wide soft halo
+
+  // 1 ─ wide soft halo bed (blurred, low alpha — no hard outline)
   _ctx.shadowColor = `rgba(${t.r},${t.g},${t.b},0.8)`;
-  _ctx.shadowBlur = _reduceMotion ? 24 : 42;
-  _ctx.strokeStyle = `rgba(${t.r},${t.g},${t.b},${(TUNING.auraOuterAlpha * breathe).toFixed(3)})`;
-  _ctx.lineWidth = 22;
+  _ctx.shadowBlur = _reduceMotion ? 22 : 40;
+  _ctx.strokeStyle = `rgba(${t.r},${t.g},${t.b},${(TUNING.auraOuterAlpha * breathe * 0.7).toFixed(3)})`;
+  _ctx.lineWidth = 24;
   _ctx.stroke(path);
-  // thin wet-edge shimmer
-  _ctx.shadowBlur = 12;
-  _ctx.strokeStyle = `rgba(255,250,240,${(TUNING.auraInnerAlpha * breathe).toFixed(3)})`;
-  _ctx.lineWidth = 3.5;
+
+  // 2 ─ living edge light: sprites flicker individually + a wave travels the
+  //     rim, so the border glows unevenly like light caught on wet paint.
+  if (!_reduceMotion && _wantEffects()) {
+    _ensureGlowSprite(t);
+    const step = Math.max(1, Math.floor(pts.length / TUNING.glowBlobs));
+    for (let i = 0; i < pts.length; i += step) {
+      const p = pts[i];
+      const th = (i / pts.length) * Math.PI * 2;
+      const travel = 0.5 + 0.5 * Math.sin(th * 3 - now * 0.0012);   // wave circling
+      const flicker = 0.5 + 0.5 * Math.sin(now * 0.002 + i * 1.7);  // per-blob twinkle
+      const a = (TUNING.glowBase + TUNING.glowTravel * travel) * flicker * breathe;
+      if (a < 0.012) continue;
+      const sz = (56 + 44 * travel) * (0.85 + 0.3 * flicker);
+      _ctx.globalAlpha = a;
+      _ctx.drawImage(_glowSprite, p[0] - sz / 2, p[1] - sz / 2, sz, sz);
+    }
+    _ctx.globalAlpha = 1;
+  }
+
+  // 3 ─ thin wet-edge shimmer (kept subtle — the sprites carry the character)
+  _ctx.shadowBlur = 10;
+  _ctx.strokeStyle = `rgba(255,250,240,${(TUNING.auraInnerAlpha * breathe * 0.7).toFixed(3)})`;
+  _ctx.lineWidth = 2.5;
   _ctx.stroke(path);
   _ctx.restore();
+}
+
+/** Cached soft radial light sprite, re-keyed when the art tint changes. */
+function _ensureGlowSprite(t) {
+  const key = `${t.r},${t.g},${t.b}`;
+  if (_glowSprite && _glowSpriteKey === key) return;
+  _glowSpriteKey = key;
+  const s = 96;
+  _glowSprite = document.createElement('canvas');
+  _glowSprite.width = _glowSprite.height = s;
+  const g = _glowSprite.getContext('2d');
+  const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  grad.addColorStop(0, 'rgba(255,255,255,0.85)');
+  grad.addColorStop(0.45, `rgba(${t.r},${t.g},${t.b},0.5)`);
+  grad.addColorStop(1, `rgba(${t.r},${t.g},${t.b},0)`);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, s, s);
 }
 
 /** Slow dust motes drifting inside the revealed light, tinted to the art. */
@@ -527,6 +642,114 @@ function _drawMotes(cx, cy, r, now) {
     _ctx.fillStyle = `rgba(255,252,246,${alpha.toFixed(3)})`;
     _ctx.beginPath(); _ctx.arc(x, y, m.size, 0, Math.PI * 2); _ctx.fill();
   }
+  _ctx.restore();
+}
+
+/** Respect the app's global FX toggle (Config → effects). Mirrors the
+    forest-island convention: html.fx-effects-off disables the fancy layers. */
+function _wantEffects() {
+  try { return !document.documentElement.classList.contains('fx-effects-off'); } catch (_) { return true; }
+}
+
+/** Museum spotlight: a soft dark vignette toward the screen edges, deepening
+    as the reveal spreads — the painting becomes the only lit thing in the room.
+    Drawn last, over the art, so it reads as gallery light falling on a wall. */
+function _drawVignette(cx, cy, maxR, now) {
+  if (_reduceMotion || !_wantEffects()) return;
+  const k = _display;
+  if (k < 0.02) return;
+  const breathe = _reduceMotion ? 1 : (0.85 + 0.15 * Math.sin(now / 2600));
+  const a = TUNING.vignetteMax * k * breathe;
+  const g = _ctx.createRadialGradient(cx, cy, maxR * 0.45, cx, cy, maxR * 1.02);
+  g.addColorStop(0, 'rgba(4,5,9,0)');
+  g.addColorStop(1, `rgba(4,5,9,${a.toFixed(3)})`);
+  _ctx.fillStyle = g;
+  _ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+}
+
+
+/** Wet-print sheen: a soft luminous bloom on freshly-spread art. Hot while the
+    edge is moving, dries out when the bloom freezes — developer liquid settling. */
+function _drawSheen(cx, cy, baseR, now) {
+  if (_sheen < 0.02) return;
+  const t = _artTint;
+  const r = baseR * 1.15;
+  const g = _ctx.createRadialGradient(cx, cy, r * 0.25, cx, cy, r);
+  g.addColorStop(0, `rgba(${t.r},${t.g},${t.b},${(_sheen * TUNING.sheenAlpha).toFixed(3)})`);
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  _ctx.fillStyle = g;
+  _ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+}
+
+/** God rays: a few slow-rotating beams of light in the revealed area, tinted
+    to the art's palette. source-atop at the caller keeps them on the print. */
+function _drawRays(cx, cy, baseR, now) {
+  if (_reduceMotion || !_wantEffects() || baseR < 40) return;
+  const t = _artTint;
+  const len = baseR * 1.5;
+  const half = len * 0.14;
+  for (const r of _rays) {
+    const a = r.angle + now * TUNING.raysSpin * r.dir;
+    const cos = Math.cos(a), sin = Math.sin(a);
+    const px = cos * len, py = sin * len;
+    const ox = -sin * half, oy = cos * half;
+    const alpha = TUNING.raysAlpha * r.alpha;
+    const g = _ctx.createLinearGradient(cx, cy, cx + px, cy + py);
+    g.addColorStop(0, `rgba(${t.r},${t.g},${t.b},${(alpha * 0.7).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${t.r},${t.g},${t.b},0)`);
+    _ctx.fillStyle = g;
+    _ctx.beginPath();
+    _ctx.moveTo(cx + ox, cy + oy);
+    _ctx.lineTo(cx - ox, cy - oy);
+    _ctx.lineTo(cx + px - ox, cy + py - oy);
+    _ctx.lineTo(cx + px + ox, cy + py + oy);
+    _ctx.closePath();
+    _ctx.fill();
+  }
+}
+
+/** One-shot bloom at full reveal: soft light particles drift up and settle,
+    like dust kicked up when the print finally comes to rest. */
+function _burstBokeh() {
+  _bokeh = Array.from({ length: TUNING.bokehCount }, () => ({
+    angle: Math.random() * Math.PI * 2,
+    dist: 0.2 + Math.random() * 0.6,
+    size: 2 + Math.random() * 5,
+    born: performance.now(),
+    life: 2600 + Math.random() * 2400,
+    rise: 0.02 + Math.random() * 0.06,
+    drift: (Math.random() - 0.5) * 0.00012,
+    tw: 0.001 + Math.random() * 0.0015,
+    phase: Math.random() * Math.PI * 2,
+  }));
+}
+
+function _drawBokeh(cx, cy, now) {
+  if (_reduceMotion || !_wantEffects() || !_bokeh.length) return;
+  const t = _artTint;
+  const w = window.innerWidth, h = window.innerHeight;
+  const maxR = Math.hypot(w, h) / 2;
+  const alive = [];
+  _ctx.save();
+  _ctx.globalCompositeOperation = 'lighter';
+  for (const p of _bokeh) {
+    const age = now - p.born;
+    const k = 1 - age / p.life;
+    if (k <= 0) continue;
+    alive.push(p);
+    const a = p.angle + age * p.drift;
+    const d = Math.min(maxR, p.dist * maxR + age * p.rise * 8);
+    const x = cx + Math.cos(a) * d;
+    const y = cy + Math.sin(a) * d - age * 0.012;
+    const tw = 0.5 + 0.5 * Math.sin(age * p.tw + p.phase);
+    const alpha = p.size * 0.06 * k * tw;
+    if (alpha < 0.01) continue;
+    _ctx.fillStyle = `rgba(${t.r},${t.g},${t.b},${(alpha * 0.5).toFixed(3)})`;
+    _ctx.beginPath(); _ctx.arc(x, y, p.size * 2.2, 0, Math.PI * 2); _ctx.fill();
+    _ctx.fillStyle = `rgba(255,252,246,${(alpha).toFixed(3)})`;
+    _ctx.beginPath(); _ctx.arc(x, y, p.size, 0, Math.PI * 2); _ctx.fill();
+  }
+  _bokeh = alive;
   _ctx.restore();
 }
 
@@ -569,6 +792,8 @@ function _drawArtCover(w, h) {
   if (!iw || !ih) return;
   const scale = Math.max(w / iw, h / ih);
   const dw = iw * scale, dh = ih * scale;
+  // Static: the painting sits perfectly still while the reveal slowly develops
+  // it — motion belongs to the edge, not the art.
   _ctx.drawImage(_art, (w - dw) / 2, (h - dh) / 2, dw, dh);
 }
 
