@@ -3585,7 +3585,7 @@ export function renderPracticeQuestionModal() {
         else if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') html +=
             `<div class="result-banner wrong" style="flex:1;">❌ Fumbled. The answer was: ${correctAns}</div>`;
         else html +=
-            `<div class="result-banner wrong" style="flex:1;">Answer revealed. It was: ${correctAns}</div>`;
+            `<div class="result-banner" style="flex:1; background: rgba(61,220,255,0.10); color: #a5ecff; border: 1px solid rgba(61,220,255,0.30);">🔍 Answer revealed. It was: ${correctAns} — were you right?</div>`;
         if (AppState.currentQ.solution && AppState.currentQ.solution.trim().length > 0) {
             html +=
                 `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">💡 Peep Solution</button>`;
@@ -5659,17 +5659,23 @@ export function practiceSubmit() {
         const correctNum = parseFloat(AppState.currentQ.correctAnswer);
         isCorrect = Math.abs(userNum - correctNum) < 1e-6;
 
-    } else if (AppState.currentQ.type === 'text') {
-        alert(`The answer was: ${AppState.currentQ.correctAnswer || 'not provided'}`);
-        // ⏱ Freeze the timer NOW — the time spent deciding correct/wrong after
-        // seeing the answer should NOT inflate the ELO temporal divergence calc.
-        // Store the frozen seconds so the self-report ELO migration uses this
-        // value instead of the still-ticking practiceSeconds.
+    } else {
+        // ── Self-report flow: any non-MCQ, non-numeric question (text, subjective,
+        //    or untyped) gets the reveal + self-report buttons instead of being
+        //    auto-marked as incorrect.
+        // ── Freeze the timer NOW — the time spent deciding correct/wrong after
+        //    seeing the answer should NOT inflate the ELO temporal divergence calc.
         AppState._frozenTextQSeconds = AppState.practiceSeconds;
         if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
         AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
         AppState.currentQ.timeTaken = AppState._frozenTextQSeconds;
-        AppState.currentQ.status = 'unsolved';
+        // A reveal alone never marks the question — only the self-report does.
+        // Reset 'wrong'/'error' to 'unsolved' so the re-render shows the neutral
+        // "Answer revealed — were you right?" banner instead of "❌ Fumbled".
+        // Preserve 'solved' ("✅ Clutched" banner is harmless on re-reveal).
+        if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') {
+            AppState.currentQ.status = 'unsolved';
+        }
         // ── Biological Memory Construct: stamp the processing instant so the
         //    continuous Δt is well-defined even if the user closes the modal
         //    without self-reporting. The easeFactor is hydrated (not nudged)
@@ -8702,10 +8708,9 @@ const globalMathObserver = new MutationObserver(function (mutations) {
 })();
 
 // ============================================================================
-//  ADDICTIVE COCKPIT + LOOP-RAIL NAVIGATION  (append-only, self-wiring)
-//  Psychologically engineered practice header + progression navigation.
-//  Reads existing state/DOM only; relocates current header nodes by their
-//  stable IDs into a new "cockpit"; never mutates existing app logic.
+//  LOOP-RAIL NAVIGATION  (append-only, self-wiring)
+//  Sidebar progression navigation (loop rail, badges, beacons). The practice
+//  modal cockpit was removed; the original header layout is left untouched.
 // ============================================================================
 (function CK_ENGINE() {
   if (window.__ckEngine) return; window.__ckEngine = true;
@@ -8725,95 +8730,23 @@ const globalMathObserver = new MutationObserver(function (mutations) {
 
   const $ = (id) => document.getElementById(id);
   const setT = (id, t) => { if (CK.last[id] === t) return; CK.last[id] = t; const e = $(id); if (e) e.textContent = t; };
-  const setW = (id, p) => { const e = $(id); if (e) e.style.width = Math.max(0, Math.min(100, p)) + '%'; };
   const setRing = (id, p, c) => { const e = $(id); if (!e) return; e.style.setProperty('--p', Math.max(0, Math.min(100, p))); if (c) e.style.setProperty('--ring-c', c); };
-  const pop = (el) => { if (!el) return; el.classList.remove('ck-pop'); void el.offsetWidth; el.classList.add('ck-pop'); };
   const totalSolved = () => (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
 
-  function comboColor(c) { return c >= 8 ? '#fbbf24' : c >= 4 ? '#a78bfa' : c >= 2 ? '#22c55e' : '#9aa3b5'; }
-  function depthFor(s) {
-    if (s >= 120) return { t: 'TRANSCENDENT', p: 100, c: '#a78bfa' };
-    if (s >= 60)  return { t: 'FLOW', p: ((s - 60) / 60) * 100, c: '#3ddcff' };
-    if (s >= 20)  return { t: 'DEEP', p: ((s - 20) / 40) * 100, c: '#22c55e' };
-    return { t: 'SURFACE', p: (s / 20) * 100, c: '#9aa3b5' };
-  }
-
-  // ---- Build the cockpit by relocating existing header nodes (safe: by ID) ----
+  // ---- Cockpit removed: the practice-modal header keeps its original layout ----
   function buildCockpit() {
-    if (CK.built) return;
-    const hdr = document.querySelector('#practice-modal .practice-header');
-    if (!hdr) return;
-    const streakViz = document.querySelector('#practice-modal #streak-visualizer');
-    const eloSlot   = document.querySelector('#practice-modal #elo-header-slot');
-    const timer     = document.querySelector('#practice-modal #question-timer');
-    const hideBtn   = document.querySelector('#practice-modal #hide-photo-toggle');
-    const immBtn    = document.querySelector('#practice-modal #immersive-focus-btn');
-    const closeBtn  = hdr.querySelector('.hide-toggle[onclick*="closePracticeModal"]') ||
-                      [...hdr.querySelectorAll('.hide-toggle')].find(b => b !== hideBtn && b !== immBtn);
-
-    const ck = document.createElement('div');
-    ck.className = 'practice-cockpit';
-    ck.innerHTML =
-      '<div class="ck-row ck-top">' +
-        '<div class="ck-identity">' +
-          '<span class="ck-tier-icon" id="ck-tier-icon">🧍</span>' +
-          '<div class="ck-tier-meta">' +
-            '<span class="ck-tier-name" id="ck-tier-name">NPC</span>' +
-            '<div class="ck-xpbar"><div class="ck-xpfill" id="ck-xpfill"></div></div>' +
-            '<span class="ck-xp-label" id="ck-xp-label">—</span>' +
-          '</div>' +
-        '</div>' +
-        '<div class="ck-combo" id="ck-combo">' +
-          '<div class="ck-ring ck-combo-ring" id="ck-combo-ring"><div class="ck-ring-hole">' +
-            '<span class="ck-combo-x" id="ck-combo-x">×1</span><span class="ck-combo-lbl">COMBO</span>' +
-          '</div></div>' +
-          '<div class="ck-crit"><div class="ck-crit-fill" id="ck-crit-fill"></div><span class="ck-crit-lbl" id="ck-crit-lbl">⚡ CRIT</span></div>' +
-        '</div>' +
-        '<div class="ck-streak">' +
-          '<div class="ck-streak-slot" id="ck-streak-slot"></div>' +
-          '<div class="ck-shields" id="ck-shields" title="Streak-save shields (persisted)">🛡 <span id="ck-shield-n">0</span></div>' +
-        '</div>' +
-        '<div class="ck-session">' +
-          '<div class="ck-ring ck-session-ring" id="ck-session-ring"><div class="ck-ring-hole">' +
-            '<span class="ck-session-n" id="ck-session-n">0/0</span><span class="ck-session-lbl">SESSION</span>' +
-          '</div></div>' +
-        '</div>' +
-        '<div class="ck-depth">' +
-          '<span class="ck-depth-tier" id="ck-depth-tier">SURFACE</span>' +
-          '<div class="ck-depth-meter"><div class="ck-depth-fill" id="ck-depth-fill"></div></div>' +
-          '<span class="ck-timer-slot" id="ck-timer-slot"></span>' +
-        '</div>' +
-        '<div class="ck-utils" id="ck-utils"></div>' +
-      '</div>';
-
-    hdr.classList.add('cockpit-active');
-    hdr.appendChild(ck);
-
-    // relocate existing nodes into the new slots (IDs + onclick travel with them)
-    const slot = (id) => ck.querySelector(id);
-    if (streakViz) slot('#ck-streak-slot').appendChild(streakViz);
-    if (timer)     slot('#ck-timer-slot').appendChild(timer);
-    if (eloSlot)   ck.querySelector('.ck-combo').appendChild(eloSlot);
-    const utils = slot('#ck-utils');
-    [hideBtn, immBtn, closeBtn].forEach(n => { if (n) utils.appendChild(n); });
-
     CK.built = true;
-    setT('ck-shield-n', String(CK.shields));
   }
 
   function critPayout() {
     try { if (typeof window.showSupercharged === 'function') window.showSupercharged(); } catch (e) {}
     try { if (typeof window.playSuperSound === 'function') window.playSuperSound(); } catch (e) {}
-    CK.shields += 1; persistShields(); setT('ck-shield-n', String(CK.shields));
-    pop($('ck-shields'));
-    setT('ck-crit-lbl', '💥 DETONATED');
-    setTimeout(() => setT('ck-crit-lbl', '⚡ CRIT'), 900);
+    CK.shields += 1; persistShields();
   }
 
-  // ---- Fast tick: derives combo / crit / rings / depth / ticker from live state ----
+  // ---- Fast tick: derives session / combo / crit state from live state ----
   function fastTick() {
     try {
-      if (!CK.built) buildCockpit();
       const modal = $('practice-modal');
       const modalActive = !!(modal && modal.classList.contains('active'));
 
@@ -8829,7 +8762,6 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         if (AppState._ckComboBreak) {
           AppState._ckComboBreak = false;
           CK.combo = 0; CK.critPrimed = false;
-          pop($('ck-combo'));
         }
         const st = AppState.practiceCorrectStreak || 0;
         if (st > CK.lastStreak) {
@@ -8839,17 +8771,14 @@ const globalMathObserver = new MutationObserver(function (mutations) {
           CK.sessionCorrect = Math.min(CK.sessionTarget, CK.sessionCorrect + inc);
           CK.crit = Math.min(100, CK.crit + 34);
           if (CK.crit >= 100) CK.critPrimed = true;
-          if (CK.combo > 0 && CK.combo % 5 === 0) { CK.shields += 1; persistShields(); setT('ck-shield-n', String(CK.shields)); pop($('ck-shields')); }
-          pop($('ck-combo'));
+          if (CK.combo > 0 && CK.combo % 5 === 0) { CK.shields += 1; persistShields(); }
         } else if (st < CK.lastStreak && CK.lastStreak > 0) {
           // FIX: a broken streak ALWAYS resets the combo. Persisted shields now
-          // save the CRIT charge (visible 🛡 SAVED), never the combo — previously
-          // shields silently swallowed every miss and the combo never reset.
+          // save the CRIT charge, never the combo — previously shields silently
+          // swallowed every miss and the combo never reset.
           CK.combo = 0; CK.critPrimed = false;
           if (CK.shields > 0) {
-            CK.shields -= 1; persistShields(); setT('ck-shield-n', String(CK.shields));
-            setT('ck-crit-lbl', '🛡 SAVED'); pop($('ck-shields'));
-            setTimeout(() => setT('ck-crit-lbl', '⚡ CRIT'), 1000);
+            CK.shields -= 1; persistShields();
           } else {
             CK.crit = Math.max(0, CK.crit - 50);
           }
@@ -8858,37 +8787,6 @@ const globalMathObserver = new MutationObserver(function (mutations) {
       } else {
         CK.sessionOpen = false;
       }
-
-      // identity + tier XP bar
-      const elo = (AppState.elo && AppState.elo.global) || 1200;
-      const tier = getRankTierDetails(elo);
-      setT('ck-tier-icon', tier.icon);
-      setT('ck-tier-name', tier.name);
-      let xp = 100, xpLabel = 'Peak tier 🗿';
-      const myTier = (typeof ELO_RANK_TIERS !== 'undefined') ? ELO_RANK_TIERS.find(t => elo >= t.min && elo <= t.max) : null;
-      if (myTier && isFinite(myTier.max)) {
-        xp = Math.max(0, Math.min(100, ((elo - myTier.min) / (myTier.max + 1 - myTier.min)) * 100));
-        const nxt = _getNextTierThreshold(elo);
-        xpLabel = nxt ? (Math.max(0, Math.round(nxt - elo)) + ' pts to ' + (_getNextTierName(elo) || '')) : 'Peak tier 🗿';
-      }
-      setW('ck-xpfill', xp); setT('ck-xp-label', xpLabel);
-
-      // combo ring + crit bar
-      const cc = comboColor(CK.combo);
-      setRing('ck-combo-ring', CK.combo > 0 ? ((CK.combo % 5) / 5) * 100 || 100 : 0, cc);
-      setT('ck-combo-x', '×' + Math.max(1, CK.combo));
-      setW('ck-crit-fill', CK.crit);
-      if (CK.critPrimed) { const e = $('ck-crit'); if (e) e.classList.add('ck-primed'); } else { const e = $('ck-crit'); if (e) e.classList.remove('ck-primed'); }
-
-      // session ring
-      setRing('ck-session-ring', (CK.sessionCorrect / CK.sessionTarget) * 100, CK.sessionCorrect >= CK.sessionTarget ? '#22c55e' : '#ffb224');
-      setT('ck-session-n', CK.sessionCorrect + '/' + CK.sessionTarget);
-
-      // focus depth
-      const d = depthFor(AppState.practiceSeconds || 0);
-      setT('ck-depth-tier', d.t); setW('ck-depth-fill', d.p);
-      const df = $('ck-depth-fill'); if (df) df.style.background = d.c;
-      const dt = $('ck-depth-tier'); if (dt) dt.style.color = d.c;
     } catch (e) { /* never break the app */ }
   }
 

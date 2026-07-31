@@ -247,6 +247,13 @@ export function resolveTier() {
     // ── Clock-cheat check ──
     const cheating = checkClockCheat();
     if (cheating) {
+        // An explicit user override (3s hold) still takes effect; it is
+        // cleared again by the daily reset at midnight.
+        if (_state.dismissed) {
+            _state._cachedTier = null;
+            _state._cachedTierTs = now;
+            return null;
+        }
         // Force highest tier when cheating detected
         const tier3 = TIERS[2];
         _state.forcedCnsActive = true;
@@ -305,8 +312,9 @@ export function resolveTier() {
                 return null;
             }
 
-            // Check if dismissed (Tier 1/2 only)
-            if (tier.dismissible && _state.dismissed) {
+            // Check if dismissed (any tier — override or regular dismiss,
+            // resets daily at midnight via resetDaily)
+            if (_state.dismissed) {
                 _state._cachedTier = null;
                 _state._cachedTierTs = now;
                 return null;
@@ -629,10 +637,10 @@ export function checkAndShowTier3Modal() {
 
     // Don't show if already shown
     const modal = document.getElementById('nightguard-modal');
-    if (!modal || modal.style.display === 'flex') return false;
+    if (!modal || modal.classList.contains('active')) return false;
 
-    // Show the modal and apply sky-blue tint
-    modal.style.display = 'flex';
+    // Show the modal (class-based like every other modal) and apply sky-blue tint
+    modal.classList.add('active');
     document.body.classList.add('nightguard-tint');
     return true;
 }
