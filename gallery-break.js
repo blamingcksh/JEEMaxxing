@@ -28,7 +28,7 @@
 // later breaks work offline; if the image can't load a procedural
 // "aurora" painting is generated so the ritual never breaks.
 
-import { AppState, idbSet, idbGet } from './storage.js';
+import { idbSet, idbGet } from './storage.js';
 
 // ── Art + quote pool (public domain) ────────────────────────────────────────
 const _wiki = (file) => file;
@@ -101,10 +101,8 @@ const ART_CACHE_PREFIX = 'galleryArt:';
 
 // ── Tuning ──────────────────────────────────────────────────────────────────
 const TUNING = {
-  // ── reveal pacing (UNCHANGED — the rate was good, kept verbatim) ──
-  easePerFrame: 0.045,          // display chases target (per rAF frame)
-  graceCap: 0.08,               // max reveal while an un-submitted solve is live
-  graceMaxMs: 60000,            // grace never holds longer than this
+  // ── reveal pacing ──
+  easePerFrame: 0.045,          // display chases timer progress (per rAF frame)
   blockThreshold: 0.30,         // overlay starts swallowing pointer events here
   reverseDurationMs: 1800,      // Continue → bloom back into the app
   abortFadeMs: 350,             // skip-break teardown fade
@@ -145,7 +143,6 @@ let _bleeds = [];         // seeded seep-through spots
 let _mottle = [];         // seeded fibrous texture dots
 let _motes = [];          // drifting dust particles
 let _grainTile = null;    // lazy noise tile
-let _graceDeadline = 0;   // 0 = no grace
 let _onContinue = null;
 let _reduceMotion = false;
 let _audio = null;        // { ctx, gain, src }
@@ -169,9 +166,6 @@ function begin() {
 
   // Fresh organic texture each break so no two blooms look alike
   _seedTexture();
-
-  // Mid-question grace: never eat an un-submitted attempt
-  _graceDeadline = _isMidQuestion() ? (Date.now() + TUNING.graceMaxMs) : 0;
 
   _buildDom();
   _painting = _pickPainting();
@@ -197,7 +191,6 @@ function setProgress(p) {
 function finish(onContinue) {
   if (!_active) { if (typeof onContinue === 'function') onContinue(); return; }
   _finishing = true;
-  _graceDeadline = 0;
   _target = 1;
   _onContinue = (typeof onContinue === 'function') ? onContinue : null;
 }
@@ -334,18 +327,12 @@ function _resize() {
 function _frame(now) {
   if (!_active) return;
 
-  // Grace: hold the bloom at a small pulsing spot while a solve is live
-  let target = _target;
-  if (_graceDeadline) {
-    if (Date.now() > _graceDeadline || !_isMidQuestion()) {
-      _graceDeadline = 0;   // released — bloom catches up naturally
-    } else {
-      target = Math.min(target, TUNING.graceCap);
-    }
-  }
+  // Timer progress is the only reveal governor. Keep the same easing while
+  // finishing so the final frames cannot lurch across the screen.
+  const target = _target;
 
   // Ease display toward target (both directions — "Add 5 min" re-covers)
-  const step = _finishing ? TUNING.easePerFrame * 1.6 : TUNING.easePerFrame;
+  const step = TUNING.easePerFrame;
   _display += (target - _display) * step;
   if (Math.abs(target - _display) < 0.0004) _display = target;
 
@@ -630,21 +617,6 @@ function _onContinueClick() {
   };
   if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
   requestAnimationFrame(tick);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  MID-QUESTION GRACE
-// ═══════════════════════════════════════════════════════════════════════════
-
-function _isMidQuestion() {
-  try {
-    const modal = document.getElementById('practice-modal');
-    if (!modal || !modal.classList.contains('active')) return false;
-    const flags = AppState.practiceSubmittedFlags;
-    const idx = AppState.currentPracticeIndex || 0;
-    if (!Array.isArray(flags) || !flags.length) return false;
-    return flags[idx] !== true;   // un-submitted attempt on screen
-  } catch (_) { return false; }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
