@@ -582,7 +582,7 @@
 </div>
 
 <!-- Post-23:00 Night Guard Modal (Tier 3: uninterruptible, long-press 3s override) -->
-<div id="nightguard-modal" class="modal-overlay" style="display:none">
+<div id="nightguard-modal" class="modal-overlay">
     <div class="modal-content nightguard-card">
         <div class="nightguard-icon">🛌</div>
         <h2 id="nightguard-title">Begin Recovery?</h2>
@@ -590,10 +590,10 @@
         <div class="nightguard-actions">
             <button id="nightguard-override-btn" class="btn btn-ghost"
                     onmousedown="window._nightguardOverrideStart=Date.now()"
-                    onmouseup="window._nightguardOverrideEnd=Date.now();if(Date.now()-window._nightguardOverrideStart>=3000){window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').style.display='none';document.body.classList.remove('nightguard-tint');}else{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}"
+                    onmouseup="window._nightguardOverrideEnd=Date.now();if(Date.now()-window._nightguardOverrideStart>=3000){window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').classList.remove('active');document.body.classList.remove('nightguard-tint');}else{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}"
                     onmouseleave="window._nightguardOverrideStart=null"
                     ontouchstart="window._nightguardOverrideStart=Date.now()"
-                    ontouchend="window._nightguardOverrideEnd=Date.now();if(Date.now()-window._nightguardOverrideStart>=3000){window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').style.display='none';document.body.classList.remove('nightguard-tint');}else{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}">
+                    ontouchend="window._nightguardOverrideEnd=Date.now();if(Date.now()-window._nightguardOverrideStart>=3000){window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').classList.remove('active');document.body.classList.remove('nightguard-tint');}else{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}">
                 Hold for 3s to override
             </button>
             <button class="btn btn-primary" onclick="window.location.reload()">End Session</button>

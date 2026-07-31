@@ -4104,15 +4104,8 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
 #view-dashboard .dash-card.bento-drag-target { transition: box-shadow .12s ease, border-color .12s ease; }
 
 /* ============================================================================
-   ADDICTIVE COCKPIT + LOOP-RAIL NAV  (append-only)
+   LOOP-RAIL NAV  (append-only)
    ============================================================================ */
-#practice-modal .practice-header.cockpit-active { display: block !important; margin: 0 0 14px; padding: 0; gap: 0; }
-.practice-cockpit { --ck-surface: #0c0e16; display: flex; flex-direction: column; gap: 8px;
-  padding: 12px; border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
-  border: 1px solid rgba(255,255,255,.08);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 10px 30px -18px rgba(0,0,0,.8); }
-.ck-row.ck-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 
 /* shared conic ring */
 .ck-ring { --p: 0; --ring-c: #ffb224; width: 54px; height: 54px; border-radius: 50%;
@@ -4121,56 +4114,6 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
   box-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 0 14px -5px var(--ring-c); transition: background .35s ease; }
 .ck-ring-hole { width: 42px; height: 42px; border-radius: 50%; background: var(--ck-surface);
   display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
-
-/* identity + tier XP */
-.ck-identity { display: flex; align-items: center; gap: 9px; min-width: 132px; }
-.ck-tier-icon { font-size: 24px; filter: drop-shadow(0 0 8px rgba(255,178,36,.4)); }
-.ck-tier-meta { display: flex; flex-direction: column; gap: 3px; }
-.ck-tier-name { font-family: 'Chakra Petch','Space Grotesk',sans-serif; font-weight: 700; font-size: 13px; letter-spacing: .3px; }
-.ck-xpbar { width: 110px; height: 5px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
-.ck-xpfill { height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg,#ffb224,#ff7a1a); transition: width .4s cubic-bezier(.22,1,.36,1); box-shadow: 0 0 8px rgba(255,122,26,.5); }
-.ck-xp-label { font-size: 9.5px; color: var(--text-secondary,#8a8ad3); letter-spacing: .3px; }
-
-/* combo core */
-.ck-combo { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.ck-combo-x { font-family: 'Space Grotesk',monospace; font-weight: 800; font-size: 15px; }
-.ck-combo-lbl { font-size: 8px; letter-spacing: 1.4px; color: var(--text-secondary,#8a8ad3); }
-.ck-crit { position: relative; width: 64px; height: 6px; border-radius: 99px; background: rgba(255,255,255,.07); overflow: hidden; }
-.ck-crit-fill { height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg,#3ddcff,#a78bfa); transition: width .3s ease; }
-.ck-crit-lbl { position: absolute; inset: 0; display: grid; place-items: center; font-size: 7.5px; font-weight: 800; letter-spacing: 1px; color: #cfe9ff; mix-blend-mode: screen; }
-.ck-crit.ck-primed { animation: ckPrimed .8s ease-in-out infinite; }
-.ck-crit.ck-primed .ck-crit-fill { background: linear-gradient(90deg,#fbbf24,#ff7a1a); }
-@keyframes ckPrimed { 0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,.0); } 50% { box-shadow: 0 0 12px 1px rgba(251,191,36,.7); } }
-
-/* streak + shields */
-.ck-streak { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.ck-streak-slot .streak-visualizer { margin: 0; }
-.ck-shields { font-size: 12px; font-weight: 800; color: #c4b5fd; background: rgba(139,92,246,.12);
-  border: 1px solid rgba(139,92,246,.35); border-radius: 99px; padding: 2px 9px; white-space: nowrap; }
-
-/* session ring */
-.ck-session-n { font-family: 'Space Grotesk',monospace; font-weight: 800; font-size: 12px; }
-.ck-session-lbl { font-size: 7.5px; letter-spacing: 1.2px; color: var(--text-secondary,#8a8ad3); }
-
-/* focus depth (the anxiety-inverting gauge) */
-.ck-depth { display: flex; flex-direction: column; gap: 4px; min-width: 96px; }
-.ck-depth-tier { font-family: 'Chakra Petch','Space Grotesk',sans-serif; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
-.ck-depth-meter { width: 100%; height: 6px; border-radius: 99px; background: rgba(255,255,255,.07); overflow: hidden; }
-.ck-depth-fill { height: 100%; width: 0; border-radius: 99px; transition: width 1s linear, background .4s ease; }
-.ck-timer-slot .timer-display-sm { font-size: 12px !important; padding: 1px 8px !important; background: transparent !important; color: var(--text-muted,#4a4a6a) !important; opacity: .8; }
-
-/* utility cluster (demoted) */
-.ck-utils { display: flex; gap: 6px; margin-left: auto; align-items: center; }
-.ck-utils .hide-toggle { min-width: 0 !important; height: 28px !important; padding: 3px 10px !important; font-size: 11px !important; border-radius: 8px !important; }
-
-/* anticipation ticker */
-.ck-ticker { font-size: 11px; font-weight: 600; color: #ffd9a0; text-align: center;
-  padding: 5px 10px; border-radius: 99px; background: rgba(255,178,36,.07); border: 1px solid rgba(255,178,36,.18);
-  min-height: 22px; display: grid; place-items: center; }
-#ck-ticker-text { transition: opacity .25s ease; }
-
-.ck-pop { animation: ckPop .4s cubic-bezier(.34,1.56,.64,1); }
-@keyframes ckPop { 0% { transform: scale(1); } 40% { transform: scale(1.28); } 100% { transform: scale(1); } }
 
 /* ---- Navigation loop rail ---- */
 .nav-ck-loop { margin: 4px 0 18px; padding: 12px; border-radius: 14px;
@@ -4215,12 +4158,11 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
   background: #f87171; box-shadow: 0 0 10px #f87171; animation: ckBeacon 1.2s ease-in-out infinite; }
 
 @media (max-width: 560px) {
-  .ck-row.ck-top { gap: 10px; }
    /* ════════════════════════════════════════════════════════════════════════
    FIX PASS — sidebar loop-card overflow · collapsed-rail text wrap ·
-   reward-badge placement · cockpit CRIT legibility.
+   reward-badge placement.
    Append to the END of styles.css. Reversible: delete this block.
-   No JS / DOM / index.html changes — restyles the nodes the cockpit +
+   No JS / DOM / index.html changes — restyles the nodes the
    loop-rail engine already injects.
    ════════════════════════════════════════════════════════════════════════ */
 
@@ -4281,27 +4223,6 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
 .sidebar.collapsed .nav-ck-beacon {
     position: absolute; top: 6px; left: 12px; margin: 0;
 }
-
-/* ── 5. Cockpit: the CRIT meter under the COMBO ring was clipping and its
-        label was invisible (mix-blend-mode:screen hid the glyphs — that
-        was the cut-off cyan sliver). Give it a real track + legible text. */
-.ck-top { flex-wrap: wrap; row-gap: 8px; }     /* wrap gracefully on narrow modals */
-.ck-combo { gap: 6px; min-width: 64px; }
-.ck-crit {
-    width: 64px; height: 7px; overflow: visible;
-    background: rgba(255,255,255,.08);          /* visible empty track */
-}
-.ck-crit-lbl {
-    mix-blend-mode: normal;                     /* was hiding the text */
-    color: #cfe9ff; font-size: 7px; letter-spacing: .5px;
-    text-shadow: 0 1px 2px rgba(0,0,0,.85);
-}
-@media (max-width: 720px) {
-    .ck-utils { margin-left: 0; width: 100%; justify-content: flex-end; }
-}
-  .ck-identity { min-width: 0; }
-  .ck-xpbar { width: 84px; }
-  .ck-utils { margin-left: 0; width: 100%; justify-content: flex-end; }
 }
 /* ============================================================
    PATCH v2 — sidebar strip compaction + collapse hardening
@@ -4808,7 +4729,7 @@ html[data-mode="dusk"] .loading-card {
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
 }
 
-/* ── Inputs / terminal / cockpit ───────────────────────────────────────── */
+/* ── Inputs / terminal ─────────────────────────────────────────────────── */
 html[data-mode="dusk"] .pomo-input,
 html[data-mode="dusk"] .pomo-select,
 html[data-mode="dusk"] .matrix-search,
@@ -4821,11 +4742,6 @@ html[data-mode="dusk"] .text-track-terminal { background: rgba(18,20,36,0.5) !im
 html[data-mode="dusk"] .glow-box-inner {
   background: rgba(40,44,68,0.86) !important;
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-}
-html[data-mode="dusk"] .practice-cockpit {
-  --ck-surface: #333852;
-  background: linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.04)) !important;
-  border-color: var(--aes-line) !important;
 }
 html[data-mode="dusk"] .pomo-mini-widget { background: rgba(42,46,70,0.9) !important; }
 html[data-mode="dusk"] .bento-toolbar { background: rgba(255,250,240,0.07) !important; }
@@ -5158,10 +5074,10 @@ html[data-mode="dusk"] #view-dashboard .dash-card-momentum {
 }
 
 /* ════════════════════════════════════════════════════════════════════════
-   PRACTICE MODAL POLISH — quieter cockpit, cleaner question sheet.
+   PRACTICE MODAL POLISH — cleaner question sheet.
    Pairs with the combo-reset FIX in app.js. Append-only + reversible:
    delete this block to restore the old look. Scoped to #practice-modal;
-   every control, ring, meter and button stays fully functional.
+   every control and button stays fully functional.
    ════════════════════════════════════════════════════════════════════════ */
 
 /* ── Shell: tighter, glassier slab ─────────────────────────────────────── */
@@ -5177,81 +5093,6 @@ html[data-mode="dusk"] #view-dashboard .dash-card-momentum {
 }
 html[data-mode="dusk"] #practice-modal .modal-card {
   background: linear-gradient(180deg, rgba(48,52,78,0.92), rgba(36,40,62,0.95));
-}
-
-/* ── Cockpit: one calm glass strip with a clear hierarchy ──────────────── */
-#practice-modal .practice-cockpit {
-  padding: 11px 14px;
-  gap: 10px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
-  border: 1px solid rgba(255,255,255,0.09);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 12px 30px -22px rgba(0,0,0,0.9);
-}
-html[data-mode="dusk"] #practice-modal .practice-cockpit { --ck-surface: #31364e; }
-#practice-modal .ck-row.ck-top { gap: 14px; justify-content: space-between; align-items: center; }
-
-/* identity */
-#practice-modal .ck-identity { min-width: 118px; gap: 8px; }
-#practice-modal .ck-tier-icon { font-size: 21px; }
-#practice-modal .ck-tier-name { font-size: 12px; }
-#practice-modal .ck-xpbar { width: 92px; height: 4px; }
-#practice-modal .ck-xp-label { font-size: 8.5px; opacity: 0.75; }
-
-/* combo + crit — the hero of the strip */
-#practice-modal .ck-ring { width: 50px; height: 50px; }
-#practice-modal .ck-ring-hole { width: 38px; height: 38px; }
-#practice-modal .ck-combo-x { font-size: 14px; }
-#practice-modal .ck-combo-lbl,
-#practice-modal .ck-session-lbl { font-size: 7px; letter-spacing: 1.1px; opacity: 0.7; }
-#practice-modal .ck-crit { width: 58px; }
-#practice-modal .ck-crit-lbl { font-size: 7px; }
-
-/* streak flame + shields */
-#practice-modal .ck-streak-slot .streak-visualizer { width: 40px; height: 40px; }
-#practice-modal .ck-streak-slot #streak-canvas { width: 40px; height: 40px; }
-#practice-modal .ck-streak-slot .streak-number { font-size: 13px; }
-#practice-modal .ck-shields { font-size: 10.5px; padding: 2px 8px; }
-
-/* session ring — quieter, still readable */
-#practice-modal .ck-session-ring { width: 46px; height: 46px; }
-#practice-modal .ck-session-ring .ck-ring-hole { width: 34px; height: 34px; }
-#practice-modal .ck-session-n { font-size: 10.5px; }
-
-/* focus depth — slim + quiet */
-#practice-modal .ck-depth { min-width: 84px; gap: 3px; }
-#practice-modal .ck-depth-tier { font-size: 8.5px; letter-spacing: 0.8px; opacity: 0.85; }
-#practice-modal .ck-depth-meter { height: 4px; }
-
-/* timer — promoted back to a legible telemetry pill */
-#practice-modal .ck-timer-slot .timer-display-sm {
-  font-size: 14px !important;
-  padding: 4px 12px !important;
-  border-radius: 999px !important;
-  background: rgba(61,220,255,0.08) !important;
-  border: 1px solid rgba(61,220,255,0.28) !important;
-  color: #c9f3ff !important;
-  opacity: 1 !important;
-  font-variant-numeric: tabular-nums;
-  box-shadow: 0 0 14px -4px rgba(61,220,255,0.5);
-}
-
-/* utility buttons — ghost chips, far right */
-#practice-modal .ck-utils { gap: 6px; }
-#practice-modal .ck-utils .hide-toggle {
-  height: 30px !important;
-  padding: 4px 11px !important;
-  font-size: 11px !important;
-  border-radius: 9px !important;
-  background: rgba(255,255,255,0.04) !important;
-  border: 1px solid rgba(255,255,255,0.10) !important;
-  color: var(--text-secondary) !important;
-  transition: background .16s ease, color .16s ease, border-color .16s ease;
-}
-#practice-modal .ck-utils .hide-toggle:hover {
-  background: rgba(255,255,255,0.09) !important;
-  color: #fff !important;
-  border-color: rgba(255,255,255,0.22) !important;
 }
 
 /* ── Question sheet ────────────────────────────────────────────────────── */
@@ -5320,21 +5161,10 @@ html[data-mode="dusk"] #practice-modal .practice-cockpit { --ck-surface: #31364e
 #practice-modal .show-solution-btn { border-radius: 10px; }
 #practice-modal .elo-shift-chip { margin: 14px auto 2px; }
 
-/* ── Small screens: let the strip wrap instead of cramming ─────────────── */
+/* ── Small screens ─────────────────────────────────────────────────────── */
 @media (max-width: 720px) {
   #practice-modal .modal-card { padding: 16px 14px 20px; border-radius: 20px; }
-  #practice-modal .ck-row.ck-top { gap: 10px; }
-  #practice-modal .ck-identity { min-width: 0; }
-  #practice-modal .ck-utils { margin-left: auto; }
 }
-
-/* ════════════════════════════════════════════════════════════════════════
-   ELO CHIP FIX — kill the header-slot chip that CK_ENGINE wedged inside
-   .ck-combo (it broke the cockpit row alignment). The bottom-of-modal
-   .elo-shift-chip stays. SR drawer's #sr-elo-header-slot is untouched.
-   Reversible: delete this rule.
-   ════════════════════════════════════════════════════════════════════════ */
-#practice-modal .practice-cockpit #elo-header-slot { display: none !important; }
 
 /* ════════════════════════════════════════════════════════════════════════
    LIVING WORLD WALLPAPER + DAILY ISLAND — pairs with forest-bg.js and
