@@ -6739,6 +6739,40 @@ ACCOUNTABILITY ENGINE v2 — Risk & Accountability Desk
   visibility: hidden;
   transition: opacity 1.4s ease, transform 1.4s ease, visibility 0s linear 1.4s;
 }
+
+/* v3 polish: self-drawing hairline that typesets in above the plaque */
+.gb-quote-box::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 56%;
+  height: 1px;
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  background: linear-gradient(90deg, transparent, rgba(255, 250, 240, 0.55), transparent);
+  transition: transform 1.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.gb-quote-box.gb-visible::before { transform: translateX(-50%) scaleX(1); }
+
+/* v3 polish: letters breathe open as the quote lands */
+.gb-plaque {
+  letter-spacing: 0.14em;
+  transition: letter-spacing 2.2s ease;
+}
+.gb-quote-box.gb-visible .gb-plaque { letter-spacing: 0.26em; }
+.gb-quote {
+  letter-spacing: 0.01em;
+  transition: letter-spacing 2.4s ease, opacity 1.4s ease;
+}
+.gb-quote-box.gb-visible .gb-quote { letter-spacing: 0.05em; }
+
+/* v3 polish: Continue breathes softly once it's ready */
+.gb-quote-box.gb-ready .gb-continue { animation: gbContinueBreath 2.6s ease-in-out infinite; }
+@keyframes gbContinueBreath {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 250, 240, 0); }
+  50%      { box-shadow: 0 0 18px rgba(255, 250, 240, 0.25); }
+}
 .gb-quote-box.gb-visible {
   opacity: 1;
   visibility: visible;
@@ -6795,4 +6829,7 @@ ACCOUNTABILITY ENGINE v2 — Risk & Accountability Desk
     transform: translateX(-50%);
   }
   .gb-quote-box.gb-ready .gb-continue { transform: none; }
+  .gb-quote-box::before { transform: translateX(-50%) scaleX(1); }
+  .gb-quote-box.gb-ready .gb-continue { animation: none; }
+  .gb-plaque, .gb-quote { letter-spacing: normal; }
 }
