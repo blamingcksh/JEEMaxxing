@@ -786,23 +786,26 @@
 <div id="practice-modal" class="modal-overlay" onclick="closeModal(event, 'practice-modal')">
     <div class="modal-card">
         <div class="practice-header">
-            <div style="display:flex;align-items:center">
+            <div class="pm-status">
                 <div class="streak-visualizer" id="streak-visualizer">
                     <canvas id="streak-canvas" width="16" height="16"></canvas>
                     <span class="streak-number" id="streak-number">0</span>
                 </div>
                 <div id="elo-header-slot" class="elo-header-slot"></div>
             </div>
-            <span class="timer-display-sm" id="question-timer">00:00</span>
-            <div style="display:flex;gap:8px;align-items:center">
-                <button class="hide-toggle" id="hide-photo-toggle" onclick="toggleOriginalPhoto()">📷 Hide Image</button>
+            <div class="pm-timer">
+                <span class="pm-timer-label">Time</span>
+                <span class="timer-display-sm" id="question-timer">00:00</span>
+            </div>
+            <div class="pm-actions">
+                <button class="hide-toggle" id="hide-photo-toggle" onclick="toggleOriginalPhoto()">📷 Hide</button>
                 <button class="hide-toggle" id="immersive-focus-btn" onclick="toggleImmersive()">🕶 Lock In</button>
-                <button class="hide-toggle" onclick="closePracticeModal()">✕ Close</button>
+                <button class="hide-toggle pm-close" onclick="closePracticeModal()" aria-label="Close practice">✕</button>
             </div>
         </div>
         <div id="practice-modal-content"></div>
-        <div style="display:flex;justify-content:space-between;gap:12px;margin-top:20px">
-            <button class="btn btn-secondary" onclick="practicePrev()">← Previous</button>
+        <div class="pm-footer">
+            <button class="btn btn-secondary" onclick="practicePrev()">← Prev</button>
             <button class="btn btn-primary" id="practice-submit-btn" onclick="practiceSubmit()">Lock In Answer</button>
             <button class="btn btn-secondary" onclick="practiceNext()">Next →</button>
         </div>
