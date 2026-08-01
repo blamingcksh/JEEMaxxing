@@ -363,9 +363,12 @@ function _renderAnswerStage(q) {
     const hasAnswer = _hasLoadedAnswer(q);
     const correctAns = hasAnswer ? (Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer) : '';
     if (hasAnswer) {
+        const correctAns = typeof window.answerMathHTML === 'function'
+            ? window.answerMathHTML(q.correctAnswer)
+            : _esc(Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer);
         return `
             <div class="sr-self-report sr-self-report-inline">
-                <div class="sr-self-report-label">Correct answer on file: <strong>${_esc(correctAns)}</strong>. Did you get it right?</div>
+                <div class="sr-self-report-label">Correct answer on file: <strong>${correctAns}</strong>. Did you get it right?</div>
                 <div class="sr-self-report-btns">
                     <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
                     <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
@@ -448,7 +451,8 @@ function _applyResult(result, source, q) {
             : null;
         let suffix = '';
         if (source === 'auto' && correctAns) {
-            suffix = (result === 'correct' ? ` — answer: ${_esc(correctAns)}` : ` — correct answer: ${_esc(correctAns)}`);
+            const escAns = typeof window.answerMathHTML === 'function' ? window.answerMathHTML(correctAns) : _esc(correctAns);
+            suffix = (result === 'correct' ? ` — answer: ${escAns}` : ` — correct answer: ${escAns}`);
         } else if (source === 'self') {
             suffix = ' (self-reported)';
         }

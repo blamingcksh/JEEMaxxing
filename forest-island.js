@@ -17,6 +17,8 @@ function todayKey(){return new Date().toISOString().slice(0,10);}
 function _FG(){return window.__forestGrowth||null;}
 function _diffOf(q){var fg=_FG();if(q&&q.difficulty!=null)return q.difficulty;if(fg)return fg.difficulty(q&&q.qElo,q&&q.subject);return 0.5;}
 function _sizeF(d){d=d<0?0:d>1?1:d;return 0.6+0.7*d;}
+function _strHash(s){var h=2166136261;s=String(s||'');for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0)/4294967296;}
+function _oakOf(q,seed){if(q&&q.oak!=null)return !!q.oak;return _strHash(q&&q.id!=null?q.id:('x'+(q&&q.qElo||1200)+'|'+seed))<0.10;}
 /* persistence */
 function loadStore(){try{var o=JSON.parse(localStorage.getItem(LS)||'{}');return (o&&typeof o==='object')?o:{};}catch(e){return {};}}
 function saveStore(o){try{localStorage.setItem(LS,JSON.stringify(o));}catch(e){}}
@@ -88,7 +90,7 @@ function ensureIslandBuilt(){if(iBuilt||iBuilding)return;iBuilding=true;loadThre
 function writeIsland(k,s,g){if(!iMeshes[k])return;var sc=Math.max(0.0001,s.baseScale*g);dummy.position.set(s.x,s.y-0.05,s.z);dummy.rotation.set(s.leanX,s.rot,s.leanZ);dummy.scale.set(s.sxz*sc,s.sy*sc,s.sxz*sc);dummy.updateMatrix();iMeshes[k].setMatrixAt(s.iid,dummy.matrix);}
 function addIsland(q,instant){
   if(!iBuilt)return;
-  var oak=(q.qElo||1200)>=2300,k=oak?'oak':q.subject;
+  var oak=_oakOf(q,iState[(q.subject||'physics')].length),k=oak?'oak':q.subject;
   var d=_diffOf(q);
   var minD=oak?2.7:1.85,sp=allocSpot(minD);
   if(!sp){expandIsland();sp=allocSpot(minD)||allocSpot(minD*0.82);}
