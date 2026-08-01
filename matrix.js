@@ -849,6 +849,11 @@ export function submitPracticeLog() {
         newEaseFactor: srResult.newEaseFactor,
     });
 
+    // ── Bound text-bloat: keep only the 30 most recent logs per question.
+    // The UI renders the last 5 attempt dots / reversed list, so nothing
+    // visible is lost while storage stays capped. ──
+    if (q.historyLogs.length > 30) q.historyLogs = q.historyLogs.slice(-30);
+
     // Update SR state on question
     q.currentInterval = srResult.newInterval;
     q.easeFactor = srResult.newEaseFactor;
@@ -1216,11 +1221,14 @@ function _buildErrorCardHTML(q) {
     const dueInfo = getDueStatus(q);
     const dueBadgeStyle = DUE_BADGE_STYLES[dueInfo.status] || DUE_BADGE_STYLES.scheduled;
 
+    // ALWAYS render a lightweight placeholder — the real image (from the
+    // in-memory bank or Drive) is swapped in by initErrorLazyLoaders() only
+    // while the card is near the viewport, and swapped back out (freed) once
+    // it scrolls past. Embedding hundreds of base64 blobs into card HTML at
+    // once was the source of the DOM bloat / heavy lag.
     let imgHtml = '';
-    if (q.imageDataUrl && q.imageDataUrl.length > 100) {
-        imgHtml = `<img src="${q.imageDataUrl}" onclick="openLightbox(this.src)">`;
-    } else if (q.driveImageId) {
-        imgHtml = `<img class="lazy-error-img" data-drive-id="${q.driveImageId}" data-qid="${q.id}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Syncing…</text></svg>" onclick="event.stopPropagation();">`;
+    if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
+        imgHtml = `<img class="lazy-error-img" data-drive-id="${q.driveImageId || ''}" data-qid="${q.id}" src="${LAZY_IMG_PLACEHOLDER}" onclick="event.stopPropagation();">`;
     } else {
         imgHtml = '<div style="font-size:10px;color:var(--text-muted);">No Image</div>';
     }
@@ -1431,27 +1439,54 @@ waitForDriveToken(() => {
     if (typeof initErrorLazyLoaders === 'function') initErrorLazyLoaders();
 });
 
+// Tiny SVG used both as the initial placeholder AND as the "unloaded" state
+// for cards that have scrolled out of the viewport (frees the decoded bitmap).
+const LAZY_IMG_PLACEHOLDER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>";
+
+let _errorImgObserver = null;
+
 export function initErrorLazyLoaders() {
-    const observer = new IntersectionObserver((entries, obs) => {
+    // Recreate a fresh observer per render (releases detached cards from the
+    // previous list — no observer leak across innerHTML wipes).
+    if (_errorImgObserver) _errorImgObserver.disconnect();
+    _errorImgObserver = new IntersectionObserver((entries) => {
         entries.forEach(async entry => {
+            const img = entry.target;
+            const qId = img.getAttribute('data-qid');
+            const driveId = img.getAttribute('data-drive-id');
+
             if (entry.isIntersecting) {
-                const img = entry.target;
-                const driveId = img.getAttribute('data-drive-id');
-                const qId = img.getAttribute('data-qid');
-                if (driveId && AppState.driveAccessToken) {
-                    try {
-                        const base64 = await fetchMediaFromDrive(driveId, AppState.driveAccessToken);
-                        img.src = base64;
-                        img.onclick = () => openLightbox(base64);
-                        let q = AppState.questionBank.find(x => x.id === qId);
-                        if (q) q.imageDataUrl = base64;
-                    } catch(e) { console.error("Lazy load failed", e); }
+                // Already swapped in — nothing to do.
+                if (img.dataset.loaded === '1') return;
+                // Token guard: if the card is unloaded (or re-rendered) while
+                // a slow Drive fetch is in flight, the token changes → bail,
+                // so we never resurrect an off-screen image with a base64 blob.
+                const token = (img._lazyToken = (img._lazyToken || 0) + 1);
+                // 1) Serve from the in-memory bank first (instant, offline-safe).
+                let base64 = null;
+                const q = AppState.questionBank.find(x => String(x.id) === String(qId));
+                if (q && q.imageDataUrl && q.imageDataUrl.length > 100) base64 = q.imageDataUrl;
+                // 2) Fall back to Drive only when no local copy exists.
+                if (!base64 && driveId && AppState.driveAccessToken) {
+                    try { base64 = await fetchMediaFromDrive(driveId, AppState.driveAccessToken); }
+                    catch(e) { console.error("Lazy load failed", e); }
                 }
-                obs.unobserve(img);
+                if (!base64 || img._lazyToken !== token || !img.isConnected) return;
+                img.src = base64;
+                img.onclick = () => openLightbox(base64);
+                img.dataset.loaded = '1';
+                if (q && !q.imageDataUrl) q.imageDataUrl = base64;
+            } else if (img.dataset.loaded === '1') {
+                // Scrolled past → free the decoded bitmap. Reload is instant
+                // from the in-memory bank when the card scrolls back.
+                img._lazyToken = (img._lazyToken || 0) + 1;
+                img.dataset.loaded = '';
+                img.src = LAZY_IMG_PLACEHOLDER;
+                img.onclick = (e) => e.stopPropagation();
             }
         });
-    }, { rootMargin: '100px' });
-    document.querySelectorAll('.lazy-error-img').forEach(img => observer.observe(img));
+    }, { rootMargin: '200px 0px 800px 0px' });   // on-screen + a few below (seamless scroll)
+    document.querySelectorAll('.lazy-error-img').forEach(img => _errorImgObserver.observe(img));
 }
 
 export function openLightbox(src) {
