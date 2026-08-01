@@ -3211,10 +3211,11 @@ export function showQuestionList() {
         let timeDisplay = q.timeTaken ? `<div style="font-size:12px; color:#8a8ad3; margin-top:4px;">⏱ ${Math.floor(q.timeTaken / 60)}:${(q.timeTaken % 60).toString().padStart(2, '0')}</div>` : '';
 
         let imgHtml = '';
-if (q.imageDataUrl && q.imageDataUrl.length > 100) {
-    imgHtml = `<img src="${q.imageDataUrl}" style="max-width:100%; border-radius:8px;">`;
-} else if (q.driveImageId) {
-    imgHtml = `<img data-drive-id="${q.driveImageId}" data-qid="${q.id}" class="lazy-practice-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Waiting for scroll...</text></svg>" style="max-width:100%; border-radius:8px; transition: opacity 0.3s;">`;
+// Always render a lightweight placeholder; initPracticeLazyLoaders() swaps
+// in the real image (in-memory bank or Drive) only when the card nears the
+// viewport — keeps the DOM free of hundreds of embedded base64 blobs.
+if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
+    imgHtml = `<img data-drive-id="${q.driveImageId || ''}" data-qid="${q.id}" class="lazy-practice-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>" style="max-width:100%; border-radius:8px; transition: opacity 0.3s;">`;
 } else {
     // Elegant left-aligned text layout with a line clamp to keep card heights uniform on the grid sheet
     imgHtml = `
@@ -3260,34 +3261,56 @@ if (q.imageDataUrl && q.imageDataUrl.length > 100) {
     initPracticeLazyLoaders();
 }
 
-export function initPracticeLazyLoaders() {
-    const observer = new IntersectionObserver((entries, obs) => {
-        entries.forEach(async entry => {
-            if (entry.isIntersecting) {
-                const img = entry.target;
-                const driveId = img.getAttribute('data-drive-id');
-                const qId = img.getAttribute('data-qid');
+// Tiny SVG used both as the initial placeholder AND as the "unloaded" state
+// for cards that have scrolled out of the viewport (frees the decoded bitmap).
+const LAZY_IMG_PLACEHOLDER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>";
 
-                if (driveId && typeof AppState.driveAccessToken !== 'undefined') {
-                    try {
-                        const base64 = await fetchMediaFromDrive(driveId, AppState.driveAccessToken);
-                        if (base64) {
-                            img.style.opacity = 0;
-                            img.src = base64;
-                            setTimeout(() => img.style.opacity = 1, 50);
-                            let q = AppState.questionBank.find(x => x.id === qId);
-                            if (q) q.imageDataUrl = base64;
-                        }
-                    } catch (e) {
-                        console.error("Practice grid scroll load failed", e);
-                    }
+let _practiceImgObserver = null;
+
+export function initPracticeLazyLoaders() {
+    // Recreate a fresh observer per render (releases detached cards from the
+    // previous list — no observer leak across innerHTML wipes).
+    if (_practiceImgObserver) _practiceImgObserver.disconnect();
+    _practiceImgObserver = new IntersectionObserver((entries) => {
+        entries.forEach(async entry => {
+            const img = entry.target;
+            const qId = img.getAttribute('data-qid');
+            const driveId = img.getAttribute('data-drive-id');
+
+            if (entry.isIntersecting) {
+                // Already swapped in — nothing to do.
+                if (img.dataset.loaded === '1') return;
+                // Token guard: if the card is unloaded (or re-rendered) while
+                // a slow Drive fetch is in flight, the token changes → bail,
+                // so we never resurrect an off-screen image with a base64 blob.
+                const token = (img._lazyToken = (img._lazyToken || 0) + 1);
+                // 1) Serve from the in-memory bank first (instant, offline-safe).
+                let base64 = null;
+                const q = AppState.questionBank.find(x => String(x.id) === String(qId));
+                if (q && q.imageDataUrl && q.imageDataUrl.length > 100) base64 = q.imageDataUrl;
+                // 2) Fall back to Drive only when no local copy exists.
+                if (!base64 && driveId && typeof AppState.driveAccessToken !== 'undefined') {
+                    try { base64 = await fetchMediaFromDrive(driveId, AppState.driveAccessToken); }
+                    catch (e) { console.error("Practice grid scroll load failed", e); }
                 }
-                obs.unobserve(img);
+                if (!base64 || img._lazyToken !== token || !img.isConnected) return;
+                img.style.opacity = 0;
+                img.src = base64;
+                setTimeout(() => img.style.opacity = 1, 50);
+                img.dataset.loaded = '1';
+                if (q && !q.imageDataUrl) q.imageDataUrl = base64;
+            } else if (img.dataset.loaded === '1') {
+                // Scrolled past → free the decoded bitmap. Reload is instant
+                // from the in-memory bank when the card scrolls back.
+                img._lazyToken = (img._lazyToken || 0) + 1;
+                img.dataset.loaded = '';
+                img.src = LAZY_IMG_PLACEHOLDER;
+                img.style.opacity = 1;
             }
         });
-    }, { rootMargin: '200px' });
+    }, { rootMargin: '200px 0px 800px 0px' });   // on-screen + a few below (seamless scroll)
 
-    document.querySelectorAll('.lazy-practice-img').forEach(img => observer.observe(img));
+    document.querySelectorAll('.lazy-practice-img').forEach(img => _practiceImgObserver.observe(img));
 }
 
 export function applyFilter() {

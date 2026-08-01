@@ -85,6 +85,98 @@ export async function idbClear() {
     await tx.complete;
 }
 
+// ==================== IMAGE VAULT (persistent, unbounded) ====================
+// Every uploaded image is kept FOREVER — nothing is evicted or stashed. The
+// bank itself persists lightweight (imageDataUrl / diagramImageUrl stripped)
+// so saveAllAsync() stays a small text-only write; images live in this vault
+// keyed by question id and are re-attached to the bank on load. Lag from many
+// images is handled at RENDER time instead: cards draw a tiny placeholder and
+// swap in the real base64 only when the card nears the viewport (see
+// initErrorLazyLoaders / initPracticeLazyLoaders), so the DOM never embeds
+// hundreds of blobs at once.
+export const IMAGE_CACHE_KEY = 'jeemax_image_cache';
+
+let _imageCache = {};                                   // qid -> { imageDataUrl, diagramImageUrl, ts }
+let _imageCachePersistedSig = '';
+let _imageCacheLoaded = false;                          // cold-boot IDB read happens once/session
+
+function _imgSample(data) {
+    // Tiny fingerprint sample (cheap — never copies the whole base64 payload).
+    if (typeof data !== 'string' || data.length === 0) return '';
+    return data.length + ':' + data.slice(0, 24) + data.slice(-24);
+}
+
+function _imageCacheSignature(cache) {
+    const ids = Object.keys(cache).sort();
+    let sig = ids.length + '|';
+    for (const id of ids) {
+        sig += id + '=' + _imgSample(cache[id].imageDataUrl) + '/' + _imgSample(cache[id].diagramImageUrl) + ';';
+    }
+    return sig;
+}
+
+function _collectImageCacheFromBank() {
+    const cache = {};
+    const now = Date.now();
+    for (const q of AppState.questionBank) {
+        if (!q || q.id == null) continue;
+        const id = String(q.id);
+        const img = (q.imageDataUrl && q.imageDataUrl.length > 100) ? q.imageDataUrl : null;
+        const diag = (q.diagramImageUrl && q.diagramImageUrl.length > 100) ? q.diagramImageUrl : null;
+        if (!img && !diag) continue;
+        const prev = _imageCache[id];
+        // Keep the previous timestamp when content is unchanged (prevents
+        // recency churn from the constant saves).
+        const ts = (prev && prev.imageDataUrl === img && prev.diagramImageUrl === diag) ? prev.ts : now;
+        cache[id] = { imageDataUrl: img, diagramImageUrl: diag, ts };
+    }
+    return cache;
+}
+
+/**
+ * Persist the image vault. Cheap no-op on the hot save path when contents are
+ * unchanged (signature compare — no base64 serialization).
+ */
+export async function persistImageCacheIfChanged() {
+    const cache = _collectImageCacheFromBank();
+    const sig = _imageCacheSignature(cache);
+    if (sig === _imageCachePersistedSig) return;
+    // Write FIRST, then advance the persisted-signature — if the write fails
+    // (quota exceeded / private mode), the sig stays stale so the next save
+    // retries instead of silently dropping the cache update.
+    await idbSet(IMAGE_CACHE_KEY, cache);
+    _imageCachePersistedSig = sig;
+    _imageCache = cache;
+}
+
+/**
+ * Load the image cache from IndexedDB and re-attach cached images onto the
+ * live bank so rendering stays instant without a Drive round-trip.
+ */
+export async function hydrateImageCache() {
+    // In-session the in-memory cache mirror is always current (saveAllAsync
+    // updates it on every persist), so we skip the (up to ~60MB) IndexedDB
+    // re-read on every tab switch — it only happens on cold boot.
+    if (!_imageCacheLoaded) {
+        try {
+            const cached = await idbGet(IMAGE_CACHE_KEY);
+            _imageCache = (cached && typeof cached === 'object') ? cached : {};
+        } catch (_) {
+            _imageCache = {};
+        }
+        _imageCacheLoaded = true;
+        _imageCachePersistedSig = _imageCacheSignature(_imageCache);
+    }
+    for (const q of AppState.questionBank) {
+        if (!q || q.id == null) continue;
+        const e = _imageCache[String(q.id)];
+        if (!e) continue;
+        // Never clobber a fresh image fetched in-session with older cache data.
+        if (!q.imageDataUrl && e.imageDataUrl) q.imageDataUrl = e.imageDataUrl;
+        if (!q.diagramImageUrl && e.diagramImageUrl) q.diagramImageUrl = e.diagramImageUrl;
+    }
+}
+
 // ==================== GLOBAL STATE ====================
 export const AppState = {
     // User-specified reactive states
@@ -466,6 +558,9 @@ export function migrateQuestionBankSR() {
         if (q.isMastered      === undefined) { q.isMastered      = false; dirty = true; }
         if (!q.nextReviewAt)  { q.nextReviewAt = new Date().toISOString(); dirty = true; }
         if (!Array.isArray(q.historyLogs)) { q.historyLogs = []; dirty = true; }
+        // ── Bound text-bloat: keep only the most recent attempt logs per
+        // question (the UI renders the last 5 dots / reversed list anyway). ──
+        if (q.historyLogs.length > 30) { q.historyLogs = q.historyLogs.slice(-30); dirty = true; }
         // ── Cognitive MMR: backfill the dynamic question difficulty rating
         // (qElo = Implied Difficulty Rating). Legacy questions default to
         // 1200; the engine retro-mutates this toward its true implied
@@ -648,13 +743,18 @@ export function formatStudyDuration(totalSecs) {
 
 // ==================== DATA PERSISTENCE ====================
 export async function saveAllAsync() {
+    // Persist the bank WITHOUT inline images (kept in the bounded image cache)
+    // so every save is a small text-only payload — this was the intent of
+    // `lightweightBank`; the previous code saved the image-laden bank instead,
+    // which serialized megabytes of base64 on every solve / pomodoro tick.
     const lightweightBank = AppState.questionBank.map(q => ({
         ...q,
         imageDataUrl: null,
         diagramImageUrl: null
     }));
 
-    await idbSet('jeemax_question_bank', AppState.questionBank);
+    await idbSet('jeemax_question_bank', lightweightBank);
+    await persistImageCacheIfChanged();
     await idbSet('jeemax_chapters', AppState.chapters);
     await idbSet('jeemax_solved', solved);
     await idbSet('jeemax_study_secs', studySecs);
@@ -700,6 +800,9 @@ export async function saveAllAsync() {
 export async function loadDataAsync() {
     const bank = await idbGet('jeemax_question_bank');
     if (bank) AppState.questionBank = bank;
+
+    // Re-attach cached images (bounded LRU cache) onto the live bank.
+    await hydrateImageCache();
 
     const ch = await idbGet('jeemax_chapters');
     if (ch) AppState.chapters = ch;
@@ -887,8 +990,7 @@ export async function cacheAllDriveImages() {
     }
   }
   await saveAllAsync();
-  hideLoading();
-  if (fixed > 0) { alert(`✅ Cached ${fixed} images. Refresh the page to see them instantly.`); }
+  hideLoading();    if (fixed > 0) { alert(`✅ Cached ${fixed} images locally — they're kept on this device for good.`); }
   else { alert('All images are already cached locally.'); }
 }
 
@@ -1075,7 +1177,8 @@ export async function executeUnifiedSync() {
             }
         }
         if (subText) subText.textContent = "Updating interface fields...";
-        await idbSet('jeemax_question_bank', AppState.questionBank);
+        await idbSet('jeemax_question_bank', AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })));
+        await persistImageCacheIfChanged();
         await idbSet('jeemax_chapters', AppState.chapters);
         await idbSet('jeemax_solved', solved);
         await idbSet('jeemax_study_secs', studySecs);
@@ -1091,7 +1194,9 @@ export async function executeUnifiedSync() {
                 return;
             }
         }
-        const payload = { date: new Date().toISOString().split('T')[0], questionBank: AppState.questionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
+        // Strip inline images from the cloud payload (mirrors syncStateToCloud)
+        // — driveImageId re-fetches them on demand; keeps Drive JSON lean.
+        const payload = { date: new Date().toISOString().split('T')[0], questionBank: AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
         if (!fileId) {
             let createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
                 method: 'POST', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' },
@@ -1128,7 +1233,10 @@ export async function syncStateToCloud() {
             let cloudQ = { ...q }; cloudQ.imageDataUrl = null; cloudQ.diagramImageUrl = null;
             cloudQuestionBank.push(cloudQ);
         }
-        if (newlyUploaded) await idbSet('jeemax_question_bank', AppState.questionBank);
+        if (newlyUploaded) {
+            await idbSet('jeemax_question_bank', AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })));
+            await persistImageCacheIfChanged();
+        }
         if (subText) subText.textContent = "Syncing system state...";
         const payload = { date: new Date().toISOString().split('T')[0], questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
         const query = `name='system_state.json' and '${AppState.cloudFolderId}' in parents and trashed=false`;
