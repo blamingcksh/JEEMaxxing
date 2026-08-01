@@ -33,12 +33,12 @@ function todayStr(){return new Date().toISOString().slice(0,10);}
 function rc(id){var e=document.getElementById(id);return e?(parseInt(e.textContent,10)||0):0;}
 function liveTotal(){return rc('physics-count')+rc('chemistry-count')+rc('maths-count');}
 function solvedBank(){var qb=window.questionBank||[],o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(q&&q.status==='solved')o.push(q);}return o;}
-function historical(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if((q.lastReviewedAt||'').slice(0,10)!==tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q)});}return o;}
-function todayReal(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if((q.lastReviewedAt||'').slice(0,10)===tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q)});}return o;}
+function historical(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if((q.lastReviewedAt||'').slice(0,10)!==tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined});}return o;}
+function todayReal(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if((q.lastReviewedAt||'').slice(0,10)===tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined});}return o;}
 function computeBgTrees(){
   var trees=historical().concat(todayReal());
   var extra=Math.max(0,liveTotal()-todayReal().length);
-  for(var i=0;i<extra;i++)trees.push({subject:SUBJ[(Math.random()*3)|0],qElo:1100+Math.random()*700});
+  for(var i=0;i<extra;i++)trees.push({subject:SUBJ[(Math.random()*3)|0],qElo:1100+Math.random()*700,difficulty:0.5});
   if(trees.length>CAP){var step=trees.length/CAP,o=[];for(var j=0;j<CAP;j++)o.push(trees[Math.floor(j*step)]);trees=o;}
   return trees;
 }
@@ -216,13 +216,14 @@ function buildScene(){
   // juice (guarded — plain wallpaper survives if this throws)
   try{juice=buildJuice(THREE,scene,glowTex());}catch(e){juice=null;console.warn('[forest-bg] juice skipped:',e&&e.message||e);}
 }
+function bgSizeF(d){d=(d==null)?0.5:(d<0?0:d>1?1:d);return 0.6+0.7*d;}
 function placeTrees(data){
   if(!env||!env.geos)return;
   (env.treeMeshes||[]).forEach(function(m){scene.remove(m);if(m.geometry)m.geometry.dispose();});
   env.treeMeshes=[];
   var spots=env.spots;if(!spots||!spots.length)return;
   var groups={physics:[],chemistry:[],maths:[],oak:[]};
-  data.forEach(function(d,i){var oak=(d.qElo||1200)>=2300;(groups[oak?'oak':(d.subject||'physics')]).push({i:i,base:(0.55+Math.min(1,Math.max(0,((d.qElo||1200)-800)/2200))*1.1+(hash(i,7)-0.5)*0.16)*(oak?0.85:1),sy:(0.82+hash(i,11)*0.5)*(oak?0.95:1),sxz:0.85+hash(i,13)*0.32,lx:(hash(i,17)-0.5)*0.1*(oak?0.4:1),lz:(hash(i,19)-0.5)*0.1*(oak?0.4:1),rot:hash(i,3)*6.283});});
+  data.forEach(function(d,i){var oak=(d.qElo||1200)>=2300;(groups[oak?'oak':(d.subject||'physics')]).push({i:i,base:(0.55+Math.min(1,Math.max(0,((d.qElo||1200)-800)/2200))*1.1+(hash(i,7)-0.5)*0.16)*(oak?0.85:1)*bgSizeF(d.difficulty),sy:(0.82+hash(i,11)*0.5)*(oak?0.95:1),sxz:0.85+hash(i,13)*0.32,lx:(hash(i,17)-0.5)*0.1*(oak?0.4:1),lz:(hash(i,19)-0.5)*0.1*(oak?0.4:1),rot:hash(i,3)*6.283});});
   var dummy=new THREE.Object3D();
   Object.keys(groups).forEach(function(k){var list=groups[k];if(!list.length)return;var m=new THREE.InstancedMesh(env.geos[k],treeMat,list.length);m.frustumCulled=false;list.forEach(function(t,j){var s=spots[t.i%spots.length];var sc=t.base;dummy.position.set(s.x+(hash(t.i,5)-0.5)*0.6,s.y-0.06,s.z+(hash(t.i,6)-0.5)*0.6);dummy.rotation.set(t.lx,t.rot,t.lz);dummy.scale.set(t.sxz*sc,t.sy*sc,t.sxz*sc);dummy.updateMatrix();m.setMatrixAt(j,dummy.matrix);});m.instanceMatrix.needsUpdate=true;scene.add(m);env.treeMeshes.push(m);});
   // growth celebration: burst + ring at the newly added trees

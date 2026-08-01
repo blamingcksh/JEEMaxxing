@@ -6271,7 +6271,7 @@ body.forest-bg-on #view-dashboard .dc-time-chip i { box-shadow: none !important;
   background: rgba(8,10,16,.30);
   border-radius: 14px;
 }
-#forest-island-host .fi-empty::before { content: '🌱'; font-size: 22px; filter: saturate(1.2); }
+#forest-island-host .fi-empty::before { content: '🌳'; font-size: 22px; filter: saturate(1.2); }
 
 /* full-screen button → glass corner control on the canvas box */
 #fi-full-open-btn {

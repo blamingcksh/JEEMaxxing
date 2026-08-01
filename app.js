@@ -253,7 +253,7 @@ window.__forestGrowth = {
   difficulty: (qElo, subj) => { const u = AppState.elo[_normalizeSubjectKey(subj)] || 1200; return _clamp01(((qElo || 1200) - u + 400) / 800); },
   growSecondsFor: (d) => (5 - 4 * _clamp01(d)) * 3600,
   label: (d) => { d = _clamp01(d); return d < 0.34 ? 'easy' : d < 0.67 ? 'mid' : 'tough'; },
-  sizeFactor: (d) => 0.9 + 0.3 * _clamp01(d),
+  sizeFactor: (d) => 0.6 + 0.7 * _clamp01(d),
   heightScale: (m) => 0.30 + 0.70 * _clamp01(m),
   maturity: (plantCum, growSec, subj) => {
     growSec = growSec > 0 ? growSec : 10800;
@@ -3158,7 +3158,11 @@ export function showQuestionList() {
     }
 
     const filterEl = document.getElementById('question-filter');
-    if (filterEl) filterEl.value = AppState.currentFilter;
+    if (filterEl) {
+        filterEl.value = AppState.currentFilter;
+        // Locked while a pomodoro / stopwatch session is live.
+        filterEl.disabled = !!(window.__pomodoro && window.__pomodoro.isRunning());
+    }
 
     const total = filteredQuestions.length;
     const solvedCount = filteredQuestions.filter(q => q.status === 'solved').length;
@@ -3285,6 +3289,13 @@ export function initPracticeLazyLoaders() {
 
 export function applyFilter() {
     const filterEl = document.getElementById('question-filter');
+    // Refuse filter changes while a pomodoro / stopwatch session is live —
+    // the dropdown itself is disabled, but this also blocks programmatic
+    // changes racing the render.
+    if (filterEl && window.__pomodoro && window.__pomodoro.isRunning()) {
+        filterEl.value = AppState.currentFilter;
+        return;
+    }
     if (filterEl) {
         AppState.currentFilter = filterEl.value;
     }

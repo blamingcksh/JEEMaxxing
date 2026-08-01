@@ -15,7 +15,17 @@ let isStopwatchMode = false;
 let timerStartTime = null;        // Date.now() at start/resume
 
 // ── Night Guard bridge: exposes timerStartTime for clock-cheat cross-check ──
-window.__pomodoro = { getTimerStartTime: () => timerStartTime };
+// isRunning() lets app.js lock the question filter while a session is live.
+window.__pomodoro = {
+    getTimerStartTime: () => timerStartTime,
+    isRunning: () => pomoState !== 'IDLE',
+};
+
+// Lock/unlock the chapter-question filter dropdown while the timer runs.
+function syncFilterLock() {
+    const filterEl = document.getElementById('question-filter');
+    if (filterEl) filterEl.disabled = pomoState !== 'IDLE';
+}
 let timerTotalSeconds = 0;        // total seconds for countdown
 let stopwatchAccumulated = 0;    // seconds already counted before pause (stopwatch mode)
 let timerEndTriggered = false;   // prevent multiple handleTimerEnd calls
@@ -322,8 +332,9 @@ export function startTimer() {
     if (pomoState !== 'IDLE') return;
     // ── Night Guard: log session start for sleep-debt ledger ──
     try { NightGuard.logSessionStart(); } catch (_) {}
+    syncFilterLock();
     studySubject = document.getElementById('pomo-subject').value;
-    document.querySelectorAll('.pomo-input, .pomo-select').forEach(el => el.disabled = true);
+    document.querySelectorAll('#view-pomodoro .pomo-input, #view-pomodoro .pomo-select').forEach(el => el.disabled = true);
     document.getElementById('btn-start').style.display = 'none';
 
     // Initialize audio context on user gesture
@@ -481,12 +492,13 @@ export function quitTimer() {
 
 export function resetPomoUI() {
     pomoState = 'IDLE';
+    syncFilterLock();
     GalleryBreak.abort();
     document.getElementById('timer-notify-modal').classList.remove('active');
     _pomoPendingAction = null;
     document.getElementById('pomo-mini-widget').classList.add('hidden');
 
-    document.querySelectorAll('.pomo-input, .pomo-select').forEach(el => el.disabled = false);
+    document.querySelectorAll('#view-pomodoro .pomo-input, #view-pomodoro .pomo-select').forEach(el => el.disabled = false);
     document.getElementById('btn-start').style.display = 'inline-block';
     document.getElementById('btn-pause').style.display = 'none';
     document.getElementById('btn-quit').style.display = 'none';
