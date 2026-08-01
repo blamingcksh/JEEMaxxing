@@ -8883,13 +8883,20 @@ const globalMathObserver = new MutationObserver(function (mutations) {
   }
 
   function ckFixToday() {
-    const tk = new Date().toLocaleDateString('en-CA');
+    const d = new Date();
+    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const dayEnd = dayStart + 86400000;
     const c = { physics: 0, chemistry: 0, maths: 0 };
     for (const q of AppState.questionBank) {
       if (!q.historyLogs) continue;
       for (const l of q.historyLogs) {
-        if (l && l.result === 'correct' && l.timestamp && new Date(l.timestamp).toLocaleDateString('en-CA') === tk) {
-          const s = (q.subject || '').toLowerCase(); if (s in c) c[s]++;
+        if (l && l.result === 'correct' && l.timestamp) {
+          // Date.parse is an order of magnitude cheaper than toLocaleDateString
+          // per log — this ran for every log of every question every second.
+          const t = typeof l.timestamp === 'string' ? Date.parse(l.timestamp) : l.timestamp;
+          if (t >= dayStart && t < dayEnd) {
+            const s = (q.subject || '').toLowerCase(); if (s in c) c[s]++;
+          }
         }
       }
     }
@@ -8915,6 +8922,25 @@ const globalMathObserver = new MutationObserver(function (mutations) {
     for (const k in map) { const h = _getChapterHealth(map[k].s, map[k].c); if (h < 45 && (worst === null || h < worst.h)) worst = { h: h, c: map[k].c }; }
     return worst;
   }
+
+  // ── Memoized heavy derivations ──────────────────────────────────────────
+  // ckFixToday / ckReadyCount / ckLowHealth each scan the ENTIRE question
+  // bank (and every history log). refreshNav() runs every second and slowTick
+  // every 4s — with a big bank that is constant O(n·logs) main-thread work
+  // forever. Now they recompute only when (a) data changed via saveAllAsync
+  // (window.__jmaxDataDirty) or (b) 30s TTL elapsed (keeps hour-of-day /
+  // midnight drift correct). The per-second tick becomes a pure cache hit.
+  const NAV_HEAVY_TTL = 30000;
+  let _navHeavy = { at: 0, dirty: -1, fix: null, ready: 0, low: null };
+  function navHeavy() {
+    const dirty = (typeof window.__jmaxDataDirty === 'number') ? window.__jmaxDataDirty : 0;
+    const now = Date.now();
+    if (_navHeavy.fix !== null && now - _navHeavy.at <= NAV_HEAVY_TTL && dirty === _navHeavy.dirty) {
+      return _navHeavy;
+    }
+    _navHeavy = { at: now, dirty, fix: ckFixToday(), ready: ckReadyCount(), low: ckLowHealth() };
+    return _navHeavy;
+  }
   function setBadge(tab, label, n, glow) {
     const item = ckNavItem(tab, label); if (!item) return;
     let b = item.querySelector('.nav-ck-badge');
@@ -8935,7 +8961,8 @@ const globalMathObserver = new MutationObserver(function (mutations) {
       buildNav();
       const sb = $('sidebar'); if (!sb) return;
       const tgt = AppState.activeTargets || baseTargets || {};
-      const fix = ckFixToday();
+      const heavy = navHeavy();
+      const fix = heavy.fix;
       const bt = baseErrorTargets || {};
       setRing('nav-ck-arc-p', tgt.physics ? Math.min(100, (solved.physics / tgt.physics) * 100) : 0);
       setRing('nav-ck-arc-c', tgt.chemistry ? Math.min(100, (solved.chemistry / tgt.chemistry) * 100) : 0);
@@ -8968,8 +8995,9 @@ const globalMathObserver = new MutationObserver(function (mutations) {
   }
   function slowTick() {
     try {
-      setBadge('errors', 'The Vault', ckReadyCount(), true);
-      const low = ckLowHealth();
+      const heavy = navHeavy();
+      setBadge('errors', 'The Vault', heavy.ready, true);
+      const low = heavy.low;
       const pItem = ckNavItem('practice', 'Grind Station');
       if (pItem) pItem.classList.toggle('nav-ck-pulse', !!low);
     } catch (e) {}

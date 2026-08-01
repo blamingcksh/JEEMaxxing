@@ -181,7 +181,11 @@ function juiceUpdate(J,el,dt,night){
 
 function buildScene(){
   renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+  // iPad / iPhone GPUs fill the whole screen per frame — a 2x devicePixelRatio
+  // quad is 4x the fill rate of 1x. Cap at 1.0 on iOS for a 4x GPU saving at
+  // ~zero visible cost (the scene is a stylized wallpaper), 1.5 elsewhere.
+  var ios=/(iPad|iPhone|iPod)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,ios?1:1.5));
   renderer.setSize(innerWidth,innerHeight);
   renderer.setClearColor(0x070809,1);
   scene=new THREE.Scene();
@@ -302,7 +306,9 @@ function boot(){
   Object.assign(canvas.style,{position:'fixed',top:'0',left:'0',width:'100%',height:'100%',zIndex:'0',pointerEvents:'none',display:'block',opacity:'0',transition:'opacity .7s ease'});
   document.body.appendChild(canvas);
   injectToggle();watchCounters();
-  setInterval(function(){if(enabled&&built)rebuildIfNeeded(false);},4000);
+  // Rebuild poll is O(bank) via bgSig() — every 30s (real changes are caught
+  // immediately by the counter MutationObserver / save bump instead).
+  setInterval(function(){if(enabled&&built)rebuildIfNeeded(false);},30000);
   document.addEventListener('visibilitychange',function(){if(!document.hidden&&enabled&&built)startLoop();});
   if(on)setEnabled(true);
 }

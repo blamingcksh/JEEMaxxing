@@ -5,23 +5,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#050508">
+<meta name="description" content="JEE grind hub — focus timer, error vault, spaced repetition and live forest.">
+<!-- ── PWA / add-to-home-screen (iPad/iPhone standalone app mode) ── -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JEEMaxxing">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
 <title>JEEMaxxing · Locked In</title>
 
 <!-- Favicon (app.js upgrades this to a generated PNG apple-touch-icon) -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 
-<!-- ── Type system: Chakra Petch (display) · IBM Plex Sans (body) · Space Grotesk (numerics / chart SVG) ── -->
-<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-500.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-600.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-700.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-400.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-500.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-600.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/fontsource/css/space-grotesk@latest/latin-500.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/fontsource/css/space-grotesk@latest/latin-700.css" rel="stylesheet">
+<!-- ── Type system: Chakra Petch (display) · IBM Plex Sans (body) · Space Grotesk (numerics / chart SVG).
+        Loaded async (media=print/onload swap) so they never block first paint;
+        fontsource ships font-display:swap so text shows instantly in fallback. ── -->
+<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-600.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-700.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-400.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-600.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/space-grotesk@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/space-grotesk@latest/latin-700.css" rel="stylesheet" media="print" onload="this.media='all'">
 
 <!-- KaTeX — window.katex is consumed by app.js's global math engine -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" media="print" onload="this.media='all'">
 
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -1296,6 +1307,22 @@ window.setMatrixSearch = function (value) {
 <script src="forest-bg.js" defer></script>
 <script src="forest-island.js" defer></script>
 <script src="forest-island-full.js" defer></script>
+
+<!-- Service worker — offline app shell + CDN cache for the installed (add-to-home-screen) build.
+     Registered only on https/localhost so file:// and sandboxed pages stay untouched. -->
+<script>
+(function () {
+    if (!('serviceWorker' in navigator)) return;
+    var proto = location.protocol;
+    if (proto !== 'https:' && proto !== 'http:' && location.hostname !== 'localhost') return;
+    if (proto === 'http:' && location.hostname !== 'localhost') return;
+    window.addEventListener('load', function () {
+        try {
+            navigator.serviceWorker.register('./sw.js').catch(function () {});
+        } catch (e) {}
+    });
+})();
+</script>
 
 </body>
 </html>
