@@ -3215,7 +3215,7 @@ export function showQuestionList() {
 // in the real image (in-memory bank or Drive) only when the card nears the
 // viewport — keeps the DOM free of hundreds of embedded base64 blobs.
 if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
-    imgHtml = `<img data-drive-id="${q.driveImageId || ''}" data-qid="${q.id}" class="lazy-practice-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>" style="max-width:100%; border-radius:8px; transition: opacity 0.3s;">`;
+    imgHtml = `<img data-drive-id="${q.driveImageId || ''}" data-qid="${q.id}" class="lazy-practice-img" decoding="async" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>" style="max-width:100%; border-radius:8px;">`;
 } else {
     // Elegant left-aligned text layout with a line clamp to keep card heights uniform on the grid sheet
     imgHtml = `
@@ -3266,6 +3266,8 @@ if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
 const LAZY_IMG_PLACEHOLDER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>";
 
 let _practiceImgObserver = null;
+let _practicePrefetching = false;
+let _practiceSweepPending = false;
 
 export function initPracticeLazyLoaders() {
     // Recreate a fresh observer per render (releases detached cards from the
@@ -3277,40 +3279,94 @@ export function initPracticeLazyLoaders() {
             const qId = img.getAttribute('data-qid');
             const driveId = img.getAttribute('data-drive-id');
 
-            if (entry.isIntersecting) {
-                // Already swapped in — nothing to do.
-                if (img.dataset.loaded === '1') return;
-                // Token guard: if the card is unloaded (or re-rendered) while
-                // a slow Drive fetch is in flight, the token changes → bail,
-                // so we never resurrect an off-screen image with a base64 blob.
-                const token = (img._lazyToken = (img._lazyToken || 0) + 1);
-                // 1) Serve from the in-memory bank first (instant, offline-safe).
-                let base64 = null;
-                const q = AppState.questionBank.find(x => String(x.id) === String(qId));
-                if (q && q.imageDataUrl && q.imageDataUrl.length > 100) base64 = q.imageDataUrl;
-                // 2) Fall back to Drive only when no local copy exists.
-                if (!base64 && driveId && typeof AppState.driveAccessToken !== 'undefined') {
-                    try { base64 = await fetchMediaFromDrive(driveId, AppState.driveAccessToken); }
-                    catch (e) { console.error("Practice grid scroll load failed", e); }
-                }
-                if (!base64 || img._lazyToken !== token || !img.isConnected) return;
-                img.style.opacity = 0;
-                img.src = base64;
-                setTimeout(() => img.style.opacity = 1, 50);
-                img.dataset.loaded = '1';
-                if (q && !q.imageDataUrl) q.imageDataUrl = base64;
-            } else if (img.dataset.loaded === '1') {
-                // Scrolled past → free the decoded bitmap. Reload is instant
-                // from the in-memory bank when the card scrolls back.
+            // Loading only — unloading happens in the far-away sweep below,
+            // so scroll-back never re-decodes images that are still nearby.
+            if (!entry.isIntersecting || img.dataset.loaded === '1') return;
+            // Token guard: if the card is unloaded (or re-rendered) while
+            // a slow Drive fetch is in flight, the token changes → bail,
+            // so we never resurrect an off-screen image with a base64 blob.
+            const token = (img._lazyToken = (img._lazyToken || 0) + 1);
+            // 1) Serve from the in-memory bank first (instant, offline-safe).
+            let base64 = null;
+            const q = AppState.questionBank.find(x => String(x.id) === String(qId));
+            if (q && q.imageDataUrl && q.imageDataUrl.length > 100) base64 = q.imageDataUrl;
+            // 2) Fall back to Drive only when no local copy exists.
+            if (!base64 && driveId && typeof AppState.driveAccessToken !== 'undefined') {
+                try { base64 = await fetchMediaFromDrive(driveId, AppState.driveAccessToken); }
+                catch (e) { console.error("Practice grid scroll load failed", e); }
+            }
+            if (!base64 || img._lazyToken !== token || !img.isConnected) return;
+            img.src = base64;
+            img.dataset.loaded = '1';
+            if (q && !q.imageDataUrl) q.imageDataUrl = base64;
+        });
+    }, { rootMargin: '600px 0px 1200px 0px' });   // far above/below the fold → images are decoded before you scroll there
+
+    document.querySelectorAll('.lazy-practice-img').forEach(img => _practiceImgObserver.observe(img));
+
+    const grid = document.getElementById('questions-grid-container');
+    if (grid && !grid._practiceSweepBound) {
+        grid._practiceSweepBound = true;
+        grid.addEventListener('scroll', schedulePracticeFreeSweep, { passive: true });
+    }
+
+    // Kick off a background prefetch of Drive-hosted images so scrolling is
+    // served from the in-memory bank instead of a Drive round-trip per card.
+    prefetchPracticeDriveImages();
+}
+
+// Free decoded bitmaps only once a card is thousands of pixels off-screen.
+// Off-screen cards already cost nothing to paint (content-visibility), and
+// the old "free at 600px" behaviour caused decode churn whenever the user
+// scrolled back and forth — the main source of scroll lag.
+function schedulePracticeFreeSweep() {
+    if (_practiceSweepPending) return;
+    _practiceSweepPending = true;
+    requestAnimationFrame(() => {
+        _practiceSweepPending = false;
+        const vh = window.innerHeight;
+        document.querySelectorAll('.lazy-practice-img[data-loaded="1"]').forEach(img => {
+            const r = img.getBoundingClientRect();
+            if (r.bottom < -2000 || r.top > vh + 2000) {
                 img._lazyToken = (img._lazyToken || 0) + 1;
                 img.dataset.loaded = '';
                 img.src = LAZY_IMG_PLACEHOLDER;
-                img.style.opacity = 1;
             }
         });
-    }, { rootMargin: '200px 0px 800px 0px' });   // on-screen + a few below (seamless scroll)
+    });
+}
 
-    document.querySelectorAll('.lazy-practice-img').forEach(img => _practiceImgObserver.observe(img));
+// Eagerly download every Drive-only image (bounded concurrency) and cache it
+// onto the question in memory — the lazy loader then swaps it in instantly.
+function prefetchPracticeDriveImages() {
+    if (_practicePrefetching) return;
+    const pending = AppState.questionBank.filter(q =>
+        q.driveImageId && !(q.imageDataUrl && q.imageDataUrl.length > 100)
+    );
+    if (!pending.length) return;
+    const token = (typeof AppState.driveAccessToken !== 'undefined') ? AppState.driveAccessToken : null;
+    const doPrefetch = (tok) => {
+        if (!tok) return;
+        _practicePrefetching = true;
+        const CONCURRENCY = 4;
+        let i = 0;
+        const next = () => {
+            if (i >= pending.length) { _practicePrefetching = false; return; }
+            const q = pending[i++];
+            fetchMediaFromDrive(q.driveImageId, tok)
+                .then(b64 => {
+                    if (b64 && !(q.imageDataUrl && q.imageDataUrl.length > 100)) q.imageDataUrl = b64;
+                })
+                .catch(() => {})
+                .finally(next);
+        };
+        for (let c = 0; c < CONCURRENCY; c++) next();
+    };
+    if (token) {
+        doPrefetch(token);
+    } else if (typeof waitForDriveToken === 'function') {
+        try { Promise.resolve(waitForDriveToken()).then(doPrefetch).catch(() => {}); } catch (e) {}
+    }
 }
 
 export function applyFilter() {
