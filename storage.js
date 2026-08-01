@@ -214,7 +214,7 @@ export const SR_FRICTION_TYPES = ['PERFECT', 'CALC', 'FORMULA', 'CONCEPT', 'APPR
 // 7-band implied-difficulty rating grid (universal across physics / chemistry / maths).
 // The grid is calibrated against JEEMaxxing's existing anchor points:
 //   • forest-juice.js:378 — easy=1000, medium=1600, hard=2500 (±70 noise)
-//   • forest-island-full.js:130 — oak threshold at qElo ≥ 2300
+//   • app.js — dark oak is a ~10% per-solved-question roll (q.oak stamped at solve)
 //   • storage.js:~352 — global qElo fallback = 1200 (used as the chapter
 //     baseline when no chapter history exists)
 //   • app.js:3555 — auto-quarantine (isAnomaly) when |newQ − chapterAvg| > 600

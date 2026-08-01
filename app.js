@@ -246,6 +246,7 @@ function applyDifficulty(q, subj, eloResult) {
 function stampPlantCum(q, subj) {
   if (!q || q.plantCumStudy != null) return;     // stamp ONCE — the honest "first solved" moment
   q.plantCumStudy = Math.floor(cumStudy[_normalizeSubjectKey(subj)] || 0);
+  if (q.oak == null) q.oak = Math.random() < 0.10;   // ~10% of solved questions become a dark oak
 }
 window.__forestGrowth = {
   cum: (s) => Math.floor(cumStudy[_normalizeSubjectKey(s)] || 0),
@@ -2827,10 +2828,12 @@ export async function processGemTextDump() {
                 if (ansRaw.startsWith('[')) {
                     const letterMatches = ansRaw.match(/"([^"]+)"/g);
                     if (letterMatches) {
-                        correctAnswer = letterMatches.map(l => l.replace(/"/g, '').trim());
+                        correctAnswer = letterMatches.map(l => l.replace(/"/g, '').trim().replace(/\\+n/g, '\n').replace(/\\+/g, '\\'));
                     }
                 } else {
-                    correctAnswer = ansRaw.substring(1, ansRaw.length - 1).trim();
+                    // Same backslash normalization as options/solution/extractedText:
+                    // JSON escapes turn "\frac" into "\\frac" — collapse back to one.
+                    correctAnswer = ansRaw.substring(1, ansRaw.length - 1).trim().replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
                 }
             }
 
@@ -3554,6 +3557,23 @@ export function toggleOriginalPhoto() {
     renderPracticeQuestionModal();
 }
 
+// ── Answer display for reveal banners ──────────────────────────────────────
+// Answers come out of extraction as plain text, $...$-delimited LaTeX, or raw
+// delimiter-less LaTeX (e.g. "\frac{1}{2}"). This helper escapes for safe
+// innerHTML and auto-wraps bare LaTeX so the global KaTeX watchdog hydrates it.
+export function answerMathHTML(raw) {
+    if (raw == null) raw = '';
+    let s = String(Array.isArray(raw) ? raw.join(', ') : raw);
+    // JSON extraction can leave doubled backslashes ("\\frac") in stored answers;
+    // collapse runs to a single backslash so KaTeX sees valid LaTeX instead of
+    // parsing "\\" as a line-break and rendering "frac" character-by-character.
+    s = s.replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
+    const esc = escapeHtml(s);
+    if (/\$|\\\(|\\\[/.test(s)) return esc;                       // delimited — watchdog hydrates as-is
+    if (/\\[a-zA-Z]{2,}/.test(s) || /[\^_][{}0-9a-zA-Z]/.test(s)) return '$' + esc + '$'; // bare LaTeX — wrap
+    return esc;                                                   // plain text
+}
+
 export function renderPracticeQuestionModal() {
     AppState.currentQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
     // ── Empty-queue guard ──
@@ -3589,7 +3609,7 @@ export function renderPracticeQuestionModal() {
         `<div class="latex" id="latex-render">${escapeHtml(AppState.currentQ.extractedText)}</div>`;
 
     if (submitted) {
-        const correctAns = AppState.currentQ.correctAnswer || 'N/A';
+        const correctAns = answerMathHTML(AppState.currentQ.correctAnswer || 'N/A');
         html += `<div style="display:flex; justify-content:space-between; align-items:center;">`;
         if (AppState.currentQ.status === 'solved') html +=
             `<div class="result-banner correct" style="flex:1;">✅ Clutched! The answer was: ${correctAns}</div>`;
@@ -7343,6 +7363,7 @@ window.renderLatexInElement = function () {
     const el = document.getElementById('latex-render');
     if (el) processElementMath(el);
 };
+window.answerMathHTML = answerMathHTML;
 window.deleteQuestion = deleteQuestion;
 window.handleDriveAuth = handleDriveAuth;
 window.updateStreakDisplay = updateStreakDisplay;
@@ -7463,7 +7484,9 @@ function processElementMath(element) {
     if (element.closest && element.closest('.katex')) return;
 
     // Canonical delimiter regex (display $$...$$ first, then inline $...$).
-    const MATH_REGEX = /\$\$([\s\S]+?)\$\$|\$([^\$]+)\$/g;
+    // Also accepts \(...\) inline and \[...\] display — textbook/Gem dumps
+    // often emit those instead of dollar delimiters.
+    const MATH_REGEX = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^\$]+)\$|\\\(([\s\S]+?)\\\)/g;
 
     try {
         // ── Collect every text node that contains at least one math fragment ──
@@ -7497,8 +7520,10 @@ function processElementMath(element) {
             if (!parent) continue;
             const raw = textNode.nodeValue;
             MATH_REGEX.lastIndex = 0;
-            const hydrated = raw.replace(MATH_REGEX, function (match, block, inline) {
-                if (!block && !inline) return match;
+            const hydrated = raw.replace(MATH_REGEX, function (match, dbl, brk, inl, paren) {
+                if (!dbl && !brk && !inl && !paren) return match;
+                const block = dbl || brk;
+                const inline = inl || paren;
                 try {
                     return window.katex.renderToString(block || inline, {
                         throwOnError: false,
