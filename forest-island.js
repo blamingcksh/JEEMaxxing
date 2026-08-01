@@ -1,4 +1,4 @@
-/* forest-island.js — Daily Grove: persistent + Elo-difficulty size + study-time growth */
+/* forest-island.js — Daily Grove: persistent + Elo-difficulty-sized trees (solve → full-grown tree) */
 (function () {
 'use strict';
 if (window.__forestIslandInit) return; window.__forestIslandInit = true;
@@ -15,13 +15,8 @@ function easeOutBack(x){var c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Ma
 function todayKey(){return new Date().toISOString().slice(0,10);}
 /* growth readers (brain lives in app.js → window.__forestGrowth) */
 function _FG(){return window.__forestGrowth||null;}
-function _nrm(s){s=(s||'').toString().toLowerCase();return (s==='math'||s==='mathematics')?'maths':s;}
 function _diffOf(q){var fg=_FG();if(q&&q.difficulty!=null)return q.difficulty;if(fg)return fg.difficulty(q&&q.qElo,q&&q.subject);return 0.5;}
-function _growSecOf(q){return (q&&q.growSeconds)?q.growSeconds:10800;}
-function _plantCumOf(q,subj){var fg=_FG();if(q&&q.plantCumStudy!=null)return q.plantCumStudy;return fg?fg.dayStart(_nrm(subj)):0;}
-function _maturityOf(q,subj){var fg=_FG();if(!fg)return 1;return fg.maturity(_plantCumOf(q,subj),_growSecOf(q),_nrm(subj));}
-function _sizeF(d){d=d<0?0:d>1?1:d;return 0.9+0.3*d;}
-function _heightF(m){m=m<0?0:m>1?1:m;return 0.30+0.70*m;}
+function _sizeF(d){d=d<0?0:d>1?1:d;return 0.6+0.7*d;}
 /* persistence */
 function loadStore(){try{var o=JSON.parse(localStorage.getItem(LS)||'{}');return (o&&typeof o==='object')?o:{};}catch(e){return {};}}
 function saveStore(o){try{localStorage.setItem(LS,JSON.stringify(o));}catch(e){}}
@@ -90,7 +85,7 @@ function buildIsland(){
 }
 function preExpandForCount(n){preExpand(n);}
 function ensureIslandBuilt(){if(iBuilt||iBuilding)return;iBuilding=true;loadThree().then(function(m){THREE=m;try{iBuilt=true;buildIsland();if(iVisible)startILoop();}catch(e){iBuilt=false;toast('Daily island failed: '+(e&&e.message||e));restoreMomentum();}iBuilding=false;}).catch(function(){toast('Could not load 3D for the daily island.');restoreMomentum();iBuilding=false;});}
-function writeIsland(k,s,g){if(!iMeshes[k])return;var gh=_heightF(s.grow!=null?s.grow:1);var sc=Math.max(0.0001,s.baseScale*g*gh);dummy.position.set(s.x,s.y-0.05,s.z);dummy.rotation.set(s.leanX,s.rot,s.leanZ);dummy.scale.set(s.sxz*sc,s.sy*sc,s.sxz*sc);dummy.updateMatrix();iMeshes[k].setMatrixAt(s.iid,dummy.matrix);}
+function writeIsland(k,s,g){if(!iMeshes[k])return;var sc=Math.max(0.0001,s.baseScale*g);dummy.position.set(s.x,s.y-0.05,s.z);dummy.rotation.set(s.leanX,s.rot,s.leanZ);dummy.scale.set(s.sxz*sc,s.sy*sc,s.sxz*sc);dummy.updateMatrix();iMeshes[k].setMatrixAt(s.iid,dummy.matrix);}
 function addIsland(q,instant){
   if(!iBuilt)return;
   var oak=(q.qElo||1200)>=2300,k=oak?'oak':q.subject;
@@ -99,9 +94,8 @@ function addIsland(q,instant){
   if(!sp){expandIsland();sp=allocSpot(minD)||allocSpot(minD*0.82);}
   if(!sp){var fb=(iEnv.drySpots&&iEnv.drySpots.length)?iEnv.drySpots[(Math.random()*iEnv.drySpots.length)|0]:{x:0,y:0.5,z:0};sp={idx:-1,x:fb.x+(Math.random()-0.5)*0.8,y:Math.max(0.28,iHeight(fb.x,fb.z)),z:fb.z+(Math.random()-0.5)*0.8};}
   var base=(0.95+Math.min(1,Math.max(0,((q.qElo||1200)-800)/2200))*0.95)*_sizeF(d);
-  var grow0=_maturityOf(q,k);
   var isInit=window.__forestIslandAPI&&window.__forestIslandAPI.initialSync;
-  var s={x:sp.x,y:sp.y,z:sp.z,subject:k,qElo:q.qElo||1200,oak:oak,plantedAt:Date.now(),baseScale:base,sy:0.9+hash(iTotal(),11)*0.4,sxz:0.95+hash(iTotal(),13)*0.3,leanX:(hash(iTotal(),17)-0.5)*0.08,leanZ:(hash(iTotal(),19)-0.5)*0.08,rot:hash(iTotal(),3)*6.283,plantCum:_plantCumOf(q,k),growSec:_growSecOf(q),grow:isInit?grow0:0,cur:(instant||isInit)?1:0,animT0:performance.now(),iid:iState[k].length};
+  var s={x:sp.x,y:sp.y,z:sp.z,subject:k,qElo:q.qElo||1200,oak:oak,plantedAt:Date.now(),baseScale:base,sy:0.9+hash(iTotal(),11)*0.4,sxz:0.95+hash(iTotal(),13)*0.3,leanX:(hash(iTotal(),17)-0.5)*0.08,leanZ:(hash(iTotal(),19)-0.5)*0.08,rot:hash(iTotal(),3)*6.283,grow:1,cur:(instant||isInit)?1:0,animT0:performance.now(),iid:iState[k].length};
   iState[k].push(s);writeIsland(k,s,s.cur);iMeshes[k].count=iState[k].length;iMeshes[k].instanceMatrix.needsUpdate=true;
   if(window.__forestIslandAPI){var interactive=!instant&&!window.__forestIslandAPI.initialSync;for(var h=0;h<window.__forestIslandAPI.onPlanted.length;h++){try{window.__forestIslandAPI.onPlanted[h](s,interactive);}catch(e){}}}
 }
@@ -117,7 +111,7 @@ function iframe(t){
   if(iEnv.water)iEnv.water.position.y=-0.2+Math.sin(iEl*0.8)*0.02;
   if(itreeMat.userData.shader)itreeMat.userData.shader.uniforms.uTime.value=iEl;
   var now=performance.now();
-  for(var k in iState){var arr=iState[k],dirty=false;for(var i=0;i<arr.length;i++){var s=arr[i],g=s.cur;if(s.cur<1){var p=(now-s.animT0)/600;if(p<=0)g=0;else if(p>=1){g=1;s.cur=1;}else{g=easeOutBack(p);s.cur=g;}dirty=true;}var gt=_maturityOf({plantCumStudy:s.plantCum,growSeconds:s.growSec},k);if(s.grow==null)s.grow=gt;var dg=gt-s.grow;if(dg>0.0008){s.grow+=dg*Math.min(1,dt*0.9);if(s.grow>gt)s.grow=gt;dirty=true;}if(dirty)writeIsland(k,s,s.cur<1?g:1);}if(dirty)iMeshes[k].instanceMatrix.needsUpdate=true;}
+  for(var k in iState){var arr=iState[k],dirty=false;for(var i=0;i<arr.length;i++){var s=arr[i],g=s.cur;if(s.cur<1){var p=(now-s.animT0)/600;if(p<=0)g=0;else if(p>=1){g=1;s.cur=1;}else{g=easeOutBack(p);s.cur=g;}dirty=true;}if(dirty)writeIsland(k,s,s.cur<1?g:1);}if(dirty)iMeshes[k].instanceMatrix.needsUpdate=true;}
   if(window.__forestIslandAPI)for(var h=0;h<window.__forestIslandAPI.onFrame.length;h++){try{window.__forestIslandAPI.onFrame[h](iEl,dt);}catch(e){}}
   iRenderer.render(iScene,iCam);
 }
@@ -131,7 +125,7 @@ function mount(){
   if(!card){toast('Momentum card not found; daily island not mounted.');return;}
   var kids=Array.prototype.slice.call(card.children);kids.forEach(function(c){if(c.id==='forest-island-host')return;var cl=c.className||'';if(/bento-handle|bento-handle-v|bento-card-ctrls|bento-scroll/.test(cl))return;c.classList.add('fi-orig');});
   card.__fiOrig=true;
-  host=el('div',{id:'forest-island-host',html:'<div class="fi-canvas-wrap"><canvas id="forest-island-canvas"></canvas><div class="fi-empty" id="fi-empty">No trees yet — solve a question or tap + to plant one 🌱</div></div>'});
+  host=el('div',{id:'forest-island-host',html:'<div class="fi-canvas-wrap"><canvas id="forest-island-canvas"></canvas><div class="fi-empty" id="fi-empty">No trees yet — solve a question to grow one 🌳</div></div>'});
   card.appendChild(host);card.classList.add('island-active');
   cvs=document.getElementById('forest-island-canvas');countEl=null;emptyEl=document.getElementById('fi-empty');
   if(cvs){cvs.title='Click to open full Growth Island';cvs.setAttribute('tabindex','0');cvs.setAttribute('role','button');cvs.setAttribute('aria-label','Open full Growth Island');cvs.addEventListener('click',function(e){e.stopPropagation();openBestFullScreen();});cvs.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openBestFullScreen();}});}
