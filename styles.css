@@ -69,6 +69,8 @@ body {
     line-height: 1.5;
     transform: translate3d(0, 0, 0);
     backface-visibility: hidden;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
 }
 
 ::selection { background: var(--furnace); color: #171207; }
@@ -3387,7 +3389,7 @@ select.pomo-select, select.pomo-input {
 /* ════════════════════════════════════════════════════════════════════════
    SCRATCHPAD HUD
    ════════════════════════════════════════════════════════════════════════ */
-body.scratchpad-active .app-container { opacity: 0.6; filter: blur(0.5px); transition: opacity 0.25s ease; }
+body.scratchpad-active .app-container { opacity: 0.6; transition: opacity 0.25s ease; }
 body.scratchpad-active,
 body.scratchpad-active html {
     overflow: hidden !important;
@@ -3624,6 +3626,22 @@ html.fx-effects-off body.overheat-active .modal-card h3,
 html.fx-effects-off body.overheat-active .modal-card p,
 html.fx-effects-off body.overheat-active .practice-header .timer-display-sm,
 html.fx-effects-off body.overheat-active .practice-header .hide-toggle { animation: none !important; }
+/* ── Low-power mode: kill the always-on infinite CSS animations that keep the
+   compositor busy 24/7 (fullscreen glow drift, pulsing badges, beaker slosh,
+   spinning rings). One-off entrance animations are untouched. ── */
+html.fx-effects-off .ambient-glow { animation: none !important; }
+html.fx-effects-off .cat-emoji { animation: none !important; }
+html.fx-effects-off .cat-text.glow-red,
+html.fx-effects-off .cat-text.glow-orange { animation: none !important; }
+html.fx-effects-off .global-mmr-row { animation: none !important; }
+html.fx-effects-off .glow-wrapper::before { animation: none !important; }
+html.fx-effects-off .progress-bar-fill { animation: none !important; }
+html.fx-effects-off .beaker-liquid::before,
+html.fx-effects-off .beaker-liquid::after { animation: none !important; }
+html.fx-effects-off body::before { animation: none !important; }
+html.fx-effects-off .manual-sync-btn.spinning { animation: none !important; }
+html.fx-effects-off .cp-timer-value.paused { animation: none !important; }
+html.fx-effects-off .cp-grace-timer.critical { animation: none !important; }
 
 /* ════════════════════════════════════════════════════════════════════════
    DASHBOARD DECLUTTER — CSS-only calm-down pass.

@@ -69,6 +69,43 @@ export async function idbGet(key) {
     });
 }
 
+/**
+ * Read many keys in ONE readwrite-free transaction. iPad Safari pays a fixed
+ * per-transaction cost, so collapsing the ~20 boot reads into a single
+ * transaction cuts cold-start time substantially.
+ */
+export async function idbGetMany(keys) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('storage', 'readonly');
+        const store = tx.objectStore('storage');
+        const out = {};
+        for (const key of keys) {
+            const req = store.get(key);
+            req.onsuccess = () => { out[key] = req.result ? req.result.value : null; };
+        }
+        tx.oncomplete = () => resolve(out);
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+/**
+ * Write many records in ONE readwrite transaction (single commit). The old
+ * per-key await sequence opened a fresh transaction per key on every save —
+ * on iPad that serializes ~15 commits per solve / pomodoro tick.
+ */
+export async function idbSetMany(entries) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('storage', 'readwrite');
+        const store = tx.objectStore('storage');
+        for (const [key, value] of entries) store.put({ key, value });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error || new Error('idbSetMany aborted'));
+    });
+}
+
 export async function idbRemove(key) {
     const db = await openDB();
     const tx = db.transaction('storage', 'readwrite');
@@ -753,44 +790,50 @@ export async function saveAllAsync() {
         diagramImageUrl: null
     }));
 
-    await idbSet('jeemax_question_bank', lightweightBank);
-    await persistImageCacheIfChanged();
-    await idbSet('jeemax_chapters', AppState.chapters);
-    await idbSet('jeemax_solved', solved);
-    await idbSet('jeemax_study_secs', studySecs);
-    await idbSet('jeemax_bounty', AppState.bounty);
-    await idbSet('jeemax_mood_multiplier', AppState.moodMultiplier);
-    // ── Persist Cognitive MMR / Elo Matrix (subject + global meta-MMR) ──
-    await idbSet('jeemax_elo', {
+    // ── Single-transaction commit: ~15 sequential IDB transactions used to
+    //    fire per save; now one commit. The image vault is signature-gated
+    //    separately below (only rewrites when an image actually changed). ──
+    const entries = [];
+    entries.push(['jeemax_question_bank', lightweightBank]);
+    entries.push(['jeemax_chapters', AppState.chapters]);
+    entries.push(['jeemax_solved', solved]);
+    entries.push(['jeemax_study_secs', studySecs]);
+    entries.push(['jeemax_bounty', AppState.bounty]);
+    entries.push(['jeemax_mood_multiplier', AppState.moodMultiplier]);
+    // ── Hydrate Cognitive MMR / Elo Matrix (subject + global meta-MMR) ──
+    entries.push(['jeemax_elo', {
         physics:   AppState.elo.physics   ?? 1200,
         chemistry: AppState.elo.chemistry ?? 1200,
         maths:     AppState.elo.maths     ?? 1200,
         global:    AppState.elo.global    ?? 1200,
-    });
+    }]);
     // Practice mode + hardcore daily counter persistence
-    await idbSet('jeemax_practice_mode', AppState.practiceFlowMode || 'standard');
-    await idbSet('jeemax_hardcore_daily', {
+    entries.push(['jeemax_practice_mode', AppState.practiceFlowMode || 'standard']);
+    entries.push(['jeemax_hardcore_daily', {
         date: AppState.hardcoreDailyDate,
         count: AppState.hardcoreDailyCount || 0,
-    });
-    // ── Persist active practice mode + hardcore daily counter ──
-    await idbSet('jeemax_practice_mode', AppState.practiceFlowMode || 'standard');
-    await idbSet('jeemax_hardcore_daily', {
-        date: AppState.hardcoreDailyDate,
-        count: AppState.hardcoreDailyCount || 0,
-    });
-    await idbSet('jeemax_username', document.getElementById('display-username').textContent);
-    await idbSet('bounty_data', AppState.bounty);
+    }]);
+    entries.push(['jeemax_username', document.getElementById('display-username').textContent]);
+    entries.push(['bounty_data', AppState.bounty]);
 
     // Persist error resolution targets under separate keys
-    await idbSet('baseErrPhys', baseErrorTargets.physics);
-    await idbSet('baseErrChem', baseErrorTargets.chemistry);
-    await idbSet('baseErrMath', baseErrorTargets.maths);
+    entries.push(['baseErrPhys', baseErrorTargets.physics]);
+    entries.push(['baseErrChem', baseErrorTargets.chemistry]);
+    entries.push(['baseErrMath', baseErrorTargets.maths]);
 
     if (AppState.profilePicData) {
-        await idbSet('jeemax_profile_pic', AppState.profilePicData);
+        entries.push(['jeemax_profile_pic', AppState.profilePicData]);
     }
+
+    await idbSetMany(entries);
+
+    // Only touch the image vault when its signature actually changed.
+    await persistImageCacheIfChanged();
     await updateDailyHistory();
+
+    // ── Bump the app-wide "data changed" counter so memoized derivations
+    //    (nav rings / badges) can invalidate instantly instead of polling. ──
+    try { window.__jmaxDataDirty = (window.__jmaxDataDirty || 0) + 1; } catch (_) {}
 
     if (typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {
         syncStateToCloud();
@@ -798,7 +841,36 @@ export async function saveAllAsync() {
 }
 
 export async function loadDataAsync() {
-    const bank = await idbGet('jeemax_question_bank');
+    // ── Single-transaction cold boot: ~20 sequential IDB reads used to run
+    //    one after another; now they resolve in one transaction. ──
+    const g = await idbGetMany([
+        'jeemax_question_bank', 'jeemax_chapters', 'bounty_data',
+        'jeemax_solved', 'jeemax_study_secs', 'jeemax_mood_multiplier',
+        'jeemax_elo', 'jeemax_practice_mode', 'jeemax_hardcore_daily',
+        'jeemax_username', 'jeemax_profile_pic', 'gemini_api_key',
+        'jeeTargetLockDate', 'basePhys', 'baseChem', 'baseMath',
+        'baseErrPhys', 'baseErrChem', 'baseErrMath',
+    ]);
+    const bank = g['jeemax_question_bank'];
+    const ch = g['jeemax_chapters'];
+    const savedBounty = g['bounty_data'];
+    const s = g['jeemax_solved'];
+    const secs = g['jeemax_study_secs'];
+    const mood = g['jeemax_mood_multiplier'];
+    const savedElo = g['jeemax_elo'];
+    const savedMode = g['jeemax_practice_mode'];
+    const hcDaily = g['jeemax_hardcore_daily'];
+    const username = g['jeemax_username'];
+    const pfp = g['jeemax_profile_pic'];
+    const savedKey = g['gemini_api_key'];
+    const lockDate = g['jeeTargetLockDate'];
+    const basePhys = g['basePhys'];
+    const baseChem = g['baseChem'];
+    const baseMath = g['baseMath'];
+    const errPhys = g['baseErrPhys'];
+    const errChem = g['baseErrChem'];
+    const errMath = g['baseErrMath'];
+
     if (bank) AppState.questionBank = bank;
 
     // Re-attach cached images (bounded LRU cache) onto the live bank.
@@ -1215,8 +1287,20 @@ export async function executeUnifiedSync() {
     } finally { if (btn) btn.classList.remove('spinning'); }
 }
 
-export async function syncStateToCloud() {
+// Coalesce auto cloud pushes: the full bank (minus images) is uploaded on
+// every save when Drive is linked — that is megabytes of JSON + image uploads
+// per solve on iPad. Throttle to one push per 30s (manual sync bypasses).
+const CLOUD_PUSH_THROTTLE_MS = 30000;
+let _lastCloudPushAt = 0;
+
+export async function syncStateToCloud(force = false) {
     if (!AppState.driveAccessToken || !AppState.cloudFolderId) return;
+    if (!force) {
+        const now = Date.now();
+        if (now - _lastCloudPushAt < CLOUD_PUSH_THROTTLE_MS) return; // coalesced
+        if (document.hidden) return;                                  // skip when backgrounded
+        _lastCloudPushAt = now;
+    }
     try {
         const subText = document.getElementById('sync-sub-text');
         if (subText) subText.textContent = "Processing media files...";
