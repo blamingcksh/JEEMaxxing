@@ -876,10 +876,8 @@ export async function loadDataAsync() {
     // Re-attach cached images (bounded LRU cache) onto the live bank.
     await hydrateImageCache();
 
-    const ch = await idbGet('jeemax_chapters');
     if (ch) AppState.chapters = ch;
 
-    const savedBounty = await idbGet('bounty_data');
     if (savedBounty) {
         AppState.bounty.date = savedBounty.date;
         AppState.bounty.active = savedBounty.active;
@@ -889,27 +887,23 @@ export async function loadDataAsync() {
         AppState.bounty.done = savedBounty.done;
     }
 
-    const s = await idbGet('jeemax_solved');
     if (s) {
         solved.physics = s.physics || 0;
         solved.chemistry = s.chemistry || 0;
         solved.maths = s.maths || 0;
     }
 
-    const secs = await idbGet('jeemax_study_secs');
     if (secs) {
         studySecs.physics = secs.physics || 0;
         studySecs.chemistry = secs.chemistry || 0;
         studySecs.maths = secs.maths || 0;
     }
 
-    const mood = await idbGet('jeemax_mood_multiplier');
     if (mood !== null) AppState.moodMultiplier = parseFloat(mood);
 
     // ── Hydrate Cognitive MMR / Elo Matrix instantly with fallback defaults ──
     // Every axis is guarded so a missing/corrupt profile field can never
     // produce a NaN data gap — it always falls back to the 1200 baseline.
-    const savedElo = await idbGet('jeemax_elo');
     if (savedElo && typeof savedElo === 'object') {
         AppState.elo.physics   = (typeof savedElo.physics   === 'number' && isFinite(savedElo.physics))   ? savedElo.physics   : 1200;
         AppState.elo.chemistry = (typeof savedElo.chemistry === 'number' && isFinite(savedElo.chemistry)) ? savedElo.chemistry : 1200;
@@ -923,45 +917,36 @@ export async function loadDataAsync() {
     }
 
     // Hydrate active practice mode + hardcore daily counter (resets daily)
-    const savedMode = await idbGet('jeemax_practice_mode');
     if (savedMode && PRACTICE_MODES.includes(savedMode)) AppState.practiceFlowMode = savedMode;
-    const hcDaily = await idbGet('jeemax_hardcore_daily');
     if (hcDaily && typeof hcDaily === 'object') {
         const today = new Date().toISOString().slice(0, 10);
         AppState.hardcoreDailyDate   = hcDaily.date || null;
         AppState.hardcoreDailyCount  = (hcDaily.date === today) ? (hcDaily.count || 0) : 0;
     }
 
-    const username = await idbGet('jeemax_username');
     if (username) {
         document.getElementById('display-username').textContent = username;
         document.getElementById('set-username').value = username;
     }
 
-    const pfp = await idbGet('jeemax_profile_pic');
     if (pfp) {
         AppState.profilePicData = pfp;
         document.getElementById('display-pfp').src = pfp;
     }
 
-    const savedKey = await idbGet('gemini_api_key');
     if (savedKey) {
         AppState.geminiApiKey = savedKey;
     }
     const geminiKeyInput = document.getElementById('gemini-key');
     if (geminiKeyInput) geminiKeyInput.value = AppState.geminiApiKey;
 
-    const lockDate = await idbGet('jeeTargetLockDate');
     if (lockDate) {
         const diff = (new Date() - new Date(lockDate)) / (1000 * 60 * 60 * 24);
         if (diff < 1) _ui('lockTargetsOnly');
     }
 
-    const basePhys = await idbGet('basePhys');
     if (basePhys !== null) baseTargets.physics = parseInt(basePhys);
-    const baseChem = await idbGet('baseChem');
     if (baseChem !== null) baseTargets.chemistry = parseInt(baseChem);
-    const baseMath = await idbGet('baseMath');
     if (baseMath !== null) baseTargets.maths = parseInt(baseMath);
 
     document.getElementById('set-tgt-phys').value = baseTargets.physics;
@@ -969,11 +954,8 @@ export async function loadDataAsync() {
     document.getElementById('set-tgt-math').value = baseTargets.maths;
 
     // ── Load error resolution targets from separate IndexedDB keys ──
-    const errPhys = await idbGet('baseErrPhys');
     if (errPhys !== null) baseErrorTargets.physics = parseInt(errPhys);
-    const errChem = await idbGet('baseErrChem');
     if (errChem !== null) baseErrorTargets.chemistry = parseInt(errChem);
-    const errMath = await idbGet('baseErrMath');
     if (errMath !== null) baseErrorTargets.maths = parseInt(errMath);
 
     const errPhysEl = document.getElementById('set-err-phys');
