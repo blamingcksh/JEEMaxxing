@@ -8,7 +8,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v1';
+const VERSION = 'jeemax-v2';
 const SHELL = [
   './',
   './index.html',
