@@ -50,6 +50,7 @@
     <button class="mini-collapse-btn" onclick="event.stopPropagation(); toggleMiniWidget()" aria-label="Collapse widget">❯</button>
     <div class="mini-content">
         <span class="mini-status study" id="mini-status">FOCUS</span>
+        <span class="mini-subject" id="mini-subject">PHYSICS</span>
         <span class="mini-time" id="mini-time">00:00</span>
     </div>
 </div>
@@ -272,11 +273,14 @@
                     <div class="pomodoro-controls">
                         <div class="input-group">
                             <label for="pomo-subject">Pick Your Poison</label>
-                            <select id="pomo-subject" class="pomo-select">
-                                <option value="physics">Physics</option>
-                                <option value="chemistry">Chemistry</option>
-                                <option value="maths">Maths</option>
-                            </select>
+                            <div class="subject-row">
+                                <select id="pomo-subject" class="pomo-select" onchange="changeStudySubject()">
+                                    <option value="physics">Physics</option>
+                                    <option value="chemistry">Chemistry</option>
+                                    <option value="maths">Maths</option>
+                                </select>
+                                <button id="dynamic-subject-btn" class="pomo-dynamic-btn" onclick="toggleDynamicSubject(this)" title="Dynamic mode: switch subject mid-session — time is tracked per subject">⚡</button>
+                            </div>
                         </div>
                         <div class="input-group">
                             <label for="pomo-study">Grind (min)</label>
