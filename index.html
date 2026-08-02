@@ -247,20 +247,8 @@
                     <div id="chapter-decay-grid"></div>
                 </div>
 
-                <!-- ═══ RISK & ACCOUNTABILITY DESK ═══ -->
-                <div class="dash-card dash-card-accountability" id="accountability-desk">
-                  <!-- Rendered by AccountabilityEngine.renderDesk() -->
-                </div>
-
             </div>
         </section>
-
-        <!-- ═══ SETTLEMENT RECEIPT MODAL ═══ -->
-        <div class="modal-overlay" id="settlement-receipt-modal" style="display:none;">
-          <div class="modal-content settlement-receipt-card" id="settlement-receipt-content">
-            <!-- Filled by AccountabilityEngine.showSettlementReceipt() -->
-          </div>
-        </div>
 
         <!-- ═══════════════════════════════════════════
              VIEW · POMODORO (LOCK-IN MODE)
@@ -524,6 +512,7 @@
                     <div class="input-group"><label for="set-tgt-chem">Chemistry Quota</label><input id="set-tgt-chem" class="pomo-input" type="number" value="10" min="1"></div>
                     <div class="input-group"><label for="set-tgt-math">Maths Quota</label><input id="set-tgt-math" class="pomo-input" type="number" value="10" min="1"></div>
                     <button id="btn-save-settings" class="btn btn-primary" onclick="saveTargets()">Lock In Quotas</button>
+                    <button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="window.scheduleDeloadFromUi()">🌿 Schedule Earned Rest</button>
                 </div>
 
                 <!-- Daily Fix Quota -->
@@ -976,7 +965,7 @@ window.setMatrixSearch = function (value) {
     const BP2 = 1101;                     // mirrors the themed 2-col ↔ 1-col breakpoint
     const V_MIN = 140, V_MAX = 1600;
     const COLS = 12;
-    const IDS = ['tracker', 'momentum', 'bounty', 'decay', 'accountability'];
+    const IDS = ['tracker', 'momentum', 'bounty', 'decay'];
 
     const wide     = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
     const twoCol   = () => window.matchMedia(`(min-width: ${BP2}px)`).matches;
@@ -1039,7 +1028,6 @@ window.setMatrixSearch = function (value) {
             try { if (typeof window.renderGraph === 'function') window.renderGraph(); } catch (e) {}
             try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (e) {}
             try { if (typeof window.renderChapterDecayGrid === 'function') window.renderChapterDecayGrid(); } catch (e) {}
-            try { if (typeof window.__accountability !== 'undefined' && typeof window.__accountability.renderDesk === 'function') window.__accountability.renderDesk(); } catch (e) {}
             scheduleRelayout();
         }, 180);
     }

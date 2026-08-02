@@ -292,6 +292,12 @@ export const baseTargets = { physics: 10, chemistry: 10, maths: 10 };
 export const baseErrorTargets = { physics: 5, chemistry: 5, maths: 5 };
 export const solved = { physics: 0, chemistry: 0, maths: 0 };
 export const studySecs = { physics: 0, chemistry: 0, maths: 0 };
+// Single source of truth for the "day" boundary: LOCAL calendar date
+// (YYYY-MM-DD). All daily counters, cloud payloads and history keys must use
+// this so counters reset at local midnight, not UTC midnight.
+export function todayLocalKey(date) {
+    return (date || new Date()).toLocaleDateString('en-CA');
+}
 export const monthNamesCal = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
@@ -1206,7 +1212,7 @@ export async function executeUnifiedSync() {
                             cloudState.chapters[subj].forEach(ch => { if (!AppState.chapters[subj].includes(ch)) AppState.chapters[subj].push(ch); });
                         }
                     }
-                    const todayStr = new Date().toISOString().split('T')[0];
+                    const todayStr = todayLocalKey();
                     if (cloudState.date === todayStr) {
                         if (cloudState.solved) {
                             solved.physics   = Math.max(solved.physics,   cloudState.solved.physics || 0);
@@ -1250,7 +1256,7 @@ export async function executeUnifiedSync() {
         }
         // Strip inline images from the cloud payload (mirrors syncStateToCloud)
         // — driveImageId re-fetches them on demand; keeps Drive JSON lean.
-        const payload = { date: new Date().toISOString().split('T')[0], questionBank: AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
+        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
         if (!fileId) {
             let createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
                 method: 'POST', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' },
@@ -1304,7 +1310,7 @@ export async function syncStateToCloud(force = false) {
             await persistImageCacheIfChanged();
         }
         if (subText) subText.textContent = "Syncing system state...";
-        const payload = { date: new Date().toISOString().split('T')[0], questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
+        const payload = { date: todayLocalKey(), questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
         const query = `name='system_state.json' and '${AppState.cloudFolderId}' in parents and trashed=false`;
         let searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, { headers: { Authorization: `Bearer ${AppState.driveAccessToken}` } });
         if (!searchRes.ok) { if (searchRes.status === 404) throw new Error("Target cloud storage folder directory not found."); throw new Error(`Drive connection interface dropped with code: ${searchRes.status}`); }
@@ -1373,7 +1379,7 @@ export async function loadStateFromCloud(isBackground = false) {
             //     above. Local state is always authoritative for the
             //     *current* tracking window.
             // ══════════════════════════════════════════════════════════════════════
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = todayLocalKey();
             if (cloudState.date === todayStr) {
                 // Cloud is current — high-water-mark merge preserves the
                 // larger of local vs. cloud for each subject.
@@ -1410,7 +1416,7 @@ export async function loadStateFromCloud(isBackground = false) {
 export async function getDailyHistory() {
     let history = await idbGet('jeemax_daily_history');
     if (!history) history = [];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = todayLocalKey();
     const todayTotal = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
     const todayEntry = history.find(entry => entry.date === todayStr);
     if (todayEntry) { todayEntry.count = todayTotal; } else { history.push({ date: todayStr, count: todayTotal }); if (history.length > 15) history.shift(); }

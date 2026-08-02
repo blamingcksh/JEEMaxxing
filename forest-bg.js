@@ -29,12 +29,13 @@ function realTOD(){var d=new Date();return ((d.getHours()+d.getMinutes()/60)/24)
 function nightFactor(t){var u=t/100;return Math.max(0,Math.min(1,Math.abs(u-0.5)*2));}
 function normSub(s){s=(s||'').toString().toLowerCase().trim();return (s==='math'||s==='mathematics')?'maths':(SUBJ.indexOf(s)>=0?s:'physics');}
 function qEloOf(q){return (typeof q.qElo==='number'&&q.qElo>0)?q.qElo:1200;}
-function todayStr(){return new Date().toISOString().slice(0,10);}
+function dayOf(iso){var d=new Date(iso);return isNaN(d.getTime())?'':d.toLocaleDateString('en-CA');}
+function todayStr(){return new Date().toLocaleDateString('en-CA');}
 function rc(id){var e=document.getElementById(id);return e?(parseInt(e.textContent,10)||0):0;}
 function liveTotal(){return rc('physics-count')+rc('chemistry-count')+rc('maths-count');}
 function solvedBank(){var qb=window.questionBank||[],o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(q&&q.status==='solved')o.push(q);}return o;}
-function historical(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if((q.lastReviewedAt||'').slice(0,10)!==tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined,oak:(q.oak!=null)?!!q.oak:undefined});}return o;}
-function todayReal(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if((q.lastReviewedAt||'').slice(0,10)===tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined,oak:(q.oak!=null)?!!q.oak:undefined});}return o;}
+function historical(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(dayOf(q.lastReviewedAt)!==tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined,oak:(q.oak!=null)?!!q.oak:undefined});}return o;}
+function todayReal(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(dayOf(q.lastReviewedAt)===tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined,oak:(q.oak!=null)?!!q.oak:undefined});}return o;}
 function computeBgTrees(){
   var trees=historical().concat(todayReal());
   var extra=Math.max(0,liveTotal()-todayReal().length);

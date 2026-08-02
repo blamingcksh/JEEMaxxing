@@ -8,7 +8,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v3';
+const VERSION = 'jeemax-v4';
 const SHELL = [
   './',
   './index.html',
@@ -34,7 +34,6 @@ const SHELL = [
   './leaderboard.js',
   './lifeline.js',
   './nightguard.js',
-  './accountability.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',

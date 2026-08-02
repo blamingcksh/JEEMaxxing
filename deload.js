@@ -3,14 +3,13 @@
  *
  * Self-contained module. Implements the "Earned Rest" (manual) and
  * "Biodemand" (forced) deload-day flavours from the supercompensation
- * design spec. Deload days preserve streaks, cancel missed-debt accrual,
- * and decay CNS Load — letting the student's brain consolidate like a
- * muscle between sets.
+ * design spec. Deload days preserve streaks and decay CNS Load —
+ * letting the student's brain consolidate like a muscle between sets.
  *
  * Architecture:
  *   • Persists deload state in localStorage
- *   • Integrates with CNSLoad.consecutiveCnsDays() for auto-eligibility
- *   • Called from accountability.js settlement and app.js streak display
+ *  • Integrates with CNSLoad.consecutiveCnsDays() for auto-eligibility
+ *  • Scheduled from the Config panel via app.js scheduleDeloadFromUi()
  *   • Anti-cheat: cooldown timers, circuit breaker, 48h missed-day block
  *
  * Dependencies: CNSLoad (window.__cnsLoad), AppState.moodMultiplier (window)
