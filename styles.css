@@ -502,7 +502,7 @@ body {
 }
 .dash-card-tracker  { grid-column: span 7; }
 .dash-card-momentum { grid-column: span 5; }
-.dash-card-bounty   { grid-column: span 5; }
+.dash-card-progress { grid-column: span 5; }
 .dash-card-decay    { grid-column: span 7; }
 
 .dash-card {
@@ -3528,7 +3528,7 @@ button, .btn, .nav-item, .counter-btn, .cal-day, .mcq-option, .matrix-pill {
 
 @media (max-width: 1180px) {
     .dash-card-tracker, .dash-card-momentum,
-    .dash-card-bounty, .dash-card-decay { grid-column: span 6; }
+    .dash-card-progress, .dash-card-decay { grid-column: span 6; }
 }
 
 @media (max-width: 900px) {
@@ -3542,7 +3542,7 @@ button, .btn, .nav-item, .counter-btn, .cal-day, .mcq-option, .matrix-pill {
     .sidebar .global-mmr-row { display: none; }
 
     .dash-card-tracker, .dash-card-momentum,
-    .dash-card-bounty, .dash-card-decay { grid-column: span 12; }
+    .dash-card-progress, .dash-card-decay { grid-column: span 12; }
 
     .settings-grid { grid-template-columns: 1fr; }
     .erm-layout { grid-template-columns: 1fr; }
@@ -3765,20 +3765,20 @@ html.fx-effects-off .cp-grace-timer.critical { animation: none !important; }
 #view-dashboard .dash-grid { gap: 22px; }
 #view-dashboard .dash-card-tracker,
 #view-dashboard .dash-card-momentum,
-#view-dashboard .dash-card-bounty,
+#view-dashboard .dash-card-progress,
 #view-dashboard .dash-card-decay { grid-column: span 6; }
 
 /* ── 2. Cards breathe; telemetry tiles sit quieter than the tracker ─────── */
 #view-dashboard .dash-card { padding: 24px 26px; }
 #view-dashboard .dash-card-momentum,
-#view-dashboard .dash-card-bounty,
+#view-dashboard .dash-card-progress,
 #view-dashboard .dash-card-decay {
     background: rgba(15, 19, 27, 0.5);          /* flatter than the hero card   */
     border-color: rgba(148, 163, 184, 0.07);    /* hairline, not a hard frame   */
 }
 /* calm the corner accent ticks on the read-only cards so only the tracker pops */
 #view-dashboard .dash-card-momentum::before,
-#view-dashboard .dash-card-bounty::before,
+#view-dashboard .dash-card-progress::before,
 #view-dashboard .dash-card-decay::before { width: 30px; opacity: 0.6; }
 
 /* ── 3. Collapse the triple header → kicker + title on ONE line;
@@ -3830,7 +3830,7 @@ html.fx-effects-off .cp-grace-timer.critical { animation: none !important; }
 @media (max-width: 1100px) {
     #view-dashboard .dash-card-tracker,
     #view-dashboard .dash-card-momentum,
-    #view-dashboard .dash-card-bounty,
+    #view-dashboard .dash-card-progress,
     #view-dashboard .dash-card-decay { grid-column: span 12; }
     #view-dashboard .subject-card-group { grid-template-columns: repeat(3, 1fr); }
 }
@@ -5039,9 +5039,103 @@ body.dc-active .bento-toolbar.dc-fab-panel.open {
       (other tabs keep it; the flag tracks which view is active) ────────── */
 body.dc-dash-active #main-header { display: none !important; }
 
-/* ── Bounty board: drop the 15-day fix streak sparkline column ─────────── */
-#view-dashboard .dash-card-bounty .erm-sparkline-col { display: none !important; }
-#view-dashboard .dash-card-bounty .erm-layout { grid-template-columns: 1fr !important; }
+/* ── Chapter Progress card (weakest first) ─────────────────────────────── */
+#chapter-progress-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.cp-row {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 34% 46px 38px;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 163, 184, 0.07);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.cp-row:hover { background: rgba(255, 255, 255, 0.05); border-color: rgba(148, 163, 184, 0.18); }
+.cp-row-void { opacity: 0.72; }
+.cp-chip {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    font-family: 'Space Grotesk', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: #0b0e14;
+    background: linear-gradient(135deg, #64748b, #94a3b8);
+}
+.cp-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cp-bar {
+    height: 7px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.cp-fill {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #f97316, #fb7185);
+    transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cp-fill-mid  { background: linear-gradient(90deg, var(--glow-yellow), #f97316); }
+.cp-fill-full { background: linear-gradient(90deg, var(--glow-green), #4ade80); }
+.cp-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'Space Grotesk', monospace;
+    text-align: right;
+    white-space: nowrap;
+}
+.cp-pct {
+    font-size: 12px;
+    font-weight: 700;
+    font-family: 'Space Grotesk', monospace;
+    color: var(--glow-red);
+    text-align: right;
+}
+.cp-pct-void { color: var(--text-muted); }
+.cp-more { text-align: center; font-size: 11px; color: var(--text-muted); padding-top: 6px; }
+
+/* ── Vault: Error Resolution Board (BUG HUNT) ──────────────────────────── */
+.vault-erm {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 20px 22px;
+    margin-bottom: 22px;
+}
+.vault-erm-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px 24px;
+    margin-bottom: 14px;
+}
+.vault-erm-head .box-desc { margin-bottom: 0; }
+@media (max-width: 560px) {
+    .cp-row { grid-template-columns: 24px minmax(0, 1fr) 46px 38px; }
+    .cp-bar { display: none; }
+}
 
 /* ── Time Bank card ────────────────────────────────────────────────────── */
 .dc-time-card {
@@ -5648,7 +5742,7 @@ body.forest-bg-on #view-dashboard .distribution-pill {
 body.forest-bg-on #view-dashboard .dash-card,
 body.forest-bg-on #view-dashboard .dash-card-tracker,
 body.forest-bg-on #view-dashboard .dash-card-momentum,
-body.forest-bg-on #view-dashboard .dash-card-bounty,
+body.forest-bg-on #view-dashboard .dash-card-progress,
 body.forest-bg-on #view-dashboard .dash-card-decay {
   background: var(--aes-glass, linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.022))) !important;
   border: 1px solid rgba(255,255,255,.12) !important;

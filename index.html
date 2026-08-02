@@ -174,63 +174,14 @@
                         <!-- Daily Grove island mounts here (forest-island.js) -->
         <div class="dash-card dash-card-momentum"></div>
 
-                <!-- Error Bounty Board (Error Resolution Matrix)
-                     #erm-today-total MUST keep its inner <div> — matrix.js does
-                     totalEl.querySelector('div').textContent = totalToday. -->
-                <div class="dash-card dash-card-bounty">
+                <!-- Chapter Progress (weakest first) -->
+                <div class="dash-card dash-card-progress">
                     <div class="dash-card-head">
-                        <span class="kicker">// BUG HUNT</span>
-                        <h2 class="box-title">Error Bounty Board</h2>
-                        <p class="box-desc">Mistakes crushed today vs your daily fix quota.</p>
+                        <span class="kicker">// CONQUEST</span>
+                        <h2 class="box-title">Chapter Progress</h2>
+                        <p class="box-desc">Completion per chapter, weakest at top. Click a row to grind it.</p>
                     </div>
-
-                    <div class="erm-scoreline">
-                        <div class="erm-total" id="erm-today-total">
-                            <div>0</div>
-                            <span>Bugs Squashed Today</span>
-                        </div>
-                        <span class="erm-avg" id="erm-avg-label">avg 0.0/day</span>
-                    </div>
-
-                    <div class="erm-layout">
-                        <div class="erm-progress-col">
-                            <div class="erm-subject-row">
-                                <div class="erm-subj-header">
-                                    <span class="erm-subj-icon">⚛️</span>
-                                    <span class="erm-subj-name">Physics</span>
-                                    <span class="erm-subj-count" id="erm-phys-val">0</span>
-                                    <span class="erm-subj-target" id="erm-phys-tgt">/ 5</span>
-                                </div>
-                                <div class="erm-track"><div class="erm-fill" id="erm-phys-bar" style="width:0%"></div></div>
-                                <span class="erm-pct" id="erm-phys-pct">0%</span>
-                            </div>
-                            <div class="erm-subject-row">
-                                <div class="erm-subj-header">
-                                    <span class="erm-subj-icon">🧪</span>
-                                    <span class="erm-subj-name">Chemistry</span>
-                                    <span class="erm-subj-count" id="erm-chem-val">0</span>
-                                    <span class="erm-subj-target" id="erm-chem-tgt">/ 5</span>
-                                </div>
-                                
-                                <div class="erm-track"><div class="erm-fill" id="erm-chem-bar" style="width:0%"></div></div>
-                                <span class="erm-pct" id="erm-chem-pct">0%</span>
-                            </div>
-                            <div class="erm-subject-row">
-                                <div class="erm-subj-header">
-                                    <span class="erm-subj-icon">📐</span>
-                                    <span class="erm-subj-name">Maths</span>
-                                    <span class="erm-subj-count" id="erm-math-val">0</span>
-                                    <span class="erm-subj-target" id="erm-math-tgt">/ 5</span>
-                                </div>
-                                <div class="erm-track"><div class="erm-fill" id="erm-math-bar" style="width:0%"></div></div>
-                                <span class="erm-pct" id="erm-math-pct">0%</span>
-                            </div>
-                        </div>
-                        <div class="erm-sparkline-col">
-                            <span class="kicker">// 15-DAY FIX STREAK</span>
-                            <div class="erm-sparkline-box" id="error-momentum-svg-container"></div>
-                        </div>
-                    </div>
+                    <div id="chapter-progress-list"></div>
                 </div>
 
                 <!-- Chapter Health Grid -->
@@ -330,6 +281,66 @@
              VIEW · THE VAULT (ERROR MATRIX)
         ════════════════════════════════════════════ -->
         <section id="view-errors" class="view-section">
+            <!-- Error Resolution Dashboard (BUG HUNT) — moved here from the
+                 dashboard. #erm-today-total MUST keep its inner <div> —
+                 matrix.js does totalEl.querySelector('div').textContent = totalToday. -->
+            <div class="vault-erm">
+                <div class="vault-erm-head">
+                    <div>
+                        <span class="kicker">// BUG HUNT</span>
+                        <h2 class="box-title">Error Resolution Board</h2>
+                        <p class="box-desc">Mistakes crushed today vs your daily fix quota.</p>
+                    </div>
+                    <div class="erm-scoreline">
+                        <div class="erm-total" id="erm-today-total">
+                            <div>0</div>
+                            <span>Bugs Squashed Today</span>
+                        </div>
+                        <span class="erm-avg" id="erm-avg-label">avg 0.0/day</span>
+                    </div>
+                </div>
+
+                <div class="erm-layout">
+                    <div class="erm-progress-col">
+                        <div class="erm-subject-row">
+                            <div class="erm-subj-header">
+                                <span class="erm-subj-icon">⚛️</span>
+                                <span class="erm-subj-name">Physics</span>
+                                <span class="erm-subj-count" id="erm-phys-val">0</span>
+                                <span class="erm-subj-target" id="erm-phys-tgt">/ 5</span>
+                            </div>
+                            <div class="erm-track"><div class="erm-fill" id="erm-phys-bar" style="width:0%"></div></div>
+                            <span class="erm-pct" id="erm-phys-pct">0%</span>
+                        </div>
+                        <div class="erm-subject-row">
+                            <div class="erm-subj-header">
+                                <span class="erm-subj-icon">🧪</span>
+                                <span class="erm-subj-name">Chemistry</span>
+                                <span class="erm-subj-count" id="erm-chem-val">0</span>
+                                <span class="erm-subj-target" id="erm-chem-tgt">/ 5</span>
+                            </div>
+
+                            <div class="erm-track"><div class="erm-fill" id="erm-chem-bar" style="width:0%"></div></div>
+                            <span class="erm-pct" id="erm-chem-pct">0%</span>
+                        </div>
+                        <div class="erm-subject-row">
+                            <div class="erm-subj-header">
+                                <span class="erm-subj-icon">📐</span>
+                                <span class="erm-subj-name">Maths</span>
+                                <span class="erm-subj-count" id="erm-math-val">0</span>
+                                <span class="erm-subj-target" id="erm-math-tgt">/ 5</span>
+                            </div>
+                            <div class="erm-track"><div class="erm-fill" id="erm-math-bar" style="width:0%"></div></div>
+                            <span class="erm-pct" id="erm-math-pct">0%</span>
+                        </div>
+                    </div>
+                    <div class="erm-sparkline-col">
+                        <span class="kicker">// 15-DAY FIX STREAK</span>
+                        <div class="erm-sparkline-box" id="error-momentum-svg-container"></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="subject-folder-grid">
                 <div class="subject-folder active" onclick="openErrorMatrix('physics', this)">
                     <span class="folder-icon">🌌</span><span>Physics</span>
@@ -969,7 +980,7 @@ window.setMatrixSearch = function (value) {
     const BP2 = 1101;                     // mirrors the themed 2-col ↔ 1-col breakpoint
     const V_MIN = 140, V_MAX = 1600;
     const COLS = 12;
-    const IDS = ['tracker', 'momentum', 'bounty', 'decay'];
+    const IDS = ['tracker', 'momentum', 'progress', 'decay'];
 
     const wide     = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
     const twoCol   = () => window.matchMedia(`(min-width: ${BP2}px)`).matches;
