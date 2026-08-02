@@ -7971,6 +7971,38 @@ const globalMathObserver = new MutationObserver(function (mutations) {
     if (window.console && console.warn) {
         console.warn('[math] KaTeX not loaded at boot — polling for arrival; math will hydrate the moment it lands.');
     }
+    // One-time dismissible banner so a permanently-missing KaTeX is visible to
+    // the user instead of silently leaving every $...$ fragment raw.
+    let bannerShown = false;
+    const showBanner = function () {
+        if (bannerShown || document.getElementById('math-failure-banner')) return;
+        bannerShown = true;
+        try {
+            const d = document.createElement('div');
+            d.id = 'math-failure-banner';
+            d.textContent = '⚠ Math engine failed to load — formulas show as raw text. Reopen the app with internet once.';
+            Object.assign(d.style, {
+                position: 'fixed', left: '50%', bottom: '14px', transform: 'translateX(-50%)',
+                zIndex: '2147483000', background: 'rgba(20,16,8,.95)',
+                border: '1px solid rgba(255,178,36,.5)', color: '#ffd9a0',
+                padding: '10px 30px 10px 14px', borderRadius: '12px',
+                font: '13px/1.5 system-ui, sans-serif', maxWidth: '92vw',
+                boxShadow: '0 10px 30px rgba(0,0,0,.65)'
+            });
+            const close = document.createElement('button');
+            close.textContent = '✕';
+            close.setAttribute('aria-label', 'Dismiss');
+            Object.assign(close.style, {
+                position: 'absolute', top: '4px', right: '6px', background: 'none',
+                border: 'none', color: '#ffd9a0', fontSize: '14px', cursor: 'pointer',
+                padding: '2px 4px'
+            });
+            close.addEventListener('click', function () { d.remove(); });
+            d.appendChild(close);
+            document.body.appendChild(d);
+            setTimeout(function () { if (d.parentNode) d.remove(); }, 30000);
+        } catch (_) { /* banner is cosmetic — never break boot */ }
+    };
     let waited = 0;
     const sweep = function () {
         try { processElementMath(document.body); } catch (_) {}
@@ -7980,6 +8012,8 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         if (window.katex) {
             clearInterval(poll);
             sweep();
+        } else if (waited === 8000) {
+            showBanner();
         } else if (waited > 30000) {
             // Slow-loading or blocked — don't give up. Re-check every 2s
             // forever; once katex lands, sweep. Cheap enough to leave running.
