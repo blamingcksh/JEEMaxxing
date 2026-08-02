@@ -846,6 +846,40 @@ export async function saveAllAsync() {
     }
 }
 
+/**
+ * One-time defensive repair for banked questions that can never be valid
+ * as stored (legacy ingestion bugs):
+ *   1. type 'mcq' with NO options — an impossible state. The old parser
+ *      comma-split free-text answers ("(a) ..., (b)(i) ...") into arrays and
+ *      forced type='mcq', which rendered a "Reveal Answer" button while
+ *      practiceSubmit demanded an option selection. Downgrade to 'text' so
+ *      every flow (practice modal, matrix drawer, checkpoint) treats them as
+ *      self-report instead of blocking on a selection that can't exist.
+ *   2. Array answers with NO options — arrays only mean anything for
+ *      multi-correct MCQs (which always carry options). Collapse back to a
+ *      single joined string so checkpoint's getQuestionMode can't take the
+ *      'multi' branch with zero options to render.
+ * Type values are also lower-cased so exotic casing ("MCQ", "Text") can never
+ * bypass the canonical 'mcq'/'numeric'/'text' checks.
+ *
+ * Idempotent and non-destructive: valid questions (mcq+options, arrays with
+ * options, numeric, subjective, etc.) are never touched. Runs at every cold
+ * load; the repaired shape persists on the next save.
+ */
+function _repairQuestionBank() {
+    const bank = AppState.questionBank;
+    if (!Array.isArray(bank)) return;
+    for (const q of bank) {
+        if (!q || typeof q !== 'object') continue;
+        if (typeof q.type === 'string') q.type = q.type.trim().toLowerCase();
+        const noOptions = !Array.isArray(q.options) || q.options.length === 0;
+        if (q.type === 'mcq' && noOptions) q.type = 'text';
+        if (Array.isArray(q.correctAnswer) && q.correctAnswer.length > 0 && noOptions) {
+            q.correctAnswer = q.correctAnswer.join(', ');
+        }
+    }
+}
+
 export async function loadDataAsync() {
     // ── Single-transaction cold boot: ~20 sequential IDB reads used to run
     //    one after another; now they resolve in one transaction. ──
@@ -878,6 +912,7 @@ export async function loadDataAsync() {
     const errMath = g['baseErrMath'];
 
     if (bank) AppState.questionBank = bank;
+    _repairQuestionBank();
 
     // Re-attach cached images (bounded LRU cache) onto the live bank.
     await hydrateImageCache();
