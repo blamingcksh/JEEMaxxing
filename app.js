@@ -281,6 +281,7 @@ let cropSession = {
     // When null, the traditional multi-crop pipeline runs untouched.
     surgicalTargetIdx: null,
 };
+let _cropResizeBound = false;
 
 let overheatActive = false;
 let overheatUntil = null;
@@ -1666,15 +1667,44 @@ export function refreshCropUI() {
         cropSession.imgRefs[src.id] = img;
 
         img.onload = () => {
-            canvas.width = img.clientWidth;
-            canvas.height = img.clientHeight;
-            canvas.style.width = img.clientWidth + 'px';
-            canvas.style.height = img.clientHeight + 'px';
+            // ── Deterministic canvas sizing ────────────────────────────────
+            // Old code read img.clientWidth/clientHeight — those are 0 while
+            // the crop modal is display:none (or before first layout), which
+            // happens on iPad Safari when the data URL resolves synchronously
+            // through `img.complete` → the overlay canvas was created 0×0 and
+            // the user could never draw. Size is now computed purely from the
+            // natural dimensions + the CSS max-height cap (400px / 46vh), so
+            // it is correct no matter when onload fires.
+            const size = resolveCanvasDisplaySize(img);
+            canvas.width = size.w;
+            canvas.height = size.h;
+            canvas.style.width = size.w + 'px';
+            canvas.style.height = size.h + 'px';
             cropSession.ctxRefs[src.id] = canvas.getContext('2d');
             redrawAllRectangles(src.id);
         };
         if (img.complete) img.onload();
     });
+
+    // Re-size the overlay canvases when the viewport changes (iPad URL-bar
+    // collapse / rotate) — the 46vh mobile cap moves with it. Bound once per
+    // module lifetime; the handler reads live refs so stale ones are skipped.
+    if (!_cropResizeBound) {
+        _cropResizeBound = true;
+        window.addEventListener('resize', () => {
+            Object.keys(cropSession.imgRefs).forEach(srcIdStr => {
+                const img = cropSession.imgRefs[srcIdStr];
+                const canvas = cropSession.canvasRefs[srcIdStr];
+                if (!img || !canvas || !img.naturalWidth) return;
+                const size = resolveCanvasDisplaySize(img);
+                canvas.width = size.w;
+                canvas.height = size.h;
+                canvas.style.width = size.w + 'px';
+                canvas.style.height = size.h + 'px';
+                redrawAllRectangles(parseInt(srcIdStr));
+            });
+        });
+    }
 
     const _cq = cropSession.allQuestions[cropSession.currentQuestionIdx];
     segBar.innerHTML = '';
@@ -1769,6 +1799,29 @@ function isInsideToggleButton(seg, x, y) {
     return (x >= btnX && x <= btnX + btnSize && y >= btnY && y <= btnY + btnSize);
 }
 
+// Display size the browser will give <img> (CSS: width:auto + max-height cap,
+// object-fit:contain), computed WITHOUT touching clientWidth — which is 0
+// while the crop modal is hidden and would size the overlay canvas 0×0.
+function resolveCanvasDisplaySize(img) {
+    const naturalW = img.naturalWidth || 1;
+    const naturalH = img.naturalHeight || 1;
+    const maxH = resolveImageMaxHeightPx(img);
+    const scale = Math.min(1, maxH / naturalH);
+    return {
+        w: Math.max(1, Math.round(naturalW * scale)),
+        h: Math.max(1, Math.round(naturalH * scale)),
+    };
+}
+
+function resolveImageMaxHeightPx(img) {
+    let v = '';
+    try { v = window.getComputedStyle(img).maxHeight || ''; } catch (_) { /* noop */ }
+    const m = v.trim().match(/^([\d.]+)(px|vh)$/i);
+    if (!m) return 400;
+    const n = parseFloat(m[1]);
+    return m[2].toLowerCase() === 'vh' ? (n * window.innerHeight) / 100 : n;
+}
+
 function getCanvasCoordsFromEvent(srcId, e) {
     const canvas = cropSession.canvasRefs[srcId];
     if (!canvas) return { x: 0, y: 0 };
@@ -1818,8 +1871,16 @@ function endDraw(e) {
         return;
     }
     const img = cropSession.imgRefs[sourceId];
-    const scaleX = img.naturalWidth / img.clientWidth;
-    const scaleY = img.naturalHeight / img.clientHeight;
+    const canvas = cropSession.canvasRefs[sourceId];
+    // Scale factors between the overlay canvas (deterministic display size)
+    // and the full-resolution source — avoids img.clientWidth, which is 0
+    // when layout hasn't run yet and would produce a garbage crop region.
+    if (!canvas || !canvas.width || !canvas.height || !img || !img.naturalWidth) {
+        redrawAllRectangles(sourceId);
+        return;
+    }
+    const scaleX = img.naturalWidth / canvas.width;
+    const scaleY = img.naturalHeight / canvas.height;
     const bbox = {
         x: (x * scaleX) / img.naturalWidth,
         y: (y * scaleY) / img.naturalHeight,
@@ -1835,7 +1896,11 @@ function endDraw(e) {
         // re-rendered so the new diagram thumbnail appears instantly.
         if (Number.isInteger(cropSession.surgicalTargetIdx)) {
             const targetIdx = cropSession.surgicalTargetIdx;
-            if (AppState.extractedItems && AppState.extractedItems[targetIdx]) {
+            // Bounds guard: if the extractedItems buffer changed while the
+            // file picker was open, never let a stale index write out of
+            // bounds or hijack a different question.
+            if (Array.isArray(AppState.extractedItems)
+                && targetIdx >= 0 && targetIdx < AppState.extractedItems.length) {
                 AppState.extractedItems[targetIdx].diagramImageUrl = croppedDataUrl;
             }
             // Cleanup sequence: detach canvas listeners, clear refs, reset
@@ -1901,7 +1966,13 @@ function redrawAllRectangles(srcId) {
         const btnX = seg.rect.x, btnY = seg.rect.y;
         ctx.fillStyle = 'rgba(15, 15, 25, 0.85)';
         ctx.beginPath();
-        ctx.roundRect(btnX, btnY, btnSize, btnSize, 6);
+        if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(btnX, btnY, btnSize, btnSize, 6);
+        } else {
+            // Older iPad Safari / WebView lack roundRect — plain rect keeps
+            // the draw loop alive instead of throwing mid-drag.
+            ctx.rect(btnX, btnY, btnSize, btnSize);
+        }
         ctx.fill();
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
         ctx.lineWidth = 1;
@@ -2065,9 +2136,15 @@ export async function startManualCrop() {
     document.getElementById('upload-progress').style.width = '0%';
     document.getElementById('upload-status-text').innerText = 'Loading the payload...';
     Promise.all(Array.from(files).map(readFileAsBase64)).then(base64Array => {
+        // Show the crop modal FIRST so the source strip renders into a visible
+        // layout before refreshCropUI builds the canvases (defense-in-depth
+        // on top of the deterministic natural-size canvas math).
+        const cropModal = document.getElementById('crop-modal');
+        if (cropModal) {
+            cropModal.style.display = 'flex';
+            cropModal.classList.add('active');
+        }
         initCropSession(base64Array);
-        document.getElementById('crop-modal').style.display = 'flex';
-        document.getElementById('crop-modal').classList.add('active');
         document.getElementById('upload-status-text').innerText = '';
         closeModalStr('upload-modal');
     });

@@ -2742,7 +2742,7 @@ select.pomo-select, select.pomo-input {
     max-height: 400px;
 }
 .source-image-item img { display: block; max-height: 400px; width: auto; object-fit: contain; }
-.source-image-item canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; }
+.source-image-item canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; -webkit-user-select: none; user-select: none; }
 .segments-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 12px 0; min-height: 60px; }
 .segment-preview {
     position: relative;
