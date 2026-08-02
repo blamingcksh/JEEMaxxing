@@ -7086,9 +7086,13 @@ async function initApp() {
     // exist even if the dashboard DOM wasn't fully painted during updateUI. ──
     try { renderEloMatrix(); } catch (_) { /* never block initApp */ }
 
-    // NEW: initialise the error resolution dashboard once data is ready
-    renderErrorResolutionDashboard();
-    if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
+    // NEW: initialise the error resolution dashboard once data is ready.
+    // Guarded — a corrupt historyLog.timestamp or a missing container must
+    // never abort initApp (the global math watchdog attaches independently).
+    try {
+        renderErrorResolutionDashboard();
+        if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
+    } catch (_) { /* never block initApp */ }
 
     // Listen for Protocol Zero penalty events from checkpoint.js → re-render
     // the main predictive graph so the red valley appears immediately.
@@ -7099,16 +7103,15 @@ async function initApp() {
     });
 
     // Initialize Google Drive
-    await initDrive();
-
-    // ── Global KaTeX Rendering Engine ───────────────────────────────────
-    // Activate the live DOM watchdog. Every subsequent DOM mutation
-    // (practice modals, solution popups, dashboards, banners, etc.) is
-    // scanned for $...$ / $$...$$ math fragments and hydrated automatically.
-    // The one-shot body sweep below catches content rendered earlier in
-    // initApp() before the observer was attached.
-    globalMathObserver.observe(document.body, { childList: true, subtree: true });
-    processElementMath(document.body);
+    try {
+        await initDrive();
+    } catch (err) {
+        // Drive auth is optional (Google Identity Services CDN may be blocked
+        // offline/on some networks). A failure here must NEVER kill boot or
+        // the global math watchdog — everything after this point is
+        // non-essential chrome.
+        console.warn('[initApp] Drive init skipped:', err);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
@@ -7955,25 +7958,51 @@ const globalMathObserver = new MutationObserver(function (mutations) {
 // ============================================================================
 // KATEX ARRIVAL WATCHDOG — late-load self-heal
 // ============================================================================
-// KaTeX ships as a `defer` CDN script. If the CDN is slow, blocked, or the PWA
-// boots offline before jsdelivr was ever cached, `window.katex` is undefined
+// KaTeX is vendored locally (vendor/katex) so it normally arrives before this
+// module runs. But if the file is missing/corrupt, a stale PWA cache serves
+// old HTML, or a CDN-style failure happens anyway, `window.katex` is undefined
 // and BOTH render paths silently no-op (no stamp is written in that case).
-// Previously nothing ever re-scanned the DOM, so every fragment stayed raw
-// forever. This watchdog re-sweeps the whole body the moment katex lands;
-// stamped elements are O(1) skips, unstamped ones finally hydrate.
+// Previously the poll gave up after 30s, so even a slow load left every
+// $...$ fragment raw forever. This watchdog now re-sweeps the whole body the
+// moment katex lands — no matter how late — and keeps checking at a cheap
+// cadence instead of giving up.
 (function () {
     if (window.katex) return;
+    if (window.console && console.warn) {
+        console.warn('[math] KaTeX not loaded at boot — polling for arrival; math will hydrate the moment it lands.');
+    }
     let waited = 0;
+    const sweep = function () {
+        try { processElementMath(document.body); } catch (_) {}
+    };
     const poll = setInterval(function () {
         waited += 500;
         if (window.katex) {
             clearInterval(poll);
-            try { processElementMath(document.body); } catch (_) {}
+            sweep();
         } else if (waited > 30000) {
+            // Slow-loading or blocked — don't give up. Re-check every 2s
+            // forever; once katex lands, sweep. Cheap enough to leave running.
             clearInterval(poll);
+            setInterval(function () {
+                if (window.katex) sweep();
+            }, 2000);
         }
     }, 500);
 })();
+
+// ── Boot attach — fully independent of initApp() ─────────────────────────
+// initApp() runs a long async chain (IndexedDB load, cloud sync, Drive auth,
+// dashboard renders) that can throw or hang. The watchdog used to activate at
+// the very END of that chain; if ANY earlier step failed, the observer never
+// attached and every $...$ fragment stayed raw forever. Attaching here on
+// DOMContentLoaded (module scope, zero awaits) guarantees the observer is
+// live regardless of what happens to initApp().
+document.addEventListener('DOMContentLoaded', function () {
+    if (!document.body) return;
+    globalMathObserver.observe(document.body, { childList: true, subtree: true });
+    processElementMath(document.body);
+});
 
 // ============================================================================
 // FULL-VIEWPORT SCRATCHPAD HUD — Perfect-Freehand + Apple Pencil optimized

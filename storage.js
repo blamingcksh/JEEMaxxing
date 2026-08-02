@@ -1105,6 +1105,14 @@ export async function deleteMediaFromDrive(fileId, token) {
 // ==================== DRIVE INIT & HEARTBEAT ====================
 
 export async function initDrive() {
+    // Guard: Google Identity Services is loaded from a CDN. If that script
+    // failed to load (network block, offline boot), google.accounts is
+    // undefined — a TypeError here would abort initApp() before the math
+    // watchdog attached, leaving every $...$ fragment raw forever.
+    if (typeof google === 'undefined' || !google.accounts || typeof google.accounts.oauth2 !== 'object') {
+        console.warn('[initDrive] Google Identity Services unavailable — Drive sync disabled.');
+        return;
+    }
     AppState.tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
