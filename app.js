@@ -59,6 +59,7 @@ import {
     toggleCardHistory,
     // ── Practice drawer MCQ flow (new) ──
     srSelectOption, srConfirmAnswer, srSelfReport, srToggleImage,
+    srToggleHint,
     // ── Error resolution dashboard (NEW) ──
     renderErrorResolutionDashboard,
     renderChapterDecayGrid,
@@ -1443,7 +1444,7 @@ export function renderChaptersList() {
     const _known = AppState.chapters[AppState.currentSubject] || (AppState.chapters[AppState.currentSubject] = []);
     let _healed = false;
     for (const q of AppState.questionBank) {
-        if (q.subject === AppState.currentSubject && q.chapter && !_known.includes(q.chapter)) {
+        if (q.subject === AppState.currentSubject && q.chapter && !_known.some(c => _chaptersMatch(c, q.chapter))) {
             _known.push(q.chapter);
             _healed = true;
         }
@@ -1466,7 +1467,7 @@ export function deleteChapter(ch) {
         AppState.chapters[AppState.currentSubject] = AppState.chapters[AppState.currentSubject].filter(c => c !== ch);
         // Use splice to avoid reassigning the exported let binding
         for (let i = AppState.questionBank.length - 1; i >= 0; i--) {
-            if (AppState.questionBank[i].subject === AppState.currentSubject && AppState.questionBank[i].chapter === ch) {
+            if (AppState.questionBank[i].subject === AppState.currentSubject && _chaptersMatch(AppState.questionBank[i].chapter, ch)) {
                 AppState.questionBank.splice(i, 1);
             }
         }
@@ -1477,7 +1478,7 @@ export function deleteChapter(ch) {
 
 export function addChapter() {
     let name = document.getElementById('new-chapter-input').value.trim();
-    if (name && !AppState.chapters[AppState.currentSubject].includes(name)) {
+    if (name && !AppState.chapters[AppState.currentSubject].some(c => _chaptersMatch(c, name))) {
         AppState.chapters[AppState.currentSubject].push(name);
         saveAllAsync().catch(console.error);
         renderChaptersList();
@@ -2104,6 +2105,7 @@ export function finishAllQuestions() {
                 type: "text",
                 timeTaken: 0,
                 solution: "",
+                hint: "",
                 // ── Cognitive MMR: seed the dynamic Implied Difficulty Rating
                 // (qElo). Defaults to the running chapter average Elo, or 1200
                 // if the chapter is clean. Re-affirmed at saveAllQuestions(). ──
@@ -2491,10 +2493,15 @@ let _saveAllQuestionsInFlight = false;
  * Dedupe key for an extracted/banked question. Prefers normalized question
  * text; falls back to an image fingerprint for image-only items. Returns null
  * when there is not enough signal to safely dedupe (item is always imported).
+ *
+ * The text key is deliberately CHAPTER-INDEPENDENT: import places everything
+ * into the session chapter, so re-pasting a dump while on a different chapter
+ * used to create one copy per chapter (chapter-scoped keys couldn't see the
+ * duplicate). Same text in the same subject = same question, anywhere.
  */
 function _questionDedupeKey(subject, chapter, q) {
     const text = (q.extractedText || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
-    if (text.length >= 12) return subject + '|' + chapter + '|t:' + text;
+    if (text.length >= 12) return subject + '|t:' + text;
     const img = q.imageDataUrl;
     if (typeof img === 'string' && img.length > 100) {
         return subject + '|' + chapter + '|i:' + img.length + ':' + img.slice(-64);
@@ -2574,6 +2581,7 @@ export function saveAllQuestions() {
             errorReason: null,
             timeTaken: 0,
             solution: q.solution || "",
+            hint: q.hint || "",
             // ── Cognitive MMR: carry over the seeded qElo from the crop
             // pipeline, or recompute the chapter-average default if it was
             // never set. isAnomaly starts false; the engine flags it if the
@@ -2609,7 +2617,7 @@ export function saveAllQuestions() {
         // chapter name not already in AppState.chapters are orphaned — stored
         // in the bank (so re-uploads flag "duplicate") but never rendered. ──
         const _chList = AppState.chapters[newQ.subject] || (AppState.chapters[newQ.subject] = []);
-        if (newQ.chapter && !_chList.includes(newQ.chapter)) _chList.push(newQ.chapter);
+        if (newQ.chapter && !_chList.some(c => _chaptersMatch(c, newQ.chapter))) _chList.push(newQ.chapter);
     }
     const importedCount = AppState.questionBank.length - bankBeforeLength;
     // ── Clear the import buffer AFTER a successful commit so a second
@@ -2740,6 +2748,7 @@ function sanitizeGemTextDump(rawInput) {
     const _SCHEMA_TEXT_ALIASES     = ['text', 'question', 'stem', 'body', 'problem'];
     const _SCHEMA_ANSWER_ALIASES   = ['answer', 'correctOption', 'correct', 'sol'];
     const _SCHEMA_SOLUTION_ALIASES = ['explanation', 'reasoning', 'work', 'derivation'];
+    const _SCHEMA_HINT_ALIASES     = ['clue', 'tip', 'nudge'];
     function _aliasRenameStep(input, canonical, aliasList) {
         const renamed = {};
         const re = new RegExp(
@@ -2759,6 +2768,8 @@ function sanitizeGemTextDump(rawInput) {
     rawInput = _s2.input;
     let _s3 = _aliasRenameStep(rawInput, 'solution', _SCHEMA_SOLUTION_ALIASES);
     rawInput = _s3.input;
+    let _s4 = _aliasRenameStep(rawInput, 'hint', _SCHEMA_HINT_ALIASES);
+    rawInput = _s4.input;
     // ── Single-letter parenthetical unwrap: "(B)" → "B" ──
     // Only matches exactly one uppercase letter or single digit wrapped in
     // parens. Leaves values like "(x+1)" or "(P+Q)" untouched. Applies AFTER
@@ -2768,7 +2779,7 @@ function sanitizeGemTextDump(rawInput) {
         /"correctAnswer"\s*:\s*"\(((?:[A-Z]|[0-9]))\)"/g,
         '"correctAnswer": "$1"'
     );
-    const _allRenamed = Object.assign({}, _s1.renamed, _s2.renamed, _s3.renamed);
+    const _allRenamed = Object.assign({}, _s1.renamed, _s2.renamed, _s3.renamed, _s4.renamed);
     const _driftKeys = Object.keys(_allRenamed);
     if (_driftKeys.length > 0) {
         const parts = _driftKeys.map(k => {
@@ -2776,6 +2787,7 @@ function sanitizeGemTextDump(rawInput) {
             if (_s1.renamed[k]) targets.push('"extractedText"\u00d7' + _s1.renamed[k]);
             if (_s2.renamed[k]) targets.push('"correctAnswer"\u00d7' + _s2.renamed[k]);
             if (_s3.renamed[k]) targets.push('"solution"\u00d7' + _s3.renamed[k]);
+            if (_s4.renamed[k]) targets.push('"hint"\u00d7' + _s4.renamed[k]);
             return k + '\u2192' + targets.join(',');
         });
         console.warn(
@@ -2807,6 +2819,14 @@ function sanitizeGemTextDump(rawInput) {
         return `"solution": "${cleaned}"`;
     });
 
+    // Step 2b: Repair unescaped inner quotes inside "hint" properties globally.
+    // Same generic-key lookahead — a hint with unescaped quotes would otherwise
+    // truncate at the first stray quote and corrupt the fields that follow it.
+    rawInput = rawInput.replace(/"hint"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"[^"\n]+?"\s*:|,\s*\}|\s*\}|\s*\])/g, (match, content) => {
+        let cleaned = content.replace(/\\"/g, '\uEAEA').replace(/"/g, '\\"').replace(/\uEAEA/g, '\\"');
+        return `"hint": "${cleaned}"`;
+    });
+
     // Step 3: Repair unescaped inner quotes inside individual option item entries safely (handles same-line options).
     // The next-option lookahead must be `,"[A-D])` WITHOUT a trailing quote — the
     // old `,"[A-D])"` only matched when the NEXT option had EMPTY text, so real
@@ -2828,6 +2848,20 @@ function sanitizeGemTextDump(rawInput) {
     });
 
     return cleanJson;
+}
+
+/**
+ * Collapse JSON double-escaped backslash runs (\\ → \) for KaTeX, then convert
+ * only TRUE JSON newline escapes (\n NOT followed by a letter) into real
+ * newlines. LaTeX commands that start with 'n' — \nu, \neq, \nabla, \notin,
+ * \ne, \neg — MUST survive: they are literally `\n` followed by a letter.
+ * The old /\\+n/ blanket replacement destroyed them (e.g. \\nu_e → newline + "u_e"),
+ * corrupting the math before KaTeX ever saw it.
+ */
+function _fixBackslashRuns(s) {
+    return String(s)
+        .replace(/\\+/g, '\\')
+        .replace(/\\n(?!\w)/g, '\n');
 }
 
 /**
@@ -2892,7 +2926,7 @@ export async function processGemTextDump() {
                         // Strip outer quotes
                         let rawOpt = o.substring(1, o.length - 1);
                         // FIX: Convert literal \n or \\n traps into real newlines, then collapse backslashes
-                        return rawOpt.replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
+                        return _fixBackslashRuns(rawOpt);
                     });
                 }
             }
@@ -2905,12 +2939,12 @@ export async function processGemTextDump() {
                 if (ansRaw.startsWith('[')) {
                     const letterMatches = ansRaw.match(/"([^"]+)"/g);
                     if (letterMatches) {
-                        correctAnswer = letterMatches.map(l => l.replace(/"/g, '').trim().replace(/\\+n/g, '\n').replace(/\\+/g, '\\'));
+                        correctAnswer = letterMatches.map(l => _fixBackslashRuns(l.replace(/"/g, '').trim()));
                     }
                 } else {
                     // Same backslash normalization as options/solution/extractedText:
                     // JSON escapes turn "\frac" into "\\frac" — collapse back to one.
-                    correctAnswer = ansRaw.substring(1, ansRaw.length - 1).trim().replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
+                    correctAnswer = _fixBackslashRuns(ansRaw.substring(1, ansRaw.length - 1).trim());
                 }
             }
 
@@ -2935,9 +2969,9 @@ export async function processGemTextDump() {
             // FIX: Convert literal macro/newline traps (\n or \\n) into actual newline characters first.
             // This prevents KaTeX from choking on an "Undefined control sequence: \n" error,
             // allowing math symbols like \mathrm to render successfully.
-            extractedText = extractedText.replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
+            extractedText = _fixBackslashRuns(extractedText);
             if (typeof solution === 'string') {
-                solution = solution.replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
+                solution = _fixBackslashRuns(solution);
             }
 
             // ── Build a synthetic rawQ from the segment metadata so the qElo-stamping
@@ -2973,6 +3007,7 @@ export async function processGemTextDump() {
                 difficulty:     _extractStringField(metadata, 'difficulty'),
                 tags:           _extractStringArrayField(metadata, 'tags'),
                 model:          _extractStringField(metadata, 'model'),
+                hint:           _extractStringField(metadata, 'hint'),
             };
 
             // Auto-fallback type classification logic if not explicitly returned by the Gem
@@ -3018,6 +3053,7 @@ export async function processGemTextDump() {
                 type: type,
                 timeTaken: 0,
                 solution: solution,
+                hint: _fixBackslashRuns(typeof rawQ.hint === 'string' ? rawQ.hint : ''),
                 qElo: gemQElo,
                 targetTimeMins: gemTargetTime,
                 isAnomaly: false,
@@ -3146,6 +3182,7 @@ export function showPreviewModal() {
         }
         
         let solutionPreview = q.solution ? `<p style="font-size:12px; color:#6ee7b7; margin-top:4px; font-weight:500;">📝 Solution Context Loaded</p>` : '';
+        let hintPreview = q.hint ? `<p style="font-size:12px; color:#fbbf24; margin-top:2px; font-weight:500;">💡 Hint Loaded</p>` : '';
         let answerDisplay = Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || '');
         
         div.innerHTML = `
@@ -3157,6 +3194,7 @@ export function showPreviewModal() {
                     ${processedTextHtml}
                     ${optionsPreview}
                     ${solutionPreview}
+                    ${hintPreview}
                 </div>
                 ${visualAssetContainerHtml}
             </div>
@@ -3215,7 +3253,7 @@ export function showQuestionList() {
     // state even when questions exist.
     AppState.currentFilter = AppState.currentFilter || 'all';
 
-    let chapterQuestions = AppState.questionBank.filter(q => q.subject === AppState.currentSubject && q.chapter === AppState.currentChapter);
+    let chapterQuestions = AppState.questionBank.filter(q => q.subject === AppState.currentSubject && _chaptersMatch(q.chapter, AppState.currentChapter));
     if (!chapterQuestions.length) { AppState.currentChapterQuestions = []; showPracticeSubview('practice-question-list-view'); return; }
 
     AppState.currentChapterQuestions = chapterQuestions;
@@ -3991,7 +4029,7 @@ function _getChapterAvgTime(subject, chapter) {
     const baseline = ELO_SUBJECT_BASELINES[safeSubject];
     if (!baseline) return 180;
     const timed = AppState.questionBank.filter(q =>
-        q.subject === safeSubject && q.chapter === chapter &&
+        q.subject === safeSubject && _chaptersMatch(q.chapter, chapter) &&
         q.timeTaken > 0 && !q.isAnomaly
     );
     if (timed.length === 0) return baseline.defaultTime;
@@ -4005,7 +4043,7 @@ function _getChapterAvgTime(subject, chapter) {
 function _getChapterAvgElo(subject, chapter) {
     const safeSubject = _normalizeSubjectKey(subject);
     const qs = AppState.questionBank.filter(q =>
-        q.subject === safeSubject && q.chapter === chapter && !q.isAnomaly
+        q.subject === safeSubject && _chaptersMatch(q.chapter, chapter) && !q.isAnomaly
     );
     if (qs.length === 0) return 1200;
     const sum = qs.reduce((acc, q) => acc + (q.qElo || 1200), 0);
@@ -4046,7 +4084,7 @@ function _getActiveErrorBankCount() {
 function _getChapterHealth(subject, chapter) {
     const safeSubject = _normalizeSubjectKey(subject);
     const qs = AppState.questionBank.filter(q =>
-        q.subject === safeSubject && q.chapter === chapter &&
+        q.subject === safeSubject && _chaptersMatch(q.chapter, chapter) &&
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
     );
     if (qs.length === 0) return 50; // neutral default for UI consistency
@@ -4166,6 +4204,16 @@ function _normalizeSubjectKey(subject) {
     const raw = String(subject || '').trim().toLowerCase();
     if (raw === 'math' || raw === 'mathematics') return 'maths';
     return raw;
+}
+
+/**
+ * Case-insensitive chapter comparison. Chapter names arrive in mixed case
+ * (Gem dict "Modern Physics" vs user-typed "modern physics"), and every
+ * chapter filter used to be a strict `===` — so the same questions could
+ * render under two chapter tiles / lists. Matching is trim + lowercase.
+ */
+function _chaptersMatch(a, b) {
+    return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 }
 
 /** Consolidated Global Meta-MMR with non-linear p-norm harmonic mapping. */
@@ -4422,7 +4470,7 @@ function _pickQuestionForMode(subject, chapter, mode) {
     // normalized keys, so this is a no-op for valid input.
     subject = _normalizeSubjectKey(subject);
     const bank = AppState.questionBank.filter(q =>
-        q.subject === subject && q.chapter === chapter &&
+        q.subject === subject && _chaptersMatch(q.chapter, chapter) &&
         _isUnexecutedModeQuestion(q) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
         !q.isAnomaly
@@ -5764,7 +5812,7 @@ function _computeDefaultQEloForCurrentChapter() {
         const subject = AppState.currentSubject;
         const chapter = AppState.currentChapter;
         const qs = AppState.questionBank.filter(q =>
-            q.subject === subject && q.chapter === chapter && !q.isAnomaly
+            q.subject === subject && _chaptersMatch(q.chapter, chapter) && !q.isAnomaly
         );
         if (qs.length === 0) return 1200;
         const sum = qs.reduce((acc, q) => acc + (q.qElo || 1200), 0);
@@ -6213,7 +6261,7 @@ export async function deleteQuestion(id) {
 
         await saveAllAsync().catch(console.error);
 
-        if (AppState.questionBank.filter(q => q.subject === AppState.currentSubject && q.chapter === AppState.currentChapter).length > 0) {
+        if (AppState.questionBank.filter(q => q.subject === AppState.currentSubject && _chaptersMatch(q.chapter, AppState.currentChapter)).length > 0) {
             showQuestionList();
         } else {
             goToChapters();
@@ -7166,6 +7214,7 @@ window.exportMatrixDump = function () {
                 correctAnswer: q.correctAnswer || '',
                 type: q.type || 'text',
                 solution: q.solution || '(no solution)',
+                hint: q.hint || '(no hint)',
                 errorReason: q.errorReason || 'none',
                 status: q.status || 'unknown',
                 tags: q.tags || [],
@@ -7211,6 +7260,7 @@ window.exportMatrixDump = function () {
         if (r.options.length > 0) summary += `   Options: ${r.options.join(' | ')}\n`;
         if (r.correctAnswer) summary += `   Answer: ${Array.isArray(r.correctAnswer) ? r.correctAnswer.join(', ') : r.correctAnswer} (${r.type})\n`;
         if (r.solution !== '(no solution)') summary += `   Solution: ${r.solution.slice(0, 500)}${r.solution.length > 500 ? '…' : ''}\n`;
+        if (r.hint !== '(no hint)') summary += `   Hint: ${r.hint.slice(0, 300)}${r.hint.length > 300 ? '…' : ''}\n`;
         if (r.tags.length > 0) summary += `   Tags: ${r.tags.join(', ')}\n`;
         summary += `   Attempts: ${r.totalAttempts} | Interval: ${r.currentInterval}d | EF: ${r.easeFactor} | Mastered: ${r.isMastered}\n`;
         r.attemptTimeline.forEach(a => {
@@ -7234,6 +7284,37 @@ window.exportMatrixDump = function () {
     URL.revokeObjectURL(url);
 
     closeModalStr('ai-dump-modal');
+};
+
+/**
+ * One-time cleanup for the "questions copied across chapters" bug: pasting the
+ * same dump while on different chapters used to create one bank copy per
+ * chapter (the old dedupe key was chapter-scoped). This groups the bank by
+ * the same (now chapter-independent) text key and removes all copies after the
+ * first. Keeps the first copy of each group so any practice history survives.
+ */
+window.purgeDuplicateQuestions = function () {
+    const bank = AppState.questionBank;
+    const seen = new Set();
+    const dupIndexes = [];
+    for (let i = 0; i < bank.length; i++) {
+        const key = _questionDedupeKey(bank[i].subject, bank[i].chapter, bank[i]);
+        if (!key) continue;
+        if (seen.has(key)) dupIndexes.push(i);
+        else seen.add(key);
+    }
+    if (dupIndexes.length === 0) {
+        alert('No duplicates found — your bank is clean.');
+        return;
+    }
+    if (!confirm(`Found ${dupIndexes.length} duplicate question${dupIndexes.length !== 1 ? 's' : ''} (same text, possibly in different chapters). Keep the first copy of each and remove the rest?`)) return;
+    for (let i = dupIndexes.length - 1; i >= 0; i--) {
+        bank.splice(dupIndexes[i], 1);
+    }
+    saveAllAsync().catch(console.error);
+    try { renderChaptersList(); } catch (_) {}
+    try { showQuestionList(); } catch (_) {}
+    alert(`Purged ${dupIndexes.length} duplicate question${dupIndexes.length !== 1 ? 's' : ''}. Bank now holds ${bank.length} questions.`);
 };
 
 // ==================== WINDOW GLOBAL WIRING ====================
@@ -7567,6 +7648,7 @@ window.srSelectOption = srSelectOption;
 window.srConfirmAnswer = srConfirmAnswer;
 window.srSelfReport = srSelfReport;
 window.srToggleImage = srToggleImage;
+window.srToggleHint = srToggleHint;
 window.toggleCardHistory = toggleCardHistory;
 window.renderErrorResolutionDashboard = renderErrorResolutionDashboard;
 window.renderChapterDecayGrid = renderChapterDecayGrid;
@@ -7622,6 +7704,75 @@ window.overheatChaos = false;
 // ============================================================================
 
 /**
+ * Consume a balanced bracket group starting at `start` (which must hold the
+ * opening char). Returns the index just past the matching close, or the end
+ * of the string if unbalanced.
+ */
+function _skipBalanced(text, start, open, close) {
+    let depth = 0;
+    let k = start;
+    while (k < text.length) {
+        if (text[k] === open) depth++;
+        else if (text[k] === close) { depth--; if (depth === 0) return k + 1; }
+        k++;
+    }
+    return k;
+}
+
+/**
+ * Defensive pass: Gem dumps frequently emit raw LaTeX WITHOUT $...$ delimiters
+ * (e.g. `\Delta m \implies \frac{5}{4}`). The delimiter regex below can never
+ * match those, so they'd render as literal raw text. This scanner walks the
+ * string and wraps each bare `\command` (+ optional args/sub/superscripts) in
+ * $...$, while leaving already-delimited math ($$...$$, $...$, \[...\], \(...\))
+ * completely untouched so nothing double-wraps.
+ */
+function _wrapBareLatex(text) {
+    if (typeof text !== 'string' || !/\\[a-zA-Z]/.test(text)) return text;
+    const n = text.length;
+    let out = '';
+    let i = 0;
+    while (i < n) {
+        const c = text[i];
+        if (c === '$') {
+            // Preserve existing $...$ / $$...$$ fragments untouched.
+            if (text[i + 1] === '$') {
+                const k = text.indexOf('$$', i + 2);
+                if (k !== -1) { out += text.slice(i, k + 2); i = k + 2; continue; }
+            } else {
+                const k = text.indexOf('$', i + 1);
+                if (k !== -1) { out += text.slice(i, k + 1); i = k + 1; continue; }
+            }
+            out += c; i++; continue;
+        }
+        if (c === '\\' && (text[i + 1] === '(' || text[i + 1] === '[')) {
+            const close = text[i + 1] === '(' ? '\\)' : '\\]';
+            const k = text.indexOf(close, i + 2);
+            if (k !== -1) { out += text.slice(i, k + 2); i = k + 2; continue; }
+        }
+        if (c === '\\' && /[a-zA-Z]/.test(text[i + 1] || '')) {
+            let j = i + 1;
+            while (j < n && /[a-zA-Z]/.test(text[j])) j++;
+            if (text[j] === '*') j++;
+            if (text[j] === '[') j = _skipBalanced(text, j, '[', ']');
+            while (text[j] === '{') j = _skipBalanced(text, j, '{', '}');
+            while (text[j] === '_' || text[j] === '^') {
+                j++;
+                if (text[j] === '{') j = _skipBalanced(text, j, '{', '}');
+                else if (text[j] && text[j] !== ' ') j++;
+            }
+            out += '$' + text.slice(i, j) + '$';
+            i = j;
+            continue;
+        }
+        out += c;
+        i++;
+    }
+    return out;
+}
+window._wrapBareLatex = _wrapBareLatex;
+
+/**
  * Recursively scan `element`'s subtree for unrendered LaTeX math fragments
  * ($$...$$ display blocks and $...$ inline spans) and hydrate them via
  * window.katex.renderToString(). Idempotent — re-invoking on an already-
@@ -7660,8 +7811,11 @@ function processElementMath(element) {
                     const val = node.nodeValue;
                     if (!val) return NodeFilter.FILTER_REJECT;
                     MATH_REGEX.lastIndex = 0;
-                    if (!MATH_REGEX.test(val)) return NodeFilter.FILTER_REJECT;
+                    const hasDelimited = MATH_REGEX.test(val);
                     MATH_REGEX.lastIndex = 0;
+                    // Accept nodes with delimited math OR bare \command LaTeX
+                    // (the auto-wrap pass handles the delimiter-less ones).
+                    if (!hasDelimited && !/\\[a-zA-Z]/.test(val)) return NodeFilter.FILTER_REJECT;
                     return NodeFilter.FILTER_ACCEPT;
                 }
             }
@@ -7675,8 +7829,11 @@ function processElementMath(element) {
             const parent = textNode.parentElement;
             if (!parent) continue;
             const raw = textNode.nodeValue;
+            // Auto-wrap delimiter-less \command fragments ($\frac{1}{2}$ etc.)
+            // so Gem output that skips the dollar signs still hydrates.
+            const wrapped = _wrapBareLatex(raw);
             MATH_REGEX.lastIndex = 0;
-            const hydrated = raw.replace(MATH_REGEX, function (match, dbl, brk, inl, paren) {
+            const hydrated = wrapped.replace(MATH_REGEX, function (match, dbl, brk, inl, paren) {
                 if (!dbl && !brk && !inl && !paren) return match;
                 const block = dbl || brk;
                 const inline = inl || paren;
@@ -7746,6 +7903,29 @@ const globalMathObserver = new MutationObserver(function (mutations) {
         }
     }
 });
+
+// ============================================================================
+// KATEX ARRIVAL WATCHDOG — late-load self-heal
+// ============================================================================
+// KaTeX ships as a `defer` CDN script. If the CDN is slow, blocked, or the PWA
+// boots offline before jsdelivr was ever cached, `window.katex` is undefined
+// and BOTH render paths silently no-op (no stamp is written in that case).
+// Previously nothing ever re-scanned the DOM, so every fragment stayed raw
+// forever. This watchdog re-sweeps the whole body the moment katex lands;
+// stamped elements are O(1) skips, unstamped ones finally hydrate.
+(function () {
+    if (window.katex) return;
+    let waited = 0;
+    const poll = setInterval(function () {
+        waited += 500;
+        if (window.katex) {
+            clearInterval(poll);
+            try { processElementMath(document.body); } catch (_) {}
+        } else if (waited > 30000) {
+            clearInterval(poll);
+        }
+    }, 500);
+})();
 
 // ============================================================================
 // FULL-VIEWPORT SCRATCHPAD HUD — Perfect-Freehand + Apple Pencil optimized

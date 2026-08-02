@@ -241,6 +241,10 @@ export function openPracticeDrawer(qId) {
                     ${q.extractedText
                         ? `<div class="latex sr-question-text" id="sr-question-text">${_esc(q.extractedText)}</div>`
                         : `<div class="sr-question-text sr-muted">No question text on file — refer to the image above.</div>`}
+                    ${q.hint ? `<div class="sr-hint-block">
+                        <button class="sr-hint-toggle" id="sr-hint-toggle" type="button" onclick="srToggleHint()">💡 Hint</button>
+                        <div class="sr-hint-body" id="sr-hint-body" style="display:none;">${_esc(q.hint)}</div>
+                    </div>` : ''}
                 </div>
 
                 <!-- Answer stage: MCQ options (selectable) or self-report -->
@@ -649,8 +653,11 @@ function _showSelfReportPrompt(q) {
 function _renderKatexIn(el) {
     if (!el || !window.katex) return;
     const raw = el.textContent;
-    el.innerHTML = raw.replace(/\$\$([\s\S]+?)\$\$|\$([^\$]+)\$/g, (m, block, inline) => {
-        try { return window.katex.renderToString(block || inline, { throwOnError: false, displayMode: !!block }); }
+    // Auto-wrap delimiter-less \command fragments (shared with app.js's global
+    // math engine) so Gem output without $...$ delimiters still hydrates.
+    const wrapped = (typeof window._wrapBareLatex === 'function') ? window._wrapBareLatex(raw) : raw;
+    el.innerHTML = wrapped.replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^\$]+)\$|\\\(([\s\S]+?)\\\)/g, (m, block, brk, inline, paren) => {
+        try { return window.katex.renderToString(block || brk || inline || paren, { throwOnError: false, displayMode: !!(block || brk) }); }
         catch (e) { return m; }
     });
 }
@@ -660,6 +667,8 @@ function _postRenderDrawer(q) {
     if (window.katex) {
         const textEl = document.getElementById('sr-question-text');
         if (textEl) _renderKatexIn(textEl);
+        const hintEl = document.getElementById('sr-hint-body');
+        if (hintEl) _renderKatexIn(hintEl);
         document.querySelectorAll('.sr-mcq-text').forEach(el => _renderKatexIn(el));
     }
     // Lazy-load the drive image if the question only has a driveImageId
@@ -729,6 +738,17 @@ export function srToggleImage() {
     const btn = document.getElementById('sr-hide-img-btn');
     if (wrap) wrap.style.display = _drawerState.imageHidden ? 'none' : 'block';
     if (btn) btn.textContent = _drawerState.imageHidden ? '👁 Show Image' : '👁 Hide Image';
+}
+
+// Reveal/hide the Gem-provided hint WITHOUT revealing the answer — aligns with
+// the "💡 Hint Used" autonomy tag in the tagging stage.
+export function srToggleHint() {
+    const body = document.getElementById('sr-hint-body');
+    if (!body) return;
+    const hidden = body.style.display === 'none';
+    body.style.display = hidden ? 'block' : 'none';
+    const btn = document.getElementById('sr-hint-toggle');
+    if (btn) btn.classList.toggle('revealed', hidden);
 }
 
 // ── Drawer Interaction Handlers (exposed to window) ────────────────────────
