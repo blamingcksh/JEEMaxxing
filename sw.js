@@ -8,7 +8,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v5';
+const VERSION = 'jeemax-v6';
 const SHELL = [
   './',
   './index.html',
@@ -90,6 +90,22 @@ self.addEventListener('install', (event) => {
       Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
+  // ── Force stale pages to reload — THE iPad PWA update fix ────────────────
+  // iOS keeps an installed PWA "running" in the app switcher for days; opening
+  // the icon just foregrounds the OLD page, which keeps executing OLD code and
+  // never picks up fixes. When a new SW version activates, navigate every open
+  // window client so it loads the fresh shell exactly once. Runs on activation
+  // of a NEW version only — the reloaded page re-checks the SW, finds the same
+  // bytes, and doesn't activate again, so there is no reload loop.
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      clients.forEach((client) => {
+        try {
+          client.navigate(client.url || './');
+        } catch (_) { /* some browsers refuse cross-context navigation — ignore */ }
+      });
+    })
+  );
 });
 
 function isCDN(url) {
@@ -112,8 +128,9 @@ self.addEventListener('fetch', (event) => {
 
   // Only cache same-origin http(s) + cross-origin CDN GETs (skip query-noise
   // for local files — index.html is served with ?v= hashing in some setups).
-  // .woff2 included so the vendored KaTeX fonts are served from cache offline.
-  if (isLocal && url.pathname.includes('.') && !/(\.js|\.css|\.png|\.webmanifest|\.ico|\.woff2?)$/.test(url.pathname)) {
+  // .html included so the manifest start_url (./index.html) is served from
+  // cache offline; .woff2 for the vendored KaTeX fonts.
+  if (isLocal && url.pathname.includes('.') && !/(\.js|\.css|\.png|\.webmanifest|\.ico|\.woff2?|\.html)$/.test(url.pathname)) {
     return;
   }
 
