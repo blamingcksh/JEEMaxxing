@@ -938,8 +938,9 @@ window.setMatrixSearch = function (value) {
 };
 </script>
 
-<!-- KaTeX engine (window.katex) — vendored locally; must precede the app module -->
-<script defer src="./vendor/katex/katex.min.js"></script>
+<!-- KaTeX engine (window.katex) — vendored locally; must precede the app module.
+     onerror flags a failed load so app.js can inject a CDN fallback copy. -->
+<script defer src="./vendor/katex/katex.min.js" onerror="window.__katexLoadFailed=true;"></script>
 <!-- Google Identity Services — storage.js initDrive() needs google.accounts.oauth2 -->
 <script defer src="https://accounts.google.com/gsi/client"></script>
 <!-- Main controller module — imports storage / pomodoro / matrix / candlestick / leaderboard -->
