@@ -12,7 +12,7 @@ function realTOD(){var d=new Date();return ((d.getHours()+d.getMinutes()/60)/24)
 function normSub(s){s=(s||'').toString().toLowerCase().trim();return (s==='math'||s==='mathematics')?'maths':s;}
 function motionOK(){try{return !document.documentElement.classList.contains('fx-effects-off')&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);}catch(e){return true;}}
 function easeOutBack(x){var c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2);}
-function todayKey(){return new Date().toISOString().slice(0,10);}
+function todayKey(){return new Date().toLocaleDateString('en-CA');}
 /* growth readers (brain lives in app.js → window.__forestGrowth) */
 function _FG(){return window.__forestGrowth||null;}
 function _diffOf(q){var fg=_FG();if(q&&q.difficulty!=null)return q.difficulty;if(fg)return fg.difficulty(q&&q.qElo,q&&q.subject);return 0.5;}

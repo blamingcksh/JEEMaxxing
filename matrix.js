@@ -1253,7 +1253,7 @@ function _buildErrorCardHTML(q) {
         imgHtml = '<div style="font-size:10px;color:var(--text-muted);">No Image</div>';
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = _todayKey();
     const isCurrentBounty = AppState.bounty.active && !AppState.bounty.done && AppState.bounty.date === today && q.id === AppState.bounty.questionId;
     let bountyClass = isCurrentBounty ? 'bounty-active-error' : '';
 

@@ -75,7 +75,6 @@ import { drawCandlesticks, extractCountsFromSvg } from './candlestick-engine.js'
 // fully decoupled from local persistence — it never reads AppState.questionBank,
 // API keys, or backup configs, and never calls saveAllAsync.
 import { LeaderboardNet } from './leaderboard.js';
-import { AccountabilityEngine } from './accountability.js';
 import { CNSLoad } from './cns-load.js';
 import { DeloadEngine } from './deload.js';
 import { Lifeline } from './lifeline.js';
@@ -92,7 +91,7 @@ window._studySecsForCns = studySecs;
 // plus merges today's live counters.
 function getDailyHistorySync() {
     try {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = todayLocalKey();
         const todayTotal = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
         // Pull the last-known history from the IndexedDB cache on window
         const cached = window._dailyHistoryCache || [];
@@ -115,7 +114,6 @@ window.scheduleDeloadFromUi = function() {
         // Refresh streak display and UI
         updateStreakDisplay();
         updateUI();
-        try { AccountabilityEngine.renderDesk(); } catch (_) {}
         alert('🌿 Deload Day scheduled. Your streak is preserved. Today is an Earned Rest day.');
     } else {
         alert('Cannot schedule deload: ' + result.reason);
@@ -507,8 +505,6 @@ export async function switchTab(viewId, element) {
     if (viewId === 'dashboard') {
         await renderGraph();
         try { renderChapterDecayGrid(); } catch (_) {}
-        try { AccountabilityEngine.renderDesk(); } catch (_) {}
-        AccountabilityEngine.captureSnapshotThrottled();
     }
     // ── P2P Leaderboard: re-sync the arena grid when the tab is shown ──
     if (viewId === 'leaderboard' && typeof LeaderboardNet !== 'undefined') {
@@ -532,8 +528,6 @@ export async function calibrateMood(mood) {
     AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
     AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
 
-    AccountabilityEngine.captureSnapshot();
-
     // ── Deload Days: mood calibration to 1.0 overrides forced deload ──
     try {
         if (typeof DeloadEngine !== 'undefined' && AppState.moodMultiplier === 1.0) {
@@ -551,7 +545,7 @@ export async function calibrateMood(mood) {
     } catch (_) {}
 
     await idbSet('jeemax_mood_multiplier', AppState.moodMultiplier);
-    await idbSet('jeemax_last_calibrated_date', new Date().toISOString().split('T')[0]);
+    await idbSet('jeemax_last_calibrated_date', todayLocalKey());
     await saveAllAsync();
     await updateUI();
     closeModal(null, 'mood-modal', true);
@@ -831,12 +825,6 @@ function _scanCatBannerVulnerabilities() {
       }
     } catch (_) {}
 
-    // ── Accountability Engine vulnerabilities ──
-    try {
-      const acctVulns = AccountabilityEngine.getCatBannerVulnerabilities();
-      for (const v of acctVulns) vulnerabilities.push(v);
-    } catch (_) {}
-
     // Sort by priority ascending (1 = highest) and return the top one.
     if (vulnerabilities.length === 0) return null;
     vulnerabilities.sort((a, b) => a.priority - b.priority);
@@ -1006,8 +994,6 @@ export async function updateUI() {
     // the dashboard always reflects the live rating state. ──
     try { renderEloMatrix(); } catch (_) { /* never block updateUI */ }
     try { renderChapterDecayGrid(); } catch (_) { /* never block updateUI */ }
-    try { AccountabilityEngine.renderDesk(); } catch (_) {}
-    AccountabilityEngine.captureSnapshotThrottled();
 
     updateStreakDisplay();
 }
@@ -1048,7 +1034,7 @@ export async function updateStreakDisplay() {
                 for (let i = 1; i <= 6; i++) {
                     const prev = new Date(deloadDate);
                     prev.setDate(prev.getDate() - i);
-                    const prevStr = prev.toISOString().split('T')[0];
+                    const prevStr = prev.toLocaleDateString('en-CA');
                     const entry = allHistory.find(h => h.date === prevStr);
                     if (!entry || (entry.count || 0) === 0) {
                         all6Solved = false;
@@ -1062,14 +1048,14 @@ export async function updateStreakDisplay() {
 
     let streak = 0;
     let checkDate = new Date();
-    let todayStr = checkDate.toISOString().split('T')[0];
+    let todayStr = checkDate.toLocaleDateString('en-CA');
 
     if (!activeDates.has(todayStr)) {
         checkDate.setDate(checkDate.getDate() - 1);
     }
 
     for (let i = 0; i < 30; i++) {
-        let dStr = checkDate.toISOString().split('T')[0];
+        let dStr = checkDate.toLocaleDateString('en-CA');
         if (activeDates.has(dStr)) {
             streak++;
             checkDate.setDate(checkDate.getDate() - 1);
@@ -1515,23 +1501,6 @@ export async function saveProfile() {
 }
 
 export async function saveTargets() {
-    // ── Accountability freeze check ──
-    const _freezeCheck = AccountabilityEngine.isTargetEditBlocked();
-    if (_freezeCheck.blocked) {
-      alert(`🔒 ${_freezeCheck.reason}`);
-      return;
-    }
-    // ── Debt decrease check (per subject) ──
-    const _newPhys = parseInt(document.getElementById('set-tgt-phys').value) || 10;
-    const _newChem = parseInt(document.getElementById('set-tgt-chem').value) || 10;
-    const _newMath = parseInt(document.getElementById('set-tgt-math').value) || 10;
-    for (const [_subj, _newT] of [['physics', _newPhys], ['chemistry', _newChem], ['maths', _newMath]]) {
-      const _decCheck = AccountabilityEngine.isTargetDecreaseBlocked(_subj, _newT);
-      if (_decCheck.blocked) {
-        alert(`🔒 ${_decCheck.reason}`);
-        return;
-      }
-    }
     baseTargets.physics = parseInt(document.getElementById('set-tgt-phys').value) || 10;
     baseTargets.chemistry = parseInt(document.getElementById('set-tgt-chem').value) || 10;
     baseTargets.maths = parseInt(document.getElementById('set-tgt-math').value) || 10;
@@ -3612,7 +3581,7 @@ export function getHistoricalBountyTimeLimit(q) {
 export function openBountyModal(questionId) {
     const q = AppState.questionBank.find(item => item.id.toString() === questionId.toString());
     if (!q) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocalKey();
     AppState.bounty.date = today;
     AppState.bounty.active = true;
     AppState.bounty.questionId = q.id;
@@ -3624,7 +3593,7 @@ export function openBountyModal(questionId) {
 }
 
 export function tryAssignDailyBounty(questionId) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocalKey();
     if (AppState.bounty.date === today && AppState.bounty.questionId && AppState.bounty.questionId.toString() === questionId.toString()) return;
 
     const candidates = AppState.questionBank.filter(q =>
@@ -3679,7 +3648,7 @@ export function tryAssignDailyBounty(questionId) {
 }
 
 export function assignDailyBountyIfNeeded() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocalKey();
 
     if (AppState.bounty.date !== today) {
         AppState.bounty.date = today;
@@ -3754,7 +3723,7 @@ export function startBountySessionFromModal() {
     const q = AppState.questionBank.find(item => item.id.toString() === qId.toString());
     if (!q) return;
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocalKey();
     AppState.bounty.date = today;
     AppState.bounty.active = true;
     AppState.bounty.questionId = q.id;
@@ -5045,12 +5014,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
 
         AppState.elo[safeSubject] = newE_s;
 
-        let _acctEscrowAccrued = 0;
         if (dr.rawSubjectDelta > 0) {
-            // Escrow multiplier is applied INSIDE the engine so the stored
-            // escrow matches the toast (previously only the display scaled).
-            _acctEscrowAccrued = Math.round(AccountabilityEngine.accrueEscrowBonus(
-                safeSubject, dr.rawSubjectDelta, modeCfg.escrowBonusMultiplier || 1));
             // Track hardcore daily use (only when winning on hardcore)
             if (mode === 'hardcore' && Sefc === 1) {
                 const today = new Date().toISOString().slice(0, 10);
@@ -5101,7 +5065,6 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         result.oldTier = oldTier.badge;
         result.newTier = newTier.badge;
         result.isAnomaly = isAnomaly;
-        result.escrowBonus = _acctEscrowAccrued;
         // Time-bonus metadata for injectEloShiftChip. timeMult/tauSeconds are
         // returned by _deltaBasedUserAndQuestionReward — the previous build
         // referenced a `timeMult` local that only existed inside that helper,
@@ -5196,14 +5159,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         rawDelta = Math.round(rawDelta * m);
     }
 
-    // ── Accountability Engine: accrue escrow bonus on positive delta ──
-    // Runs AFTER the mode multiplier so the hardcore escrow bonus (2× drop
-    // rate) scales off the final payout — matching the calibrated fast path.
-    let _acctEscrowAccrued = 0;
     if (rawDelta > 0) {
-      // Escrow multiplier applied inside the engine (see fast-path note).
-      _acctEscrowAccrued = Math.round(AccountabilityEngine.accrueEscrowBonus(
-          safeSubject, rawDelta, _legacyModeCfg.escrowBonusMultiplier || 1));
       // Track hardcore daily use so the cap in _setPracticeMode actually
       // bites on the legacy (uncalibrated) path too — previously only the
       // fast path incremented it, letting hardcore farm uncapped via
@@ -5331,7 +5287,6 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     result.oldTier = oldTier.badge;
     result.newTier = newTier.badge;
     result.isAnomaly = isAnomaly;
-    result.escrowBonus = _acctEscrowAccrued;
 
     // ── CNS Load: log this solve into rolling accuracy/τ windows ──
     try {
@@ -6030,9 +5985,6 @@ export function practiceSubmit() {
      console.error('Elo migration fault:', _eloErr);
  }
  if (_eloResult) applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloResult);
- // ── Accountability: escrow toast + snapshot ──
- if (_eloResult) AccountabilityEngine.renderEscrowToast(_eloResult);
- AccountabilityEngine.captureSnapshotThrottled();
  if (AppState.currentQ && AppState.currentQ.status === 'solved') stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
  saveAllAsync().catch(console.error);
 
@@ -6110,7 +6062,6 @@ export function addTextQuestionFollowUp() {
                 AppState.currentQ
             );
              } catch (_e) { console.error('Elo migration fault:', _e); }      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
-      AccountabilityEngine.captureSnapshotThrottled();
       stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
      saveAllAsync().catch(console.error);
      if (AppState.bountyMode) {
@@ -6145,7 +6096,6 @@ export function addTextQuestionFollowUp() {
                 AppState.currentQ
             );
              } catch (_e) { console.error('Elo migration fault:', _e); }      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
-      AccountabilityEngine.captureSnapshotThrottled();
       saveAllAsync().catch(console.error);
       if (AppState.bountyMode) {
           evaluateBountyOutcome(false);
@@ -6938,6 +6888,61 @@ export function deactivateOverheat() {
 
 updateStreakVisualizer();
 
+// ==================== DAILY ROLLOVER ====================
+// Counter reset shared by the boot path and the live midnight watcher,
+// so a tab left open across midnight also resets the daily counts.
+async function runNewDayCycle(todayStr) {
+    // ── Deload Engine: auto-fire forced deload before the day turns ──
+    // Runs at midnight so the forced deload takes effect for the day being
+    // settled. The CNS_LOAD consecutive-day check uses yesterday's data.
+    try {
+        if (typeof DeloadEngine !== 'undefined') {
+            const _forcedCheck = DeloadEngine.isForcedDeloadEligible();
+            if (_forcedCheck.eligible) {
+                DeloadEngine.triggerForcedDeload();
+            }
+        }
+    } catch (_) {}
+
+    // Flush tracking parameters for the new daily matrix cycle
+    snapshotCumDayStart();
+    // ── CNS Load: reset per-day session tracking at midnight ──
+    try { CNSLoad.resetDaily(); } catch (_) {}
+    // ── Night Guard: reset dismissal flag at midnight ──
+    try { NightGuard.resetDaily(); } catch (_) {}
+    solved.physics = 0;
+    solved.chemistry = 0;
+    solved.maths = 0;
+    studySecs.physics = 0;
+    studySecs.chemistry = 0;
+    studySecs.maths = 0;
+
+    await saveAllAsync().catch(console.error);
+    updateUI();
+    openModal('mood-modal');
+}
+
+// Live midnight rollover watcher: an app left open across midnight resets the
+// daily counters without a reload (same new-day cycle as the boot path).
+let _midnightWatcherStarted = false;
+function startMidnightRolloverWatcher() {
+    if (_midnightWatcherStarted) return;
+    _midnightWatcherStarted = true;
+    let lastSeen = todayLocalKey();
+    const checkRollover = () => {
+        const now = todayLocalKey();
+        if (now !== lastSeen) {
+            lastSeen = now;
+            runNewDayCycle(now).catch(() => {});
+        }
+    };
+    setInterval(checkRollover, 30000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkRollover();
+    });
+    window.addEventListener('focus', checkRollover);
+}
+
 // ==================== INITIALIZATION ====================
 async function initApp() {
     // Register UI callbacks so storage.js can call back into app.js
@@ -7016,112 +7021,19 @@ async function initApp() {
     if (errMathIn) errMathIn.value = errMath;
 
     // Verify calibration timeline
-    // Verify calibration timeline
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = todayLocalKey();
     const lastCalDate = await idbGet('jeemax_last_calibrated_date');
-    
-    // ── Accountability Engine v2: init ALWAYS, settle on new day ──
-    await AccountabilityEngine.init();
+
     if (lastCalDate !== todayStr) {
-        const _acctReceipt = AccountabilityEngine.settlePreviousDayIfNeeded();
-
-        // ── Deload Engine: auto-fire forced deload before settlement if eligible ──
-        // Runs at midnight so the forced deload takes effect for the day being
-        // settled. The CNS_LOAD consecutive-day check uses yesterday's data.
-        try {
-            if (typeof DeloadEngine !== 'undefined') {
-                const _forcedCheck = DeloadEngine.isForcedDeloadEligible();
-                if (_forcedCheck.eligible) {
-                    const _result = DeloadEngine.triggerForcedDeload();
-                    if (_result.ok) {
-                        // Brief notification so the student knows about the 30-min override window
-                        try {
-                            const _receipt = document.getElementById('settlement-receipt-content');
-                            if (_receipt) {
-                                const _note = document.createElement('div');
-                                _note.className = 'receipt-extra';
-                                _note.innerHTML = '🌿🌿 <b>Biodemand Recovery triggered.</b> CNS overload detected — forced rest day. Calibrate mood to baseline (😐) within 30 min to override.';
-                                _receipt.appendChild(_note);
-                            }
-                        } catch (_) {}
-                    }
-                }
-            }
-        } catch (_) {}
-        if (_acctReceipt) {
-          // Show receipt after a brief delay so the UI is painted
-          setTimeout(() => AccountabilityEngine.showSettlementReceipt(_acctReceipt), 600);
-        }
-    }
-
-    if (lastCalDate === todayStr) {
+        await runNewDayCycle(todayStr);
+    } else {
         AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
         AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
         AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
-    } else {
-
-        // ── OLD 20-ELO TAX: DISABLED — Debt Engine is now the single source of truth ──
-        // The old flat tax would double-punish alongside the debt settlement above.
-        // Only fire it as a fallback if the accountability engine somehow has no state.
-        const _acctActive = !!(window.__accountability && window.__accountability.state);
-        if (!_acctActive) {
-            const lastTaxDate = await idbGet('jeemax_last_tax_date');
-        
-        if (lastTaxDate !== todayStr) {
-            // Extract baseline question deficits relative to previous targets
-            const defP = Math.max(0, (AppState.activeTargets.physics || 0) - (solved.physics || 0));
-            const defC = Math.max(0, (AppState.activeTargets.chemistry || 0) - (solved.chemistry || 0));
-            const defM = Math.max(0, (AppState.activeTargets.maths || 0) - (solved.maths || 0));
-            const totalDeficit = defP + defC + defM;
-
-            if (totalDeficit > 0) {
-                // Calculate proportional distribution allocations
-                const taxP = (defP / totalDeficit) * 20;
-                const taxC = (defC / totalDeficit) * 20;
-                const taxM = (defM / totalDeficit) * 20;
-
-                // Mutate the localized subject ELO ratings in-place (Clamped at absolute zero)
-                AppState.elo.physics = Math.max(0, (AppState.elo.physics || 1200) - taxP);
-                AppState.elo.chemistry = Math.max(0, (AppState.elo.chemistry || 1200) - taxC);
-                AppState.elo.maths = Math.max(0, (AppState.elo.maths || 1200) - taxM);
-
-                // Recompute the master global meta-MMR rating using the updated parameters
-                AppState.elo.global = _computeGlobalMetaMMR(
-                    AppState.elo.physics,
-                    AppState.elo.chemistry,
-                    AppState.elo.maths
-                );
-
-                // Mount hard UI notification alert immediately into the telemetry header
-                const catText = document.getElementById('cat-text');
-                if (catText) {
-                    catText.textContent = `🚨 TARGET LIQUIDATION: You missed yesterday's focus vectors by ${totalDeficit} questions. 20 total ELO has been extracted from your build.`;
-                    catText.className = "cat-text glow-red";
-                }
-            }
-            // Commit structural tax state signature timestamp to storage
-            await idbSet('jeemax_last_tax_date', todayStr);
-        }
-        }
-
-             // Flush tracking parameters for the new daily matrix cycle
-     snapshotCumDayStart();
-     // ── CNS Load: reset per-day session tracking at midnight ──
-     try { CNSLoad.resetDaily(); } catch (_) {}
-     // ── Night Guard: reset dismissal flag at midnight ──
-     try { NightGuard.resetDaily(); } catch (_) {}
-     solved.physics = 0;
-        solved.chemistry = 0;
-        solved.maths = 0;
-        studySecs.physics = 0;
-        studySecs.chemistry = 0;
-        studySecs.maths = 0;
-        
-        await saveAllAsync().catch(console.error);
-        openModal('mood-modal');
     }
     restoreDailyCountsIntoSolved();
     await saveAllAsync().catch(console.error);
+    startMidnightRolloverWatcher();
 
     document.getElementById('vis-beaker').style.display = 'none';
     document.getElementById('vis-bar').style.display = 'block';
@@ -7422,7 +7334,6 @@ function _autoPurgeDuplicateQuestions() {
 // ==================== WINDOW GLOBAL WIRING ====================
 window.switchTab = switchTab;
 window.LeaderboardNet = LeaderboardNet;
-window.AccountabilityEngine = AccountabilityEngine;
 window.toggleSidebar = toggleSidebar;
 window.openModal = openModal;
 window.closeModal = closeModal;
