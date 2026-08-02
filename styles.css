@@ -1530,6 +1530,36 @@ body {
 }
 .sr-muted { color: var(--text-secondary); font-style: italic; }
 
+/* Gem-provided hint: reveal WITHOUT showing the answer (autonomy "hint_used") */
+.sr-hint-block { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.sr-hint-toggle {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(251, 191, 36, 0.10);
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    color: #fbbf24;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+.sr-hint-toggle:hover { background: rgba(251, 191, 36, 0.18); }
+.sr-hint-toggle:active { transform: scale(0.96); }
+.sr-hint-toggle.revealed { background: rgba(251, 191, 36, 0.22); }
+.sr-hint-body {
+    align-self: stretch;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #fde68a;
+    background: rgba(251, 191, 36, 0.06);
+    border-left: 3px solid #fbbf24;
+    border-radius: 8px;
+    padding: 10px 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .sr-mcq-block { display: flex; flex-direction: column; gap: 10px; }
 .sr-mcq-label {
     font-size: 10.5px;

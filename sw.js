@@ -41,6 +41,14 @@ const SHELL = [
   './icons/apple-touch-icon-180.png'
 ];
 
+// KaTeX engine + CSS — pre-cached separately so a CDN hiccup during install
+// can never abort the local shell install (the app would otherwise boot
+// offline with NO math renderer → every question shows raw LaTeX).
+const CDN_SHELL = [
+  'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js',
+  'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css'
+];
+
 const CDN_PREFIXES = [
   'https://cdn.jsdelivr.net',      // katex, fonts, three.js fallbacks
   'https://esm.sh',                // three.js primary
@@ -50,11 +58,14 @@ const CDN_PREFIXES = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(VERSION).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())
+    caches.open(VERSION).then((cache) =>
+      cache.addAll(SHELL).then(() =>
+        // Best-effort CDN pre-cache — must not fail the install.
+        Promise.allSettled(CDN_SHELL.map((u) => cache.add(u)))
+      )
+    ).then(() => self.skipWaiting())
   );
-});
-
-self.addEventListener('activate', (event) => {
+});self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))
