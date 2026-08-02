@@ -43,6 +43,7 @@ import {
     resetPomoUI, startTimer, pauseTimer, resumeTimer, quitTimer,
     skipBreak, addBreakTime, finishAll,
     toggleVisualizer, toggleMiniWidget, toggleStopwatchMode,
+    toggleDynamicSubject, changeStudySubject,
     updateStudyTimeHeader, initAudioContext, playBell,
     confirmTimerNotification,
 } from './pomodoro.js';
@@ -7619,6 +7620,8 @@ window.handleDriveAuth = handleDriveAuth;
 window.updateStreakDisplay = updateStreakDisplay;
 window.executeUnifiedSync = executeUnifiedSync;
 window.toggleStopwatchMode = toggleStopwatchMode;
+window.toggleDynamicSubject = toggleDynamicSubject;
+window.changeStudySubject = changeStudySubject;
 window.toggleImmersive = toggleImmersive;
 window.confirmTimerNotification = confirmTimerNotification;
 window.toggleMiniWidget = toggleMiniWidget;

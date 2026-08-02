@@ -12,6 +12,8 @@ let isPaused = false;
 let visualMode = 'bar';
 
 let isStopwatchMode = false;
+let dynamicSubject = false;      // live mid-session subject switching
+const SUBJECT_KEYS = ['physics', 'chemistry', 'maths'];
 let timerStartTime = null;        // Date.now() at start/resume
 
 // ── Night Guard bridge: exposes timerStartTime for clock-cheat cross-check ──
@@ -72,6 +74,54 @@ export function toggleVisualizer() {
 export function toggleMiniWidget() {
     const widget = document.getElementById('pomo-mini-widget');
     widget.classList.toggle('collapsed');
+}
+
+// ── Dynamic subject mode ──────────────────────────────────────────────────
+// Lets the subject switch live mid-session: each tick's second is credited
+// to whichever subject is active at that moment. The subject picker stays
+// unlocked while the timer runs, and the mini widget badge always shows the
+// subject currently being tracked.
+function isValidSubjectKey(value) {
+    return SUBJECT_KEYS.includes(value);
+}
+
+export function toggleDynamicSubject(btn) {
+    dynamicSubject = !dynamicSubject;
+
+    const targetBtn = btn || document.getElementById('dynamic-subject-btn');
+    if (targetBtn) {
+        targetBtn.classList.toggle('on', dynamicSubject);
+        targetBtn.title = dynamicSubject
+            ? 'Dynamic mode ON: switch subject mid-session — time is tracked per subject'
+            : 'Dynamic mode OFF: subject is locked for the session';
+    }
+
+    // While running, keep the subject picker usable (or re-lock it).
+    if (pomoState !== 'IDLE') {
+        const select = document.getElementById('pomo-subject');
+        if (select) select.disabled = !dynamicSubject;
+    }
+}
+
+export function changeStudySubject() {
+    const select = document.getElementById('pomo-subject');
+    if (!select || !isValidSubjectKey(select.value)) return;
+    studySubject = select.value;
+    updateMiniSubject();
+
+    // Live status line refresh while a session is underway.
+    const status = document.getElementById('timer-status');
+    if (!status) return;
+    if (pomoState === 'STOPWATCH') {
+        status.textContent = `Stopwatch: ${studySubject.toUpperCase()}`;
+    } else if (pomoState === 'STUDY') {
+        status.textContent = `Studying ${studySubject.toUpperCase()} (${currentSession}/${totalSessions})`;
+    }
+}
+
+function updateMiniSubject() {
+    const badge = document.getElementById('mini-subject');
+    if (badge) badge.textContent = studySubject.toUpperCase();
 }
 
 export function updateStudyTimeHeader() {
@@ -333,8 +383,11 @@ export function startTimer() {
     // ── Night Guard: log session start for sleep-debt ledger ──
     try { NightGuard.logSessionStart(); } catch (_) {}
     syncFilterLock();
-    studySubject = document.getElementById('pomo-subject').value;
+    const chosenSubject = document.getElementById('pomo-subject').value;
+    studySubject = isValidSubjectKey(chosenSubject) ? chosenSubject : 'physics';
     document.querySelectorAll('#view-pomodoro .pomo-input, #view-pomodoro .pomo-select').forEach(el => el.disabled = true);
+    if (dynamicSubject) document.getElementById('pomo-subject').disabled = false;
+    updateMiniSubject();
     document.getElementById('btn-start').style.display = 'none';
 
     // Initialize audio context on user gesture
@@ -365,6 +418,7 @@ export function transitionToStopwatch() {
     document.getElementById('pomo-mini-widget').classList.remove('hidden');
     document.getElementById('mini-status').textContent = 'STOPWATCH';
     document.getElementById('mini-status').className = 'mini-status study';
+    updateMiniSubject();
 
     document.getElementById('btn-pause').style.display = 'inline-block';
     document.getElementById('btn-pause').textContent = "Pause";
@@ -391,6 +445,7 @@ export function transitionToStudy() {
     document.getElementById('pomo-mini-widget').classList.remove('hidden');
     document.getElementById('mini-status').textContent = `STUDY ${currentSession}/${totalSessions}`;
     document.getElementById('mini-status').className = 'mini-status study';
+    updateMiniSubject();
 
     document.getElementById('btn-pause').style.display = 'inline-block';
     document.getElementById('btn-pause').textContent = "Pause";
@@ -418,6 +473,7 @@ export function transitionToBreak() {
     document.getElementById('pomo-mini-widget').classList.remove('hidden');
     document.getElementById('mini-status').textContent = 'BREAK';
     document.getElementById('mini-status').className = 'mini-status break';
+    updateMiniSubject();
 
     document.getElementById('btn-pause').style.display = 'inline-block';
     document.getElementById('btn-pause').textContent = "Pause";
@@ -469,6 +525,7 @@ export function resumeTimer() {
     } else {
         document.getElementById('timer-status').textContent = `Break Time ☕ (${currentSession}/${totalSessions})`;
     }
+    updateMiniSubject();
 
     document.getElementById('btn-pause').textContent = "Pause";
     document.getElementById('btn-pause').onclick = pauseTimer;
