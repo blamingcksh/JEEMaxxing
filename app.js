@@ -2512,7 +2512,12 @@ export function saveAllQuestions() {
         let rawAnswer = (manualInput && manualInput.value.trim()) ? manualInput.value.trim() : q.correctAnswer;
 
         let finalAnswer;
-        if (typeof rawAnswer === 'string' && rawAnswer.includes(',')) {
+        // FIX: Only comma-split a string answer into a multi-select array when
+        // every token is a bare option letter ("A, C") or a quoted "[...]" is
+        // already an array. Multi-part free-text answers ("(a) ..., (b)(i) ...")
+        // contain LaTeX + commas and were being chopped into garbage array
+        // elements — which then misclassified the question as 'mcq'.
+        if (typeof rawAnswer === 'string' && rawAnswer.includes(',') && /^[A-Da-d](?:\s*,\s*[A-Da-d])*$/.test(rawAnswer.trim())) {
             finalAnswer = rawAnswer.split(',').map(s => s.trim().toUpperCase()).filter(s => s);
         } else if (Array.isArray(rawAnswer)) {
             finalAnswer = rawAnswer;
@@ -2521,7 +2526,7 @@ export function saveAllQuestions() {
         }
 
         if (!q.type || q.type === 'text') {
-            if (Array.isArray(finalAnswer)) {
+            if (Array.isArray(finalAnswer) && q.options.length > 0) {
                 q.type = 'mcq';
             } else if (/^[A-D]$/i.test(finalAnswer) && q.options.length > 0) {
                 q.type = 'mcq';
@@ -2909,7 +2914,15 @@ export async function processGemTextDump() {
             let extractedText = segment.substring(0, textEndIndex);
 
             // The remainder of the string segment holds metadata exclusive to this specific item
-            const metadata = segment.substring(textEndIndex);
+            // FIX: Gem payloads frequently order leading fields (id/type/subject/chapter/qElo/
+            // targetTimeMins/difficulty/tags) BEFORE the extractedText anchor. The split above
+            // discards everything before the anchor into the PREVIOUS segment, so those fields
+            // were silently dropped — "type":"subjective" vanished (fallback misclassified the
+            // question as text → mcq in saveAllQuestions) and the qElo stamp never reached rawQ.
+            // Recover the previous segment's tail from its last '{' (this item's object opener)
+            // and merge it with the trailing metadata so every field is extractable.
+            const leadingMeta = segments[i - 1].substring(segments[i - 1].lastIndexOf('{'));
+            const metadata = leadingMeta + segment.substring(textEndIndex);
 
             // 2. Extract options array contents
             let options = [];
@@ -5854,7 +5867,13 @@ export function practiceSubmit() {
     let userAns = "";
     let isCorrect = false;
 
-    if (AppState.currentQ.type === 'mcq') {
+    // ── Guard parity with renderPracticeQuestionModal: an 'mcq' question with
+    //    NO options (e.g. legacy rows misclassified during ingestion) is
+    //    rendered as a free-response question — so it must ALSO flow through
+    //    the self-report path here. Without the options.length check, the
+    //    submit button said "Reveal Answer" while practiceSubmit demanded a
+    //    selection and blocked the reveal entirely. ──
+    if (AppState.currentQ.type === 'mcq' && (AppState.currentQ.options || []).length > 0) {
         const isMulti = Array.isArray(AppState.currentQ.correctAnswer);
 
         if (isMulti) {
