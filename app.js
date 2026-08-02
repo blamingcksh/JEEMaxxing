@@ -2497,14 +2497,16 @@ let _saveAllQuestionsInFlight = false;
  * The text key is deliberately CHAPTER-INDEPENDENT: import places everything
  * into the session chapter, so re-pasting a dump while on a different chapter
  * used to create one copy per chapter (chapter-scoped keys couldn't see the
- * duplicate). Same text in the same subject = same question, anywhere.
+ * duplicate). Same text in the same subject = same question, anywhere. The
+ * image fingerprint key follows the same rule so image-only / cropped
+ * questions can't multiply across chapters either.
  */
 function _questionDedupeKey(subject, chapter, q) {
     const text = (q.extractedText || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
     if (text.length >= 12) return subject + '|t:' + text;
     const img = q.imageDataUrl;
     if (typeof img === 'string' && img.length > 100) {
-        return subject + '|' + chapter + '|i:' + img.length + ':' + img.slice(-64);
+        return subject + '|i:' + img.length + ':' + img.slice(-64);
     }
     return null;
 }
@@ -2525,9 +2527,13 @@ export function saveAllQuestions() {
     // dump (or the same crop batch) can't double-import, and catch dupes
     // inside the batch itself.
     const seenKeys = new Set();
+    const dupeOriginByKey = new Map();
     for (const existing of AppState.questionBank) {
         const k = _questionDedupeKey(existing.subject, existing.chapter, existing);
-        if (k) seenKeys.add(k);
+        if (k && !seenKeys.has(k)) {
+            seenKeys.add(k);
+            dupeOriginByKey.set(k, { subject: existing.subject, chapter: existing.chapter });
+        }
     }
     let skippedDupes = 0;
     for (let i = 0; i < AppState.extractedItems.length; i++) {
@@ -2608,8 +2614,18 @@ export function saveAllQuestions() {
         // this batch (same subject+chapter+text / image fingerprint). ──
         const _dk = _questionDedupeKey(newQ.subject, newQ.chapter, newQ);
         if (_dk) {
-            if (seenKeys.has(_dk)) { skippedDupes++; continue; }
+            if (seenKeys.has(_dk)) {
+                skippedDupes++;
+                // Remember where the first copy lives so the import alert can
+                // point the user at the origin chapter instead of silently
+                // swallowing the batch (the old "my questions vanished" trap).
+                if (!dupeOriginByKey.has(_dk)) {
+                    dupeOriginByKey.set(_dk, { subject: newQ.subject, chapter: newQ.chapter });
+                }
+                continue;
+            }
             seenKeys.add(_dk);
+            dupeOriginByKey.set(_dk, { subject: newQ.subject, chapter: newQ.chapter });
         }
         AppState.questionBank.push(newQ);
         // ── Register the (possibly gem-stamped) chapter so it actually gets a
@@ -2665,7 +2681,17 @@ export function saveAllQuestions() {
     // conditional guard prevents crashes if the terminal isn't mounted.
     const terminal = document.getElementById('text-add-terminal');
     if (terminal) terminal.value = '';
-    alert(`Successfully imported ${importedCount} fresh problems into the local engine.${skippedDupes > 0 ? ` (${skippedDupes} duplicate${skippedDupes > 1 ? 's' : ''} skipped.)` : ''} Let's see how you handle them.`);
+    let dupSummary = '';
+    if (skippedDupes > 0) {
+        const originSet = new Set();
+        dupeOriginByKey.forEach(o => {
+            const subj = _normalizeSubjectKey(o.subject || '');
+            originSet.add(`${o.chapter || 'Uncategorized'}${subj ? ' (' + subj + ')' : ''}`);
+        });
+        const origins = Array.from(originSet).slice(0, 4);
+        dupSummary = ` (${skippedDupes} duplicate${skippedDupes > 1 ? 's' : ''} skipped — already in ${origins.join(', ')}${originSet.size > 4 ? ` +${originSet.size - 4} more` : ''})`;
+    }
+    alert(`Successfully imported ${importedCount} fresh problems into the local engine.${dupSummary} Let's see how you handle them.`);
     } finally {
         _saveAllQuestionsInFlight = false;
     }
@@ -3254,7 +3280,28 @@ export function showQuestionList() {
     AppState.currentFilter = AppState.currentFilter || 'all';
 
     let chapterQuestions = AppState.questionBank.filter(q => q.subject === AppState.currentSubject && _chaptersMatch(q.chapter, AppState.currentChapter));
-    if (!chapterQuestions.length) { AppState.currentChapterQuestions = []; showPracticeSubview('practice-question-list-view'); return; }
+    if (!chapterQuestions.length) {
+        // ── Empty chapter: MUST wipe the previous chapter's content ──
+        // The old early-return left the last rendered chapter's cards + stats
+        // in the DOM, so every empty chapter showed the previous chapter's
+        // questions ("questions of that chapter in all chapters I open").
+        AppState.currentChapterQuestions = [];
+        const grid = document.getElementById('questions-grid-container');
+        if (grid) grid.innerHTML = '';
+        const statsRow = document.getElementById('stats-row');
+        if (statsRow) statsRow.style.display = 'none';
+        const titleEl = document.getElementById('question-list-title');
+        if (titleEl) titleEl.textContent = `${AppState.currentChapter || 'Chapter'} · Empty`;
+        const container = document.getElementById('questions-grid-container');
+        if (container) {
+            const empty = document.createElement('div');
+            empty.className = 'questions-grid-empty';
+            empty.innerHTML = `<div class="qge-icon">🗂</div><div class="qge-title">No questions in this chapter yet</div><div class="qge-sub">Tap <strong>📸 Feed</strong> to paste or upload questions into <strong>${escapeHtml(AppState.currentChapter || 'this chapter')}</strong>.</div>`;
+            container.appendChild(empty);
+        }
+        showPracticeSubview('practice-question-list-view');
+        return;
+    }
 
     AppState.currentChapterQuestions = chapterQuestions;
 
@@ -3269,10 +3316,11 @@ export function showQuestionList() {
 
     const titleEl = document.getElementById('question-list-title');
     if (titleEl) {
-        if (AppState.currentFilter === 'all') titleEl.textContent = 'All Questions';
-        else if (AppState.currentFilter === 'unsolved') titleEl.textContent = 'Filtered: Untouched';
-        else if (AppState.currentFilter === 'solved') titleEl.textContent = 'Filtered: Clutched';
-        else if (AppState.currentFilter === 'wrong') titleEl.textContent = 'Filtered: Fumbled';
+        const chLabel = AppState.currentChapter ? `${AppState.currentChapter} · ` : '';
+        if (AppState.currentFilter === 'all') titleEl.textContent = chLabel + 'All Questions';
+        else if (AppState.currentFilter === 'unsolved') titleEl.textContent = chLabel + 'Untouched';
+        else if (AppState.currentFilter === 'solved') titleEl.textContent = chLabel + 'Clutched';
+        else if (AppState.currentFilter === 'wrong') titleEl.textContent = chLabel + 'Fumbled';
     }
 
     const filterEl = document.getElementById('question-filter');
@@ -3363,6 +3411,16 @@ if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
         `;
         container.appendChild(card);
     });
+
+    // ── Filtered-empty state: chapter has questions but the active filter
+    // (Untouched / Clutched / Fumbled) matches none — show a hint instead of
+    // a silently blank grid. ──
+    if (filteredQuestions.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'questions-grid-empty';
+        empty.innerHTML = `<div class="qge-icon">🔍</div><div class="qge-title">No ${AppState.currentFilter} questions here</div><div class="qge-sub">Change the filter above or grind through the rest of the chapter.</div>`;
+        container.appendChild(empty);
+    }
 
     container.querySelectorAll('.practice-single-btn').forEach(btn => {
         btn.addEventListener('click', function (e) {
@@ -3779,12 +3837,13 @@ export function renderPracticeQuestionModal() {
     const submitted = AppState.practiceSubmittedFlags[AppState.currentPracticeIndex];
     const container = document.getElementById('practice-modal-content');
     if (!container) return;
+    container.scrollTop = 0;
     let questionImageHtml = '';
     if (!AppState.photoHidden) {
         if (AppState.currentQ.imageDataUrl) {
-            questionImageHtml = `<img id="practice-modal-img" src="${AppState.currentQ.imageDataUrl}" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:250px; border-radius:16px; margin-bottom:16px; transition: opacity 0.3s; cursor: pointer;">`;
+            questionImageHtml = `<img id="practice-modal-img" src="${AppState.currentQ.imageDataUrl}" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; transition: opacity 0.3s; cursor: pointer;">`;
         } else if (AppState.currentQ.driveImageId && typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {
-            questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading asset...</text></svg>" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:250px; border-radius:16px; margin-bottom:16px; cursor: pointer;">`;
+            questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading asset...</text></svg>" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; cursor: pointer;">`;
             fetchMediaFromDrive(AppState.currentQ.driveImageId, AppState.driveAccessToken).then(b64 => {
                 if (b64) {
                     AppState.currentQ.imageDataUrl = b64;
@@ -3795,7 +3854,7 @@ export function renderPracticeQuestionModal() {
         }
     }
     let diagramHtml = AppState.currentQ.diagramImageUrl ?
-        `<div><div class="diagram-hint">📐 Diagram:</div><img src="${AppState.currentQ.diagramImageUrl}" style="max-width:100%; max-height:200px; border-radius:12px;"></div>` :
+        `<div><div class="diagram-hint">📐 Diagram:</div><img src="${AppState.currentQ.diagramImageUrl}" style="max-width:100%; max-height:300px; border-radius:12px;"></div>` :
         '';
     let html =
         `<div style="text-align:center;">${questionImageHtml}${diagramHtml}`;
@@ -6896,6 +6955,11 @@ async function initApp() {
 
     await loadDataAsync();
 
+    // ── One-time cross-chapter duplicate cleanup ──
+    // The bank is hydrated above; silently remove any copies the old
+    // chapter-scoped dedupe spread across chapters. Idempotent + non-blocking.
+    _autoPurgeDuplicateQuestions();
+
     // ── P2P Leaderboard Arena: mount the serverless WebRTC surface ──
     // The arena reads ONLY the four sanctioned live state variables via the
     // getState closure (nickname from #display-username, AppState.elo.global,
@@ -7287,13 +7351,13 @@ window.exportMatrixDump = function () {
 };
 
 /**
- * One-time cleanup for the "questions copied across chapters" bug: pasting the
- * same dump while on different chapters used to create one bank copy per
- * chapter (the old dedupe key was chapter-scoped). This groups the bank by
- * the same (now chapter-independent) text key and removes all copies after the
- * first. Keeps the first copy of each group so any practice history survives.
+ * Shared duplicate-finder for the "questions copied across chapters" bug:
+ * pasting the same dump while on different chapters used to create one bank
+ * copy per chapter (the old dedupe key was chapter-scoped). Groups the bank by
+ * the (now chapter-independent) key and returns every index AFTER the first
+ * copy of each group, so the first copy — and its practice history — survives.
  */
-window.purgeDuplicateQuestions = function () {
+function _findDuplicateQuestionIndexes() {
     const bank = AppState.questionBank;
     const seen = new Set();
     const dupIndexes = [];
@@ -7303,19 +7367,57 @@ window.purgeDuplicateQuestions = function () {
         if (seen.has(key)) dupIndexes.push(i);
         else seen.add(key);
     }
+    return dupIndexes;
+}
+
+/**
+ * One-time cleanup utility (manual button in the AI Dump modal). Confirms
+ * before touching anything.
+ */
+window.purgeDuplicateQuestions = function () {
+    const dupIndexes = _findDuplicateQuestionIndexes();
     if (dupIndexes.length === 0) {
         alert('No duplicates found — your bank is clean.');
         return;
     }
     if (!confirm(`Found ${dupIndexes.length} duplicate question${dupIndexes.length !== 1 ? 's' : ''} (same text, possibly in different chapters). Keep the first copy of each and remove the rest?`)) return;
     for (let i = dupIndexes.length - 1; i >= 0; i--) {
-        bank.splice(dupIndexes[i], 1);
+        AppState.questionBank.splice(dupIndexes[i], 1);
     }
     saveAllAsync().catch(console.error);
     try { renderChaptersList(); } catch (_) {}
     try { showQuestionList(); } catch (_) {}
-    alert(`Purged ${dupIndexes.length} duplicate question${dupIndexes.length !== 1 ? 's' : ''}. Bank now holds ${bank.length} questions.`);
+    alert(`Purged ${dupIndexes.length} duplicate question${dupIndexes.length !== 1 ? 's' : ''}. Bank now holds ${AppState.questionBank.length} questions.`);
 };
+
+/**
+ * Boot-time auto-cleanup: runs once after the bank hydrates in initApp().
+ * Silently removes any cross-chapter copies left over from the pre-dedupe-fix
+ * era (keeps the first copy of each group so practice history survives), then
+ * re-saves. Idempotent — a clean bank is just an O(n) no-op scan.
+ */
+function _autoPurgeDuplicateQuestions() {
+    try {
+        const bank = AppState.questionBank;
+        if (!Array.isArray(bank) || bank.length < 2) return;
+        const dupIndexes = _findDuplicateQuestionIndexes();
+        if (dupIndexes.length === 0) return;
+        const byChapter = {};
+        dupIndexes.forEach(i => {
+            const ch = bank[i].chapter || 'Uncategorized';
+            byChapter[ch] = (byChapter[ch] || 0) + 1;
+        });
+        for (let i = dupIndexes.length - 1; i >= 0; i--) bank.splice(dupIndexes[i], 1);
+        saveAllAsync().catch(console.error);
+        try { renderChaptersList(); } catch (_) {}
+        console.warn('[auto-purge] Removed', dupIndexes.length,
+            'cross-chapter duplicate question(s):', byChapter,
+            '— bank now holds', bank.length, 'questions.');
+    } catch (err) {
+        // Never let cleanup break boot.
+        console.warn('[auto-purge] skipped:', err);
+    }
+}
 
 // ==================== WINDOW GLOBAL WIRING ====================
 window.switchTab = switchTab;

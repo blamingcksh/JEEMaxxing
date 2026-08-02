@@ -2072,6 +2072,34 @@ body {
     padding-right: 4px;
     overscroll-behavior: contain;
 }
+/* Empty / filtered-empty states inside the question list grid */
+.questions-grid-empty {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+    padding: 46px 24px;
+    border: 1px dashed rgba(255,255,255,0.12);
+    border-radius: 16px;
+    background: rgba(255,255,255,0.02);
+}
+.questions-grid-empty .qge-icon { font-size: 26px; filter: saturate(0.6); }
+.questions-grid-empty .qge-title {
+    font-family: var(--font-display, 'Space Grotesk', sans-serif);
+    font-size: 15px;
+    font-weight: 700;
+    color: rgba(238,241,246,0.9);
+}
+.questions-grid-empty .qge-sub {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-secondary, #8b93a7);
+    max-width: 380px;
+}
+.questions-grid-empty .qge-sub strong { color: #eef1f6; }
 .question-card {
     background: var(--bg-surface);
     border: 1px solid var(--line);
@@ -5150,9 +5178,14 @@ html[data-mode="dusk"] #view-dashboard .dash-card-momentum {
 
 /* ── Shell: one clean slab, no inner padding (zones carry it) ─────────── */
 #practice-modal .modal-card {
-  max-width: 680px;
+  width: 95vw;
+  max-width: 1100px;
   padding: 0 0 16px;
   border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  max-height: 92vh;
+  overflow: hidden;
   background: linear-gradient(180deg, rgba(15,17,26,0.94), rgba(9,11,18,0.97));
   -webkit-backdrop-filter: blur(28px) saturate(140%);
   backdrop-filter: blur(28px) saturate(140%);
@@ -5165,10 +5198,9 @@ html[data-mode="dusk"] #practice-modal .modal-card {
   background: linear-gradient(180deg, rgba(46,50,76,0.94), rgba(34,38,60,0.97));
 }
 
-/* ── Header: sticky status bar, three balanced zones ───────────────────── */
+/* ── Header: pinned status bar, three balanced zones ───────────────────── */
 #practice-modal .practice-header {
-  position: sticky;
-  top: 0;
+  flex: 0 0 auto;
   z-index: 5;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -5261,6 +5293,12 @@ html[data-mode="dusk"] #practice-modal .practice-header {
 
 /* ── Question sheet ────────────────────────────────────────────────────── */
 #practice-modal-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 20px 22px 4px;
   counter-reset: pm-opt;
 }
@@ -5279,6 +5317,16 @@ html[data-mode="dusk"] #practice-modal .practice-header {
   margin: 14px 0 6px;
   font-size: 15px;
   line-height: 1.8;
+}
+/* Wide KaTeX display math (matrices, long derivations) scrolls horizontally
+   inside the sheet instead of blowing out the card. */
+#practice-modal .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 0 10px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 #practice-modal .diagram-hint {
   border-radius: 10px;
@@ -5354,15 +5402,14 @@ html[data-mode="dusk"] #practice-modal .practice-header {
 #practice-modal .show-solution-btn { border-radius: 10px; }
 #practice-modal .elo-shift-chip { margin: 14px auto 2px; }
 
-/* ── Footer: sticky action bar ─────────────────────────────────────────── */
+/* ── Footer: pinned action bar ─────────────────────────────────────────── */
 #practice-modal .pm-footer {
-  position: sticky;
-  bottom: 0;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: 1fr 1.7fr 1fr;
   gap: 10px;
   padding: 14px 22px 0;
-  margin-top: 16px;
+  margin-top: 0;
   background: linear-gradient(180deg, rgba(9,11,18,0), rgba(9,11,18,0.94) 45%);
 }
 #practice-modal .pm-footer .btn {
