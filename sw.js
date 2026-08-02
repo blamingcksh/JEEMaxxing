@@ -8,7 +8,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v4';
+const VERSION = 'jeemax-v5';
 const SHELL = [
   './',
   './index.html',
@@ -37,16 +37,36 @@ const SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',
-  './icons/apple-touch-icon-180.png'
+  './icons/apple-touch-icon-180.png',
+  // KaTeX engine + CSS + fonts — vendored locally so math rendering works
+  // offline and never depends on a CDN being reachable.
+  './vendor/katex/katex.min.js',
+  './vendor/katex/katex.min.css',
+  './vendor/katex/fonts/KaTeX_AMS-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Caligraphic-Bold.woff2',
+  './vendor/katex/fonts/KaTeX_Caligraphic-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Fraktur-Bold.woff2',
+  './vendor/katex/fonts/KaTeX_Fraktur-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Main-Bold.woff2',
+  './vendor/katex/fonts/KaTeX_Main-BoldItalic.woff2',
+  './vendor/katex/fonts/KaTeX_Main-Italic.woff2',
+  './vendor/katex/fonts/KaTeX_Main-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Math-BoldItalic.woff2',
+  './vendor/katex/fonts/KaTeX_Math-Italic.woff2',
+  './vendor/katex/fonts/KaTeX_SansSerif-Bold.woff2',
+  './vendor/katex/fonts/KaTeX_SansSerif-Italic.woff2',
+  './vendor/katex/fonts/KaTeX_SansSerif-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Script-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Size1-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Size2-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Size3-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Size4-Regular.woff2',
+  './vendor/katex/fonts/KaTeX_Typewriter-Regular.woff2'
 ];
 
-// KaTeX engine + CSS — pre-cached separately so a CDN hiccup during install
-// can never abort the local shell install (the app would otherwise boot
-// offline with NO math renderer → every question shows raw LaTeX).
-const CDN_SHELL = [
-  'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js',
-  'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css'
-];
+// CDN assets fetched lazily at runtime (three.js, fonts) — never part of the
+// install-critical shell. KaTeX is vendored locally and lives in SHELL above.
+const CDN_SHELL = [];
 
 const CDN_PREFIXES = [
   'https://cdn.jsdelivr.net',      // katex, fonts, three.js fallbacks
@@ -92,7 +112,8 @@ self.addEventListener('fetch', (event) => {
 
   // Only cache same-origin http(s) + cross-origin CDN GETs (skip query-noise
   // for local files — index.html is served with ?v= hashing in some setups).
-  if (isLocal && url.pathname.includes('.') && !/(\.js|\.css|\.png|\.webmanifest|\.ico)$/.test(url.pathname)) {
+  // .woff2 included so the vendored KaTeX fonts are served from cache offline.
+  if (isLocal && url.pathname.includes('.') && !/(\.js|\.css|\.png|\.webmanifest|\.ico|\.woff2?)$/.test(url.pathname)) {
     return;
   }
 

@@ -1,0 +1,508 @@
+========================================================================
+ JEEMaxxing — BUG & EDGE-CASE AUDIT REPORT
+ Generated: 2026-08-02 | Scope: all 19 JS modules, index.html, sw.js,
+ manifest.webmanifest, styles.css
+ Every CRITICAL finding was re-verified by direct code trace.
+========================================================================
+
+SEVERITY LEGEND
+  [CRITICAL] outright breakage — feature dead or wrong data persisted
+  [MAJOR]    wrong results / data corruption / crash on normal use
+  [MINOR]    edge-case, robustness, perf, or hygiene issue
+
+
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ CRITICAL — OUTRIGHT BREAKAGE
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+
+[1] pomodoro.js:438 — transitionToStudy() never resets timerEndTriggered
+    Session 2+ never ends. Break end sets the flag true (L296), so the
+    study end condition `secondsLeft <= 0 && !timerEndTriggered` (L295)
+    can never fire. Timer hangs at 00:00 forever while studySecs keeps
+    inflating every tick (no bell, no break, no session advance).
+    Trigger: Study → Break → Study (any 2nd study session).
+    Fix: set timerEndTriggered = false inside transitionToStudy().
+
+[2] pomodoro.js:499-519 — pause/resume restarts countdown at FULL duration
+    pauseTimer() only clears the interval (for countdown modes it stores
+    nothing); resumeTimer() resets timerStartTime = Date.now() so the
+    next tick computes secondsLeft = timerTotalSeconds - ~0 = full time.
+    Trigger: pause a 50-min session with 40:00 remaining → resume shows 50:00.
+    Fix: track a paused elapsed offset (same approach as the STOPWATCH
+    branch which accumulates correctly at L506-508).
+
+[3] index.html:354 + matrix.js:1048 — ⚡ Daily Fix Queue button is DEAD
+    toggleDailyQueue() is exported from matrix.js but never imported into
+    app.js and never assigned to window. Inline onclick resolves in
+    global scope → clicking throws "ReferenceError: toggleDailyQueue is
+    not defined". The entire Daily Core Queue feature is unreachable.
+    Fix: import it in app.js and add window.toggleDailyQueue = toggleDailyQueue.
+
+[4] index.html:487 + storage.js:1040 — 📦 Cache All Images Locally is DEAD
+    cacheAllDriveImages() is imported into app.js (app.js:27) but never
+    attached to window → clicking throws ReferenceError. The offline
+    image-cache feature cannot be invoked from the UI.
+    Fix: add window.cacheAllDriveImages = cacheAllDriveImages.
+
+[5] sw.js:95 — Installed PWA fails to open offline
+    The fetch handler early-returns any same-origin path containing "."
+    that isn't .js/.css/.png/.webmanifest/.ico — which includes
+    /index.html (the manifest start_url). The pre-cached shell entry
+    (sw.js:14) can therefore never be served. Airplane mode + app icon
+    = network error. Contradicts the header's "keeps working offline".
+    Fix: allow .html in the regex or handle event.request.mode === 'navigate'.
+
+
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ MAJOR — WRONG RESULTS / DATA CORRUPTION / CRASHES
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+
+GRADING & DATA INTEGRITY
+────────────────────────
+[6]  app.js:5861-5873 — Multi-select MCQ unsubmittable with special chars
+     Options are rendered with escapeAttribute() into data-option
+     (app.js:3867). At grading, el.dataset.option returns the
+     ENTITY-ENCODED text ("A &amp; B"), then options.indexOf(encoded)
+     returns -1 → option silently filtered → "Pick at least one option"
+     forever. Any option containing & " ' < > (e.g. "x < 5") breaks it.
+     Single-select is safe (DOMParser decode at app.js:3852) — the two
+     paths are inconsistent.
+     Fix: decode the dataset value before indexOf (mirror L3852).
+
+[7]  app.js:6783-6785 — Wrong answers count as solved
+     practiceSubmit patch calls changeCount(subject, 1) on WRONG
+     answers; changeCount (storage.js:309) increments the daily solved
+     counter → daily target bars and error-matrix totals inflated,
+     streak data polluted.
+     Fix: only count actual solves.
+
+[8]  app.js:4616,5021,5169,7214 + storage.js:928 — Hardcore daily cap on
+     UTC day
+     new Date().toISOString().slice(0,10) (UTC) while bounty/history/
+     streak use todayLocalKey() (local). For India (UTC+5:30) the cap
+     resets at 05:30 local, and 30 min before local midnight a fresh
+     quota is granted.
+     Fix: use todayLocalKey() consistently.
+
+[9]  storage.js:1422 — Streak silently caps at 15 days
+     getDailyHistory() trims history to 15 entries (history.shift());
+     the streak loop (app.js:1055-1066) walks that window → a real
+     20-day streak displays as 15 and "breaks" at the window edge.
+     Deload's _getStreakDays reads the wrong DOM number too.
+
+[10] storage.js:309 + 896-906 — String-concat counter corruption
+     solved/studySecs loaded as `x || 0` — a stored STRING "5" (old
+     version / edited backup / corrupt cloud payload) makes
+     solved[subject] + 1 = "51" (concatenation) which then persists.
+     Fix: coerce with Number() on load.
+
+[11] storage.js:788-847 — No write coalescing / multi-tab protection
+     saveAllAsync() has no dirty flag or mutex; two tabs each hold their
+     own AppState and last-commit-wins → one tab's solves silently
+     vanish. No BroadcastChannel/storage-event reconciliation.
+
+[12] storage.js:844-846,1284-1334 — Cloud sync races
+     syncStateToCloud() is fire-and-forget inside saveAllAsync; the
+     throttle only gates entry, not in-flight overlap → overlapping
+     syncs upload the whole bank twice; q.driveImageId is mutated mid-
+     iteration → duplicate Drive files (one orphaned).
+
+[13] storage.js:1348-1352,1200-1207 — Cloud merge resurrects deleted
+     questions and never persists
+     Heartbeat merge (every 120s) pushes any cloud question whose id
+     isn't local — questions the user deleted locally come back on every
+     sync. The merged bank is never saved (app.js:1410 only calls _ui)
+     → memory-only, lost on tab close.
+
+[14] storage.js:1231-1234,1402-1405 — Elo merge monotonic inflation
+     Math.max high-water marks: a loss streak on device A never
+     propagates to device B; ratings only ever grow.
+
+[15] storage.js:834-838 + ~40 call sites — Silent persistence failure
+     Every IDB quota error (Safari private mode, disk full, image vault
+     bloat) is swallowed by .catch(console.error). App keeps running
+     with zero persistence; reload loses everything, no warning.
+     Fix: surface a banner / in-app alert on save failure.
+
+[16] storage.js:34-48 — openDB failure poisons the session
+     dbPromise is never reset on failure; no onblocked/onversionchange
+     handler. One failed open (private mode, eviction) permanently breaks
+     every idbGet/idbSet; initApp's await loadDataAsync() has no
+     try/catch → app can hang/fail at boot.
+
+[17] storage.js:109-115 — idbRemove awaits tx.complete
+     IDBTransaction.complete is only a Promise in Chrome 117+/FF 128+/
+     Safari 17.4+. On older Safari (the app's iPad target) it's
+     undefined → await undefined resolves immediately → delete races the
+     commit; a reload before commit resurrects the deleted Drive token.
+     Also no onerror/onabort handler.
+
+[18] pomodoro.js:265,289 — Study time credited per tick, not per second
+     studySecs[subject]++ fires per interval tick; browser background
+     throttling (1/5s or stopped) undercounts study time; save triggers
+     are tick-count-based too.
+
+[19] pomodoro.js:41 — Stopwatch loses all backgrounded time
+     The visibilitychange catch-up early-returns for STOPWATCH → a
+     wall-clock stopwatch stops counting while the tab is hidden.
+
+[20] app.js:1050-1066 — (see [9]) streak window cap is user-visible on
+     the dashboard header.
+
+RENDERING / CRASHES / XSS
+─────────────────────────
+[21] matrix.js:1267,1240,1283-1290,1251 — Stored XSS in error-matrix cards
+     q.chapter, q.errorReason (unknown values), q.id, q.driveImageId are
+     interpolated unescaped into innerHTML AND inline onclick attributes
+     (openPracticeDrawer('${q.id}') etc.). A crafted/imported question
+     (Gemini dump, paste) with quotes or <img onerror> breaks the
+     handler / executes script.
+     Fix: escape all of these (the practice drawer already uses _esc()).
+
+[22] app.js:1446 — Chapter name XSS in chapters list
+     `onclick="...deleteChapter('${ch}')"` with unescaped chapter name —
+     a ' breaks the handler; HTML chars inject DOM. Chapter names are
+     user-controlled (addChapter dialog, Gem imports).
+
+[23] app.js:2625-2626 — saveAllQuestions auto-navigate sets innerHTML
+     with unescaped chapter/subject.
+
+[24] app.js:7126-7137 — AI Dump select-all modal injects chapter +
+     subject unescaped into innerHTML and data-dump-chapter attributes.
+
+[25] matrix.js:1431,1029,1203-1212 — Case-sensitive subject matching
+     q.subject === currentErrorSubject (lowercased) — mixed-case or
+     whitespace subjects silently vanish from the matrix. Daily-queue
+     path mixes raw and lowercase keys → "0/0 done", "0 tracked", wrong
+     fallback grouping.
+
+[26] matrix.js:1727,1778,1168,1400 — Corrupt timestamps crash the
+     dashboard on a 60s loop
+     new Date(bad).toLocaleDateString() throws RangeError (no isNaN
+     guard). A single corrupt historyLog.timestamp kills the error
+     dashboard render; the rollover watcher (matrix.js:1699) re-throws
+     every minute forever.
+
+[27] matrix.js:1274,1419 — (q.easeFactor || 2.5).toFixed(2) TypeErrors
+     A STRING easeFactor (legacy/imported data) has no .toFixed →
+     TypeError aborts the whole card loop → matrix renders blank.
+
+[28] matrix.js:1382,1399 — JSON.parse(log.frictionTypes || '[]') crashes
+     when legacy logs store an array instead of a JSON string → attempt
+     dots + history list rendering die (whole card render aborts).
+
+[29] app.js:1226 — #dynamic-graph never exists
+     renderGraph() returns early on a missing element that NO file ever
+     creates → the flagship non-compact candlestick chart (LOCK line,
+     axes, TODAY marker) is dead code. Feature never renders.
+
+[30] app.js:1333 vs matrix.js:1804 — Two renderers fight over
+     #error-momentum-svg-container: app.js re-renders candlesticks one
+     rAF after matrix.js draws its sparkline; the 60s rollover watcher
+     and focus handlers re-draw the sparkline without re-triggering the
+     candles → chart flips back and forth every minute.
+
+[31] app.js:1978-2000,2003-2036 + storage.js:723-738 — Never-resolving
+     image promises
+     stitchSegmentsVertically / combineImagesSideBySide / cropImageFromBBox
+     have no img.onerror → a failed decode (oversized/corrupt crop,
+     memory pressure) leaves the promise permanently unsettled →
+     spinner hangs forever. (Master-grid assembly at app.js:2237 does
+     have onerror — inconsistent.)
+
+[32] leaderboard.js:338 — Malformed peer timestamp crashes the whole grid
+     new Date(r.timestamp).toLocaleTimeString() RangeError inside
+     _cardHTML → ALL peers vanish from the board until next render.
+     Also :313 NaN → every peer labeled offline (minor).
+
+[33] nightguard.js:186-194 — Clock-cheat false positive on normal sleep
+     Any gap >6h while local hour <8 or >=23 is treated as clock
+     manipulation → tier 3 lock (Elo ×0.20, forced CNS=1.0) for up to an
+     hour. A user who studies until 23:30 and resumes at 07:00 is
+     indistinguishable from a cheat and gets penalized on a normal
+     overnight sleep.
+
+[34] forest-island.js:105,137,161 — Invisible-canvas rAF leak + toast spam
+     When the 3D CDN fails, the catch removes the #forest-island-host
+     canvas but the 1.5s setInterval keeps retrying (iVisible stays
+     true); once back online it rebuilds the renderer on the DETACHED
+     canvas and runs a 30fps rAF loop on an invisible canvas forever.
+     Also a toast every 1.5s while offline.
+
+[35] forest-island.js:122 — TypeError on numeric lastReviewedAt
+     todayBySubject() calls q.lastReviewedAt.slice(0,10); the !guard
+     covers null/undefined but a NUMBER timestamp has no .slice →
+     uncaught TypeError aborts the sync tick (and initial forest sync).
+
+[36] checkpoint.js:1366-1376 — init() wipes ALL stored penalties on every
+     page load, and the entire 4-pillar enforcement engine (tick loop,
+     restoreState, restorePenalties, checkMissedCheckpoints, PoW expiry)
+     is dead code while the panel UI, ignite float, window.__checkpoint
+     API, and app.js:8361 telemetry feed stay half-wired.
+
+[37] candlestick-engine.js:538-539,136-154,493-495 — Leaks per draw
+     mousemove/mouseleave listeners added on every drawCandlesticks call
+     with no cleanup, and a fresh tooltip <div> appended to
+     svg.parentElement on every draw → repeated renders accumulate
+     handlers and DOM nodes; hover gets progressively slower.
+
+[38] gallery-break.js:342 — resize listener added on every begin(),
+     never removed in abort() → N listeners after N breaks (all resizing
+     the current canvas, retaining old canvases).
+
+[39] matrix.js:513-564,833-983 — Elo/streak vs SR divergence
+     Elo migration + streak + saveAllAsync fire at answer-commit time,
+     but SR interval/history only in submitPracticeLog. Closing the
+     drawer without logging → Elo/streak persist while SR state and
+     firstAttemptResult don't; systems permanently diverge per question.
+
+[40] storage.js:1416-1423 — history trimming only happens when a new day
+     is pushed; pre-existing >15 bloat persists.
+
+[41] app.js:4078,5833 — NaN qElo not guarded
+     q.qElo || 1200 only guards falsy, not NaN; a NaN from corrupt
+     storage flows into newQ = Math.max(0, Q_Elo + …) → NaN persisted.
+
+[42] storage.js:496-501,536-539,544 — SM-2 deviations
+     EF decreases on incorrect answers AND on correct-but-slow (q<=3)
+     — a correct answer with Rt>=2 can SHORTEN the next interval.
+     isMastered (I>30 && EF>2.5) is unreachable when worst friction is
+     APPROACH (Wf=0.15 caps interval growth).
+
+[43] matrix.js:889 — NaN comparator for unknown friction types → non-
+     deterministic sort; dominant friction may be undefined.
+
+[44] matrix.js:1257 — q.id === AppState.bounty.questionId strict compare
+     between possibly-string ("err-manual-…", imported) and numeric ids
+     → bounty highlight silently never applies.
+
+[45] matrix.js:1630-1634 — chapter name + avgEF interpolated raw into SVG
+     <text> — < or & breaks the SVG parse; malicious chapter injects SVG.
+
+[46] app.js:3142,3148,3814,3827 — image src set from payloads unescaped
+     (crafted data URL with " onerror= can inject).
+
+[47] app.js:1050 — (see [9]) streak/gate duplication between app.js and
+     deload reading the DOM.
+
+[48] app.js:6895-6924 — Midnight rollover save race: a solve at 23:59:59
+     whose save lands after the reset is credited to neither day's
+     history count (solved zeroed in memory first, yesterday's count only
+     from last pre-midnight save).
+
+[49] deload.js:144-145 — "yesterday"/"two days ago" computed as
+     Date.now()-86400000 → DST spring-forward = 23 real hours → still
+     "today" → 48h missed-day block skips a genuinely missed day.
+
+[50] pomodoro.js:547 — quitTimer defers resetPomoUI by 1s; a new timer
+     started inside that window gets stomped by the reset (low
+     probability — start button hidden until reset).
+
+[51] pomodoro.js:60-64 — visibility catch-up doesn't set
+     timerEndTriggered → returning to the tab re-runs handleTimerEnd on
+     every toggle (duplicate bells/modals); await saveAllAsync before
+     handleTimerEnd delays the end UI.
+
+[52] app.js:1050-1066 — streak computation reads activeDates from a
+     history array that getDailyHistory() rewrites each call; benign but
+     dependent on call order.
+
+[53] matrix.js:195-201 vs app.js:1333-1372 — (see [30]) ownership
+     conflict, rollover watcher at matrix.js:1699 rethrows every 60s.
+
+[54] storage.js:1336-1413 — asymmetric restore: cloud wins status, local
+     wins counters, max wins Elo, deleted questions resurrected, merge
+     never saved → "restore" grows/corrupts state rather than restoring.
+
+[55] checkpoint.js:169-184 — async IDB restore can overwrite a config the
+     user changed in the first few hundred ms after boot.
+
+[56] checkpoint.js:246-258,395-401 — 30s clock tolerance vs DST fall-back
+     (1h) + Math.max(now, storedClock) high-water mark → false Protocol
+     Zero for the whole skew duration (latent while tick loop is dead).
+
+[57] cns-load.js:370-378 — "consecutive CNS days" checks the last N
+     READINGS, not calendar days → 2 readings 5 days apart count as
+     "2 consecutive days" → forced-deload eligibility passes wrongly.
+
+[58] app.js:3567 + index.html:791 — closing the practice modal via the
+     backdrop (closeModal) does NOT clear AppState.practiceTimer →
+     interval keeps ticking practiceSeconds until the next session
+     (inflates elapsed time while idle).
+
+[59] matrix.js:1419 — (q.easeFactor strings) — see [27]; same class in
+     history log rendering.
+
+[60] leaderboard.js:105-127 — supabase .subscribe() has no error
+     callback; invalid room-key filter chars → silently-failing
+     subscription, UI stuck on "SYNCING ATOMICS…" forever.
+     leaderboard.js:144 — delete on disconnect is fire-and-forget with
+     no .catch → unhandled rejection on network failure.
+
+[61] leaderboard.js:44-65 — localStorage + crypto.randomUUID() accessed
+     without guards → throws in private-mode / non-HTTPS contexts and
+     aborts init().
+
+
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ MINOR — EDGE CASES / PERF / HYGIENE
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+
+[m1] app.js:1505-1507 — parseInt(...) || 10: entering 0 becomes 10;
+     negatives accepted; no radix.
+[m2] app.js:1237-1238 — protocolZero JSON.parse failure silently
+     dropped → penalty data lost silently.
+[m3] app.js:9178,9323,9332 — CK engine tick catches swallow every error
+     (250ms/1s/4s loops) → any engine breakage fully invisible.
+[m4] app.js:107 — getDailyHistorySync catch returns [] → streak merge
+     silently zeroed.
+[m5] app.js:6676 — perpetual rAF loop at 60fps even when the streak
+     canvas is hidden (battery).
+[m6] app.js:6641-6648 — duplicate #streak-canvas ids (handled via
+     querySelectorAll, but fragile).
+[m7] candlestick-engine.js:328-333 — a single NaN candle propagates NaN
+     into yMax → whole chart silently renders nothing.
+[m8] candlestick-engine.js:283-286 — single-point padding duplicates the
+     candle INCLUDING its isPenalty flag → one penalty day renders as
+     two consecutive penalty candles.
+[m9] candlestick-engine.js:508-509 — window._lastHoveredIndex shared
+     across all charts → hover on chart B can skip ticks.
+[m10] candlestick-engine.js:220 — shared AudioContext created once,
+     never closed.
+[m11] leaderboard.js:319 — string/NaN globalElo → NaN comparator →
+     non-deterministic sort order.
+[m12] matrix.js:1016-1043 — full re-filter + O(N) DOM scan on every
+     keystroke, zero debounce (stutters on mobile with many cards).
+[m13] matrix.js:85-86 — relies on legacy window.event global; throws in
+     strict-mode hosts when called without an element.
+[m14] matrix.js:368-370 — dead const correctAns shadowed by inner block
+     declaration.
+[m15] matrix.js:337 — placeholder data:image/svg+xml;utf8 embedded
+     unencoded in src attribute (fragile).
+[m16] matrix.js:819,840 — stopwatch time only >0 after 1s; answering
+     instantly + opening tag stage with 0s disables "Log Attempt"
+     until user interacts with stopwatch (confusing).
+[m17] gallery-break.js:195-201 — _loadArt().then can resolve after
+     abort() → stale image resurrected into module state.
+[m18] gallery-break.js:396-398 — gb-show guard added before _showQuote;
+     abort in the 600ms window relies on _active check (correct but
+     fragile).
+[m19] gallery-break.js:222-236 — non-immediate abort nulls _overlay but
+     removes element 410ms later; begin() within window creates two
+     overlays briefly.
+[m20] nightguard.js:280-299 — large dead "thinking out loud" comment
+     contradicting actual tier-3 bounds (03:00-08:00 enforced at L308).
+[m21] nightguard.js:66 — OVERRIDE_WARNING_THRESHOLD declared, never used.
+[m22] nightguard.js:134 — _cachedTierHour persisted/merged while other
+     _cached* fields are stripped (harmless inconsistency).
+[m23] forest-island.js:123 — full question-bank scan every 1.5s while
+     dashboard visible → steady CPU churn on iPad.
+[m24] forest-island.js:151 — null deref in IntersectionObserver callback
+     if #view-dashboard is absent (unguarded).
+[m25] forest-bg.js:300,240 — full 6000-tree InstancedMesh rebuild on
+     every solve (MutationObserver) + disposes shared geometries
+     re-uploaded immediately.
+[m26] forest-bg.js:312,36,46 — O(bank) bgSig() sweep every 30s forever.
+[m27] forest-bg.js:188-189 — navigator.platform==='MacIntel' +
+     maxTouchPoints>1 iPad check also matches touch-screen laptops →
+     those get capped to 1.0 pixel ratio (blurry canvas).
+[m28] forest-island-full.js:163 — rebuilt tree meshes not registered for
+     disposal in clearWorld().
+[m29] forest-island-full.js:93 — 3D load failure leaves overlay stuck on
+     "Could not load 3D engine." with no retry button.
+[m30] forest-island-full.js:76 — permanent document-wide MutationObserver
+     if the host element never appears.
+[m31] theme.js:167-168 + index.html head — no theme bootstrap in <head>
+     → FOUC flash of default theme on every load; invalid stored theme
+     id silently renders default.
+[m32] sw.js:25,29 — SHELL pre-caches forest-juice.js (37KB) and
+     forest-island-juice.js (20.6KB), which are NEVER loaded anywhere
+     (dead cache entries on every install/update).
+[m33] styles.css:65,3575,6697 — 100vh without 100dvh/svh fallback →
+     clipped bottom content on iOS Safari (non-standalone / split-view).
+[m34] deload.js:83-87 — corrupt date strings → NaN daysBetween → NaN<14
+     false → cooldown silently bypassed.
+[m35] deload.js:74, cns-load.js:120, checkpoint.js:219,329 —
+     localStorage quota errors swallowed silently.
+[m36] storage.js:908 — parseFloat(mood) NaN → NaN>0.70 false → mood gate
+     passes → forced deloads trigger on corrupt mood data.
+[m37] storage.js:516-517 — strict interval===0/===1: string "0" falls to
+     generic branch → Math.ceil(0*EF*Wf)=0 → question due immediately
+     every review.
+[m38] storage.js:531-554,561-578 — computeSR with NaN interval →
+     Invalid Date → toISOString() RangeError crashes submitPracticeLog;
+     invalid nextReviewAt → "📅 Due in NaNd" on cards.
+[m39] storage.js:780-785 — formatStudyDuration negative input → negative
+     hours (unreachable via normal flows).
+[m40] storage.js:793-797,1259,1305,1313 — shallow spreads share nested
+     refs between live bank and serialized copies (latent).
+[m41] storage.js:117-123 — idbClear dead code, same await-tx.complete
+     foot-gun.
+[m42] storage.js:1040-1055 — cacheAllDriveImages awaits saveAllAsync
+     outside try/catch → rejection skips hideLoading (10s auto-hide
+     saves it).
+[m43] checkpoint.js:92-116 — cpIdbSet/cpIdbGet resolve null on failure →
+     checkpoint state silently never persists (private mode).
+[m44] checkpoint.js:527-533 — powIdleSec accrues per foreground tick
+     only; backgrounding never idles-pauses (latent).
+[m45] checkpoint.js:252-256 — 6s setTimeout after rollback penalty
+     mutates phase without re-checking (latent).
+[m46] checkpoint.js:223-300,311-323 — restoreState/restorePenalties dead;
+     persisted state has no version field → cross-version restore
+     unguarded.
+[m47] checkpoint.js:1375-1376 — async rejections escape sync try/catch →
+     unhandled promise rejections on every boot if IDB down.
+[m48] matrix.js:1548 — _matrixChapterHealthContinuous DOES guard isNaN;
+     other paths don't (inconsistent).
+[m49] matrix.js:1682-1685 / nightguard.js:141-143 / checkpoint.js:119-121
+     — rely on toLocaleDateString('en-CA') producing YYYY-MM-DD;
+     ICU variants may return different formats → silent key mismatch.
+[m50] leaderboard.js:8-10 — Supabase publishable key committed with
+     "PASTE YOUR SECURE CREDENTIALS HERE" placeholder comment.
+[m51] checkpoint.js:325-337 — addPenaltyDate fire-and-forget idbSet, no
+     catch; two tabs race read-modify-write → one tab's penalty dropped.
+[m52] matrix.js:1419 — history-log .toFixed on string newEaseFactor (same
+     class as [27]).
+[m53] app.js:5898 — AppState.currentQ.correctAnswer.toLowerCase() with
+     null correctAnswer → TypeError (minor, guarded upstream in most
+     flows).
+[m54] app.js:3867 — (see [6]) render/grading escape inconsistency.
+
+
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ VERIFIED NON-ISSUES (checked and cleared)
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+
+- SM-2 division-by-zero guards (storage.js:483-488), progress bar clamps
+- app.js:1199-1221 imputation, 4544-4546 safeP clamp, 5211 ELO cap
+- #streak-canvas duplicate IDs handled via querySelectorAll
+- Zero top-level global collisions across all 19 module files
+- Manifest icons all exist with exact dimensions
+- All SHELL entries exist on disk
+- Main question render sites use escapeHtml (app.js:3167-3368)
+- Math watchdog operates on text nodes only (safe)
+- rAF hygiene in forest-bg / gallery-break (except [34])
+- theme.js localStorage fully try/catch-wrapped
+- No TODO/FIXME/HACK markers anywhere in app.js
+
+
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+ TOP 15 — RECOMMENDED FIX ORDER
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+
+ 1.  pomodoro.js:438 — session 2+ never ends (CRITICAL)
+ 2.  pomodoro.js:516 — pause/resume restarts at full duration (CRITICAL)
+ 3.  index.html:354 — Daily Fix Queue dead (CRITICAL)
+ 4.  index.html:487 — Cache All Images dead (CRITICAL)
+ 5.  sw.js:95 — PWA offline boot broken (CRITICAL)
+ 6.  app.js:5861 — multi-select MCQ grading breaks on special chars
+ 7.  app.js:6783 — wrong answers counted as solved
+ 8.  app.js:4616+ — UTC-vs-local hardcore cap resets at 05:30 IST
+ 9.  storage.js:1422 — streak caps at 15 days
+ 10. matrix.js:1267+ — stored XSS in error cards / chapters
+ 11. storage.js:834 — silent quota failure = total data loss
+ 12. matrix.js:1727 — corrupt timestamps crash dashboard on 60s loop
+ 13. matrix.js:1431 — case-sensitive subjects hide cards
+ 14. app.js:1333 vs matrix.js:1804 — momentum chart ownership conflict
+ 15. storage.js:788 — multi-tab / cloud sync races
+========================================================================
