@@ -64,6 +64,7 @@ import {
     // ── Error resolution dashboard (NEW) ──
     renderErrorResolutionDashboard,
     renderChapterDecayGrid,
+    renderChapterProgressList,
 } from './matrix.js';
 
 // ── Candlestick engine (powers both home-section graphs) ──
@@ -506,6 +507,7 @@ export async function switchTab(viewId, element) {
     if (viewId === 'dashboard') {
         await renderGraph();
         try { renderChapterDecayGrid(); } catch (_) {}
+        try { renderChapterProgressList(); } catch (_) {}
     }
     // ── P2P Leaderboard: re-sync the arena grid when the tab is shown ──
     if (viewId === 'leaderboard' && typeof LeaderboardNet !== 'undefined') {
@@ -995,6 +997,7 @@ export async function updateUI() {
     // the dashboard always reflects the live rating state. ──
     try { renderEloMatrix(); } catch (_) { /* never block updateUI */ }
     try { renderChapterDecayGrid(); } catch (_) { /* never block updateUI */ }
+    try { renderChapterProgressList(); } catch (_) { /* never block updateUI */ }
 
     updateStreakDisplay();
 }
@@ -7695,6 +7698,8 @@ window.srToggleHint = srToggleHint;
 window.toggleCardHistory = toggleCardHistory;
 window.renderErrorResolutionDashboard = renderErrorResolutionDashboard;
 window.renderChapterDecayGrid = renderChapterDecayGrid;
+window.renderChapterProgressList = renderChapterProgressList;
+window.openChapterProgress = openChapterProgress;
 window.renderMomentumCandles = renderMomentumCandles;
 
 // Expose state for debugging / cross-module access

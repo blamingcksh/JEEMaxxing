@@ -11,6 +11,7 @@ import {
     formatTime,
     waitForDriveToken,
     baseErrorTargets,
+    escapeHtml,
     // ── Daily/subjective study-time tracker (shared with Pomodoro + app.js) ──
     studySecs,
     // ── SR engine imports ──
@@ -1653,6 +1654,86 @@ export function renderChapterDecayGrid() {
             </defs>
             ${svgRows}
         </svg>`;
+}
+
+// ── Dashboard card: per-chapter completion, weakest first ──────────────────
+// Mirrors the practice view's completion definition (app.js stats-row):
+// progress = questions with status 'solved' / all questions in the chapter.
+// Every registered chapter appears — untouched ones (0%) rise to the top.
+export function renderChapterProgressList() {
+    const container = document.getElementById('chapter-progress-list');
+    if (!container) return;
+
+    const SUBJ_META = {
+        physics:   { glyph: 'P', label: 'Physics' },
+        chemistry: { glyph: 'C', label: 'Chemistry' },
+        maths:     { glyph: 'M', label: 'Maths' },
+    };
+    const match = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+    const totals = {};
+    const solvedCounts = {};
+
+    AppState.questionBank.forEach(q => {
+        const key = (q.subject || '') + '||' + (q.chapter || '');
+        totals[key] = (totals[key] || 0) + 1;
+        if (q.status === 'solved') solvedCounts[key] = (solvedCounts[key] || 0) + 1;
+    });
+
+    const rows = [];
+    ['physics', 'chemistry', 'maths'].forEach(subj => {
+        (AppState.chapters[subj] || []).forEach(name => {
+            const key = subj + '||' + name;
+            rows.push({ subj, name, total: totals[key] || 0, solved: solvedCounts[key] || 0 });
+        });
+    });
+
+    // Self-heal: bank questions orphaned from the chapter list still get a row.
+    Object.keys(totals).forEach(key => {
+        const [subj, name] = key.split('||');
+        if (!rows.some(r => r.subj === subj && match(r.name, name))) {
+            rows.push({ subj, name, total: totals[key], solved: solvedCounts[key] || 0 });
+        }
+    });
+
+    rows.forEach(r => { r.pct = r.total > 0 ? Math.round((r.solved / r.total) * 100) : 0; });
+    rows.sort((a, b) => a.pct - b.pct || b.total - a.total || a.name.localeCompare(b.name));
+
+    if (rows.length === 0) {
+        container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:28px 16px; font-size:13px;">No chapters yet. Add one in Grind Station to start the grind.</div>';
+        return;
+    }
+
+    const MAX_ROWS = 10;
+    const shown = rows.slice(0, MAX_ROWS);
+    const overflow = rows.length - shown.length;
+
+    container.innerHTML = shown.map(r => {
+        const meta = SUBJ_META[r.subj] || { glyph: '?', label: r.subj };
+        const pctCls = r.pct === 0 ? 'cp-pct cp-pct-void' : 'cp-pct';
+        const rowCls = r.pct === 0 ? 'cp-row cp-row-void' : 'cp-row';
+        const fillCls = r.pct >= 100 ? 'cp-fill cp-fill-full' : (r.pct >= 50 ? 'cp-fill cp-fill-mid' : 'cp-fill');
+        const safeTitle = escapeHtml(r.name).replace(/"/g, '&quot;');
+        return `
+            <div class="${rowCls}" onclick="window.openChapterProgress('${r.subj}','${encodeURIComponent(r.name)}')" title="Grind ${safeTitle}">
+                <span class="cp-chip">${meta.glyph}</span>
+                <span class="cp-name">${escapeHtml(r.name)}</span>
+                <span class="cp-bar"><span class="${fillCls}" style="width:${r.pct}%"></span></span>
+                <span class="cp-meta">${r.solved}/${r.total}</span>
+                <span class="${pctCls}">${r.pct}%</span>
+            </div>`;
+    }).join('') +
+    (overflow > 0 ? `<div class="cp-more">+ ${overflow} more · weakest first</div>` : '');
+}
+
+// ── Dashboard card → jump into a chapter's question list in Grind Station ──
+export function openChapterProgress(subj, encodedName) {
+    try {
+        const name = decodeURIComponent(encodedName);
+        AppState.currentSubject = subj;
+        if (typeof window.openChapterDetail === 'function') window.openChapterDetail(name);
+        const nav = document.querySelector('[data-tab="practice"]');
+        if (typeof window.switchTab === 'function') window.switchTab('practice', nav);
+    } catch (e) { /* never block card clicks */ }
 }
 
 // ── Pillar 2 helper: lowest-health question for Checkpoint lockdown ──────────
