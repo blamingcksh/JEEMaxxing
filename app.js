@@ -2754,7 +2754,7 @@ function sanitizeGemTextDump(rawInput) {
         const renamed = {};
         const re = new RegExp(
             '"(' + canonical + '|' + aliasList.join('|') + ')"\\s*:\\s*"',
-            'g'
+            'gi'
         );
         input = input.replace(re, (match, key) => {
             if (key === canonical) return match;
@@ -2777,7 +2777,7 @@ function sanitizeGemTextDump(rawInput) {
     // the answer rename so it catches both renamed `answer` keys AND canonical
     // `correctAnswer` keys from the source.
     rawInput = rawInput.replace(
-        /"correctAnswer"\s*:\s*"\(((?:[A-Z]|[0-9]))\)"/g,
+        /"correctAnswer"\s*:\s*"\(((?:[A-Z]|[0-9]))\)"/gi,
         '"correctAnswer": "$1"'
     );
     const _allRenamed = Object.assign({}, _s1.renamed, _s2.renamed, _s3.renamed, _s4.renamed);
@@ -2894,7 +2894,7 @@ export async function processGemTextDump() {
         // "extractedText" anchors and the throw fires on every drift-bearing paste.
         const sanitizedInput = sanitizeGemTextDump(terminalInput);
         // Step 1: Isolate individual question segments using the unique "extractedText" key as a boundary anchor
-        const segments = sanitizedInput.split(/"extractedText"\s*:\s*"/g);
+        const segments = sanitizedInput.split(/"extractedText"\s*:\s*"/gi);
         if (segments.length <= 1) {
             throw new Error("Could not find any structural 'extractedText' keys in the pasted payload.");
         }
@@ -2926,7 +2926,7 @@ export async function processGemTextDump() {
 
             // 2. Extract options array contents
             let options = [];
-            const optionsMatch = metadata.match(/"options"\s*:\s*\[([\s\S]*?)\]/);
+            const optionsMatch = metadata.match(/"options"\s*:\s*\[([\s\S]*?)\]/i);
             if (optionsMatch && optionsMatch[1]) {
                 // Collect individual string tokens within option boundaries
                 const optMatches = optionsMatch[1].match(/"([\s\S]*?)"/g);
@@ -2942,7 +2942,7 @@ export async function processGemTextDump() {
 
             // 3. Extract correctAnswer string or multi-select array
             let correctAnswer = "";
-            const ansMatch = metadata.match(/"correctAnswer"\s*:\s*(\[[\s\S]*?\]|"(?:[^"\\]|\\.)*")/);
+            const ansMatch = metadata.match(/"correctAnswer"\s*:\s*(\[[\s\S]*?\]|"(?:[^"\\]|\\.)*")/i);
             if (ansMatch && ansMatch[1]) {
                 let ansRaw = ansMatch[1].trim();
                 if (ansRaw.startsWith('[')) {
@@ -2958,10 +2958,13 @@ export async function processGemTextDump() {
             }
 
             // 4. Extract question type tracking field
+            // Case-insensitive key + value lowercase so "Type": "Subjective"
+            // variants collapse to the canonical "subjective" instead of
+            // drifting into the text-fallback classification.
             let type = "";
-            const typeMatch = metadata.match(/"type"\s*:\s*"([^"]*)"/);
+            const typeMatch = metadata.match(/"type"\s*:\s*"([^"]*)"/i);
             if (typeMatch && typeMatch[1]) {
-                type = typeMatch[1].trim();
+                type = typeMatch[1].trim().toLowerCase();
             }
 
             // 5. Extract step-by-step solution string. The old lookahead only
@@ -2969,7 +2972,7 @@ export async function processGemTextDump() {
             // followed by subject/chapter/qElo/etc. were silently dropped. Accept
             // any following key (or an object/array close) as the terminator.
             let solution = "";
-            const solMatch = metadata.match(/"solution"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"[^"\n]+?"\s*:|\s*\}|\s*\])/);
+            const solMatch = metadata.match(/"solution"\s*:\s*"([\s\S]*?)"\s*(?=,\s*"[^"\n]+?"\s*:|\s*\}|\s*\])/i);
             if (solMatch && solMatch[1]) {
                 solution = solMatch[1];
             }
@@ -2991,16 +2994,16 @@ export async function processGemTextDump() {
             // them here so the existing stamping flow finally works on Gem-stamped
             // payloads (the schema drift fix above keeps these named canonical).
             function _extractStringField(meta, key) {
-                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"'));
+                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"', 'i'));
                 return m && m[1] ? m[1] : undefined;
             }
             function _extractNumberField(meta, key) {
-                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)'));
+                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)', 'i'));
                 const v = m ? parseFloat(m[1]) : NaN;
                 return Number.isFinite(v) ? v : undefined;
             }
             function _extractStringArrayField(meta, key) {
-                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*\\[([\\s\\S]*?)\\]'));
+                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*\\[([\\s\\S]*?)\\]', 'i'));
                 if (!m) return undefined;
                 const inner = m[1];
                 const strMatches = inner.match(/"((?:[^"\\\\]|\\\\.)*)"/g);
@@ -3558,7 +3561,12 @@ export function saveEditQuestion() {
     q.extractedText = document.getElementById('edit-text').value;
     q.options = document.getElementById('edit-options').value.split(',').map(s => s.trim()).filter(s => s);
     let ans = document.getElementById('edit-answer').value.trim();
-    if (ans.includes(',')) {
+    // ── Same anti-mangle guard as saveAllQuestions: only a bare letter list
+    //    ("A, C") is a multi-select MCQ answer. Multi-part free-text answers
+    //    like "(a) ..., (b)(i) ..." contain LaTeX + commas and must NEVER be
+    //    split or uppercased, and an option-less question can never be mcq. ──
+    const isLetterList = typeof ans === 'string' && /^[A-Da-d](?:\s*,\s*[A-Da-d])*$/.test(ans);
+    if (isLetterList && q.options.length > 0) {
         q.correctAnswer = ans.split(',').map(s => s.trim().toUpperCase()).filter(s => s);
         q.type = 'mcq';
     } else {
