@@ -1,14 +1,16 @@
 /* ============================================================================
  * sw.js — JEEMaxxing service worker
  *
- * Strategy: stale-while-revalidate for the app shell + CDN assets, so the
- * add-to-home-screen (PWA) build on iPad / iPhone opens instantly with zero
- * network waits and keeps working offline. NEVER caches Drive/Gemini API
- * calls (only GET requests to static assets are intercepted).
+ * Strategy: network-first for the HTML shell (so a cached index.html can
+ * never pin old code), stale-while-revalidate for JS/CSS/fonts/CDN assets,
+ * so the add-to-home-screen (PWA) build on iPad / iPhone opens instantly
+ * with zero network waits and keeps working offline. NEVER caches
+ * Drive/Gemini API calls (only GET requests to static assets are
+ * intercepted).
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v6';
+const VERSION = 'jeemax-v7';
 const SHELL = [
   './',
   './index.html',
@@ -97,14 +99,20 @@ self.addEventListener('install', (event) => {
   // window client so it loads the fresh shell exactly once. Runs on activation
   // of a NEW version only — the reloaded page re-checks the SW, finds the same
   // bytes, and doesn't activate again, so there is no reload loop.
+  //
+  // CRITICAL: this must NEVER be able to fail the activation. client.navigate()
+  // returns a promise, and on Safari/WebKit (and some desktop browsers) it
+  // rejects for cross-context/control reasons — the old try/catch only caught
+  // synchronous throws. An unhandled rejection rejects event.waitUntil and
+  // ABORTS the entire activation: the browser discards the new SW, the OLD SW
+  // keeps serving its stale caches (old index.html + old app.js) forever, and
+  // no update ever lands again. Swallow every failure.
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      clients.forEach((client) => {
-        try {
-          client.navigate(client.url || './');
-        } catch (_) { /* some browsers refuse cross-context navigation — ignore */ }
-      });
-    })
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clients) => Promise.allSettled(clients.map((client) =>
+        Promise.resolve().then(() => client.navigate(client.url || './')).catch(() => {})
+      )))
+      .catch(() => {})
   );
 });
 
@@ -125,6 +133,27 @@ self.addEventListener('fetch', (event) => {
   const isLocal = url.origin === self.location.origin;
   const isCdn = isCDN(req.url);
   if (!isLocal && !isCdn) return;
+
+  // ── HTML navigations: network-first ────────────────────────────────────
+  // Stale-while-revalidate for the SHELL HTML is what left devices running
+  // OLD code after an update: the cached index.html (which references the old
+  // app.js) is served first, indefinitely, and even a hard refresh never
+  // bypasses a service worker. Serve the FRESH shell on every load and fall
+  // back to the cached copy only when offline.
+  if (isLocal && (req.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html')) {
+    event.respondWith(
+      fetch(req).then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(VERSION).then((cache) => { try { cache.put(req, copy); } catch (_) {} });
+        }
+        return res;
+      }).catch(() =>
+        caches.match(req, { ignoreSearch: true }).then((cached) => cached || caches.match('./'))
+      )
+    );
+    return;
+  }
 
   // Only cache same-origin http(s) + cross-origin CDN GETs (skip query-noise
   // for local files — index.html is served with ?v= hashing in some setups).

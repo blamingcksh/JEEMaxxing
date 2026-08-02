@@ -368,6 +368,10 @@ export function openModal(id) {
     if (!m) return;
     if (id === 'calendar-modal') renderCalendar();
     m.style.display = 'flex';
+    // Hydrate LaTeX in the freshly-opened modal synchronously (the observer
+    // is a backup). Idempotent: already-rendered wrappers are never touched.
+    if (m.hasAttribute('data-math-rendered')) m.removeAttribute('data-math-rendered');
+    processElementMath(m);
     const token = (_modalOpenTokens[id] || 0) + 1;
     _modalOpenTokens[id] = token;
     requestAnimationFrame(() => {
@@ -3870,6 +3874,10 @@ export function renderPracticeQuestionModal() {
         }
         html += `</div></div>`;
         container.innerHTML = html;
+        // Hydrate LaTeX synchronously (the observer is a backup). Clear any
+        // stale render stamp so a re-render is never skipped.
+        container.removeAttribute('data-math-rendered');
+        processElementMath(container);
         container.querySelectorAll('.mcq-option').forEach(div => {
             div.addEventListener('click', function (e) {
                 const rawOption = e.currentTarget.dataset.option;
@@ -3909,6 +3917,8 @@ export function renderPracticeQuestionModal() {
     }
     html += `</div>`;
     container.innerHTML = html;
+    container.removeAttribute('data-math-rendered');
+    processElementMath(container);
     container.querySelectorAll('.mcq-option').forEach(el => {
         el.addEventListener('click', function (e) {
             const optionText = this.getAttribute('data-option');
@@ -6159,9 +6169,11 @@ export function showSolutionPopup() {
     if (!solutionText) return;
     const contentEl = document.getElementById('solution-content');
     if (!contentEl) return;
-    // Raw text injection — the global MutationObserver watchdog hydrates
-    // any $...$ / $$...$$ LaTeX fragments automatically.
+    // Raw text injection — hydrate synchronously (the observer is a backup).
+    // Clear any stale render stamp so re-opens with new solutions re-render.
     contentEl.textContent = solutionText;
+    if (contentEl.hasAttribute('data-math-rendered')) contentEl.removeAttribute('data-math-rendered');
+    processElementMath(contentEl);
     openModal('solution-modal');
 }
 
@@ -8007,12 +8019,33 @@ const globalMathObserver = new MutationObserver(function (mutations) {
     const sweep = function () {
         try { processElementMath(document.body); } catch (_) {}
     };
+    // CDN fallback: if the vendored KaTeX file failed to load (onerror flag)
+    // or is missing from a stale PWA cache, inject a cache-busted jsdelivr
+    // copy and re-sweep the instant it lands. Best-effort, never breaks boot.
+    let fallbackInjected = false;
+    const injectKatexFallback = function () {
+        if (fallbackInjected || window.katex) return;
+        fallbackInjected = true;
+        try {
+            const stamp = Date.now();
+            const css = document.createElement('link');
+            css.rel = 'stylesheet';
+            css.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css?v=' + stamp;
+            document.head.appendChild(css);
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js?v=' + stamp;
+            s.onload = function () { if (window.katex) sweep(); };
+            document.head.appendChild(s);
+        } catch (_) { /* best-effort — never break boot */ }
+    };
+    if (window.__katexLoadFailed) injectKatexFallback();
     const poll = setInterval(function () {
         waited += 500;
         if (window.katex) {
             clearInterval(poll);
             sweep();
         } else if (waited === 8000) {
+            injectKatexFallback();
             showBanner();
         } else if (waited > 30000) {
             // Slow-loading or blocked — don't give up. Re-check every 2s
