@@ -65,6 +65,7 @@ import {
     renderErrorResolutionDashboard,
     renderChapterDecayGrid,
     renderChapterProgressList,
+    openChapterProgress,
 } from './matrix.js';
 
 // ── Candlestick engine (powers both home-section graphs) ──
