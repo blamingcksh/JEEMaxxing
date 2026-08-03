@@ -153,6 +153,8 @@ function saveDailyForestStore(o) {
   try {
     localStorage.setItem(LS_DAILY_FOREST, JSON.stringify(o));
   } catch (e) {}
+  // Permanent IndexedDB mirror — survives localStorage clears / manual wipes.
+  try { idbSet(LS_DAILY_FOREST, o).catch(() => {}); } catch (e) {}
 }
 
 function persistDailyCountsFromSolved() {
@@ -193,6 +195,46 @@ function restoreDailyCountsIntoSolved() {
       }
     });
   } catch (e) {}
+}
+
+// Generic IndexedDB mirror (key,value) handle shared with the grove script.
+try {
+  window._idbMirror = {
+    set: (k, v) => { try { idbSet(k, v).catch(() => {}); } catch (e) {} },
+    get: async (k) => { try { return await idbGet(k); } catch (e) { return null; } }
+  };
+} catch (_) {}
+
+// Boot recovery: pull the permanent daily forest store out of IndexedDB and merge
+// it back into localStorage (so the grove/island per-day counts survive a wipe).
+async function restoreDailyForestFromIDB() {
+  try {
+    const idbStore = await idbGet(LS_DAILY_FOREST);
+    if (!idbStore || typeof idbStore !== 'object') { restoreDailyCountsIntoSolved(); return; }
+    const lsStore = loadDailyForestStore();
+    const merged = {};
+    for (const d in lsStore) merged[d] = lsStore[d];
+    let changed = false;
+    for (const d in idbStore) {
+      const e = idbStore[d];
+      if (!e || typeof e !== 'object') continue;
+      const prev = merged[d] || {};
+      const nb = {
+        physics: Math.max(Number(prev.physics) || 0, Number(e.physics) || 0),
+        chemistry: Math.max(Number(prev.chemistry) || 0, Number(e.chemistry) || 0),
+        maths: Math.max(Number(prev.maths) || 0, Number(e.maths) || 0),
+        updatedAt: Math.max(Number(prev.updatedAt) || 0, Number(e.updatedAt) || 0)
+      };
+      if (!merged[d] ||
+          nb.physics !== (Number(prev.physics) || 0) ||
+          nb.chemistry !== (Number(prev.chemistry) || 0) ||
+          nb.maths !== (Number(prev.maths) || 0) ||
+          nb.updatedAt !== (Number(prev.updatedAt) || 0)) changed = true;
+      merged[d] = nb;
+    }
+    if (changed) saveDailyForestStore(merged);
+  } catch (e) {}
+  restoreDailyCountsIntoSolved();
 }
 // ── Forest growth brain: cumulative study + Elo→difficulty→grow-time ───────
 const LS_CUM = 'jeemax_cum_study_v1';
@@ -7003,6 +7045,10 @@ async function initApp() {
     });
 
     await loadDataAsync();
+
+    // Restore the permanent daily solved-count store from IndexedDB (merge into
+    // localStorage + today's live counters), in case localStorage was cleared.
+    try { await restoreDailyForestFromIDB(); } catch (_) {}
 
     // ── One-time cross-chapter duplicate cleanup ──
     // The bank is hydrated above; silently remove any copies the old

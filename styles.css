@@ -7235,6 +7235,51 @@ body.gi-full-open { overflow: hidden; }
   min-height: 0;
 }
 
+/* Subject → species selector tab (rows instead of the card grid) */
+#gi-tab-subjects {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.gi-subj-head {
+  font-size: 12px;
+  color: rgba(255,255,255,.6);
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+}
+.gi-subj-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.10);
+}
+.gi-subj-name { font-weight: 800; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
+.gi-subj-name span { font-size: 16px; }
+.gi-subj-select {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: #141a26;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  max-width: 200px;
+  outline: none;
+}
+.gi-subj-select:focus { border-color: #57c7a4; }
+@media (max-width: 480px) {
+  .gi-subj-row { flex-direction: column; align-items: flex-start; }
+  .gi-subj-select { max-width: 100%; width: 100%; }
+}
+
 .gi-store-card {
   position: relative;
   display: flex;
