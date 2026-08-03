@@ -5,8 +5,10 @@ if (window.__groveIslandsInit) return; window.__groveIslandsInit = true;
 
 var LS_GROVE = 'jeemax_grove_v1';
 var LS_DAILY = 'jeemax_forest_daily_v1';
-var MIN_SLOTS = 40;
+var MIN_SLOTS = 6;
 var MAX_SLOTS = 240;
+var MIN_TREE_SPACING = 2.6;   // min centre-to-centre gap so trees read as individuals
+var SLOT_BASE = 2.2;          // inner radius of the planting spiral (kept clear of the centre)
 var STAGES = ['Sapling', 'Young tree', 'Mature tree'];
 var STAGE_SCALE = [0.45, 0.72, 1.0];
 var STAGES_PER_TREE = 3;
@@ -166,14 +168,46 @@ var SPECIES_DEFS = [
 function biomeById(id) { for (var i = 0; i < BIOMES.length; i++) if (BIOMES[i].id === id) return BIOMES[i]; return BIOMES[0]; }
 function speciesById(id) { for (var i = 0; i < SPECIES_DEFS.length; i++) if (SPECIES_DEFS[i].id === id) return SPECIES_DEFS[i]; return SPECIES_DEFS[0]; }
 
+var SUBJECTS = ['physics', 'chemistry', 'maths'];
+var SUBJECT_SPECIES_DEFAULT = { physics: 'pine', chemistry: 'oak', maths: 'pine' };
 var grove;
-function defaultGrove() { return { activeBiome: 'temperate', activeSpecies: 'pine', daily: {} }; }
+function defaultGrove() { return { activeBiome: 'temperate', activeSpecies: 'pine', subjectSpecies: Object.assign({}, SUBJECT_SPECIES_DEFAULT), daily: {} }; }
 function loadGrove() {
-  try { var o = JSON.parse(localStorage.getItem(LS_GROVE) || 'null'); if (o && typeof o === 'object') { o.activeBiome = biomeById(o.activeBiome).id; o.activeSpecies = speciesById(o.activeSpecies).id; o.daily = (o.daily && typeof o.daily === 'object') ? o.daily : {}; return o; } } catch (e) {}
+  try {
+    var o = JSON.parse(localStorage.getItem(LS_GROVE) || 'null');
+    if (o && typeof o === 'object') {
+      o.activeBiome = biomeById(o.activeBiome).id;
+      o.activeSpecies = speciesById(o.activeSpecies).id;
+      var ss = Object.assign({}, SUBJECT_SPECIES_DEFAULT, (o.subjectSpecies && typeof o.subjectSpecies === 'object') ? o.subjectSpecies : {});
+      for (var s = 0; s < SUBJECTS.length; s++) ss[SUBJECTS[s]] = speciesById(ss[SUBJECTS[s]]).id;
+      o.subjectSpecies = ss;
+      o.daily = (o.daily && typeof o.daily === 'object') ? o.daily : {};
+      return o;
+    }
+  } catch (e) {}
   return defaultGrove();
 }
-function saveGrove() { try { localStorage.setItem(LS_GROVE, JSON.stringify(grove)); } catch (e) {} }
+function saveGrove() {
+  try { localStorage.setItem(LS_GROVE, JSON.stringify(grove)); } catch (e) {}
+  // Permanent IndexedDB mirror so the grove's per-day tree counts survive wipes.
+  try { if (window._idbMirror) window._idbMirror.set(LS_GROVE, grove); } catch (e) {}
+}
 grove = loadGrove();
+
+/* Which tree a solved question of a given subject plants. Falls back to the
+   first unlocked species if the user's chosen one is still locked. */
+function subjectSpecies(subj) {
+  subj = normSub(subj);
+  if (SUBJECTS.indexOf(subj) < 0) subj = 'physics';
+  var id = (grove.subjectSpecies && grove.subjectSpecies[subj]) || SUBJECT_SPECIES_DEFAULT[subj];
+  var sp = speciesById(id);
+  if (!speciesUnlocked(sp.id)) {
+    for (var i = 0; i < SPECIES_DEFS.length; i++) {
+      if (speciesUnlocked(SPECIES_DEFS[i].id)) { sp = SPECIES_DEFS[i]; break; }
+    }
+  }
+  return sp.id;
+}
 
 function globalElo() {
   try {
@@ -626,25 +660,68 @@ ParticleField.prototype.update = function (dt, t) {
 };
 ParticleField.prototype.dispose = function () { this.geo.dispose(); this.mat.dispose(); };
 
-var ISLAND_R = 11;
+var ISLAND_R = 9;
+function vnoise2(x, z) {
+  var xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
+  var u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf);
+  function h(ix, iz) { var n = Math.sin(ix * 127.1 + iz * 311.7) * 43758.5453; return n - Math.floor(n); }
+  var a = h(xi, zi), b = h(xi + 1, zi), c = h(xi, zi + 1), d = h(xi + 1, zi + 1);
+  return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+}
+/* Deterministic river: a wandering polyline from near the coast to the centre. */
+function riverPath(R, seed) {
+  var rng = mulberry32((seed ^ 0x1f2a3b) >>> 0);
+  var pts = [], n = 9, entryA = rng() * Math.PI * 2, a = entryA;
+  for (var i = 0; i <= n; i++) {
+    var t = i / n;
+    a += (rng() - 0.5) * 1.1;
+    var rad = R * (0.14 + 0.8 * (1 - t));
+    pts.push({ x: Math.cos(a) * rad, z: Math.sin(a) * rad });
+  }
+  return pts;
+}
+function riverDist(x, z, pts) {
+  var best = 1e9;
+  for (var i = 0; i < pts.length - 1; i++) {
+    var ax = pts[i].x, az = pts[i].z, bx = pts[i + 1].x, bz = pts[i + 1].z;
+    var dx = bx - ax, dz = bz - az, len2 = dx * dx + dz * dz;
+    var t = len2 > 0 ? clamp(((x - ax) * dx + (z - az) * dz) / len2, 0, 1) : 0;
+    var px = ax + dx * t, pz = az + dz * t;
+    var dd = Math.hypot(x - px, z - pz);
+    if (dd < best) best = dd;
+  }
+  return best;
+}
 function makeGroundHeight(seed, R) {
-  var p1 = seed % 10, p2 = seed % 7;
+  var p1 = (seed % 1000) / 100, p2 = (seed % 700) / 100;
+  var river = riverPath(R, seed);
   return function (x, z) {
     var d = Math.hypot(x, z);
-    var fade = clamp(1 - (d / (R * 0.92)), 0, 1);
-    return (Math.sin(x * 0.55 + p1) + Math.cos(z * 0.6 + p2) + Math.sin((x + z) * 0.33 + p1 * 2)) * 0.2 * fade;
+    var fade = clamp(1 - (d / (R * 0.98)), 0, 1);
+    var dome = (1 - d / R) * 2.5;                                          // central relief
+    var hills = (vnoise2(x * 0.42 + p1, z * 0.42 + p2) - 0.5) * 1.7 * fade  // big rolling hills
+             + (vnoise2(x * 1.5 + p1 * 3, z * 1.5 + p2 * 3) - 0.5) * 0.75 * fade; // detail
+    var h = dome + hills;
+    var rd = riverDist(x, z, river);
+    if (rd < 2.3) h -= (2.3 - rd) * 1.35 * fade;                           // carved river channel
+    return Math.max(-0.5, h - (1 - fade) * 1.1);                           // drop off into the sea
   };
 }
+function coastWob(theta, seed, amp) {
+  return 1 + (Math.sin(theta * 3 + seed) * 0.5 + Math.sin(theta * 7 + seed * 1.9) * 0.32 + Math.sin(theta * 12 + seed * 0.7) * 0.18) * amp;
+}
+/* Cliff skirt: just the side wall of the island (open top). The land disc is the
+   real top surface, so trees/rocks sitting on gh() never float. */
 function buildIslandMesh(biome, seed, R) {
   var gh = makeGroundHeight(seed, R);
-  var geo = new THREE.CylinderGeometry(R, R * 0.3, 6, 13, 4, false);
+  var geo = new THREE.CylinderGeometry(R, R * 0.35, 6, 56, 6, true);
   var pos = geo.attributes.position;
   for (var i = 0; i < pos.count; i++) {
     var x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     var d = Math.hypot(x, z);
     if (d > 0.001) {
       var a = Math.atan2(z, x);
-      var wob = 1 + (Math.sin(a * 3 + seed) * 0.5 + Math.sin(a * 7 + seed * 1.7) * 0.5) * 0.05 * (y > 0 ? 0.9 : 0.5);
+      var wob = coastWob(a, seed, 0.30 * (y > 0 ? 0.8 : 0.4));
       x *= wob; z *= wob;
     }
     if (y > 2.9) y += gh(x, z);
@@ -658,7 +735,7 @@ function buildIslandMesh(biome, seed, R) {
   var rng = mulberry32(seed ^ 0xbeef);
   for (var i2 = 0; i2 < p.count; i2++) {
     var y2 = p.getY(i2);
-    if (y2 > 1.0) tmp.copy(cGround).lerp(cVar, clamp(0.55 - (y2 - 1) * 0.5, 0, 1)).offsetHSL(0, 0, (rng() - 0.5) * 0.05);
+    if (y2 > 1.0) tmp.copy(cGround).lerp(cVar, clamp(0.55 - (y2 - 1) * 0.10, 0, 1)).offsetHSL(0, 0, (rng() - 0.5) * 0.05);
     else if (y2 > -0.15) tmp.copy(cSand).offsetHSL(0, 0, (rng() - 0.5) * 0.04);
     else tmp.copy(cRock).lerp(cSand, 0.12).offsetHSL(0, 0, (rng() - 0.5) * 0.04);
     colors[i2 * 3] = tmp.r; colors[i2 * 3 + 1] = tmp.g; colors[i2 * 3 + 2] = tmp.b;
@@ -668,7 +745,87 @@ function buildIslandMesh(biome, seed, R) {
   var m = new THREE.Mesh(nGeo, mat);
   m.position.y = -0.6;
   m.receiveShadow = true; m.castShadow = false;
-  return { mesh: m, groundHeight: gh };
+  return { mesh: m, groundHeight: gh, river: riverPath(R, seed) };
+}
+/* High-resolution land surface: a polar grid that samples gh() densely so the
+   physical ground matches where trees and rocks are placed. Also sculpts the
+   river channel with sandy banks + water tint. */
+function buildLandDisc(biome, seed, R, gh, topY) {
+  var river = riverPath(R, seed);
+  var nRings = 16, nAng = 64;
+  var cGround = new THREE.Color(biome.ground), cVar = new THREE.Color(biome.groundVar),
+    cSand = new THREE.Color(biome.sand), cRiver = new THREE.Color(biome.water ? biome.water.shallow : 0x7fd4c4), tmp = new THREE.Color();
+  var rng = mulberry32((seed ^ 0x1234abcd) >>> 0);
+  function shade(y, x, z) {
+    if (y > 1.0) {
+      tmp.copy(cGround).lerp(cVar, clamp(0.55 - (y - 1) * 0.10, 0, 1)).offsetHSL(0, 0, (rng() - 0.5) * 0.05);
+      var rd = riverDist(x, z, river);
+      if (rd < 2.6) tmp.lerp(cSand, clamp(1 - rd / 2.6, 0, 1) * 0.8);   // sandy banks
+      if (rd < 1.2) tmp.lerp(cRiver, clamp(1 - rd / 1.2, 0, 1) * 0.9);  // the water itself
+    } else {
+      tmp.copy(cSand).offsetHSL(0, 0, (rng() - 0.5) * 0.04);
+    }
+    return tmp.clone();
+  }
+  var verts = [], cols = [], idx = [], ringStart = [];
+  verts.push(0, topY + gh(0, 0), 0); cols.push(shade(topY + gh(0, 0), 0, 0));
+  for (var k = 1; k <= nRings; k++) {
+    ringStart.push(1 + (k - 1) * nAng);
+    var rk = (k / nRings) * R;
+    for (var j = 0; j < nAng; j++) {
+      var theta = (j / nAng) * Math.PI * 2;
+      var wob = coastWob(theta, seed, 0.24);
+      var x = Math.cos(theta) * rk * wob, z = Math.sin(theta) * rk * wob;
+      var y = topY + gh(x, z);
+      verts.push(x, y, z); cols.push(shade(y, x, z));
+    }
+  }
+  for (var j = 0; j < nAng; j++) { var a = 1 + j, b = 1 + ((j + 1) % nAng); idx.push(0, a, b); }
+  for (var k = 0; k < nRings - 1; k++) {
+    var r0 = ringStart[k], r1 = ringStart[k + 1];
+    for (var j = 0; j < nAng; j++) {
+      var jn = (j + 1) % nAng;
+      var a = r0 + j, b = r0 + jn, c = r1 + jn, d = r1 + j;
+      idx.push(a, c, b, a, d, c);
+    }
+  }
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  var colArr = new Float32Array(cols.length * 3);
+  for (var i = 0; i < cols.length; i++) { colArr[i * 3] = cols[i].r; colArr[i * 3 + 1] = cols[i].g; colArr[i * 3 + 2] = cols[i].b; }
+  g.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  var mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
+  var m = new THREE.Mesh(g, mat);
+  m.position.y = 0;
+  m.receiveShadow = true; m.castShadow = false;
+  return m;
+}
+/* A thin translucent ribbon laid over the carved channel so it reads as a river. */
+function buildRiverWater(river, gh, topY, width, color) {
+  var n = river.length, verts = [];
+  for (var i = 0; i < n; i++) {
+    var px0 = river[i].x, pz0 = river[i].z, dx, dz;
+    if (i === 0) { dx = river[1].x - px0; dz = river[1].z - pz0; }
+    else if (i === n - 1) { dx = px0 - river[n - 2].x; dz = pz0 - river[n - 2].z; }
+    else { dx = river[i + 1].x - river[i - 1].x; dz = river[i + 1].z - river[i - 1].z; }
+    var len = Math.hypot(dx, dz) || 1, px = -dz / len, pz = dx / len;
+    var y2 = topY + gh(px0, pz0) + 0.34;
+    verts.push(px0 + px * width, y2, pz0 + pz * width);
+    verts.push(px0 - px * width, y2, pz0 - pz * width);
+  }
+  var idx = [];
+  for (var k = 0; k < n - 1; k++) {
+    var a = k * 2, b = k * 2 + 1, c = k * 2 + 2, d = k * 2 + 3;
+    idx.push(a, b, c, b, d, c);
+  }
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  var waterMat = new THREE.MeshLambertMaterial({ color: color, transparent: true, opacity: 0.72, side: THREE.DoubleSide });
+  return new THREE.Mesh(g, waterMat);
 }
 
 function blendHex(a, b, t) { return new THREE.Color(a).lerp(new THREE.Color(b), t).getHex(); }
@@ -693,6 +850,7 @@ function buildWorld(biome, view) {
   var seed = hashStr(biome.id);
   var rng = mulberry32(seed);
   var R = view.radius;
+  var rout = view.rout || (R * 0.72);
   var group = new THREE.Group();
   var w = { biomeId: biome.id, group: group, radius: R, trees: new Map(), uniqueGeos: [], instanced: [], springs: [], animals: [], particles: null, slots: [] };
 
@@ -700,10 +858,18 @@ function buildWorld(biome, view) {
   w.uniqueGeos.push(isl.mesh.geometry, isl.mesh.material);
   group.add(isl.mesh);
   var topY = 2.4;
+  var disc = buildLandDisc(biome, seed, R, isl.groundHeight, topY);
+  w.uniqueGeos.push(disc.geometry, disc.material);
+  group.add(disc);
+  if (isl.river && isl.river.length) {
+    var riverW = buildRiverWater(isl.river, isl.groundHeight, topY, Math.max(0.7, R * 0.06), biome.water ? biome.water.shallow : 0x7fd4c4);
+    group.add(riverW);
+    w.uniqueGeos.push(riverW.geometry, riverW.material);
+  }
 
   var slots = [];
   for (var i = 0; i < view.slots; i++) {
-    var rr = 1.6 + Math.sqrt((i + 0.5) / view.slots) * (R * 0.72);
+    var rr = SLOT_BASE + Math.sqrt((i + 0.5) / view.slots) * rout;
     var a = i * 2.39996 + (rng() - 0.5) * 0.3;
     var x = Math.cos(a) * rr, z = Math.sin(a) * rr;
     slots.push({ x: x, z: z, y: topY + isl.groundHeight(x, z), rot: rng() * Math.PI * 2, var: 0.9 + rng() * 0.22 });
@@ -713,7 +879,7 @@ function buildWorld(biome, view) {
   addProps(w, biome, rng, isl.groundHeight, topY, R);
 
   var animal = ANIMALS[biome.animal.type]();
-  var as = slots[Math.floor(rng() * 8)];
+  var as = slots[Math.floor(rng() * Math.min(8, slots.length))];
   animal.position.set(as.x * 0.55, as.y, as.z * 0.55);
   animal.rotation.y = rng() * Math.PI * 2; animal.scale.setScalar(0.85);
   group.add(animal);
@@ -779,7 +945,7 @@ function addProps(w, biome, rng, gh, topY, R) {
       stemInst.castShadow = true;
     }
     for (var i = 0; i < cfg.count; i++) {
-      var a = rng() * Math.PI * 2, r = 1.2 + rng() * (R - 2.2);
+      var a = rng() * Math.PI * 2, r = 1.2 + rng() * Math.max(0.5, Math.min(R - 2.2, R * 0.7 - 1.2));
       var x = Math.cos(a) * r, z = Math.sin(a) * r, y = topY + gh(x, z);
       var sx, sy, sz;
       if (cfg.type === 'rock') { sx = 0.22 + rng() * 0.33; sy = sx * (0.6 + rng() * 0.3); sz = sx * (0.7 + rng() * 0.4); }
@@ -838,20 +1004,47 @@ function travel(biomeId, instant) {
   }, 400);
 }
 
-function attributeDelta(delta) {
-  if (delta <= 0) return;
-  var day = todayKey();
+function ensureDayBiome(day) {
   var d = grove.daily[day] || (grove.daily[day] = {});
-  var b = d[grove.activeBiome] || (d[grove.activeBiome] = { count: 0, species: [] });
+  return d[grove.activeBiome] || (d[grove.activeBiome] = { count: 0, species: [], bySubject: {} });
+}
+function flushSubjectSpecies(by) {
+  var out = [];
+  if (!by || typeof by !== 'object') return out;
+  for (var s = 0; s < SUBJECTS.length; s++) {
+    var arr = by[SUBJECTS[s]];
+    if (Array.isArray(arr)) for (var i = 0; i < arr.length; i++) out.push(arr[i]);
+  }
+  return out;
+}
+function attributeBySubject(deltas) {
+  var total = 0;
+  for (var s = 0; s < SUBJECTS.length; s++) total += Math.max(0, deltas[SUBJECTS[s]] || 0);
+  if (total <= 0) return;
+  var day = todayKey();
+  var b = ensureDayBiome(day);
+  b.bySubject = b.bySubject || {};
   var before = b.count;
-  b.count += delta;
+  b.count += total;
   var base = b.species.length;
-  for (var i = 0; i < delta; i++) b.species[base + i] = grove.activeSpecies;
+  var bi = 0;
+  for (var s2 = 0; s2 < SUBJECTS.length; s2++) {
+    var subj = SUBJECTS[s2];
+    var dlt = Math.max(0, deltas[subj] || 0);
+    if (dlt <= 0) continue;
+    var arr = b.bySubject[subj] || (b.bySubject[subj] = []);
+    var sp = subjectSpecies(subj);
+    for (var i = 0; i < dlt; i++) { arr.push(sp); b.species[base + bi] = sp; bi++; }
+  }
   saveGrove();
   if (before % STAGES_PER_TREE === 0 && b.count % STAGES_PER_TREE === 1) {
     sndPlant();
     floaty('🌱 New sapling!');
   }
+}
+function attributeDelta(delta) {
+  if (delta <= 0) return;
+  attributeBySubject({ physics: delta, chemistry: 0, maths: 0 });
 }
 
 function periodCount(biomeId, period) {
@@ -871,7 +1064,8 @@ function periodCount(biomeId, period) {
     if (!d || !d[biomeId]) continue;
     var b = d[biomeId];
     count += (b.count || 0);
-    if (Array.isArray(b.species)) for (var s2 = 0; s2 < b.species.length; s2++) species.push(b.species[s2]);
+    var spArr = (b.bySubject && typeof b.bySubject === 'object') ? flushSubjectSpecies(b.bySubject) : b.species;
+    if (Array.isArray(spArr)) for (var s2 = 0; s2 < spArr.length; s2++) species.push(spArr[s2]);
   }
   if (hi === today && !grove.daily[today] && biomeId === grove.activeBiome) {
     var t = totalToday();
@@ -884,10 +1078,20 @@ function periodCount(biomeId, period) {
 function viewFor(biomeId, period) {
   var agg = periodCount(biomeId, period);
   var slots = clamp(Math.max(MIN_SLOTS, Math.ceil(agg.count / STAGES_PER_TREE)), MIN_SLOTS, MAX_SLOTS);
-  return { slots: slots, radius: Math.max(ISLAND_R, ISLAND_R * Math.sqrt(slots / MIN_SLOTS)) };
+  var R = islandRadiusForSlots(slots);
+  var rout = Math.max(R * 0.72, MIN_TREE_SPACING * Math.sqrt(slots) / 1.24);
+  var safe = Math.max(0.5, R * 0.70 - SLOT_BASE);   // keep all trees inside the wobbled coastline
+  return { slots: slots, radius: R, rout: Math.min(rout, safe) };
 }
 
 function orbitDistFor(R) { return clamp(R * 1.9, 20, 75); }
+
+/* Island eye-radius grows with tree count (request: expands as trees increase) and
+   is never smaller than what MIN_TREE_SPACING needs so trees stay separable. */
+function islandRadiusForSlots(slots) {
+  var R = Math.max(ISLAND_R, ISLAND_R * Math.sqrt(slots / MIN_SLOTS));
+  return Math.max(R, MIN_TREE_SPACING * Math.sqrt(slots) / (1.24 * 0.72));
+}
 
 function desiredTrees(biomeId) {
   var agg = periodCount(biomeId, viewPeriod);
@@ -979,11 +1183,59 @@ function seedStore() {
     if ((live[s] || 0) > (st[s] || 0)) { st[s] = live[s] || 0; write = true; }
   });
   if (write) {
-    try { var o = JSON.parse(localStorage.getItem(LS_DAILY) || '{}'); o[todayKey()] = st; localStorage.setItem(LS_DAILY, JSON.stringify(o)); } catch (e) {}
+    try {
+      var o = JSON.parse(localStorage.getItem(LS_DAILY) || '{}');
+      o[todayKey()] = st;
+      localStorage.setItem(LS_DAILY, JSON.stringify(o));
+      // Permanent IndexedDB mirror — today's solved counts never deleted.
+      try { if (window._idbMirror) window._idbMirror.set(LS_DAILY, o); } catch (e) {}
+    } catch (e) {}
   }
 }
 
-var lastTotal = -1, lastElo = -1, seenDay = '';
+function restoreFromIDB() {
+  var m = window._idbMirror;
+  if (!m) return Promise.resolve();
+  return Promise.all([m.get(LS_DAILY), m.get(LS_GROVE)]).then(function (res) {
+    try {
+      var idbDaily = res[0], idbGrove = res[1];
+      // 1) Daily per-subject solved counts — merge max per subject/date so the
+      //    grove's historical day counts survive a localStorage wipe.
+      if (idbDaily && typeof idbDaily === 'object') {
+        var ls = {}; try { ls = JSON.parse(localStorage.getItem(LS_DAILY) || '{}'); } catch (e) { ls = {}; }
+        var merged = Object.assign({}, ls);
+        for (var d in idbDaily) {
+          var e = idbDaily[d]; if (!e || typeof e !== 'object') continue;
+          var prev = merged[d] || {};
+          merged[d] = {
+            physics: Math.max(Number(prev.physics) || 0, Number(e.physics) || 0),
+            chemistry: Math.max(Number(prev.chemistry) || 0, Number(e.chemistry) || 0),
+            maths: Math.max(Number(prev.maths) || 0, Number(e.maths) || 0),
+            updatedAt: Math.max(Number(prev.updatedAt) || 0, Number(e.updatedAt) || 0)
+          };
+        }
+        try { localStorage.setItem(LS_DAILY, JSON.stringify(merged)); } catch (e) {}
+      }
+      // 2) Grove state (per-day tree decor). Use the IDB backup only when
+      //    localStorage was cleared, so the live copy always wins otherwise.
+      if (idbGrove && typeof idbGrove === 'object') {
+        var hasLS = false; try { hasLS = !!localStorage.getItem(LS_GROVE); } catch (e) {}
+        if (!hasLS) { grove = idbGrove; saveGrove(); }
+      }
+    } catch (e) {}
+  });
+}
+
+var lastTotal = -1, lastSubj = null, lastElo = -1, seenDay = '';
+function attributeSinceSnapshot() {
+  var cur = visual();
+  if (!lastSubj) { lastSubj = cur; return 0; }
+  var d = { physics: 0, chemistry: 0, maths: 0 }, total = 0;
+  for (var s = 0; s < SUBJECTS.length; s++) { d[SUBJECTS[s]] = Math.max(0, (cur[SUBJECTS[s]] || 0) - (lastSubj[SUBJECTS[s]] || 0)); total += d[SUBJECTS[s]]; }
+  lastSubj = cur;
+  if (total > 0) attributeBySubject(d);
+  return total;
+}
 function checkElo() {
   var e = globalElo();
   if (e === lastElo) return;
@@ -1004,27 +1256,23 @@ function checkElo() {
 function tick(first) {
   if (document.hidden && !first) { return; }
   var day = todayKey();
-  if (day !== seenDay) { seenDay = day; if (lastTotal >= 0) lastTotal = 0; }
+  if (day !== seenDay) { seenDay = day; if (lastTotal >= 0) lastTotal = 0; lastSubj = null; }
   restoreAssert();
   seedStore();
-  var t = totalToday();
+  var v = visual();
+  var t = v.physics + v.chemistry + v.maths;
   if (lastTotal < 0) {
     if (!grove.daily[day]) {
-      if (t > 0) {
-        var d = grove.daily[day] || (grove.daily[day] = {});
-        var b = d[grove.activeBiome] || (d[grove.activeBiome] = { count: 0, species: [] });
-        b.count += t;
-        for (var i = 0; i < t; i++) b.species[i] = grove.activeSpecies;
-        saveGrove();
-      }
+      if (t > 0) { ensureDayBiome(day); attributeBySubject(v); saveGrove(); }
     }
     lastTotal = t;
+    lastSubj = visual();
   } else {
-    var delta = t - lastTotal;
-    if (delta > 0) attributeDelta(delta);
+    attributeSinceSnapshot();
     lastTotal = t;
   }
   checkElo();
+  maybeExpand();
   syncTrees(first);
   updateHUD();
   renderStoreIfOpen();
@@ -1134,23 +1382,31 @@ function setViewPeriod(p) {
   viewPeriod = p;
   syncPeriodUI();
   if (!world || !built) return;
-  var bio = biomeById(world.biomeId);
-  var view = viewFor(bio.id, p);
-  if (view.slots === world.slots.length) {
-    syncTrees(true);
-  } else {
-    var fade = document.getElementById('gi-fade');
-    if (fade) { fade.style.background = '#' + bio.sky.horizon.toString(16).padStart(6, '0'); fade.style.opacity = '1'; }
-    applyEnvironment(bio);
-    buildWorld(bio, view);
-    syncTrees(true);
-    if (fade) setTimeout(function () { fade.style.opacity = '0'; }, 60);
-  }
+  maybeExpand();
   updateTreeStat();
   updateHUD();
   renderStoreIfOpen();
   renderMapIfOpen();
+}
+
+/* Rebuild the island when more trees need more room, so it visibly expands as
+   solves grow — without a full rebuild every frame. */
+function maybeExpand() {
+  if (!world || !built) return false;
+  var bio = biomeById(world.biomeId);
+  var view = viewFor(bio.id, viewPeriod);
+  var needsBuild = view.slots !== world.slots.length || Math.abs(view.radius - world.radius) > 0.01;
+  if (!needsBuild) { syncTrees(false); return false; }
+  var fade = document.getElementById('gi-fade');
+  if (fade) { fade.style.background = '#' + bio.sky.horizon.toString(16).padStart(6, '0'); fade.style.opacity = '1'; }
+  applyEnvironment(bio);
+  buildWorld(bio, view);
+  syncTrees(true);
+  if (fade) setTimeout(function () { fade.style.opacity = '0'; }, 60);
+  updateTreeStat();
+  updateHUD();
   if (fullOrbit) { fullOrbit.dist = orbitDistFor(view.radius); fullOrbit.apply(); }
+  return true;
 }
 
 function openFull() {
@@ -1180,7 +1436,7 @@ function openStore() {
   renderStore();
 }
 function closeStore() { var ov = document.getElementById('gi-store-overlay'); if (ov) ov.classList.remove('open'); }
-function storeSig() { return globalElo() + '|' + grove.activeSpecies + '|' + grove.activeBiome; }
+function storeSig() { return globalElo() + '|' + grove.activeSpecies + '|' + grove.activeBiome + '|' + JSON.stringify(grove.subjectSpecies || {}); }
 var lastStoreSig = '';
 function renderStoreIfOpen() {
   var ov = document.getElementById('gi-store-overlay');
@@ -1192,6 +1448,7 @@ function renderStore() {
   var elo = globalElo();
   var strip = document.getElementById('gi-store-elo');
   if (strip) strip.textContent = '⭐ ' + elo + ' ELO';
+  renderSubjectsTab();
   var biomesTab = document.getElementById('gi-tab-islands');
   var treesTab = document.getElementById('gi-tab-trees');
   if (biomesTab) {
@@ -1231,6 +1488,41 @@ function renderStore() {
         updateHUD();
       });
       treesTab.appendChild(card);
+    });
+  }
+}
+
+/* Which tree each subject plants — the subject → species selector. */
+function renderSubjectsTab() {
+  var tab = document.getElementById('gi-tab-subjects');
+  if (!tab) return;
+  var elo = globalElo();
+  var meta = { physics: { name: 'Physics', icon: '⚛️' }, chemistry: { name: 'Chemistry', icon: '🧪' }, maths: { name: 'Maths', icon: '📐' } };
+  var html = '<div class="gi-subj-head">Which tree each subject plants — solving that subject\u2019s questions grows that tree</div>';
+  for (var s = 0; s < SUBJECTS.length; s++) {
+    var subj = SUBJECTS[s];
+    var cur = subjectSpecies(subj);
+    var opts = '';
+    for (var i = 0; i < SPECIES_DEFS.length; i++) {
+      var sp = SPECIES_DEFS[i];
+      var un = speciesUnlocked(sp.id, elo);
+      opts += '<option value="' + sp.id + '"' + (sp.id === cur ? ' selected' : '') + (un ? '' : ' disabled') + '>' + sp.icon + ' ' + sp.name + (un ? '' : ' 🔒') + '</option>';
+    }
+    html += '<div class="gi-subj-row">' +
+      '<div class="gi-subj-name"><span>' + meta[subj].icon + '</span> ' + meta[subj].name + '</div>' +
+      '<select class="gi-subj-select" data-subj="' + subj + '">' + opts + '</select>' +
+      '</div>';
+  }
+  tab.innerHTML = html;
+  var sels = tab.querySelectorAll('.gi-subj-select');
+  for (var q = 0; q < sels.length; q++) {
+    sels[q].addEventListener('change', function () {
+      var subj = this.getAttribute('data-subj');
+      grove.subjectSpecies = grove.subjectSpecies || {};
+      grove.subjectSpecies[subj] = this.value;
+      saveGrove();
+      renderStore();
+      updateHUD();
     });
   }
 }
@@ -1367,10 +1659,11 @@ function mountCard() {
   try {
     counterObs = new MutationObserver(function () {
       requestAnimationFrame(function () {
+        attributeSinceSnapshot();
         var t = totalToday();
-        if (lastTotal >= 0 && t > lastTotal) attributeDelta(t - lastTotal);
-        lastTotal = t;
-        syncTrees(false);
+        if (lastTotal < 0) lastTotal = t;
+        else if (t > lastTotal) lastTotal = t;
+        maybeExpand();
         updateHUD();
       });
     });
@@ -1423,9 +1716,11 @@ function buildChrome() {
     '<div class="gi-tabs">' +
     '<button class="gi-tab-btn gi-tab-on" data-tab="islands">🏝️ Islands</button>' +
     '<button class="gi-tab-btn" data-tab="trees">🌳 Trees</button>' +
+    '<button class="gi-tab-btn" data-tab="subjects">📐 Subjects</button>' +
     '</div>' +
     '<div class="gi-tab-body" id="gi-tab-islands"></div>' +
     '<div class="gi-tab-body" id="gi-tab-trees" style="display:none"></div>' +
+    '<div class="gi-tab-body" id="gi-tab-subjects" style="display:none"></div>' +
     '</div>' }));
   frag.appendChild(el('div', { id: 'gi-map-overlay', class: 'gi-modal-overlay', html:
     '<div class="gi-modal gi-map-panel">' +
@@ -1458,6 +1753,7 @@ function buildChrome() {
       document.querySelectorAll('.gi-tab-btn').forEach(function (b) { b.classList.toggle('gi-tab-on', b === this); }.bind(this));
       document.getElementById('gi-tab-islands').style.display = t === 'islands' ? '' : 'none';
       document.getElementById('gi-tab-trees').style.display = t === 'trees' ? '' : 'none';
+      document.getElementById('gi-tab-subjects').style.display = t === 'subjects' ? '' : 'none';
     });
   }
   ['gi-store-overlay', 'gi-map-overlay'].forEach(function (id) {
@@ -1500,7 +1796,7 @@ function loop() {
     fullRenderer.render(scene, fullCam);
   } else if (miniRenderer && miniCam && miniVisible) {
     if (motionOK()) miniAz += dt * 0.12;
-    var cd = clamp((world ? world.radius : ISLAND_R) * 1.25, 13.5, 34);
+    var cd = clamp((world ? world.radius : ISLAND_R) * 1.25, 13.5, 60);
     miniCam.position.set(Math.sin(miniAz) * cd, 7.5, Math.cos(miniAz) * cd);
     miniCam.lookAt(0, 2.1, 0);
     miniRenderer.render(scene, miniCam);
@@ -1517,7 +1813,8 @@ function boot() {
   mountCard();
   seenDay = todayKey();
   var firstRun = !localStorage.getItem(LS_GROVE);
-  ensureThree().then(function () {
+  ensureThree().then(async function () {
+    await restoreFromIDB();
     initScene();
     var bio = biomeById(grove.activeBiome);
     applyEnvironment(bio);

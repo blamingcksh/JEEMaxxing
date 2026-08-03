@@ -298,6 +298,12 @@ export const studySecs = { physics: 0, chemistry: 0, maths: 0 };
 export function todayLocalKey(date) {
     return (date || new Date()).toLocaleDateString('en-CA');
 }
+const _SUBJ_KEYS = ['physics', 'chemistry', 'maths'];
+export function normSubjKey(s) {
+    s = String(s || '').toLowerCase().trim();
+    if (s === 'math' || s === 'mathematics') return 'maths';
+    return _SUBJ_KEYS.indexOf(s) >= 0 ? s : 'physics';
+}
 export const monthNamesCal = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
@@ -1398,12 +1404,26 @@ export async function loadStateFromCloud(isBackground = false) {
                 for (let subj in cloudState.chapters) { if (!AppState.chapters[subj]) AppState.chapters[subj] = []; cloudState.chapters[subj].forEach(ch => { if (!AppState.chapters[subj].includes(ch)) AppState.chapters[subj].push(ch); }); }
             }
             if (cloudState.dailyHistory) {
-                let localHistory = []; try { localHistory = await idbGet('jeemax_daily_history') || []; } catch (e) { localHistory = []; }
-                const mergedMap = new Map();
-                localHistory.forEach(entry => mergedMap.set(entry.date, entry.count));
-                cloudState.dailyHistory.forEach(entry => { const existing = mergedMap.get(entry.date); if (existing === undefined || entry.count > existing) mergedMap.set(entry.date, entry.count); });
-                const merged = Array.from(mergedMap.entries()).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)).slice(-15);
-                await idbSet('jeemax_daily_history', merged);
+                let ledger = {}; try { ledger = await getSolvedByDate(); } catch (e) { ledger = {}; }
+                cloudState.dailyHistory.forEach(entry => {
+                    if (!entry || !entry.date) return;
+                    const e = ledger[entry.date] || (ledger[entry.date] = { date: entry.date, physics: 0, chemistry: 0, maths: 0 });
+                    const c = Number(entry.count) || 0;
+                    const curTotal = (Number(e.physics) || 0) + (Number(e.chemistry) || 0) + (Number(e.maths) || 0);
+                    if (entry.physics != null || entry.chemistry != null || entry.maths != null) {
+                        e.physics = Math.max(Number(e.physics) || 0, Number(entry.physics) || 0);
+                        e.chemistry = Math.max(Number(e.chemistry) || 0, Number(entry.chemistry) || 0);
+                        e.maths = Math.max(Number(e.maths) || 0, Number(entry.maths) || 0);
+                    } else if (c > curTotal) {
+                        // Cloud carries only a total; attribute the extra to physics to preserve the figure.
+                        e.physics = (Number(e.physics) || 0) + (c - curTotal);
+                    }
+                    e.count = (Number(e.physics) || 0) + (Number(e.chemistry) || 0) + (Number(e.maths) || 0);
+                    e.date = e.date || entry.date;
+                });
+                try { await idbSet(DAILY_SOLVED_LEDGER, ledger); } catch (e) {}
+                const mergedArr = Object.keys(ledger).map(d => ({ date: d, ...(ledger[d] || {}) })).sort((a, b) => a.date.localeCompare(b.date));
+                try { await idbSet('jeemax_daily_history', mergedArr); } catch (e) {}
             }
             // ══════════════════════════════════════════════════════════════════════
             // ✅ FIX: SAFE ROLLOVER — preserve local progress on date mismatch
@@ -1455,18 +1475,68 @@ export async function loadStateFromCloud(isBackground = false) {
     } catch (e) { console.error("Failed to download state from cloud:", e); } finally { if (!isBackground) hideLoading(); }
 }
 
-// ==================== 15-DAY DAILY HISTORY TRACKER ====================
+// ==================== PERMANENT DAILY HISTORY TRACKER ====================
+// Daily solved counts are stored in IndexedDB and NEVER deleted. Every date a
+// question was solved is reconstructed from the question bank (which itself
+// lives permanently in IndexedDB), merged with today's live counters, and
+// written back. Old days are never shifted out.
+const DAILY_SOLVED_LEDGER = 'jeemax_solved_by_date_v1';
+
+export async function persistSolvedByDate() {
+    // 1) Rebuild every date from the question bank's solve timestamps.
+    const byDate = {};
+    const qb = AppState.questionBank || [];
+    for (const q of qb) {
+        if (!q || q.status !== 'solved') continue;
+        const t = q.lastReviewedAt || q.solvedAt || q.ts || q.date;
+        if (!t) continue;
+        const d = new Date(t).toLocaleDateString('en-CA');
+        if (!byDate[d]) byDate[d] = { physics: 0, chemistry: 0, maths: 0 };
+        byDate[d][normSubjKey(q.subject)]++;
+    }
+    // 2) Always fold today's live counters in (they may not be in the bank yet).
+    const today = todayLocalKey();
+    const todayE = byDate[today] || (byDate[today] = { physics: 0, chemistry: 0, maths: 0 });
+    todayE.physics = Math.max(todayE.physics, solved.physics || 0);
+    todayE.chemistry = Math.max(todayE.chemistry, solved.chemistry || 0);
+    todayE.maths = Math.max(todayE.maths, solved.maths || 0);
+    // 3) Merge into the permanent ledger — max per subject, union of all dates.
+    let ledger = {};
+    try { ledger = (await idbGet(DAILY_SOLVED_LEDGER)) || {}; } catch (e) { ledger = {}; }
+    for (const d in byDate) {
+        const cur = ledger[d];
+        const b = byDate[d];
+        if (cur && typeof cur === 'object') {
+            cur.physics   = Math.max(Number(cur.physics)   || 0, b.physics);
+            cur.chemistry = Math.max(Number(cur.chemistry) || 0, b.chemistry);
+            cur.maths     = Math.max(Number(cur.maths)     || 0, b.maths);
+        } else {
+            ledger[d] = { date: d, physics: b.physics, chemistry: b.chemistry, maths: b.maths };
+        }
+    }
+    for (const d in ledger) {
+        const e = ledger[d];
+        if (e && typeof e === 'object') {
+            e.date = e.date || d;
+            e.count = (Number(e.physics) || 0) + (Number(e.chemistry) || 0) + (Number(e.maths) || 0);
+        }
+    }
+    try { await idbSet(DAILY_SOLVED_LEDGER, ledger); } catch (e) {}
+    return ledger;
+}
+
+export async function getSolvedByDate() {
+    try { return (await idbGet(DAILY_SOLVED_LEDGER)) || {}; } catch (e) { return {}; }
+}
+
 export async function getDailyHistory() {
-    let history = await idbGet('jeemax_daily_history');
-    if (!history) history = [];
-    const todayStr = todayLocalKey();
-    const todayTotal = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
-    const todayEntry = history.find(entry => entry.date === todayStr);
-    if (todayEntry) { todayEntry.count = todayTotal; } else { history.push({ date: todayStr, count: todayTotal }); if (history.length > 15) history.shift(); }
-    await idbSet('jeemax_daily_history', history);
-    // ── Seed the sync daily history cache for Deload Engine's 48h missed-day check ──
-    try { window._dailyHistoryCache = history; } catch (_) {}
-    return history;
+    const ledger = await persistSolvedByDate();
+    const arr = Object.keys(ledger)
+        .map(d => ({ date: d, ...(ledger[d] || {}) }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    try { await idbSet('jeemax_daily_history', arr); } catch (e) {}
+    try { window._dailyHistoryCache = arr; } catch (_) {}
+    return arr;
 }
 
 export async function updateDailyHistory() { await getDailyHistory(); }
