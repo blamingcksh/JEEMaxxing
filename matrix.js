@@ -897,6 +897,15 @@ export function submitPracticeLog() {
     // visible is lost while storage stays capped. ──
     if (q.historyLogs.length > 30) q.historyLogs = q.historyLogs.slice(-30);
 
+    // ── Incremental nav counter: a correct SR commit bumps the CK engine's
+    // "fixed today" ring in O(1) instead of it rescaming every log on the
+    // next 1s tick. No-op if the CK engine isn't present. ──
+    try {
+        if (_drawerState.result === 'correct' && typeof window.__ckBumpTodayFix === 'function') {
+            window.__ckBumpTodayFix(q.subject);
+        }
+    } catch (_) {}
+
     // Update SR state on question
     q.currentInterval = srResult.newInterval;
     q.easeFactor = srResult.newEaseFactor;
