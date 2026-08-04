@@ -230,23 +230,6 @@ export async function idbGetMany(keys) {
     });
 }
 
-/**
- * Write many records in ONE readwrite transaction (single commit). The old
- * per-key await sequence opened a fresh transaction per key on every save —
- * on iPad that serializes ~15 commits per solve / pomodoro tick.
- */
-export async function idbSetMany(entries) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction('storage', 'readwrite');
-        const store = tx.objectStore('storage');
-        for (const [key, value] of entries) store.put({ key, value });
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error || new Error('idbSetMany aborted'));
-    });
-}
-
 export async function idbRemove(key) {
     const db = await openDB();
     return new Promise((resolve, reject) => {

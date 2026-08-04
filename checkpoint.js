@@ -190,7 +190,6 @@ function loadConfig() {
         }).catch(function () { /* IDB down — LS snapshot above suffices */ });
     }).catch(function () { /* IDB down — LS snapshot above suffices */ });
 }
-}
 
 export function getConfig() { return Object.assign({}, cfg); }
 
