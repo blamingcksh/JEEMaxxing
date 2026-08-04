@@ -28,7 +28,7 @@ import {
     registerUiCallbacks, changeCount,
     settleDayCounters,
     recordCloudTombstone,
-    // ── SR due-status helper (used by the cat-banner vulnerability scanner) ──
+    // ── SR due-status helper (used by the CK nav readiness count) ──
     getDueStatus,
     // ── Cognitive MMR band system (pre-ELO schema) ──
     ELO_BANDS,
@@ -565,14 +565,11 @@ export async function switchTab(viewId, element) {
     if (element) element.classList.add('active');
 
     const header = document.getElementById('main-header');
-    const catBanner = document.getElementById('cat-banner');
 
     if (viewId === 'pomodoro' || viewId === 'errors' || viewId === 'practice') {
         header.classList.add('hidden');
-        catBanner.style.display = 'none';
     } else {
         header.classList.remove('hidden');
-        catBanner.style.display = 'flex';
     }
 
     // Flush any pending coalesced save BEFORE re-reading the bank from IDB,
@@ -645,323 +642,16 @@ export async function calibrateMood(mood) {
         `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// ── Cat-Banner Progress View Helper ───────────────────────────────────────
-// Renders the "Daily Targets: X% Complete" (or "All Daily Targets Complete!
-// 🚀") view into #cat-text with the appropriate glow class. Factored out of
-// updateUI() so the telemetry loop can re-render it on the A-tick without
-// recomputing every metric.
-function _renderCatProgressView(overallPct) {
-    const catText = document.getElementById('cat-text');
-    if (!catText) return;
-    if (overallPct >= 100) {
-        catText.textContent = `Absolute termination. Daily targets cleared. Your aura is unmatched today 🌌`;
-        catText.className = "cat-text glow-green";
-    } else {
-        catText.textContent = `Current focus vector: ${overallPct}% cooked. Keep feeding the machine ⚙️`;
-        catText.className = "cat-text glow-orange";
-    }
-}
-
-// ── Cat-Banner Vulnerability Telemetry Scanner ────────────────────────────
-// Scans live application memory state (AppState.questionBank, solved counters,
-// mood calibration) to flag cognitive, output-based, and spaced-repetition
-// vulnerabilities. Returns the highest-priority active vulnerability, or null
-// if none are flagged. Priorities are 1 (highest) through 6 (lowest).
-//
-// This function is self-contained and reads only from already-imported state
-// (AppState, solved, getDueStatus). It does NOT import matrix.js, avoiding
-// any circular module dependency. The CRITICAL_DECAY check delegates directly
-// to the canonical `_getChapterHealth` (Continuous Biological Memory Construct),
-// whose math is mirrored inside renderChapterDecayGrid() in matrix.js so the
-// scanner, the grid, and the Elo engine all evaluate an identical continuous
-// accessibility percentage — no divergence between layers, and no corruption
-// of target locks or storage.
-function _scanCatBannerVulnerabilities() {
-    const vulnerabilities = [];
-
-    // ── PRIORITY 1: STREAK_AT_RISK ────────────────────────────────────────
-    // Triggered if current local time is past 18:00 (6 PM) AND combined daily
-    // solved count across physics+chemistry+maths is exactly 0.
-    {
-        const now = new Date();
-        const totalSolvedToday = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
-        if (now.getHours() >= 18 && totalSolvedToday === 0) {
-            vulnerabilities.push({
-                priority: 1,
-                className: 'glow-red',
-                text: '🚨 STREAK CHURN WARNING: 0 questions touched. Wake up, you are throwing away your daily consistency vector.',
-            });
-        }
-    }
-
-    // ── PRIORITY 2: CRITICAL_DECAY ───────────────────────────────────────
-    // Triggered if any chapter stability health drops below 45%. Health now
-    // uses the Continuous Non-Linear Biological Memory Construct (Bjork's New
-    // Theory of Disuse): a difficulty-weighted harmonic accessibility mean of
-    // per-item exponential Retrieval Strength decay. This delegates to the
-    // canonical `_getChapterHealth` so the scanner and the Elo engine evaluate
-    // identical math (no divergence between the monitoring layer and the
-    // scoring layer). The legacy discrete 15%-per-overdue tax is eliminated.
-    {
-        const allErrors = AppState.questionBank.filter(q =>
-            q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
-        );
-        // Group by (subject, chapter) so each domain resolves its own
-        // continuous accessibility score with the correct subject normalisation.
-        const domainMap = {};
-        allErrors.forEach(q => {
-            const subject = q.subject || '';
-            const chapter = q.chapter || 'Uncategorized';
-            const key = subject + '||' + chapter;
-            if (!domainMap[key]) domainMap[key] = { subject, chapter };
-        });
-        let worstChapter = null;
-        let worstHealth = 100;
-        for (const { subject, chapter } of Object.values(domainMap)) {
-            const health = _getChapterHealth(subject, chapter);
-            if (health < 45 && health < worstHealth) {
-                worstHealth = health;
-                worstChapter = chapter;
-            }
-        }
-        if (worstChapter) {
-            vulnerabilities.push({
-                priority: 2,
-                className: 'glow-red',
-                text: `⚠️ SKILL GAP ACTIVE: ${worstChapter} health is literally decaying. Resolve this right now or it's over.`,
-            });
-        }
-    }
-
-    // ── PRIORITY 3: BOUNTY_LOCK ───────────────────────────────────────────
-    // Triggered if any question in the bank has an active future
-    // bountyLockUntil timestamp OR its criticalDeficit property is true.
-    {
-        const now = Date.now();
-        const hasBountyLock = AppState.questionBank.some(q => {
-            if (q.criticalDeficit === true) return true;
-            if (q.bountyLockUntil) {
-                const lockTime = new Date(q.bountyLockUntil).getTime();
-                if (!isNaN(lockTime) && lockTime > now) return true;
-            }
-            return false;
-        });
-        if (hasBountyLock) {
-            vulnerabilities.push({
-                priority: 3,
-                className: 'glow-orange',
-                text: '⚔️ DEBT LIQUIDATION: Bounty failed. Targets scaled up. Cry about it or double down.',
-            });
-        }
-    }
-
-    // ── PRIORITY 4: SR_OVERFLOW ───────────────────────────────────────────
-    // Triggered if the count of SR items across all subjects with a due status
-    // of 'ready' exceeds 5.
-    {
-        let readyCount = 0;
-        AppState.questionBank.forEach(q => {
-            if (q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')) {
-                if (getDueStatus(q).status === 'ready') readyCount++;
-            }
-        });
-        if (readyCount > 5) {
-            vulnerabilities.push({
-                priority: 4,
-                className: 'glow-orange',
-                text: `⚡ MEMORY ERASURE THREAT: ${readyCount} raw mistakes are actively rot-decaying in your bank. Clear them.`,
-            });
-        }
-    }
-
-    // ── PRIORITY 5: OUTPUT_LAG ────────────────────────────────────────────
-    // Triggered if one subject's daily solved completion rate is under 20%
-    // while another has advanced past 50%.
-    {
-        const subjects = ['physics', 'chemistry', 'maths'];
-        const pcts = subjects.map(sub => {
-            const tgt = AppState.activeTargets[sub];
-            return tgt > 0 ? Math.min(100, (solved[sub] / tgt) * 100) : 0;
-        });
-        const hasLagger = pcts.some(p => p < 20);
-        const hasLeader = pcts.some(p => p > 50);
-        if (hasLagger && hasLeader) {
-            // Find the lagging subject name (first one under 20%)
-            const lagIdx = pcts.findIndex(p => p < 20);
-            const lagSubject = subjects[lagIdx];
-            const displayName = lagSubject.charAt(0).toUpperCase() + lagSubject.slice(1);
-            vulnerabilities.push({
-                priority: 5,
-                className: 'glow-orange',
-                text: `📉 FRAUD ALERT: Your ${displayName} volume is straight lagging. Stop dodging the hard topics.`,
-            });
-        }
-    }
-
-    // ── PRIORITY 6: CNS_FRICTION ──────────────────────────────────────────
-    // Triggered if AppState.moodMultiplier === 0.70 (the 'Fried / 🥱' state).
-    {
-        if (AppState.moodMultiplier === 0.70) {
-            vulnerabilities.push({
-                priority: 6,
-                className: 'glow-orange',
-                text: '🧠 BRAIN-FRIED MODE: CNS capacity low. Focus on raw calculation quality over volume.',
-            });
-        }
-    }
-
-    // ── PRIORITY 7: CNS_LOAD_ALERT ────────────────────────────────────────
-    // Triggered when CNS_LOAD ≥ 0.75 — the student is grinding in the
-    // drought zone where ELO yield is halved or worse.
-    {
-        try {
-            if (typeof CNSLoad !== 'undefined') {
-                const maxCns = CNSLoad.getMaxCnsReading();
-                if (maxCns >= 0.90) {
-                    vulnerabilities.push({
-                        priority: 3,  // high priority — sleep debt is real
-                        className: 'glow-red',
-                        text: `🌑 CNS SHUTDOWN: Brain at ${Math.round(maxCns * 100)}% load. ELO yield ×0.20. Stop grinding — sleep debt is real.`,
-                    });
-                } else if (maxCns >= 0.75) {
-                    vulnerabilities.push({
-                        priority: 5,
-                        className: 'glow-orange',
-                        text: `🥀 CNS DROUGHT: Cognitive load at ${Math.round(maxCns * 100)}%. Yield severely reduced. Consider a 10-min walk.`,
-                    });
-                } else if (maxCns >= 0.55) {
-                    vulnerabilities.push({
-                        priority: 7,
-                        className: 'glow-orange',
-                        text: `🪴 CNS WARNING: ${Math.round(maxCns * 100)}% load. Accuracy slipping. Pace your watering.`,
-                    });
-                }
-            }
-        } catch (_) { /* CNSLoad may not be available yet */ }
-    }
-
-    // ── Deload Engine vulnerabilities ──
-    try {
-      const _deloadStatus = DeloadEngine.getTodayDeloadStatus();
-      if (_deloadStatus && _deloadStatus.active) {
-        vulnerabilities.push({
-          priority: 2,
-          className: 'glow-green',
-          text: `🌿 DELOAD ACTIVE: ${_deloadStatus.label}. Streak preserved. Brain consolidating — like a muscle between sets.`,
-        });
-      }
-    } catch (_) {}
-
-    // ── Flow Lifeline vulnerability ──
-    try {
-      if (typeof Lifeline !== 'undefined') {
-        const _ls = Lifeline.getStatus();
-        if (_ls.active) {
-          vulnerabilities.push({
-            priority: 5,  // informational comfort, not a warning
-            className: 'glow-blue',
-            text: `🌊 LIFELINE ACTIVE: CNS at ${Math.round(_ls.cnsLoad * 100)}%. P_win windows shifted to easier zone. ELO yield ×0.65. Tap practice drawer to dismiss.`,
-          });
-        }
-      }
-    } catch (_) {}
-
-    // ── Post-23:00 Night Guard vulnerability ──
-    try {
-      if (typeof NightGuard !== 'undefined') {
-        const _ng = NightGuard.getStatus();
-        if (_ng.active) {
-          const _multPct = Math.round(_ng.multiplier * 100);
-          if (_ng.tier === 'tier3') {
-            vulnerabilities.push({
-              priority: 2,  // critical — sleep deprivation is actively harmful
-              className: 'glow-red',
-              text: `🛌 SLEEP DEPRIVATION: ${_ng.badge} ELO yield ×${_ng.multiplier}. ${_ng.label}`,
-            });
-          } else if (_ng.tier === 'tier2') {
-            vulnerabilities.push({
-              priority: 3,
-              className: 'glow-orange',
-              text: `🌑 LATE NIGHT (Tier 2): ${_ng.badge} ELO yield ×${_ng.multiplier}. ${_ng.label}`,
-            });
-          } else {
-            vulnerabilities.push({
-              priority: 4,
-              className: 'glow-blue',
-              text: `🌙 LATE NIGHT (Tier 1): ${_ng.badge} ELO yield ×${_ng.multiplier}. ${_ng.label}`,
-            });
-          }
-        }
-        // ── Morning override warning ──
-        const _overrideWarn = NightGuard.getOverrideWarning();
-        if (_overrideWarn) {
-          vulnerabilities.push({
-            priority: 3,
-            className: 'glow-orange',
-            text: _overrideWarn,
-          });
-        }
-        // ── Sleep-debt mood penalty warning ──
-        const _sdConsecutive = NightGuard.getConsecutiveSleepDebtDays();
-        if (_sdConsecutive >= 3) {
-          vulnerabilities.push({
-            priority: 3,
-            className: 'glow-orange',
-            text: `💤 SLEEP DEBT ACTIVE: ${_sdConsecutive} consecutive days flagged. Mood multiplier forced to 0.85. Prioritize recovery.`,
-          });
-        }
-      }
-    } catch (_) {}
-
-    // Sort by priority ascending (1 = highest) and return the top one.
-    if (vulnerabilities.length === 0) return null;
-    vulnerabilities.sort((a, b) => a.priority - b.priority);
-    return vulnerabilities[0];
-}
-
-// ── Cat-Banner Telemetry Rotation Loop ────────────────────────────────────
-// A 10-second ticker that alternates #cat-text between:
-//   • Tick A: Overall Daily Targets Progress % (existing logic)
-//   • Tick B: Highest-priority active vulnerability (evaluated dynamically)
-// If no vulnerabilities are flagged on a B-tick, the A-state progress view
-// is maintained seamlessly. Text changes are wrapped in a CSS fade transition
-// (opacity 0 → update text → opacity 1) to prevent harsh snapping.
-(function _initCatBannerTelemetry() {
-    if (window.__catTelemetryInit) return;
-    window.__catTelemetryInit = true;
-
-    let showVulnerability = false; // alternates each tick
-    let currentFadeTimer = null;
-
-    function _computeOverallPct() {
-        const pcts = ['physics', 'chemistry', 'maths'].map(sub => {
-            const tgt = AppState.activeTargets[sub];
-            return tgt > 0 ? Math.min(100, (solved[sub] / tgt) * 100) : 0;
-        });
-        return Math.floor((pcts[0] + pcts[1] + pcts[2]) / 3);
-    }
-
-    function _renderCatText(text, className) {
-        const catText = document.getElementById('cat-text');
-        if (!catText) return;
-        // Fade out → update text + class → fade back in.
-        catText.classList.add('cat-fading');
-        // Clear any pending fade-in timer from a rapid re-trigger.
-        if (currentFadeTimer) clearTimeout(currentFadeTimer);
-        currentFadeTimer = setTimeout(() => {
-            catText.textContent = text;
-            catText.className = 'cat-text ' + className + ' cat-fading';
-            // Force a reflow so the opacity transition restarts cleanly.
-            void catText.offsetHeight;
-            catText.classList.remove('cat-fading');
-            currentFadeTimer = null;
-        }, 250); // matches the CSS fade-out duration
-    }
+// ── Night-Guard Monitoring Loop ────────────────────────────────────────────
+// The cat-banner telemetry rotation (progress text + vulnerability scanner) was
+// removed — the banner is hidden in the dashboard-clean layout, and the scanner
+// was an O(bank) loop on a 10s timer. The Night Guard hooks it also drove are
+// real features and are preserved here on the same cadence.
+(function _initNightGuardMonitor() {
+    if (window.__ngMonitorInit) return;
+    window.__ngMonitorInit = true;
 
     function _tick() {
-        const catText = document.getElementById('cat-text');
-        if (!catText) return;
-
         // ── Night Guard: Tier 3 modal auto-trigger (03:00+ uninterruptible) ──
         try { if (typeof NightGuard !== 'undefined') NightGuard.checkAndShowTier3Modal(); } catch (_) {}
         // ── Night Guard: Tier 2 auto-dismiss after 5s (spec: "5s auto-dismiss OK") ──
@@ -975,51 +665,14 @@ function _scanCatBannerVulnerabilities() {
                         window.__tier2DismissScheduled = false;
                     }, 5000);
                 }
-                // Clear stale flag if no longer in Tier 2
                 if (!_ngs.active || _ngs.tier !== 'tier2') {
                     window.__tier2DismissScheduled = false;
                 }
             }
         } catch (_) {}
-
-        // ── Cognitive MMR Deficit Lockdown takes absolute priority over the
-        // normal telemetry rotation. While the profile symmetry ratio is
-        // below 0.65, every tick renders the imbalance warning so it
-        // persists instead of being overwritten by the progress view. ──
-        if (window._eloDeficitActive === true) {
-            _renderCatText(
-                '🚨 OVER-SPECIALIZATION DETECTED: You are building a lopsided build. Balance your subject ratings immediately or face total doom.',
-                'glow-red'
-            );
-            showVulnerability = !showVulnerability;
-            return;
-        }
-
-        if (showVulnerability) {
-            // Tick B: evaluate vulnerabilities dynamically on this tick.
-            const vuln = _scanCatBannerVulnerabilities();
-            if (vuln) {
-                _renderCatText(vuln.text, vuln.className);
-            } else {
-                // No active vulnerability — maintain the progress view seamlessly.
-                _renderCatProgressView(_computeOverallPct());
-            }
-        } else {
-            // Tick A: Overall Daily Targets Progress %.
-            _renderCatProgressView(_computeOverallPct());
-        }
-        // Alternate for the next tick.
-        showVulnerability = !showVulnerability;
     }
 
-    // Start the 10-second rotational cycle. The first tick fires immediately
-    // so the banner picks up vulnerabilities on load without a 10s delay.
     function _start() {
-        if (!document.getElementById('cat-text')) {
-            // DOM not ready — retry shortly.
-            setTimeout(_start, 500);
-            return;
-        }
         _tick();
         setInterval(_tick, 10000);
     }
@@ -1029,13 +682,6 @@ function _scanCatBannerVulnerabilities() {
     } else {
         _start();
     }
-
-    // Expose a debug surface.
-    window.__catTelemetry = {
-        scan: _scanCatBannerVulnerabilities,
-        tick: _tick,
-        getShowingVulnerability: () => showVulnerability,
-    };
 })();
 
 export async function updateUI() {
@@ -1061,12 +707,6 @@ export async function updateUI() {
             if (_sdPenalty < 1.0) AppState.moodMultiplier = Math.min(AppState.moodMultiplier, _sdPenalty);
         }
     } catch (_) {}
-
-    let overallPct = Math.floor((pctP + pctC + pctM) / 3);
-    // Render the progress view into #cat-text. This is factored out so the
-    // cat-banner telemetry loop can re-render the progress view on its A-tick
-    // without recomputing every metric in updateUI().
-    _renderCatProgressView(overallPct);
 
     let totalSolved = solved.physics + solved.chemistry + solved.maths;
     let totalTgt = AppState.activeTargets.physics + AppState.activeTargets.chemistry + AppState.activeTargets.maths;
@@ -5773,9 +5413,9 @@ function _renderSubjectEloMonitor(subject, elo) {
 /**
  * Deficit Lockdown Protocol overlay.
  *   if (min(EP,EC,EM) / max(EP,EC,EM) < 0.65) → activate lockdown.
- * Applies a deep crimson background gradient to #view-dashboard, pulses the
- * lowest-performing subject card, and drops a high-priority warning banner
- * into #cat-text. Sets a global flag the cat-banner telemetry loop honours.
+ * Applies a deep crimson background gradient to #view-dashboard and pulses the
+ * lowest-performing subject card. (The old warning banner was removed with the
+ * cat banner.)
  */
 function _applyDeficitLockdown(eP, eC, eM) {
     const minV = Math.min(eP, eC, eM);
@@ -5785,7 +5425,6 @@ function _applyDeficitLockdown(eP, eC, eM) {
     if (!dash) return;
 
     const active = ratio < 0.65;
-    window._eloDeficitActive = active;
 
     if (active) {
         dash.classList.add('deficit-lockdown-active');
@@ -5803,17 +5442,6 @@ function _applyDeficitLockdown(eP, eC, eM) {
             if (subj === lowest) c.classList.add('lowest-subject-pulse');
             else c.classList.remove('lowest-subject-pulse');
         });
-        // Force an immediate telemetry tick so the warning shows instantly
-        // instead of waiting up to 10s for the next rotation.
-        if (window.__catTelemetry && typeof window.__catTelemetry.tick === 'function') {
-            try { window.__catTelemetry.tick(); } catch (_) { /* noop */ }
-        } else {
-            const catText = document.getElementById('cat-text');
-            if (catText) {
-                catText.textContent = '🚨 OVER-SPECIALIZATION DETECTED: You are building a lopsided build. Balance your subject ratings immediately or face total doom.';
-                catText.className = 'cat-text glow-red';
-            }
-        }
     } else {
         dash.classList.remove('deficit-lockdown-active');
         dash.querySelectorAll('.compact-subject-card').forEach(c => c.classList.remove('lowest-subject-pulse'));
