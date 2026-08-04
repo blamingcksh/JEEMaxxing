@@ -874,6 +874,90 @@ export function cleanAndParseJson(rawText) {
     }
 }
 
+// ==================== DETERMINISTIC LATEX REPAIR ====================
+// LLMs are statistically unable to count backslashes, so this is the code-side
+// safety net that runs on EVERY string field at ingestion and on existing rows
+// at load (see _repairQuestionBank). It is idempotent: already-correct input
+// passes through unchanged, so it is safe to run repeatedly.
+//
+// Responsibilities (code eliminates what the prompt can only reduce):
+//   1. Unicode math glyphs → LaTeX commands (LATEX_UNICODE_MAP).
+//   2. Broken matrix/align row breaks — a LONE backslash before a space,
+//      digit, or hyphen ("\ ", "\1", "\-3") which only ever comes from a
+//      collapsed "\\" separator — re-stamped to "\\ ".
+//   3. Literal "\nList"-style string escapes → real newlines.
+// A backslash before a letter (\frac, \times) or a brace is never touched.
+const LATEX_UNICODE_MAP = {
+    '≠': '\\neq',
+    '≢': '\\neq',
+    '≤': '\\le',
+    '≥': '\\ge',
+    '±': '\\pm',
+    '×': '\\times',
+    '∞': '\\infty',
+    '≡': '\\equiv',
+    '→': '\\to',
+    '°': '\\degree',
+    'µ': '\\text{μ}',
+};
+
+export function repairLatex(s) {
+    if (typeof s !== 'string') return s;
+    return s
+        // Unicode first so the backslashes it introduces (\times, \neq) sit
+        // before a LETTER and are never re-doubled by the row-break rule below.
+        .replace(/[≠≢≤≥±×∞≡→°µ]/g, (c) => LATEX_UNICODE_MAP[c] || c)
+        .replace(/(?<!\\)\\(?=[\s\d-])/g, '\\\\')
+        .replace(/\\n(?=[A-Z])/g, '\n');
+}
+
+/**
+ * Belt-and-suspenders math validator. Renders every `$...$` segment through
+ * KaTeX with throwOnError; returns false if ANY segment fails AFTER repair.
+ * Non-blocking by design — callers flag the row instead of aborting ingestion,
+ * because KaTeX is loaded asynchronously by the watchdog and may not be present
+ * at ingest time (guarded here by the window.katex check).
+ */
+export function mathOk(s) {
+    if (typeof s !== 'string' || !s) return true;
+    if (typeof window === 'undefined' || typeof window.katex !== 'object' || !window.katex.renderToString) return true;
+    const render = (body) => {
+        try { window.katex.renderToString(body, { throwOnError: true }); return true; }
+        catch (_) { return false; }
+    };
+    // (1) every delimited segment must render
+    const MATH = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^\$]+)\$|\\\(([\s\S]+?)\\\)/g;
+    let m;
+    while ((m = MATH.exec(s)) !== null) {
+        const body = m[1] || m[2] || m[3] || m[4];
+        if (body !== undefined && body !== '' && !render(body)) return false;
+    }
+    // (2) every BARE \begin{env}...\end{env} (outside any delimiter) must
+    //     render, mirroring the render-time _wrapBareLatex environment wrap.
+    const inMath = new Array(s.length).fill(false);
+    MATH.lastIndex = 0;
+    while ((m = MATH.exec(s)) !== null) { for (let k = m.index; k < m.index + m[0].length; k++) inMath[k] = true; }
+    const openRe = /\\begin\{([^}]*)\}/g;
+    let om;
+    while ((om = openRe.exec(s)) !== null) {
+        if (inMath[om.index]) continue;
+        let depth = 1;
+        const scan = /\\begin\{([^}]*)\}|\\end\{([^}]*)\}/g;
+        scan.lastIndex = om.index + om[0].length;
+        let sm, endIdx = -1;
+        while ((sm = scan.exec(s)) !== null) {
+            if (sm[1] !== undefined) { depth++; }
+            else { depth--; if (depth === 0) { endIdx = sm.index; break; } }
+        }
+        if (endIdx !== -1) {
+            const closeRe = /\\end\{([^}]*)\}/.exec(s.slice(endIdx));
+            const end = endIdx + (closeRe ? closeRe[0].length : 2);
+            if (!render(s.slice(om.index, end))) return false;
+        }
+    }
+    return true;
+}
+
 export async function callGeminiWithFallback(apiKey, prompt, imageBase64Data, mimeType, statusCallback, isJson) {
     let lastError = null;
     for (let model of MODEL_FALLBACK) {
@@ -1122,6 +1206,23 @@ function _repairQuestionBank() {
         if (q.type === 'mcq' && noOptions) q.type = 'text';
         if (Array.isArray(q.correctAnswer) && q.correctAnswer.length > 0 && noOptions) {
             q.correctAnswer = q.correctAnswer.join(', ');
+        }
+        // ── Deterministic LaTeX repair migration ──────────────────────────
+        // Heals old batches (broken matrix row breaks, literal "\nList", and
+        // raw unicode math glyphs) WITHOUT re-stamping. Idempotent — already
+        // correct fields pass through untouched. Persists on the next save.
+        for (const field of ['extractedText', 'correctAnswer', 'solution', 'hint']) {
+            if (typeof q[field] === 'string') q[field] = repairLatex(q[field]);
+        }
+        if (Array.isArray(q.correctAnswer)) {
+            for (let i = 0; i < q.correctAnswer.length; i++) {
+                if (typeof q.correctAnswer[i] === 'string') q.correctAnswer[i] = repairLatex(q.correctAnswer[i]);
+            }
+        }
+        if (Array.isArray(q.options)) {
+            for (let i = 0; i < q.options.length; i++) {
+                if (typeof q.options[i] === 'string') q.options[i] = repairLatex(q.options[i]);
+            }
         }
     }
 }
