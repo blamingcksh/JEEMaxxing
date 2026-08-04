@@ -10,7 +10,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v8';
+const VERSION = 'jeemax-v10';
 const SHELL = [
   './',
   './index.html',
@@ -26,8 +26,6 @@ const SHELL = [
   './dashboard-clean.js',
   './forest-bg.js',
   './grove-islands.js',
-  './forest-island-juice.js',
-  './forest-juice.js',
   './gallery-break.js',
   './candlestick-engine.js',
   './cns-load.js',

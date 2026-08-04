@@ -56,7 +56,8 @@ function mulberry32(seed) {
   };
 }
 function hashStr(s) { var h = 2166136261; s = String(s || ''); for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
-function todayKey() { return new Date().toLocaleDateString('en-CA'); }
+function _giYmd(d) { var n = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (n < 10 ? '0' + n : n) + '-' + (day < 10 ? '0' + day : day); }
+function todayKey() { return _giYmd(new Date()); }
 function motionOK() {
   try {
     return !document.documentElement.classList.contains('fx-effects-off') && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -218,7 +219,7 @@ function globalElo() {
 }
 function biomeUnlocked(id, elo) { return (elo == null ? globalElo() : elo) >= biomeById(id).unlockElo; }
 function speciesUnlocked(id, elo) { return (elo == null ? globalElo() : elo) >= speciesById(id).unlockElo; }
-function dayOffsetKey(n) { var d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); }
+function dayOffsetKey(n) { var d = new Date(); d.setDate(d.getDate() - n); return _giYmd(d); }
 
 var AC = null;
 function audio() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return AC; }

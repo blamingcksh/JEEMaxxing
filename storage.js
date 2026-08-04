@@ -26,6 +26,83 @@ function _ui(fnName, ...args) {
     if (typeof _uiCallbacks[fnName] === 'function') return _uiCallbacks[fnName](...args);
 }
 
+// ── Multi-tab write reconciliation ──────────────────────────────────────────
+// Two tabs each hold their own AppState copy; last-commit-wins used to make
+// one tab's solves silently vanish (audit item [11]). When a save commits we
+// broadcast a lightweight ping on a BroadcastChannel; every OTHER open tab
+// merges the monotonic daily counters upward and pulls in any question ids
+// this tab created (tombstone-aware, mirroring the cloud merge). The tabId
+// stamp filters our own echo (BroadcastChannel also delivers to the poster),
+// so there is no ping-pong and no time-cooldown that could drop a real update.
+const TAB_SYNC_CHANNEL = 'jmax-tab-sync';
+let _tabChannel = null;
+// Per-tab identity stamped on every broadcast so we can drop our own echo
+// (BroadcastChannel delivers to the posting context too) without relying on
+// a time-based cooldown that could also swallow a real update from a sibling.
+const _tabId = (typeof crypto !== 'undefined' && crypto && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID()
+    : 'tab-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+
+function _broadcastTabSaved() {
+    try {
+        if (typeof BroadcastChannel === 'undefined') return;
+        if (!_tabChannel) _tabChannel = new BroadcastChannel(TAB_SYNC_CHANNEL);
+        _tabChannel.postMessage({
+            type: 'jmax-saved',
+            tabId: _tabId,
+            at: Date.now(),
+            solved: { physics: solved.physics, chemistry: solved.chemistry, maths: solved.maths },
+            studySecs: { physics: studySecs.physics, chemistry: studySecs.chemistry, maths: studySecs.maths },
+        });
+    } catch (_) { /* BroadcastChannel unavailable (private mode / old WebKit) — no reconciliation, as before */ }
+}
+
+function _listenTabSync() {
+    try {
+        if (typeof BroadcastChannel === 'undefined') return;
+        const ch = new BroadcastChannel(TAB_SYNC_CHANNEL);
+        ch.onmessage = async (e) => {
+            const msg = e && e.data;
+            if (!msg || msg.type !== 'jmax-saved') return;
+            // Never process our own echo — the data is already in our state.
+            if (msg.tabId === _tabId) return;
+            try {
+                // Daily counters are monotonic within a day — merge upward.
+                let changed = false;
+                for (const k of ['physics', 'chemistry', 'maths']) {
+                    const v = Number(msg.solved && msg.solved[k]) || 0;
+                    if (v > (Number(solved[k]) || 0)) { solved[k] = v; changed = true; }
+                    const s = Number(msg.studySecs && msg.studySecs[k]) || 0;
+                    if (s > (Number(studySecs[k]) || 0)) { studySecs[k] = s; changed = true; }
+                }
+                // Pull in question ids the other tab created (image-less copies,
+                // exactly like the cloud merge; lazy-loaders rehydrate images).
+                const remote = await idbGet('jeemax_question_bank').catch(() => null);
+                if (Array.isArray(remote) && remote.length) {
+                    await _getTombstones();
+                    const localIds = new Set(AppState.questionBank.map(q => String(q.id)));
+                    for (const q of remote) {
+                        if (!q || q.id === undefined || q.id === null) continue;
+                        if (_isTombstoned(q.id)) continue;
+                        if (!localIds.has(String(q.id))) {
+                            AppState.questionBank.push(q);
+                            localIds.add(String(q.id));
+                            changed = true;
+                        }
+                    }
+                }
+                if (changed) {
+                    _ui('updateUI');
+                    _ui('updateStudyTimeHeader');
+                    _ui('renderGraph');
+                    _ui('renderErrorMatrixFromBank');
+                }
+            } catch (_) { /* a bad message must never crash the receiving tab */ }
+        };
+    } catch (_) { /* ignore */ }
+}
+_listenTabSync();
+
 // ==================== INDEXEDDB STORAGE LAYER ====================
 export const DB_NAME = 'jeemaxxing_db';
 export const DB_VERSION = 1;
@@ -35,8 +112,21 @@ export function openDB() {
     if (dbPromise) return dbPromise;
     dbPromise = new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => {
+            dbPromise = null; // a failed open must NOT poison the session
+            reject(request.error);
+        };
+        request.onsuccess = () => {
+            const db = request.result;
+            // Another tab upgrading/deleting the DB: close ours so it can
+            // proceed, and drop the cached handle so the next call re-opens.
+            db.onversionchange = () => {
+                try { db.close(); } catch (_) {}
+                dbPromise = null;
+            };
+            db.onblocked = () => { /* wait out the blocking tab */ };
+            resolve(db);
+        };
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
             if (!db.objectStoreNames.contains('storage')) {
@@ -54,7 +144,58 @@ export async function idbSet(key, value) {
         const store = tx.objectStore('storage');
         store.put({ key, value });
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        tx.onerror = () => {
+            _reportPersistFailure(key, tx.error);
+            reject(tx.error);
+        };
+    });
+}
+
+// ── Persistence-failure surfacing ──
+// Every IDB write failure (quota in Safari private mode, disk full, image
+// vault bloat) used to be swallowed by .catch(console.error) at ~40 call
+// sites — the app kept running with zero persistence and reload lost
+// everything, silently. Now a failed write flags the session and raises a
+// single non-blocking banner (once per session) instead of vanishing.
+let _persistBannerShown = false;
+
+function _reportPersistFailure(key, err) {
+    console.error(`[persist] write failed for "${key}":`, err);
+    try { window.__jmaxPersistFailed = true; } catch (_) {}
+    if (_persistBannerShown) return;
+    _persistBannerShown = true;
+    const show = () => {
+        if (!document.body || document.getElementById('jmax-persist-banner')) return;
+        const banner = document.createElement('div');
+        banner.id = 'jmax-persist-banner';
+        banner.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#7f1d1d;color:#fff;padding:10px 14px;font:14px/1.4 system-ui,sans-serif;text-align:center;box-shadow:0 -2px 12px rgba(0,0,0,.4)';
+        banner.textContent = '⚠ Local storage is failing (private mode / disk full). Your progress cannot be saved on this device.';
+        const close = document.createElement('span');
+        close.textContent = '✕';
+        close.style.cssText = 'position:absolute;right:8px;top:4px;cursor:pointer;padding:4px';
+        close.onclick = () => banner.remove();
+        banner.appendChild(close);
+        document.body.appendChild(banner);
+    };
+    if (typeof document !== 'undefined' && document.body) show();
+    else setTimeout(show, 500);
+}
+
+export async function idbSetMany(entries) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('storage', 'readwrite');
+        const store = tx.objectStore('storage');
+        for (const [key, value] of entries) store.put({ key, value });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => {
+            _reportPersistFailure('idbSetMany', tx.error);
+            reject(tx.error);
+        };
+        tx.onabort = () => {
+            _reportPersistFailure('idbSetMany', tx.error || new Error('idbSetMany aborted'));
+            reject(tx.error || new Error('idbSetMany aborted'));
+        };
     });
 }
 
@@ -108,18 +249,26 @@ export async function idbSetMany(entries) {
 
 export async function idbRemove(key) {
     const db = await openDB();
-    const tx = db.transaction('storage', 'readwrite');
-    const store = tx.objectStore('storage');
-    store.delete(key);
-    await tx.complete;
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('storage', 'readwrite');
+        const store = tx.objectStore('storage');
+        store.delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error || new Error('idbRemove aborted'));
+    });
 }
 
 export async function idbClear() {
     const db = await openDB();
-    const tx = db.transaction('storage', 'readwrite');
-    const store = tx.objectStore('storage');
-    store.clear();
-    await tx.complete;
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('storage', 'readwrite');
+        const store = tx.objectStore('storage');
+        store.clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error || new Error('idbClear aborted'));
+    });
 }
 
 // ==================== IMAGE VAULT (persistent, unbounded) ====================
@@ -285,6 +434,10 @@ export const AppState = {
         maths: 1200,
         global: 1200,
     },
+    // Epoch-ms stamp of the last local Elo write. Drives last-write-wins
+    // cloud merge so a real (downward) rating change propagates instead of
+    // being swallowed by the old high-water-mark Math.max merge.
+    eloUpdatedAt: 0,
 };
 
 
@@ -295,8 +448,24 @@ export const studySecs = { physics: 0, chemistry: 0, maths: 0 };
 // Single source of truth for the "day" boundary: LOCAL calendar date
 // (YYYY-MM-DD). All daily counters, cloud payloads and history keys must use
 // this so counters reset at local midnight, not UTC midnight.
+/**
+ * ICU-safe YYYY-MM-DD local-date key.
+ * toLocaleDateString('en-CA') returns YYYY-MM-DD on standard ICU builds, but
+ * some platform ICU variants (older Android WebView, rare macOS locales) can
+ * emit a different shape — and every consumer (ledger keys, deload windows,
+ * checkpoint dates) compares these strings, so a silent format mismatch would
+ * corrupt day bucketing. Manual formatting is deterministic everywhere.
+ */
+export function formatDateKey(date) {
+    const d = date || new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 export function todayLocalKey(date) {
-    return (date || new Date()).toLocaleDateString('en-CA');
+    return formatDateKey(date || new Date());
 }
 const _SUBJ_KEYS = ['physics', 'chemistry', 'maths'];
 export function normSubjKey(s) {
@@ -498,10 +667,14 @@ export function calculatePerformanceQ(autonomy, timeSpentMins, targetTimeMins) {
  *
  * EF_new = EF_current + (0.1 − (5.0 − q) × (0.08 + (5.0 − q) × 0.02))
  * Floor: max(1.3, EF_new)
+ *
+ * Correct answers (q >= 3.0) must NEVER lower EF — a correct-but-slow review
+ * should not shorten the next interval.
  */
 export function calculateNewEaseFactor(currentEF, performanceQ) {
     const qGap      = 5.0 - performanceQ;
-    const adjustment = 0.1 - qGap * (0.08 + qGap * 0.02);
+    let adjustment  = 0.1 - qGap * (0.08 + qGap * 0.02);
+    if (performanceQ >= 3.0) adjustment = Math.max(0, adjustment);
     const newEF     = currentEF + adjustment;
     return Math.max(1.3, newEF);
 }
@@ -516,14 +689,24 @@ export function calculateNewEaseFactor(currentEF, performanceQ) {
  *
  * Incorrect:
  *   max(1, floor(I_current × Wf))
+ *
+ * Interval growth uses a floor on the friction weight so even APPROACH-heavy
+ * questions (Wf = 0.15) can eventually reach the mastered threshold (30d+);
+ * the incorrect-answer compression path keeps the raw weight.
  */
+const SR_MIN_GROWTH_WEIGHT = 0.35;
+
 export function calculateNextInterval(currentInterval, result, newEaseFactor, frictionWeight) {
+    currentInterval = Number(currentInterval);
+    if (!isFinite(currentInterval) || currentInterval < 0) currentInterval = 0;
     if (result === 'correct') {
         if (currentInterval === 0) return 1;
         if (currentInterval === 1) return 3;
-        return Math.ceil(currentInterval * newEaseFactor * frictionWeight);
+        const growthWf = Math.max(Number(frictionWeight) || 0.6, SR_MIN_GROWTH_WEIGHT);
+        return Math.ceil(currentInterval * newEaseFactor * growthWf);
     } else {
-        return Math.max(1, Math.floor(currentInterval * frictionWeight));
+        const shrinkWf = Number(frictionWeight) || 0.6;
+        return Math.max(1, Math.floor(currentInterval * shrinkWf));
     }
 }
 
@@ -535,19 +718,26 @@ export function calculateNextInterval(currentInterval, result, newEaseFactor, fr
  * @returns {{ newInterval, newEaseFactor, performanceQ, frictionWeight, nextReviewAt, isMastered }}
  */
 export function computeSR(question, attempt) {
-    const currentInterval = question.currentInterval ?? 0;
-    const currentEF       = question.easeFactor ?? 2.5;
-    const targetTime      = question.targetTimeMins ?? 5;
+    // Coerce + guard: corrupt/legacy string or NaN inputs must never produce
+    // an Invalid Date (which would crash submitPracticeLog at toISOString()).
+    let currentInterval = Number(question.currentInterval ?? 0);
+    if (!isFinite(currentInterval) || currentInterval < 0) currentInterval = 0;
+    let currentEF = Number(question.easeFactor ?? 2.5);
+    if (!isFinite(currentEF)) currentEF = 2.5;
+    let targetTime = Number(question.targetTimeMins ?? 5);
+    if (!isFinite(targetTime) || targetTime <= 0) targetTime = 5;
 
     const Wf = calculateFrictionWeight(attempt.frictionTypes);
-    const q  = calculatePerformanceQ(attempt.autonomy, attempt.timeSpentMins, targetTime);
+    let q  = calculatePerformanceQ(attempt.autonomy, attempt.timeSpentMins, targetTime);
+    if (!isFinite(q)) q = 0.5;
     const EF = calculateNewEaseFactor(currentEF, q);
     const In = calculateNextInterval(currentInterval, attempt.result, EF, Wf);
+    const safeIn = isFinite(In) && In >= 0 ? In : 0;
 
     const nextReviewAt = new Date();
-    nextReviewAt.setDate(nextReviewAt.getDate() + In);
+    nextReviewAt.setDate(nextReviewAt.getDate() + safeIn);
 
-    const isMastered = In > 30 && EF > 2.5 && attempt.result === 'correct';
+    const isMastered = safeIn > 30 && EF > 2.5 && attempt.result === 'correct';
 
     return {
         newInterval:     In,
@@ -574,6 +764,10 @@ export function getDueStatus(question) {
     const diffMs = next.getTime() - now.getTime();
     const daysUntil = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
+    if (!isFinite(diffMs)) {
+        // Corrupt/Invalid date — surface as due now rather than "Due in NaNd".
+        return { status: 'ready', label: '🟢 Ready', daysUntil: 0 };
+    }
     if (daysUntil <= 0) {
         return { status: 'ready', label: '🟢 Ready', daysUntil: 0 };
     }
@@ -739,6 +933,10 @@ export async function cropImageFromBBox(originalDataUrl, bbox) {
             ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
             resolve(canvas.toDataURL('image/png'));
         };
+        // A failed decode (oversized/corrupt crop, memory pressure) must
+        // settle the promise — a permanently-pending promise hung the spinner
+        // forever with no recovery path.
+        img.onerror = () => resolve(null);
         img.src = originalDataUrl;
     });
 }
@@ -784,6 +982,7 @@ export function formatTime(sec) {
 }
 
 export function formatStudyDuration(totalSecs) {
+    totalSecs = Math.max(0, totalSecs || 0);
     const h = Math.floor(totalSecs / 3600);
     const m = Math.floor((totalSecs % 3600) / 60);
     if (h > 0) return `${h}h ${m}m`;
@@ -819,6 +1018,7 @@ export async function saveAllAsync() {
         maths:     AppState.elo.maths     ?? 1200,
         global:    AppState.elo.global    ?? 1200,
     }]);
+    entries.push(['jeemax_elo_updated_at', Number(AppState.eloUpdatedAt) || 0]);
     // Practice mode + hardcore daily counter persistence
     entries.push(['jeemax_practice_mode', AppState.practiceFlowMode || 'standard']);
     entries.push(['jeemax_hardcore_daily', {
@@ -850,6 +1050,10 @@ export async function saveAllAsync() {
     if (typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {
         syncStateToCloud();
     }
+
+    // Tell sibling tabs a commit landed so they can merge counters/ids
+    // (multi-tab reconciliation — audit item [11]).
+    _broadcastTabSaved();
 }
 
 /**
@@ -889,14 +1093,23 @@ function _repairQuestionBank() {
 export async function loadDataAsync() {
     // ── Single-transaction cold boot: ~20 sequential IDB reads used to run
     //    one after another; now they resolve in one transaction. ──
-    const g = await idbGetMany([
-        'jeemax_question_bank', 'jeemax_chapters', 'bounty_data',
-        'jeemax_solved', 'jeemax_study_secs', 'jeemax_mood_multiplier',
-        'jeemax_elo', 'jeemax_practice_mode', 'jeemax_hardcore_daily',
-        'jeemax_username', 'jeemax_profile_pic', 'gemini_api_key',
-        'jeeTargetLockDate', 'basePhys', 'baseChem', 'baseMath',
-        'baseErrPhys', 'baseErrChem', 'baseErrMath',
-    ]);
+    let g;
+    try {
+        g = await idbGetMany([
+            'jeemax_question_bank', 'jeemax_chapters', 'bounty_data',
+            'jeemax_solved', 'jeemax_study_secs', 'jeemax_mood_multiplier',
+            'jeemax_elo', 'jeemax_elo_updated_at', 'jeemax_practice_mode', 'jeemax_hardcore_daily',
+            'jeemax_username', 'jeemax_profile_pic', 'gemini_api_key',
+            'jeeTargetLockDate', 'basePhys', 'baseChem', 'baseMath',
+            'baseErrPhys', 'baseErrChem', 'baseErrMath',
+        ]);
+    } catch (e) {
+        // A failed open/read must NOT hang or kill boot (private mode,
+        // eviction). Fall back to a clean slate; the persistence banner
+        // explains that nothing will survive a reload.
+        _reportPersistFailure('loadDataAsync', e);
+        g = {};
+    }
     const bank = g['jeemax_question_bank'];
     const ch = g['jeemax_chapters'];
     const savedBounty = g['bounty_data'];
@@ -904,6 +1117,7 @@ export async function loadDataAsync() {
     const secs = g['jeemax_study_secs'];
     const mood = g['jeemax_mood_multiplier'];
     const savedElo = g['jeemax_elo'];
+    const savedEloUpdatedAt = g['jeemax_elo_updated_at'];
     const savedMode = g['jeemax_practice_mode'];
     const hcDaily = g['jeemax_hardcore_daily'];
     const username = g['jeemax_username'];
@@ -935,18 +1149,23 @@ export async function loadDataAsync() {
     }
 
     if (s) {
-        solved.physics = s.physics || 0;
-        solved.chemistry = s.chemistry || 0;
-        solved.maths = s.maths || 0;
+        // Coerce to numbers — a stored STRING "5" would otherwise concatenate
+        // in changeCount ("5"+1 = "51") and corrupt the daily counters.
+        solved.physics = Number(s.physics) || 0;
+        solved.chemistry = Number(s.chemistry) || 0;
+        solved.maths = Number(s.maths) || 0;
     }
 
     if (secs) {
-        studySecs.physics = secs.physics || 0;
-        studySecs.chemistry = secs.chemistry || 0;
-        studySecs.maths = secs.maths || 0;
+        studySecs.physics = Number(secs.physics) || 0;
+        studySecs.chemistry = Number(secs.chemistry) || 0;
+        studySecs.maths = Number(secs.maths) || 0;
     }
 
-    if (mood !== null) AppState.moodMultiplier = parseFloat(mood);
+    if (mood !== null) {
+        const moodNum = parseFloat(mood);
+        AppState.moodMultiplier = isFinite(moodNum) ? moodNum : 1.0;
+    }
 
     // ── Hydrate Cognitive MMR / Elo Matrix instantly with fallback defaults ──
     // Every axis is guarded so a missing/corrupt profile field can never
@@ -962,6 +1181,7 @@ export async function loadDataAsync() {
         AppState.elo.maths     = 1200;
         AppState.elo.global    = 1200;
     }
+    AppState.eloUpdatedAt = (typeof savedEloUpdatedAt === 'number' && isFinite(savedEloUpdatedAt)) ? savedEloUpdatedAt : 0;
 
     // Hydrate active practice mode + hardcore daily counter (resets daily)
     if (savedMode && PRACTICE_MODES.includes(savedMode)) AppState.practiceFlowMode = savedMode;
@@ -1082,16 +1302,20 @@ export async function cacheAllDriveImages() {
   if (!AppState.driveAccessToken) { alert('Please connect Google Drive first.'); return; }
   showLoading('Caching all Drive images locally…');
   let fixed = 0;
-  for (const q of AppState.questionBank) {
-    if (q.driveImageId && !q.imageDataUrl) {
-      try { q.imageDataUrl = await fetchMediaFromDrive(q.driveImageId, AppState.driveAccessToken); fixed++; } catch (e) {}
+  try {
+    for (const q of AppState.questionBank) {
+      if (q.driveImageId && !q.imageDataUrl) {
+        try { q.imageDataUrl = await fetchMediaFromDrive(q.driveImageId, AppState.driveAccessToken); fixed++; } catch (e) {}
+      }
+      if (q.driveDiagramId && !q.diagramImageUrl) {
+        try { q.diagramImageUrl = await fetchMediaFromDrive(q.driveDiagramId, AppState.driveAccessToken); fixed++; } catch (e) {}
+      }
     }
-    if (q.driveDiagramId && !q.diagramImageUrl) {
-      try { q.diagramImageUrl = await fetchMediaFromDrive(q.driveDiagramId, AppState.driveAccessToken); fixed++; } catch (e) {}
-    }
+    await saveAllAsync();
+  } finally {
+    hideLoading();
   }
-  await saveAllAsync();
-  hideLoading();    if (fixed > 0) { alert(`✅ Cached ${fixed} images locally — they're kept on this device for good.`); }
+  if (fixed > 0) { alert(`✅ Cached ${fixed} images locally — they're kept on this device for good.`); }
   else { alert('All images are already cached locally.'); }
 }
 
@@ -1247,7 +1471,10 @@ export async function executeUnifiedSync() {
                     if (subText) subText.textContent = "Merging runtime variables...";
                     if (cloudState.questionBank) {
                         const localIds = new Set(AppState.questionBank.map(q => q.id));
+                        await _getTombstones();
                         cloudState.questionBank.forEach(cloudQ => {
+                            if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
+                            if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect
                             if (!localIds.has(cloudQ.id)) { AppState.questionBank.push(cloudQ); }
                             else {
                                 let localQ = AppState.questionBank.find(q => q.id === cloudQ.id);
@@ -1274,14 +1501,8 @@ export async function executeUnifiedSync() {
                             studySecs.maths    = Math.max(studySecs.maths,    cloudState.studySecs.maths || 0);
                         }
                     }
-                    // ── Elo Matrix: high-water-mark merge (same as solved/studySecs) ──
-                    if (cloudState.elo && typeof cloudState.elo === 'object') {
-                        const ce = cloudState.elo;
-                        if (typeof ce.physics   === 'number' && isFinite(ce.physics))   AppState.elo.physics   = Math.max(AppState.elo.physics,   ce.physics);
-                        if (typeof ce.chemistry === 'number' && isFinite(ce.chemistry)) AppState.elo.chemistry = Math.max(AppState.elo.chemistry, ce.chemistry);
-                        if (typeof ce.maths     === 'number' && isFinite(ce.maths))     AppState.elo.maths     = Math.max(AppState.elo.maths,     ce.maths);
-                        if (typeof ce.global    === 'number' && isFinite(ce.global))    AppState.elo.global    = Math.max(AppState.elo.global,    ce.global);
-                    }
+                    // ── Elo Matrix: last-write-wins via eloUpdatedAt stamp ──
+                    _mergeEloFromCloud(cloudState.elo, cloudState.eloUpdatedAt);
                 }
             }
         }
@@ -1305,7 +1526,7 @@ export async function executeUnifiedSync() {
         }
         // Strip inline images from the cloud payload (mirrors syncStateToCloud)
         // — driveImageId re-fetches them on demand; keeps Drive JSON lean.
-        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
+        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory() };
         if (!fileId) {
             let createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
                 method: 'POST', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' },
@@ -1329,15 +1550,74 @@ export async function executeUnifiedSync() {
 // per solve on iPad. Throttle to one push per 30s (manual sync bypasses).
 const CLOUD_PUSH_THROTTLE_MS = 30000;
 let _lastCloudPushAt = 0;
+let _cloudSyncInFlight = false;
+let _cloudSyncQueued = false;
+
+// ── Cloud tombstones ──
+// Question ids the user explicitly deleted are recorded here (persisted in
+// IDB) so a later heartbeat/manual merge from a stale cloud snapshot can
+// never resurrect them. Lazy-loaded on first use.
+const CLOUD_TOMBSTONE_KEY = 'jeemax_cloud_tombstones';
+let _tombstones = null;
+
+async function _getTombstones() {
+    if (_tombstones) return _tombstones;
+    let list = [];
+    try { list = (await idbGet(CLOUD_TOMBSTONE_KEY)) || []; } catch (e) { list = []; }
+    _tombstones = new Set(Array.isArray(list) ? list.map(String) : []);
+    return _tombstones;
+}
+
+/** Record a question id the user deleted so cloud merges never revive it. */
+export async function recordCloudTombstone(id) {
+    if (id === undefined || id === null || id === '') return;
+    try {
+        const t = await _getTombstones();
+        t.add(String(id));
+        await idbSet(CLOUD_TOMBSTONE_KEY, [...t]);
+    } catch (e) { /* tombstones are best-effort */ }
+}
+
+function _isTombstoned(id) {
+    return !!_tombstones && _tombstones.has(String(id));
+}
+
+// ── Elo last-write-wins ──
+// Both payloads carry `eloUpdatedAt` (epoch ms, stamped on every local Elo
+// write). The side with the NEWER stamp wins wholesale; if both sides are
+// legacy (stamp 0), fall back to the old high-water-mark merge so no one
+// loses progress during migration.
+function _mergeEloFromCloud(cloudElo, cloudUpdatedAt) {
+    if (!cloudElo || typeof cloudElo !== 'object') return;
+    const cloudAt = Number(cloudUpdatedAt) || 0;
+    const localAt = Number(AppState.eloUpdatedAt) || 0;
+    if (cloudAt > localAt) {
+        AppState.elo.physics   = (typeof cloudElo.physics   === 'number' && isFinite(cloudElo.physics))   ? cloudElo.physics   : AppState.elo.physics;
+        AppState.elo.chemistry = (typeof cloudElo.chemistry === 'number' && isFinite(cloudElo.chemistry)) ? cloudElo.chemistry : AppState.elo.chemistry;
+        AppState.elo.maths     = (typeof cloudElo.maths     === 'number' && isFinite(cloudElo.maths))     ? cloudElo.maths     : AppState.elo.maths;
+        AppState.elo.global    = (typeof cloudElo.global    === 'number' && isFinite(cloudElo.global))    ? cloudElo.global    : AppState.elo.global;
+        AppState.eloUpdatedAt = cloudAt;
+        return;
+    }
+    if (cloudAt === 0 && localAt === 0) {
+        if (typeof cloudElo.physics   === 'number' && isFinite(cloudElo.physics))   AppState.elo.physics   = Math.max(AppState.elo.physics,   cloudElo.physics);
+        if (typeof cloudElo.chemistry === 'number' && isFinite(cloudElo.chemistry)) AppState.elo.chemistry = Math.max(AppState.elo.chemistry, cloudElo.chemistry);
+        if (typeof cloudElo.maths     === 'number' && isFinite(cloudElo.maths))     AppState.elo.maths     = Math.max(AppState.elo.maths,     cloudElo.maths);
+        if (typeof cloudElo.global    === 'number' && isFinite(cloudElo.global))    AppState.elo.global    = Math.max(AppState.elo.global,    cloudElo.global);
+    }
+    // cloudAt < localAt (or equal stamps): local state is newer — keep local.
+}
 
 export async function syncStateToCloud(force = false) {
     if (!AppState.driveAccessToken || !AppState.cloudFolderId) return;
+    if (_cloudSyncInFlight) { _cloudSyncQueued = true; return; } // coalesce overlapping pushes
     if (!force) {
         const now = Date.now();
         if (now - _lastCloudPushAt < CLOUD_PUSH_THROTTLE_MS) return; // coalesced
         if (document.hidden) return;                                  // skip when backgrounded
         _lastCloudPushAt = now;
     }
+    _cloudSyncInFlight = true;
     try {
         const subText = document.getElementById('sync-sub-text');
         if (subText) subText.textContent = "Processing media files...";
@@ -1359,7 +1639,7 @@ export async function syncStateToCloud(force = false) {
             await persistImageCacheIfChanged();
         }
         if (subText) subText.textContent = "Syncing system state...";
-        const payload = { date: todayLocalKey(), questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, dailyHistory: await getDailyHistory() };
+        const payload = { date: todayLocalKey(), questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory() };
         const query = `name='system_state.json' and '${AppState.cloudFolderId}' in parents and trashed=false`;
         let searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, { headers: { Authorization: `Bearer ${AppState.driveAccessToken}` } });
         if (!searchRes.ok) { if (searchRes.status === 404) throw new Error("Target cloud storage folder directory not found."); throw new Error(`Drive connection interface dropped with code: ${searchRes.status}`); }
@@ -1379,6 +1659,16 @@ export async function syncStateToCloud(force = false) {
         console.error("Sync Engine Exception:", e);
         const subText = document.getElementById('sync-sub-text');
         if (subText) { subText.textContent = "Sync Failed ✖"; subText.style.color = "var(--glow-red)"; }
+    } finally {
+        _cloudSyncInFlight = false;
+        if (_cloudSyncQueued) {
+            // A save landed while we were pushing — run once more so the
+            // newest state still reaches the cloud. Bypass the throttle so
+            // the queued push actually executes.
+            _cloudSyncQueued = false;
+            _lastCloudPushAt = 0;
+            syncStateToCloud(true);
+        }
     }
 }
 
@@ -1395,10 +1685,17 @@ export async function loadStateFromCloud(isBackground = false) {
             let cloudState = await fileRes.json();
             if (cloudState.questionBank) {
                 const localIds = new Set(AppState.questionBank.map(q => q.id));
+                await _getTombstones();
                 cloudState.questionBank.forEach(cloudQ => {
+                    if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
+                    if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect
                     if (!localIds.has(cloudQ.id)) { AppState.questionBank.push(cloudQ); }
                     else { const localQ = AppState.questionBank.find(q => q.id === cloudQ.id); if (cloudQ.status === 'solved' && localQ.status !== 'solved') localQ.status = 'solved'; }
                 });
+                // Persist the merged bank so the merge survives a crash before
+                // the next saveAllAsync, and so the heartbeat doesn't re-run
+                // the same merge on every poll.
+                try { await idbSet('jeemax_question_bank', AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null }))); } catch (e) {}
             }
             if (cloudState.chapters) {
                 for (let subj in cloudState.chapters) { if (!AppState.chapters[subj]) AppState.chapters[subj] = []; cloudState.chapters[subj].forEach(ch => { if (!AppState.chapters[subj].includes(ch)) AppState.chapters[subj].push(ch); }); }
@@ -1457,16 +1754,11 @@ export async function loadStateFromCloud(isBackground = false) {
                     studySecs.maths     = Math.max(studySecs.maths,     cloudState.studySecs.maths     || 0);
                 }
             }
-            // ── Elo Matrix: high-water-mark merge. Ratings are cumulative
-            // skill capital — unlike daily counters, they are NOT date-scoped,
-            // so the cloud's higher rating always wins regardless of date. ──
-            if (cloudState.elo && typeof cloudState.elo === 'object') {
-                const ce = cloudState.elo;
-                if (typeof ce.physics   === 'number' && isFinite(ce.physics))   AppState.elo.physics   = Math.max(AppState.elo.physics,   ce.physics);
-                if (typeof ce.chemistry === 'number' && isFinite(ce.chemistry)) AppState.elo.chemistry = Math.max(AppState.elo.chemistry, ce.chemistry);
-                if (typeof ce.maths     === 'number' && isFinite(ce.maths))     AppState.elo.maths     = Math.max(AppState.elo.maths,     ce.maths);
-                if (typeof ce.global    === 'number' && isFinite(ce.global))    AppState.elo.global    = Math.max(AppState.elo.global,    ce.global);
-            }
+            // ── Elo Matrix: last-write-wins via eloUpdatedAt stamp. Ratings
+            // are cumulative skill capital — unlike daily counters, they are
+            // NOT date-scoped. LWW lets real (downward) changes propagate
+            // instead of the old high-water-mark merge. ──
+            _mergeEloFromCloud(cloudState.elo, cloudState.eloUpdatedAt);
             // else: stale cloud date — LOCAL WINS. Intentionally no-op.
             // The daily counters belong to the current local day; a
             // yesterday-cloud snapshot has no authority to zero them out.
@@ -1490,7 +1782,7 @@ export async function persistSolvedByDate() {
         if (!q || q.status !== 'solved') continue;
         const t = q.lastReviewedAt || q.solvedAt || q.ts || q.date;
         if (!t) continue;
-        const d = new Date(t).toLocaleDateString('en-CA');
+        const d = formatDateKey(new Date(t));
         if (!byDate[d]) byDate[d] = { physics: 0, chemistry: 0, maths: 0 };
         byDate[d][normSubjKey(q.subject)]++;
     }
@@ -1527,6 +1819,25 @@ export async function persistSolvedByDate() {
 
 export async function getSolvedByDate() {
     try { return (await idbGet(DAILY_SOLVED_LEDGER)) || {}; } catch (e) { return {}; }
+}
+
+/**
+ * Fold the live daily counters into a SPECIFIC day's ledger entry.
+ * Called by the midnight rollover with YESTERDAY's key BEFORE the live
+ * counters are zeroed — otherwise a solve at 23:59:59 whose save lands
+ * after the reset is credited to neither day (and pollutes the new day).
+ */
+export async function settleDayCounters(dateKey) {
+    if (!dateKey || typeof dateKey !== 'string') return;
+    try {
+        const ledger = (await idbGet(DAILY_SOLVED_LEDGER)) || {};
+        const e = ledger[dateKey] || (ledger[dateKey] = { date: dateKey, physics: 0, chemistry: 0, maths: 0 });
+        e.physics   = Math.max(Number(e.physics)   || 0, Number(solved.physics)   || 0);
+        e.chemistry = Math.max(Number(e.chemistry) || 0, Number(solved.chemistry) || 0);
+        e.maths     = Math.max(Number(e.maths)     || 0, Number(solved.maths)     || 0);
+        e.count     = e.physics + e.chemistry + e.maths;
+        await idbSet(DAILY_SOLVED_LEDGER, ledger);
+    } catch (e) { /* ledger is best-effort; the bank rebuild covers most cases */ }
 }
 
 export async function getDailyHistory() {

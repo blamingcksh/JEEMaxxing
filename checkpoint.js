@@ -116,9 +116,11 @@ async function cpIdbGet(key) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+// ICU-safe local YYYY-MM-DD key — manual formatting so penalty/checkpoint
+// dates and app ledger keys share the identical day bucketing.
 function todayKey(d) {
     d = d || new Date();
-    return d.toLocaleDateString('en-CA');
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
 function parseTime(hhmm) {
@@ -166,27 +168,35 @@ function getPowRemainingSec(now) {
 }
 
 // ── Config persistence (Fix 8: dual-write IDB + LS) ────────────────────────
+// Guard for the async-restore race (audit [55]): the IDB read is slow, and a
+// config the user changes in the first few hundred ms after boot must not be
+// clobbered by the stale snapshot that was already in flight.
+let _configDirtySinceBoot = false;
+
 function loadConfig() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) cfg = Object.assign({}, DEFAULT_CONFIG, JSON.parse(raw));
     } catch (_) { /* ignore */ }
-    // Async restore from IDB (source of truth)
+    // Async restore from IDB (source of truth) — skip if the user already
+    // changed config before the read resolved.
     openIDB().then(function () {
         cpIdbGet(STORAGE_KEY).then(function (c) {
-            if (c) {
+            if (c && !_configDirtySinceBoot) {
                 cfg = Object.assign({}, DEFAULT_CONFIG, c);
                 try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg)); } catch (_) { /* ignore */ }
                 emit();
             }
-        });
-    });
+        }).catch(function () { /* IDB down — LS snapshot above suffices */ });
+    }).catch(function () { /* IDB down — LS snapshot above suffices */ });
+}
 }
 
 export function getConfig() { return Object.assign({}, cfg); }
 
 export function setConfig(partial) {
     cfg = Object.assign({}, cfg, partial);
+    _configDirtySinceBoot = true;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg)); } catch (_) { /* ignore */ }
     cpIdbSet(STORAGE_KEY, cfg);
     persistState();
@@ -216,7 +226,8 @@ function persistState() {
         lastKnownNow: lastKnownNow,
         lastActivityAt: lastActivityAt,
     };
-    try { localStorage.setItem(STATE_KEY, JSON.stringify(ps)); } catch (_) { /* ignore */ }
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(ps)); }
+    catch (e) { console.warn('[checkpoint] localStorage write failed (quota/private mode):', e); }
     cpIdbSet(STATE_KEY, ps);
 }
 
@@ -225,8 +236,8 @@ function restoreState() {
     openIDB().then(function () {
         cpIdbGet(STATE_KEY).then(function (ps) {
             if (ps) restoreStateFromRaw(ps);
-        });
-    });
+        }).catch(function () { /* IDB down — LS snapshot above suffices */ });
+    }).catch(function () { /* IDB down — LS snapshot above suffices */ });
 }
 
 function restoreStateFromRaw(ps) {
@@ -318,17 +329,18 @@ function restorePenalties() {
                 window.dispatchEvent(new CustomEvent('checkpoint:penalty', { detail: { date: dates[dates.length - 1] } }));
                 emit();
             }
-        });
-    });
+        }).catch(function () { /* IDB down — no penalties to restore */ });
+    }).catch(function () { /* IDB down — no penalties to restore */ });
 }
 
 function addPenaltyDate(date) {
     const dates = getPenaltyDates();
     if (!dates.includes(date)) {
         dates.push(date);
-        try { localStorage.setItem(PENALTY_KEY, JSON.stringify(dates)); } catch (_) { /* ignore */ }
+        try { localStorage.setItem(PENALTY_KEY, JSON.stringify(dates)); }
+        catch (e) { console.warn('[checkpoint] localStorage write failed (quota/private mode):', e); }
         cpIdbSet(PENALTY_KEY, dates);
-        idbSet(PENALTY_KEY, dates); // also write to the app's main IDB for belt-and-braces
+        idbSet(PENALTY_KEY, dates).catch(function () { /* main IDB write is belt-and-braces */ }); // also write to the app's main IDB
     }
     // Re-render BOTH graphs: the Error Momentum sparkline + the main predictive graph
     if (typeof renderErrorResolutionDashboard === 'function') renderErrorResolutionDashboard();
@@ -1367,21 +1379,17 @@ function init() {
   // The 1s monitoring tick + its restore/penalty paths are gone. That loop
   // was writing Protocol-Zero hard-zeros into the 15-day Fix Streak and
   // re-arming itself on every reload, so "closing it" never stuck and the
-  // streak stayed scarred. To actually keep the streak we (1) wipe every
-  // stored penalty date so both graphs render whole again, and (2) never
-  // start the interval / never tick / never restore saved grace-penalty
-  // state / never bind the refocus listeners — so nothing can re-scar.
-  try { localStorage.setItem(PENALTY_KEY, '[]'); } catch (_) { /* ignore */ }
-  openIDB().then(function () { cpIdbSet(PENALTY_KEY, []); });
-  try { idbSet(PENALTY_KEY, []); } catch (_) { /* ignore */ }
+  // streak stayed scarred. The loop never starts and no restore/refocus
+  // listeners are bound — nothing can re-scar.
+  // NOTE: stored penalties are KEPT — they are plain history for the graphs
+  // now (never re-armed, never re-written). Do not wipe them on load.
 
   loadConfig();           // harmless config read; does NOT touch penalties
   injectControlCenter();  // panel stays display:none + inert (no loop drives it)
   injectIgniteButton();   // float stays display:none (phase never leaves disarmed)
 
-  // Repaint both graphs NOW so the cleared streak shows without a reload.
+  // Repaint both graphs NOW so any kept penalty scars show without a reload.
   try { if (typeof renderErrorResolutionDashboard === 'function') renderErrorResolutionDashboard(); } catch (_) {}
-  try { window.dispatchEvent(new CustomEvent('checkpoint:penalty', { detail: { date: null } })); } catch (_) {}
 
   window.__checkpoint = {
     getConfig: getConfig,

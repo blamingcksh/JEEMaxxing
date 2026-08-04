@@ -71,18 +71,35 @@ function _load() {
 }
 
 function _save() {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(_state)); } catch (e) {}
+    try { localStorage.setItem(LS_KEY, JSON.stringify(_state)); }
+    catch (e) { console.warn('[deload] localStorage write failed (quota/private mode):', e); }
 }
 
 // ==================== HELPERS ====================
 
+// ICU-safe local YYYY-MM-DD key — manual formatting (toLocaleDateString
+// variants can emit non-ISO shapes, corrupting the cooldown window keys).
 function _todayKey(d) {
-    return (d || new Date()).toLocaleDateString('en-CA'); // YYYY-MM-DD
+    d = d || new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// Calendar-day key N days back — DST-safe (Date.now() - 86400000 can land on
+// the SAME day during spring-forward and skip a genuinely missed day).
+function _daysBackKey(daysBack) {
+    const d = new Date();
+    d.setDate(d.getDate() - daysBack);
+    return _todayKey(d);
 }
 
 function _daysBetween(a, b) {
     const da = new Date(a + 'T12:00:00');
     const db = new Date(b + 'T12:00:00');
+    if (isNaN(da.getTime()) || isNaN(db.getTime())) {
+        // Corrupt stored date — fail CLOSED (block scheduling) rather than
+        // producing NaN, which previously bypassed the cooldown entirely.
+        return DELOAD_COOLDOWN_DAYS;
+    }
     return Math.round((db - da) / 86400000);
 }
 
@@ -93,7 +110,29 @@ function _isDeloadDate(dateStr) {
     return manual || forced;
 }
 
+// Read the streak from the ledger history directly instead of the #top-streak
+// DOM element, which can be stale ("0 Days (start something)") before the
+// async history load resolves.
 function _getStreakDays() {
+    try {
+        const fn = window._deloadDailyHistoryFn;
+        if (fn) {
+            const history = fn();
+            if (Array.isArray(history) && history.length > 0) {
+                const active = new Set(
+                    history.filter(h => h && h.count > 0 && h.date).map(h => h.date)
+                );
+                let streak = 0;
+                const check = new Date();
+                if (!active.has(_todayKey(check))) check.setDate(check.getDate() - 1);
+                while (active.has(_todayKey(check))) {
+                    streak++;
+                    check.setDate(check.getDate() - 1);
+                }
+                return streak;
+            }
+        }
+    } catch (e) { /* fall through to DOM read */ }
     try {
         const el = document.getElementById('top-streak');
         if (!el) return 0;
@@ -141,8 +180,8 @@ export function canScheduleManualDeload() {
     // day. Checks both yesterday AND two days ago (the "48h" window).
     // On fresh installs with empty history, skip the check — the user
     // hasn't had a chance to miss a day yet. ──
-    const yesterday = _todayKey(new Date(Date.now() - 86400000));
-    const twoDaysAgo = _todayKey(new Date(Date.now() - 2 * 86400000));
+    const yesterday = _daysBackKey(1);
+    const twoDaysAgo = _daysBackKey(2);
     try {
         const history = window._deloadDailyHistoryFn ? window._deloadDailyHistoryFn() : null;
         if (history && history.length > 0) {
@@ -178,7 +217,7 @@ export function scheduleManualDeload() {
     // Circuit breaker tracking
     _state.circuitBreaker.manualCountWindow.push({ date: today });
     // Prune old entries
-    const cutoff = _todayKey(new Date(Date.now() - CIRCUIT_BREAKER_WINDOW * 86400000));
+    const cutoff = _daysBackKey(CIRCUIT_BREAKER_WINDOW);
     _state.circuitBreaker.manualCountWindow = _state.circuitBreaker.manualCountWindow
         .filter(d => d.date >= cutoff);
 

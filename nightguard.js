@@ -62,9 +62,6 @@ const TIERS = [
     },
 ];
 
-/** How many late overrides trigger the morning warning */
-const OVERRIDE_WARNING_THRESHOLD = 1;
-
 /** Sleep-debt threshold: gap between session-end and next-session-start < 6h */
 const SLEEP_DEBT_GAP_HOURS = 6;
 
@@ -131,15 +128,18 @@ function _load() {
 function _save() {
     try {
         // Don't persist transient fields
-        const { _monotonicBaseline, _lastSeenNow, _cachedTier, _cachedTierTs, ...persistable } = _state;
+        const { _monotonicBaseline, _lastSeenNow, _lastSeenPerf, _cachedTier, _cachedTierTs, _cachedTierHour, ...persistable } = _state;
         localStorage.setItem(LS_KEY, JSON.stringify(persistable));
     } catch (e) {}
 }
 
 // ==================== HELPERS ====================
 
+// ICU-safe local YYYY-MM-DD key — manual formatting so every consumer
+// (sleep-debt ledger, deload windows) shares the identical day bucketing.
 function _todayKey(d) {
-    return (d || new Date()).toLocaleDateString('en-CA'); // YYYY-MM-DD
+    d = d || new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
 /** Check if a local hour falls within a tier range that may wrap midnight */
@@ -181,12 +181,25 @@ export function checkClockCheat() {
     }
 
     // ── Check 1b: Date.now() jumping suspiciously forward ──
-    // If > 6 hours elapsed since last check AND it's nighttime
-    // (23:00–08:00), the clock was likely set forward to escape the guard.
+    // A >6h wall-clock gap while the local hour is nighttime. The gap alone
+    // is NOT evidence — a normal overnight sleep (study until 23:30, resume
+    // at 07:00) produces the identical signature. Corroborate with monotonic
+    // time: if the device actually ran for ~the wall gap (performance.now()
+    // keeps advancing across suspend/sleep on modern platforms), it was
+    // sleep → NOT a cheat. Only an awake clock change shows a large wall gap
+    // with a small perf gap.
     const realElapsed = now - _state._lastSeenNow;
     const hour = _localHour();
+    let deviceSlept = true; // fail-safe: no evidence → treat as sleep
+    try {
+        if (typeof _state._lastSeenPerf === 'number' && isFinite(_state._lastSeenPerf)) {
+            const perfElapsed = performance.now() - _state._lastSeenPerf;
+            deviceSlept = perfElapsed >= realElapsed * 0.9;
+        }
+    } catch (_) { /* keep fail-safe sleep */ }
     if (realElapsed > 6 * 60 * 60 * 1000 &&
-        (hour >= 23 || hour < 8)) {
+        (hour >= 23 || hour < 8) &&
+        !deviceSlept) {
         _state.clockCheatDetected = true;
         _state.clockCheatDetectedAt = now;
         _save();
@@ -209,6 +222,7 @@ export function checkClockCheat() {
 
     // ── Update monotonic tracker ──
     _state._lastSeenNow = Math.max(_state._lastSeenNow, now);
+    try { _state._lastSeenPerf = performance.now(); } catch (_) {}
     // Refresh monotonic baseline periodically so forward-jump ratio stays accurate
     if (now - _state._monotonicBaseline > 60 * 60 * 1000) {
         _state._monotonicBaseline = now;
@@ -276,27 +290,6 @@ export function resolveTier() {
     }
 
     const hour = _localHour();
-
-    // ── Before 23:00 and after 03:00, no guard (unless Tier 3 catch-all) ──
-    // Tier 3 has lo=3, hi=24 — this means 03:00–24:00 is the catch-all
-    // But we only want Tier 3 for 03:00 onwards... actually 03:00-23:00 is
-    // also "late night" since it's past 3am. The spec says 03:00+.
-    // Let me reconsider: 03:00-23:00 the next day IS the next day's daytime.
-    // The spec says "03:00+" meaning from 03:00 until whenever they stop.
-    // But we don't want to penalize daytime studying. The tier should only
-    // fire between 03:00 and, say, 06:00 (or until the next midnight reset).
-    // Actually, the spec says "03:00+" without an upper bound. If someone
-    // studies at 10:00 AM after being up all night, the 03:00+ tier would
-    // still fire. But that seems wrong.
-    //
-    // The practical approach: Tier 3 fires from 03:00 to 06:00 (dawn).
-    // After 06:00, it's "morning" and the guard deactivates.
-    // BUT the spec says "03:00+" explicitly. Let me keep it as 03:00-24:00
-    // but with an upper bound of 06:00 to avoid penalizing normal daytime.
-    // Actually, looking at the tier definitions again:
-    // Tier 3 has lo=3, hi=24, meaning 03:00 until midnight.
-    // We only want this for 03:00-06:00 realistically.
-    // Let me use 03:00-06:00 as Tier 3 active range.
 
     // Check each tier
     for (const tier of TIERS) {

@@ -12,7 +12,8 @@ function realTOD(){var d=new Date();return ((d.getHours()+d.getMinutes()/60)/24)
 function normSub(s){s=(s||'').toString().toLowerCase().trim();return (s==='math'||s==='mathematics')?'maths':s;}
 function motionOK(){try{return !document.documentElement.classList.contains('fx-effects-off')&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);}catch(e){return true;}}
 function easeOutBack(x){var c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2);}
-function todayKey(){return new Date().toLocaleDateString('en-CA');}
+function _fiYmd(d){var n=d.getMonth()+1,day=d.getDate();return d.getFullYear()+'-'+(n<10?'0'+n:n)+'-'+(day<10?'0'+day:day);}
+function todayKey(){return _fiYmd(new Date());}
 /* growth readers (brain lives in app.js → window.__forestGrowth) */
 function _FG(){return window.__forestGrowth||null;}
 function _diffOf(q){var fg=_FG();if(q&&q.difficulty!=null)return q.difficulty;if(fg)return fg.difficulty(q&&q.qElo,q&&q.subject);return 0.5;}
@@ -68,6 +69,7 @@ var iMeshes={},iState={physics:[],chemistry:[],maths:[],oak:[]};
 var plantedBySubj={physics:0,chemistry:0,maths:0};
 var card,host,cvs,countEl,emptyEl;
 var iBuilt=false,iBuilding=false,iVisible=false;
+var iFailedAt=0;      // last failed build timestamp — gates 30s retry cooldown
 var iRaf=null,iLast=0,iLastT=0,iEl=0,iOrbit=0,iLastTOD=0;
 var dummy=null,counterObs=null;
 var TOD=[{t:0,top:0x0a0e1c,bot:0x141a2a,sun:0x3a4a6a,sunI:0.15,hemi:0x2a3040},{t:22,top:0x2a3a5e,bot:0xe8956a,sun:0xffb27a,sunI:0.70,hemi:0x5a5a6a},{t:50,top:0x4a7ec0,bot:0xc4dcec,sun:0xfff2e0,sunI:1.15,hemi:0x8aa0b8},{t:78,top:0x3a2a52,bot:0xe07a44,sun:0xff8a4a,sunI:0.75,hemi:0x6a5060},{t:100,top:0x0a0e1c,bot:0x141a2a,sun:0x3a4a6a,sunI:0.15,hemi:0x2a3040}];
@@ -102,7 +104,16 @@ function buildIsland(){
   window.__forestIslandAPI.initialSync=true;syncToLive();window.__forestIslandAPI.initialSync=false;
 }
 function preExpandForCount(n){preExpand(n);}
-function ensureIslandBuilt(){if(iBuilt||iBuilding)return;iBuilding=true;loadThree().then(function(m){THREE=m;try{iBuilt=true;buildIsland();if(iVisible)startILoop();}catch(e){iBuilt=false;toast('Daily island failed: '+(e&&e.message||e));restoreMomentum();}iBuilding=false;}).catch(function(){toast('Could not load 3D for the daily island.');restoreMomentum();iBuilding=false;});}
+function remountHost(){
+  if(!card||!card.parentNode){return false;}
+  host=el('div',{id:'forest-island-host',html:'<div class="fi-canvas-wrap"><canvas id="forest-island-canvas"></canvas><div class="fi-empty" id="fi-empty">No trees yet — solve a question to grow one 🌳</div></div>'});
+  card.appendChild(host);card.classList.add('island-active');
+  cvs=document.getElementById('forest-island-canvas');countEl=null;emptyEl=document.getElementById('fi-empty');
+  if(!cvs){try{if(host&&host.parentNode)host.parentNode.removeChild(host);}catch(_){}host=null;return false;}
+  cvs.title='Click to open full Growth Island';cvs.setAttribute('tabindex','0');cvs.setAttribute('role','button');cvs.setAttribute('aria-label','Open full Growth Island');
+  return true;
+}
+function ensureIslandBuilt(){if(iBuilt||iBuilding)return;if(Date.now()-(iFailedAt||0)<30000)return;if(!cvs||!cvs.isConnected){if(!remountHost()){iFailedAt=Date.now();return;}}iBuilding=true;loadThree().then(function(m){THREE=m;try{if(!cvs||!cvs.isConnected)throw new Error('host canvas detached');iBuilt=true;buildIsland();iFailedAt=0;if(iVisible)startILoop();}catch(e){iBuilt=false;iFailedAt=Date.now();toast('Daily island failed: '+(e&&e.message||e));restoreMomentum();}iBuilding=false;}).catch(function(){iFailedAt=Date.now();toast('Could not load 3D for the daily island.');restoreMomentum();iBuilding=false;});}
 function writeIsland(k,s,g){if(!iMeshes[k])return;var sc=Math.max(0.0001,s.baseScale*g);dummy.position.set(s.x,s.y-0.05,s.z);dummy.rotation.set(s.leanX,s.rot,s.leanZ);dummy.scale.set(s.sxz*sc,s.sy*sc,s.sxz*sc);dummy.updateMatrix();iMeshes[k].setMatrixAt(s.iid,dummy.matrix);}
 function addIsland(q,instant){
   if(!iBuilt)return;
@@ -119,7 +130,8 @@ function addIsland(q,instant){
 }
 function iTotal(){return plantedBySubj.physics+plantedBySubj.chemistry+plantedBySubj.maths;}
 function setCount(n){if(emptyEl)emptyEl.style.display=n>0?'none':'flex';}
-function todayBySubject(){var tk=todayKey(),out={physics:[],chemistry:[],maths:[]};var qb=(window.AppState&&window.AppState.questionBank)||window.questionBank||[];for(var i=0;i<qb.length;i++){var q=qb[i];if(!q||q.status!=='solved')continue;if(!q.lastReviewedAt||q.lastReviewedAt.slice(0,10)!==tk)continue;var s=normSub(q.subject);if(out[s])out[s].push(q);}return out;}
+var _todayCache=null,_todayAt=0,_todayDirty=-1;
+function todayBySubject(){var dirty=(typeof window.__jmaxDataDirty==='number')?window.__jmaxDataDirty:-1;var now=Date.now();if(_todayCache&&now-_todayAt<30000&&dirty===_todayDirty)return _todayCache;var tk=todayKey(),out={physics:[],chemistry:[],maths:[]};var qb=(window.AppState&&window.AppState.questionBank)||window.questionBank||[];for(var i=0;i<qb.length;i++){var q=qb[i];if(!q||q.status!=='solved')continue;var t=q.lastReviewedAt;if(!t)continue;var ds;if(typeof t==='number'){try{ds=_fiYmd(new Date(t));}catch(_){continue;}}else{ds=String(t).slice(0,10);}if(ds!==tk)continue;var s=normSub(q.subject);if(out[s])out[s].push(q);}_todayCache=out;_todayAt=now;_todayDirty=dirty;return out;}
 function syncToLive(){if(!iBuilt)return;var live=readVisual(),today=todayBySubject();var totalWant=(live.physics||0)+(live.chemistry||0)+(live.maths||0);while(iBuilt&&landCapacity()<totalWant&&LAND_R<MAX_LAND_R)expandIsland();['physics','chemistry','maths'].forEach(function(subj){var want=live[subj]||0,have=plantedBySubj[subj];while(have<want){var q=(today[subj]&&today[subj][have])||{subject:subj,qElo:1200};addIsland(q,false);have++;plantedBySubj[subj]=have;}if(have>want){var drop=have-want;for(var dd=0;dd<drop;dd++)iState[subj].pop();plantedBySubj[subj]=want;if(iMeshes[subj]){iMeshes[subj].count=iState[subj].length;iMeshes[subj].instanceMatrix.needsUpdate=true;}}});setCount(iTotal());}
 function iframe(t){
   if(!iBuilt||!iVisible||document.hidden){iRaf=null;return;}
@@ -148,7 +160,7 @@ function mount(){
   cvs=document.getElementById('forest-island-canvas');countEl=null;emptyEl=document.getElementById('fi-empty');
   if(cvs){cvs.title='Click to open full Growth Island';cvs.setAttribute('tabindex','0');cvs.setAttribute('role','button');cvs.setAttribute('aria-label','Open full Growth Island');cvs.addEventListener('click',function(e){e.stopPropagation();openBestFullScreen();});cvs.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openBestFullScreen();}});}
   try{new ResizeObserver(function(){sizeCanvas();}).observe(cvs);}catch(e){}
-  try{new IntersectionObserver(function(es){iVisible=es[0].isIntersecting&&!!document.getElementById('view-dashboard').classList.contains('active');if(iVisible&&iBuilt)startILoop();}).observe(cvs);}catch(e){}
+  try{new IntersectionObserver(function(es){var dash=document.getElementById('view-dashboard');iVisible=es[0].isIntersecting&&!!(dash&&dash.classList.contains('active'));if(iVisible&&iBuilt)startILoop();}).observe(cvs);}catch(e){}
   document.addEventListener('visibilitychange',function(){if(!document.hidden&&iVisible&&iBuilt)startILoop();});
   var lastLive=readLive(),manualTick=0,userTouched=false;
   document.addEventListener('pointerdown',function(e){try{if(e.target&&e.target.closest&&e.target.closest('.counter-btn')){manualTick=Date.now();userTouched=true;}}catch(_){}},true);

@@ -150,7 +150,8 @@ const TUNING = {
 let _overlay = null, _canvas = null, _ctx = null, _quoteBox = null;
 let _maskCanvas = null, _maskCtx = null;   // offscreen alpha mask
 let _active = false, _finishing = false, _reversing = false;
-let _target = 0;          // timer-driven progress 0..1
+let _gen = 0;           // session token — invalidates stale async work after abort/rebuild
+let _target = 0;        // timer-driven progress 0..1
 let _display = 0;         // eased, what's actually painted
 let _raf = null;
 let _art = null;          // ImageBitmap | HTMLImageElement | canvas (fallback)
@@ -167,6 +168,7 @@ let _sheen = 0;           // wet-print luminosity — 1 while spreading, settles
 let _rays = [];           // god-ray descriptors
 let _bokeh = [];          // full-reveal bloom particles
 let _bloomFired = false;  // bokeh burst fires once per break
+let _showQuoteGen = -1;   // session token arming the quote ritual
 let _glowSprite = null;   // cached soft radial light sprite (per art tint)
 let _glowSpriteKey = null;
 
@@ -176,6 +178,8 @@ let _glowSpriteKey = null;
 
 function begin() {
   if (_active) abort(true);   // stale overlay from a weird path — hard reset
+  _gen++;                     // invalidate any in-flight art load from an older session
+  const myGen = _gen;
   _active = true;
   _finishing = false;
   _reversing = false;
@@ -193,9 +197,11 @@ function begin() {
   _buildDom();
   _painting = _pickPainting();
   _loadArt(_painting).then(img => {
+    if (myGen !== _gen) return;   // aborted/rebuilt meanwhile — drop the stale art
     _art = img;
     _computeArtTint();
   }).catch(() => {
+    if (myGen !== _gen) return;
     _art = _proceduralArt();
     _computeArtTint();
   });
@@ -222,9 +228,11 @@ function finish(onContinue) {
 function abort(immediate = false) {
   if (!_active) return;
   _active = false;
+  _gen++;                       // invalidate stale async work (art loads, quote timers)
   _finishing = false;
   _stopCrackle();
   if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
+  window.removeEventListener('resize', _resize);   // fix listener leak per begin()
   const el = _overlay;
   _overlay = null; _canvas = null; _ctx = null; _quoteBox = null;
   _maskCanvas = null; _maskCtx = null; _art = null;
@@ -232,7 +240,12 @@ function abort(immediate = false) {
   if (immediate) { el.remove(); return; }
   el.style.transition = `opacity ${TUNING.abortFadeMs}ms ease`;
   el.style.opacity = '0';
-  setTimeout(() => el.remove(), TUNING.abortFadeMs + 60);
+  // Guard: if a new begin() already mounted a fresh overlay, this stale node
+  // must not be left behind — check it's still the one being faded.
+  const myGen = _gen;
+  setTimeout(() => {
+    if (document.body && document.body.contains(el)) el.remove();
+  }, TUNING.abortFadeMs + 60);
 }
 
 function isActive() { return _active; }
@@ -316,6 +329,9 @@ function _computeArtTint() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function _buildDom() {
+  // Never allow two overlays to coexist: a stale node from an aborted fade
+  // (410ms window) or a weird double-begin must be torn down synchronously.
+  document.querySelectorAll('#gallery-break-overlay').forEach(o => o.remove());
   _overlay = document.createElement('div');
   _overlay.id = 'gallery-break-overlay';
   _overlay.innerHTML = `
@@ -394,6 +410,7 @@ function _frame(now) {
 
   // Fully revealed after finish() → quote ritual
   if (_finishing && !_reversing && _display >= 0.995 && !_quoteBox.classList.contains('gb-show')) {
+    _showQuoteGen = _gen; // only the session that armed the quote may show it
     setTimeout(_showQuote, TUNING.quoteDelayMs);
     _quoteBox.classList.add('gb-show'); // guard flag; visual class below
   }
@@ -804,7 +821,7 @@ function _easeInOutSine(t) { return -(Math.cos(Math.PI * t) - 1) / 2; }
 // ═══════════════════════════════════════════════════════════════════════════
 
 function _showQuote() {
-  if (!_active || !_quoteBox) return;
+  if (!_active || !_quoteBox || _gen !== _showQuoteGen) return;
   _overlay.style.pointerEvents = 'auto';
   _quoteBox.querySelector('#gb-plaque').textContent =
     `${_painting.title} · ${_painting.artist}, ${_painting.year}`;
