@@ -21,6 +21,7 @@ import {
     SR_FRICTION_LABELS,
     SR_FRICTION_WEIGHTS,
     formatSRDate,
+    recordCloudTombstone,
 } from './storage.js';
 
 // ---------------------------------------------------------------------------
@@ -81,16 +82,22 @@ export function openErrorMatrix(subject, element) {
     }
 
     document.querySelectorAll('.subject-folder').forEach(f => f.classList.remove('active'));
+    // Callers pass the clicked element explicitly (onclick="…(…, this)");
+    // never fall back to the legacy window.event global (strict-mode crash).
     if (element) {
         element.classList.add('active');
-    } else if (event && event.currentTarget) {
-        event.currentTarget.classList.add('active');
     }
     AppState.currentErrorSubject = subject.toLowerCase();
     document.getElementById('error-matrix-title').textContent =
         `${subject.charAt(0).toUpperCase() + subject.slice(1)} Matrix`;
     renderErrorMatrixFromBank();
     filterErrors();
+}
+
+// Normalize subject keys: mixed-case / whitespace variants must match the
+// lowercased keys used everywhere else ("Physics" vs "physics").
+function _normSubj(s) {
+    return (s || '').toString().trim().toLowerCase();
 }
 
 // ── Staggered macrotask chain ──────────────────────────────────────────────
@@ -229,7 +236,7 @@ export function openPracticeDrawer(qId) {
                     <div class="sr-drawer-sub">${_esc(q.subject || '')}${dueInfo.label ? ' · ' + _esc(dueInfo.label) : ''}</div>
                 </div>
                 <div class="sr-drawer-header-actions">
-                    <div class="streak-visualizer" id="streak-visualizer"><canvas id="streak-canvas" width="16" height="16"></canvas></div>
+                    <div class="streak-visualizer" id="sr-streak-visualizer"><canvas id="sr-streak-canvas" width="16" height="16"></canvas></div>
                     <div id="sr-elo-header-slot" class="elo-header-slot"></div>
                     ${hasImage ? `<button class="sr-hide-img-btn" id="sr-hide-img-btn" type="button" onclick="srToggleImage()">👁 Hide Image</button>` : ''}
                     <button class="sr-drawer-close" onclick="closePracticeDrawer()" aria-label="Close practice drawer">✕</button>
@@ -330,12 +337,27 @@ function _hasLoadedAnswer(q) {
     return String(q.correctAnswer).trim().length > 0;
 }
 
+// Validate image sources before injecting into HTML: only app-generated
+// data:image, https, or blob: URLs are allowed — anything else (crafted
+// `" onerror=…` payloads) is dropped.
+function _safeImgSrc(url) {
+    if (typeof url !== 'string' || !url) return '';
+    if (/^(data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,|https:\/\/|blob:)/i.test(url)) {
+        return url.replace(/"/g, '&quot;');
+    }
+    return '';
+}
+
 function _renderQuestionMedia(q) {
+    // Encoded SVG placeholder — must be URI-encoded: raw `<`, `>`, `#` in a
+    // src attribute is fragile (browser re-parse differences) and a broken
+    // placeholder leaves a permanent broken-image icon.
+    const placeholderSrc = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='300' height='180'><rect width='100%' height='100%' fill='#12121a'/><text x='50%' y='50%' fill='#444a6a' font-family='sans-serif' font-size='12' text-anchor='middle' dominant-baseline='middle'>Loading image…</text></svg>`)}`;
     let imgHtml = '';
     if (q.imageDataUrl && q.imageDataUrl.length > 100) {
-        imgHtml = `<img class="sr-question-img" id="sr-question-img" src="${q.imageDataUrl}" alt="Question image">`;
+        imgHtml = `<img class="sr-question-img" id="sr-question-img" src="${_safeImgSrc(q.imageDataUrl)}" alt="Question image">`;
     } else if (q.driveImageId) {
-        imgHtml = `<img class="sr-question-img lazy-practice-img" id="sr-question-img" data-drive-id="${q.driveImageId}" data-qid="${q.id}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='180'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='12' text-anchor='middle' alignment-baseline='middle'>Loading image…</text></svg>" alt="Question image">`;
+        imgHtml = `<img class="sr-question-img lazy-practice-img" id="sr-question-img" data-drive-id="${_esc(q.driveImageId || '')}" data-qid="${_esc(q.id)}" src="${placeholderSrc}" alt="Question image">`;
     } else {
         return ''; // no image to show → no hide button either
     }
@@ -366,7 +388,6 @@ function _renderAnswerStage(q) {
     }
     // Non-MCQ: go straight to a self-report prompt (reveal the answer if on file).
     const hasAnswer = _hasLoadedAnswer(q);
-    const correctAns = hasAnswer ? (Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer) : '';
     if (hasAnswer) {
         const correctAns = typeof window.answerMathHTML === 'function'
             ? window.answerMathHTML(q.correctAnswer)
@@ -822,9 +843,10 @@ function _updateDrawerUI() {
         summary.innerHTML = parts.join(' ');
     }
 
-    // Enable/disable submit
+    // Enable/disable submit — a 0s answer must still be loggable: requiring
+    // timeSpent > 0 left the button dead for instant answers.
     const timeSpent = _drawerState.timeSpentMins > 0 ? _drawerState.timeSpentMins : _drawerState.stopwatchSeconds / 60;
-    const canSubmit = _drawerState.result && _drawerState.autonomy && _drawerState.frictionTypes.length > 0 && timeSpent > 0;
+    const canSubmit = _drawerState.result && _drawerState.autonomy && _drawerState.frictionTypes.length > 0 && timeSpent >= 0;
     const btn = document.getElementById('sr-submit-btn');
     if (btn) btn.disabled = !canSubmit;
 }
@@ -887,7 +909,8 @@ export function submitPracticeLog() {
         const weights = { PERFECT: 5, CALC: 4, FORMULA: 3, CONCEPT: 2, APPROACH: 1 };
         
         // Sort selections to extract the single most severe breakdown layer
-        const dominantFriction = [..._drawerState.frictionTypes].sort((a, b) => weights[a] - weights[b])[0];
+        // (unknown friction strings must not produce NaN comparisons)
+        const dominantFriction = [..._drawerState.frictionTypes].sort((a, b) => (weights[a] || 0) - (weights[b] || 0))[0];
         
         // Map internal uppercase keys to match your system design styles (calculation, conceptual, misread)
         const typeMapping = {
@@ -989,6 +1012,8 @@ export function submitPracticeLog() {
 export function removeErrorLog(id) {
     if (confirm("Confirm deletion of this friction point and all its attempt history?")) {
         AppState.questionBank = AppState.questionBank.filter(q => q.id.toString() !== id.toString());
+        // Tombstone the id so a stale cloud snapshot can never resurrect it.
+        recordCloudTombstone(id).catch(console.error);
         saveAllAsync().catch(console.error);
         closePracticeDrawer();
         // Defer heavy DOM rebuilds — staggered so the close animation + any
@@ -1027,7 +1052,7 @@ export function filterErrors() {
         const bTag = block.querySelector('.error-tag') ? block.querySelector('.error-tag').textContent.toLowerCase() : '';
 
         let typeMatch = (typeFilter === 'all' || typeFilter === bType);
-        let subjMatch = (bSubj === AppState.currentErrorSubject);
+        let subjMatch = (_normSubj(bSubj) === _normSubj(AppState.currentErrorSubject));
         let textMatch = bChapter.includes(textFilter) || bTag.includes(textFilter);
 
         let statusMatch = true;
@@ -1135,7 +1160,7 @@ function _getDailyQueueSnapshot() {
         if (bySubject[subj]) bySubject[subj].push(q);
     });
     Object.keys(bySubject).forEach(subj => {
-        bySubject[subj].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
+        bySubject[subj].sort((a, b) => _numOr(a.easeFactor, 2.5) - _numOr(b.easeFactor, 2.5));
     });
     const ids = [
         ...bySubject.physics.slice(0, DAILY_QUEUE_LIMITS.physics),
@@ -1186,7 +1211,7 @@ function _renderDailyQueueCards() {
 
     const bySubject = { physics: [], maths: [], chemistry: [] };
     targets.forEach(q => {
-        const subj = (q.subject || '').toLowerCase();
+        const subj = _normSubj(q.subject);
         if (bySubject[subj]) bySubject[subj].push(q);
     });
 
@@ -1201,15 +1226,16 @@ function _renderDailyQueueCards() {
     const fragments = [];
     let currentSubject = null;
     targets.forEach(q => {
-        if (q.subject !== currentSubject) {
-            currentSubject = q.subject;
-            const meta = subjectMeta[currentSubject] || { icon: '📋', label: currentSubject, limit: 0 };
+        const subjKey = _normSubj(q.subject);
+        if (subjKey !== currentSubject) {
+            currentSubject = subjKey;
+            const meta = subjectMeta[currentSubject] || { icon: '📋', label: q.subject || currentSubject, limit: 0 };
             const subjItems = bySubject[currentSubject] || [];
             const doneCount = subjItems.filter(_isCompletedToday).length;
             const remaining = subjItems.length - doneCount;
             const allTracked = AppState.questionBank.filter(qq =>
                 qq.errorReason && (qq.status === 'error' || qq.status === 'solved' || qq.status === 'wrong') &&
-                (qq.subject || '').toLowerCase() === currentSubject
+                _normSubj(qq.subject) === currentSubject
             ).length;
             const progressTxt = remaining > 0
                 ? `${doneCount}/${subjItems.length} done · ${remaining} to go`
@@ -1249,31 +1275,32 @@ function _buildErrorCardHTML(q) {
     // once was the source of the DOM bloat / heavy lag.
     let imgHtml = '';
     if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
-        imgHtml = `<img class="lazy-error-img" data-drive-id="${q.driveImageId || ''}" data-qid="${q.id}" src="${LAZY_IMG_PLACEHOLDER}" onclick="event.stopPropagation();">`;
+        imgHtml = `<img class="lazy-error-img" data-drive-id="${_esc(q.driveImageId || '')}" data-qid="${_esc(q.id)}" src="${LAZY_IMG_PLACEHOLDER}" onclick="event.stopPropagation();">`;
     } else {
         imgHtml = '<div style="font-size:10px;color:var(--text-muted);">No Image</div>';
     }
 
     const today = _todayKey();
-    const isCurrentBounty = AppState.bounty.active && !AppState.bounty.done && AppState.bounty.date === today && q.id === AppState.bounty.questionId;
+    const isCurrentBounty = AppState.bounty.active && !AppState.bounty.done && AppState.bounty.date === today &&
+        String(q.id) === String(AppState.bounty.questionId);
     let bountyClass = isCurrentBounty ? 'bounty-active-error' : '';
 
     return `
-            <div class="error-block ${bountyClass}" id="err-block-${q.id}"
-                 data-type="${q.errorReason || 'conceptual'}"
-                 data-sr-status="${dueInfo.status}"
-                 data-subject="${q.subject}">
+            <div class="error-block ${bountyClass}" id="err-block-${_esc(q.id)}"
+                 data-type="${_esc(q.errorReason || 'conceptual')}"
+                 data-sr-status="${_esc(dueInfo.status)}"
+                 data-subject="${_esc(q.subject)}">
                 <div class="error-img-box">${imgHtml}</div>
                 <div class="error-details">
-                    <div class="error-chapter">${q.chapter || 'Unknown'}</div>
+                    <div class="error-chapter">${_esc(q.chapter || 'Unknown')}</div>
                     <div class="error-tag-row">
-                        <span class="error-tag" style="color:${tagStyle.color};background:${tagStyle.bg};">${tagLabel}</span>
-                        <span class="sr-due-badge" style="${dueBadgeStyle}">${dueInfo.label}</span>
+                        <span class="error-tag" style="color:${tagStyle.color};background:${tagStyle.bg};">${_esc(tagLabel)}</span>
+                        <span class="sr-due-badge" style="${dueBadgeStyle}">${_esc(dueInfo.label)}</span>
                     </div>
                     <div class="sr-stats-row">
-                        <span class="sr-stat">⚡ ${q.currentInterval || 0}d</span>
-                        <span class="sr-stat">🔥 ${(q.easeFactor || 2.5).toFixed(2)}</span>
-                        <span class="sr-stat">📖 ${q.targetTimeMins || 5}m</span>
+                        <span class="sr-stat">⚡ ${_numOr(q.currentInterval, 0)}d</span>
+                        <span class="sr-stat">🔥 ${_numOr(q.easeFactor, 2.5).toFixed(2)}</span>
+                        <span class="sr-stat">📖 ${_numOr(q.targetTimeMins, 5)}m</span>
                     </div>
                     <div class="sr-attempt-dots-row">
                         <span class="sr-dots-label">History:</span>
@@ -1281,16 +1308,16 @@ function _buildErrorCardHTML(q) {
                     </div>
                 </div>
                 <div class="sr-card-actions">
-                    <button class="sr-practice-btn" onclick="openPracticeDrawer('${q.id}')">
+                    <button class="sr-practice-btn" onclick="openPracticeDrawer('${_esc(q.id)}')">
                         Practice Now →
                     </button>
-                    <button class="sr-history-toggle" onclick="toggleCardHistory('${q.id}')">
+                    <button class="sr-history-toggle" onclick="toggleCardHistory('${_esc(q.id)}')">
                         History
-                        <span class="sr-chevron" id="sr-chevron-${q.id}">▾</span>
+                        <span class="sr-chevron" id="sr-chevron-${_esc(q.id)}">▾</span>
                     </button>
-                    <button class="delete-btn" onclick="removeErrorLog('${q.id}')" title="Delete">🗑</button>
+                    <button class="delete-btn" onclick="removeErrorLog('${_esc(q.id)}')" title="Delete">🗑</button>
                 </div>
-                <div class="sr-expanded-history" id="sr-history-${q.id}" style="display:none;">
+                <div class="sr-expanded-history" id="sr-history-${_esc(q.id)}" style="display:none;">
                     <div class="sr-history-header">Attempt History</div>
                     ${_buildHistoryLogs(q.historyLogs)}
                 </div>
@@ -1380,12 +1407,13 @@ function _buildAttemptDots(historyLogs) {
     return last5.map(log => {
         const isCorrect = log.result === 'correct';
         const bg = isCorrect ? '#10B981' : '#EF4444';
-        const frictionTypes = JSON.parse(log.frictionTypes || '[]');
+        const frictionTypes = _parseFrictionTypes(log.frictionTypes);
         const primaryFriction = frictionTypes[0] || 'N/A';
         const frictionLabel = SR_FRICTION_LABELS[primaryFriction] || primaryFriction;
-        const dateStr = formatSRDate(log.timestamp);
+        const ts = new Date(log.timestamp);
+        const dateStr = isNaN(ts.getTime()) ? 'unknown date' : formatSRDate(log.timestamp);
         const timeStr = log.timeSpentMins + 'm';
-        const tooltip = `title="${dateStr}\\nTime: ${timeStr}\\nFriction: ${frictionLabel}"`;
+        const tooltip = `title="${_esc(dateStr + '\\nTime: ' + timeStr + '\\nFriction: ' + frictionLabel)}"`;
 
         return `<div class="sr-attempt-dot" style="background:${bg};" ${tooltip}></div>`;
     }).join('');
@@ -1397,11 +1425,14 @@ function _buildHistoryLogs(historyLogs) {
     return historyLogs.slice().reverse().map(log => {
         const isCorrect = log.result === 'correct';
         const dotColor = isCorrect ? '#10B981' : '#EF4444';
-        const frictionTypes = JSON.parse(log.frictionTypes || '[]');
-        const dateStr = new Date(log.timestamp).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+        const frictionTypes = _parseFrictionTypes(log.frictionTypes);
+        const ts = new Date(log.timestamp);
+        const dateStr = isNaN(ts.getTime())
+            ? 'unknown date'
+            : ts.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 
         const frictionPills = frictionTypes.map(f =>
-            `<span class="sr-log-friction-tag">${SR_FRICTION_LABELS[f] || f}</span>`
+            `<span class="sr-log-friction-tag">${_esc(SR_FRICTION_LABELS[f] || f)}</span>`
         ).join('');
 
         return `
@@ -1411,13 +1442,13 @@ function _buildHistoryLogs(historyLogs) {
                     <div class="sr-history-top">
                         <span style="color:${isCorrect ? '#10B981' : '#EF4444'};">${isCorrect ? 'Correct' : 'Incorrect'}</span>
                         <span class="sr-sep">·</span>
-                        <span style="color:#888;">${(log.autonomy || '').replace('_', ' ')}</span>
+                        <span style="color:#888;">${_esc((log.autonomy || '').replace('_', ' '))}</span>
                     </div>
                     <div class="sr-history-frictions">${frictionPills}</div>
                 </div>
                 <div class="sr-history-meta">
                     <div style="color:#666;">${dateStr}</div>
-                    <div style="color:#555;">${log.timeSpentMins}m · EF ${(log.newEaseFactor || 2.5).toFixed(2)}</div>
+                    <div style="color:#555;">${log.timeSpentMins}m · EF ${_numOr(log.newEaseFactor, 2.5).toFixed(2)}</div>
                 </div>
             </div>
         `;
@@ -1429,7 +1460,7 @@ export function renderErrorMatrixFromBank() {
     if (!c) return;
 
     let errs = AppState.questionBank.filter(q =>
-        q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') && q.subject === AppState.currentErrorSubject
+        q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') && _normSubj(q.subject) === _normSubj(AppState.currentErrorSubject)
     );
 
     // ── Batch: build all card HTML up front, then apply in a single innerHTML
@@ -1462,7 +1493,8 @@ waitForDriveToken(() => {
 
 // Tiny SVG used both as the initial placeholder AND as the "unloaded" state
 // for cards that have scrolled out of the viewport (frees the decoded bitmap).
-const LAZY_IMG_PLACEHOLDER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>";
+// Fully-encoded data URI (raw `<`, `>`, `#` inside a src attribute are fragile).
+const LAZY_IMG_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='90'%3E%3Crect width='100%25' height='100%25' fill='%2312121a'/%3E%3Ctext x='50%25' y='50%25' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' dominant-baseline='middle'%3ELoading%E2%80%A6%3C/text%3E%3C/svg%3E";
 
 let _errorImgObserver = null;
 
@@ -1588,7 +1620,7 @@ export function renderChapterDecayGrid() {
         chapterMap[key].questions.push(q);
     });
     const chapters = Object.values(chapterMap).map(({ name, questions }) => {
-        const avgEF = questions.reduce((sum, q) => sum + (q.easeFactor || 2.5), 0) / questions.length;
+        const avgEF = questions.reduce((sum, q) => sum + _numOr(q.easeFactor, 2.5), 0) / questions.length;
         const health = _matrixChapterHealthContinuous(questions);
         return { name, health, questionCount: questions.length, avgEF };
     });
@@ -1626,13 +1658,13 @@ export function renderChapterDecayGrid() {
         if (ch.health > 75) { fillStyle = 'fill: var(--glow-green);'; glowAttr = 'filter: url(#decay-glow-green);'; }
         else if (ch.health >= 45) { fillStyle = 'fill: var(--glow-yellow);'; }
         else { fillStyle = 'fill: var(--glow-red);'; opacityAttr = 'opacity: 0.88;'; }
-        const displayName = ch.name.length > maxName ? ch.name.substring(0, maxName - 1) + '…' : ch.name;
+        const displayName = (ch.name || '').length > maxName ? ch.name.substring(0, maxName - 1) + '…' : (ch.name || '');
         const metaCell = SHOW_META
-            ? `<text x="${metaX}" y="${y + ROW_H / 2}" style="fill: var(--text-muted); font-size: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500;" dominant-baseline="middle" text-anchor="start">${ch.questionCount}q · EF ${ch.avgEF.toFixed(2)}</text>`
+            ? `<text x="${metaX}" y="${y + ROW_H / 2}" style="fill: var(--text-muted); font-size: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500;" dominant-baseline="middle" text-anchor="start">${_esc(ch.questionCount)}q · EF ${_numOr(ch.avgEF, 0).toFixed(2)}</text>`
             : '';
         return `
             <g class="decay-row">
-                <text x="${LEFT}" y="${y + ROW_H / 2}" style="fill: var(--text-secondary); font-size: 11.5px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600;" dominant-baseline="middle" text-anchor="start">${displayName}</text>
+                <text x="${LEFT}" y="${y + ROW_H / 2}" style="fill: var(--text-secondary); font-size: 11.5px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600;" dominant-baseline="middle" text-anchor="start">${_esc(displayName)}</text>
                 <rect x="${trackX}" y="${trackY}" width="${trackW}" height="${TRACK_H}" rx="${TRACK_R}" style="fill: rgba(255,255,255,0.035); stroke: rgba(255,255,255,0.06); stroke-width: 1;"/>
                 <rect x="${trackX}" y="${trackY}" width="${fillW}" height="${TRACK_H}" rx="${TRACK_R}" style="${fillStyle} ${glowAttr} ${opacityAttr} transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);"/>
                 <text x="${pctX}" y="${y + ROW_H / 2}" style="${fillStyle} font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 700;" dominant-baseline="middle" text-anchor="start">${ch.health.toFixed(0)}%</text>
@@ -1747,10 +1779,10 @@ export function getLowestHealthQuestion() {
     );
     if (!candidates.length) {
         // Fallback: lowest easeFactor across the entire bank
-        const sorted = [...AppState.questionBank].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
+        const sorted = [...AppState.questionBank].sort((a, b) => _numOr(a.easeFactor, 2.5) - _numOr(b.easeFactor, 2.5));
         return sorted[0] || null;
     }
-    const sorted = [...candidates].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
+    const sorted = [...candidates].sort((a, b) => _numOr(a.easeFactor, 2.5) - _numOr(b.easeFactor, 2.5));
     return sorted[0];
 }
 
@@ -1760,9 +1792,34 @@ let _todayKeyCache = null;
 let _lastRenderedDate = null;
 let _rolloverWatchStarted = false;
 
+// Null-safe numeric coercion: corrupt/legacy STRING values (e.g. "2.7") or
+// NaN must never crash .toFixed() or poison comparators.
+function _numOr(v, fallback) {
+    const n = Number(v);
+    return isFinite(n) ? n : fallback;
+}
+
+// ICU-safe local YYYY-MM-DD key (manual formatting — toLocaleDateString
+// variants can emit non-ISO shapes on some ICU builds, corrupting day keys).
 function _todayKey(date) {
     const d = date || new Date();
-    return d.toLocaleDateString('en-CA');
+    if (!(d instanceof Date) || isNaN(d.getTime())) return null; // corrupt timestamp
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+// frictionTypes may be a JSON STRING or (legacy) a raw array.
+function _parseFrictionTypes(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw !== 'string') return [];
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+        return [];
+    }
 }
 
 export function refreshErrorDashboardIfStale() {
@@ -1770,6 +1827,12 @@ export function refreshErrorDashboardIfStale() {
     if (_lastRenderedDate !== today) {
         _lastRenderedDate = today;
         renderErrorResolutionDashboard();
+        // The sparkline we just drew is only the intermediate data carrier —
+        // app.js's candlestick renderer (renderMomentumCandles) reads the
+        // points back and replaces the container. Re-chain it so the rollover
+        // watcher / focus / visibility re-renders don't leave the sparkline
+        // permanently clobbering the candles.
+        try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (_) {}
     }
 }
 
@@ -1848,7 +1911,7 @@ export function renderErrorResolutionDashboard() {
     for (let d = 14; d >= 0; d--) {
         const date = new Date();
         date.setDate(date.getDate() - d);
-        const dateStr = date.toLocaleDateString('en-CA');
+        const dateStr = _todayKey(date);
         momentumData.push({ date: dateStr, dayLabel: date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), count: 0 });
     }
 

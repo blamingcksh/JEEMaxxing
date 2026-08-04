@@ -117,7 +117,8 @@ function _load() {
 }
 
 function _save() {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(_state)); } catch (e) {}
+    try { localStorage.setItem(LS_KEY, JSON.stringify(_state)); }
+    catch (e) { console.warn('[cns-load] localStorage write failed (quota/private mode):', e); }
 }
 
 // ==================== HELPERS ====================
@@ -131,8 +132,11 @@ function _median(arr) {
     return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+// ICU-safe local YYYY-MM-DD key — manual formatting so CNS daily-readings
+// dates share the identical day bucketing as every other ledger.
 function _todayKey(d) {
-    return (d || new Date()).toLocaleDateString('en-CA'); // YYYY-MM-DD
+    d = d || new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
 function _normalizeSubjectKey(subj) {
@@ -372,8 +376,16 @@ export function consecutiveCnsDays(threshold, n) {
     const readings = _state._global.dailyCnsReadings;
     if (readings.length < n) return false;
 
-    // Get last N days chronologically
-    const recent = readings.slice(-n);
+    // Last N CALENDAR days, not last N readings: two readings 5 days apart
+    // must NOT count as "2 consecutive days".
+    const recent = readings.slice(-n).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    if (recent.length < n) return false;
+    const days = recent.map(r => new Date(r.date + 'T12:00:00').getTime());
+    if (days.some(d => isNaN(d))) return false;
+    for (let i = 1; i < days.length; i++) {
+        const gap = Math.round((days[i] - days[i - 1]) / 86400000);
+        if (gap !== 1) return false; // a skipped day breaks the streak
+    }
     return recent.every(r => r.maxCns >= threshold);
 }
 

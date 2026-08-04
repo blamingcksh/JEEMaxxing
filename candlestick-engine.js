@@ -64,12 +64,16 @@ function round3(n) { return Math.round(n * 1000) / 1000; }
 export function countsToOHLC(counts, opts = {}) {
   const { wickScale = 0.45, penaltyFlags = [] } = opts;
   const out = [];
+  let prevClose = 0;
   for (let i = 0; i < counts.length; i++) {
-    const enforced = penaltyFlags[i] ? 0 : counts[i];
+    const raw = Number(counts[i]);
+    // A single NaN/corrupt value must not poison the whole chart — fall back
+    // to the previous close so the series stays aligned and finite.
+    const enforced = penaltyFlags[i] ? 0 : (isFinite(raw) ? counts[i] : prevClose);
     const close = enforced;
-    const open = i === 0 ? enforced : (penaltyFlags[i - 1] ? 0 : counts[i - 1]);
+    const open = i === 0 ? enforced : (penaltyFlags[i - 1] ? 0 : (isFinite(Number(counts[i - 1])) ? counts[i - 1] : prevClose));
     const vol = rollingStd(counts, i, 5);
-    const wick = vol * wickScale;
+    const wick = (isFinite(vol) ? vol : 0) * wickScale;
     const high = Math.max(open, close) + wick;
     const low = Math.max(0, Math.min(open, close) - wick);
     out.push({
@@ -79,6 +83,7 @@ export function countsToOHLC(counts, opts = {}) {
       close: round2(close),
       isPenalty: !!penaltyFlags[i],
     });
+    prevClose = close;
   }
   return out;
 }
@@ -217,7 +222,23 @@ function playHoverTick(metTarget) {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
-    if (!window._candleTickCtx) window._candleTickCtx = new Ctx();
+    if (!window._candleTickCtx) {
+      window._candleTickCtx = new Ctx();
+      // Release the shared context when the page hides/unloads — a dangling
+      // AudioContext pins an audio session + buffers forever. It is lazily
+      // re-created on the next hover tick, so this only costs a fresh context
+      // after returning to the tab. Bound once per session.
+      if (!window._candleTickBound) {
+        window._candleTickBound = true;
+        const closeTick = () => {
+          const c = window._candleTickCtx;
+          window._candleTickCtx = null;
+          if (c) { try { c.close(); } catch (_) {} }
+        };
+        window.addEventListener('pagehide', closeTick);
+        document.addEventListener('visibilitychange', () => { if (document.hidden) closeTick(); });
+      }
+    }
     const ac = window._candleTickCtx;
     if (ac.state === "suspended") ac.resume();
     const now = ac.currentTime;
@@ -279,9 +300,11 @@ export function drawCandlesticks(svg, counts, opts = {}) {
 
   // ── Build OHLC + predictions ──
   const candles = countsToOHLC(counts, { penaltyFlags });
-  // Pad a single-point series so regression + candles can render.
+  // Pad a single-point series so regression + candles can render. The pad
+  // must NOT copy isPenalty — otherwise one penalty day renders as two
+  // consecutive penalty candles.
   if (candles.length === 1) {
-    candles.unshift({ ...candles[0] });
+    candles.unshift({ ...candles[0], isPenalty: false });
     counts = [counts[0], ...counts];
   }
 
@@ -490,9 +513,18 @@ export function drawCandlesticks(svg, counts, opts = {}) {
   }
 
   // ── Hover interaction ──
-  const state = { tooltip: null };
+  // Per-svg state (tooltip + hover index) survives re-draws of the SAME svg:
+  // repeated drawCandlesticks calls used to append a fresh tooltip <div> to
+  // the wrapper and re-add mousemove/mouseleave listeners every time,
+  // accumulating handlers and DOM nodes until hover ground to a halt.
+  const state = svg._candleState || (svg._candleState = { tooltip: null, lastHoveredIndex: -1 });
   ensureTooltip(svg, state);
   const tip = state.tooltip;
+
+  if (svg._candleHandlers) {
+    svg.removeEventListener("mousemove", svg._candleHandlers.onMove);
+    svg.removeEventListener("mouseleave", svg._candleHandlers.onLeave);
+  }
 
   const onMove = (ev) => {
     const rect = svg.getBoundingClientRect();
@@ -505,8 +537,10 @@ export function drawCandlesticks(svg, counts, opts = {}) {
       if (d < bestDist) { bestDist = d; nearest = i; }
     }
     // ── Telemetry tick: fire a bleep ONLY when the crosshair lands on a new candle index ──
-    if (nearest !== window._lastHoveredIndex) {
-      window._lastHoveredIndex = nearest;
+    // Per-chart index (was a shared window global — hovering chart B could
+    // suppress ticks on chart A and vice-versa).
+    if (nearest !== state.lastHoveredIndex) {
+      state.lastHoveredIndex = nearest;
       if (nearest >= 0) {
         const hovered = all[nearest];
         const metTarget = candleColor(hovered) === COLOR.up;
@@ -529,7 +563,7 @@ export function drawCandlesticks(svg, counts, opts = {}) {
     showTooltip(tip, c, nearest, { ...opts, predStart }, cx, cy, width, height);
   };
   const onLeave = () => {
-    window._lastHoveredIndex = -1;
+    state.lastHoveredIndex = -1;
     tip.style.display = "none";
     crosshairV.setAttribute("opacity", 0);
     crosshairH.setAttribute("opacity", 0);
@@ -537,6 +571,7 @@ export function drawCandlesticks(svg, counts, opts = {}) {
   };
   svg.addEventListener("mousemove", onMove);
   svg.addEventListener("mouseleave", onLeave);
+  svg._candleHandlers = { onMove, onLeave };
 
   return { slope: pred.slope, r2: pred.r2, themeColor, candles: all };
 }

@@ -31,6 +31,10 @@ function syncFilterLock() {
 let timerTotalSeconds = 0;        // total seconds for countdown
 let stopwatchAccumulated = 0;    // seconds already counted before pause (stopwatch mode)
 let timerEndTriggered = false;   // prevent multiple handleTimerEnd calls
+let pausedElapsed = 0;           // countdown seconds elapsed at pause (preserved across resume)
+let lastTickAt = null;           // wall-clock anchor for per-second study credit
+let lastSavedStudyMinute = 0;    // save watermark for whole-minute study credit
+let _resetPomoTimer = null;      // pending quitTimer UI reset
 
 let bellAudioCtx = null;
 let _pomoPendingAction = null;   // replaces window._pomoPendingAction
@@ -38,7 +42,21 @@ let _pomoPendingAction = null;   // replaces window._pomoPendingAction
 // ---- Page Visibility Listener (fixes background freezing) ----
 document.addEventListener('visibilitychange', async () => {
     if (document.hidden) return;
-    if (pomoState === 'IDLE' || pomoState === 'STOPWATCH' || !timerStartTime || isPaused) return;
+    if (pomoState === 'IDLE' || !timerStartTime || isPaused) return;
+
+    if (pomoState === 'STOPWATCH') {
+        // Wall-clock catch-up: a stopwatch must keep counting while hidden.
+        const elapsed = Math.floor((Date.now() - timerStartTime) / 1000);
+        if (elapsed > 0) {
+            stopwatchAccumulated += elapsed;
+            timerStartTime = Date.now();
+            secondsLeft = stopwatchAccumulated;
+            creditStudySeconds(studySubject, elapsed);
+        }
+        document.getElementById('timer-display').textContent = formatTime(secondsLeft);
+        document.getElementById('mini-time').textContent = formatTime(secondsLeft);
+        return;
+    }
 
     // Recalculate time based on real elapsed time
     const elapsed = Math.floor((Date.now() - timerStartTime) / 1000);
@@ -58,6 +76,7 @@ document.addEventListener('visibilitychange', async () => {
 
     // If the timer should have finished while we were away, trigger end now
     if (remaining <= 0 && !timerEndTriggered) {
+        timerEndTriggered = true; // set synchronously — no duplicate end UI
         clearInterval(timerInterval);
         await saveAllAsync().catch(console.error);
         handleTimerEnd();
@@ -249,10 +268,32 @@ export function confirmTimerNotification() {
 }
 
 // ---- Core timer tick (real-time based) ----
+function tickDelta() {
+    const now = Date.now();
+    if (lastTickAt === null) lastTickAt = now;
+    const delta = Math.max(1, Math.floor((now - lastTickAt) / 1000));
+    lastTickAt = now;
+    return delta;
+}
+
+// Credit real wall-clock seconds to the active subject (survives background
+// throttling, which would otherwise undercount study time and skip saves).
+function creditStudySeconds(subject, deltaSecs) {
+    if (!deltaSecs || deltaSecs < 1) return;
+    studySecs[subject] += deltaSecs;
+    updateStudyTimeHeader();
+    const minute = Math.floor(studySecs[subject] / 60);
+    if (minute > lastSavedStudyMinute) {
+        lastSavedStudyMinute = minute;
+        saveAllAsync().catch(console.error);
+    }
+}
+
 export function executeTimerTick() {
     if (!timerStartTime) return; // safety
 
     const now = Date.now();
+    const deltaSecs = tickDelta();
     const elapsed = Math.floor((now - timerStartTime) / 1000);
 
     if (pomoState === 'STOPWATCH') {
@@ -262,9 +303,7 @@ export function executeTimerTick() {
         document.getElementById('mini-time').textContent = formatTime(secondsLeft);
 
         // Update study seconds and save periodically
-        studySecs[studySubject]++;
-        updateStudyTimeHeader();
-        if (studySecs[studySubject] % 60 === 0) saveAllAsync().catch(console.error);
+        creditStudySeconds(studySubject, deltaSecs);
 
     } else {
         // Countdown: recalc remaining from true elapsed time
@@ -285,10 +324,7 @@ export function executeTimerTick() {
 
         // Study time tracking (counts real seconds passed since last tick)
         if (pomoState === 'STUDY') {
-            // We don't rely on tick frequency, so we just increment once per call.
-            studySecs[studySubject]++;
-            updateStudyTimeHeader();
-            if (studySecs[studySubject] % 60 === 0) saveAllAsync().catch(console.error);
+            creditStudySeconds(studySubject, Math.min(deltaSecs, secondsLeft));
         }
 
         // End condition
@@ -380,6 +416,8 @@ export function toggleStopwatchMode(btn) {
 // ---- Start timer (real-time initialisation) ----
 export function startTimer() {
     if (pomoState !== 'IDLE') return;
+    // Cancel any pending quitTimer UI reset so a fresh session is not stomped.
+    if (_resetPomoTimer) { clearTimeout(_resetPomoTimer); _resetPomoTimer = null; }
     // ── Night Guard: log session start for sleep-debt ledger ──
     try { NightGuard.logSessionStart(); } catch (_) {}
     syncFilterLock();
@@ -432,6 +470,7 @@ export function transitionToStopwatch() {
 
     isPaused = false;
     timerStartTime = Date.now(); // mark real start
+    lastTickAt = Date.now();
     timerInterval = setInterval(executeTimerTick, 1000);
 }
 
@@ -460,6 +499,8 @@ export function transitionToStudy() {
 
     isPaused = false;
     timerStartTime = Date.now();
+    timerEndTriggered = false; // a fresh study session must be able to end
+    lastTickAt = Date.now();
     timerInterval = setInterval(executeTimerTick, 1000);
 }
 
@@ -489,6 +530,7 @@ export function transitionToBreak() {
     isPaused = false;
     timerStartTime = Date.now();
     timerEndTriggered = false;
+    lastTickAt = Date.now();
     timerInterval = setInterval(executeTimerTick, 1000);
 
     // Gallery Break: start the burn reveal — whatever is open on screen
@@ -500,14 +542,18 @@ export function pauseTimer() {
     clearInterval(timerInterval);
     saveAllAsync().catch(console.error);
     isPaused = true;
+    lastTickAt = null;
 
+    const elapsed = Math.floor((Date.now() - timerStartTime) / 1000);
     if (pomoState === 'STOPWATCH') {
         // Accumulate the time that has passed
-        const elapsed = Math.floor((Date.now() - timerStartTime) / 1000);
         stopwatchAccumulated += elapsed;
         secondsLeft = stopwatchAccumulated; // show current total
+    } else {
+        // Remember how far the countdown got so resume() can re-anchor the
+        // real-time clock instead of restarting at full duration.
+        pausedElapsed = elapsed;
     }
-    // For countdown, we just stop the interval; secondsLeft already holds the remaining
     document.getElementById('timer-status').textContent = (pomoState === 'STOPWATCH') ? "Stopwatch Paused" : "Timer Paused";
     document.getElementById('btn-pause').textContent = "Resume";
     document.getElementById('btn-pause').onclick = resumeTimer;
@@ -515,8 +561,17 @@ export function pauseTimer() {
 
 export function resumeTimer() {
     isPaused = false;
-    timerStartTime = Date.now(); // reset start point for real-time calculation
     timerEndTriggered = false;
+    lastTickAt = null;
+
+    if (pomoState === 'STOPWATCH') {
+        timerStartTime = Date.now(); // reset start point for real-time calculation
+    } else {
+        // Back-date the start point by the elapsed-so-far so the countdown
+        // resumes from where it was paused, not from full duration.
+        timerStartTime = Date.now() - pausedElapsed * 1000;
+        pausedElapsed = 0;
+    }
 
     if (pomoState === 'STOPWATCH') {
         document.getElementById('timer-status').textContent = `Stopwatch: ${studySubject.toUpperCase()}`;
@@ -543,8 +598,10 @@ export function quitTimer() {
     document.getElementById('timer-notify-modal').classList.remove('active');
     _pomoPendingAction = null;
     timerEndTriggered = true; // prevent handleTimerEnd from firing later
+    lastTickAt = null;
     document.getElementById('timer-status').textContent = isStopwatchMode ? "Tracking Stopped." : "Session Forfeit.";
-    setTimeout(() => resetPomoUI(), 1000);
+    if (_resetPomoTimer) clearTimeout(_resetPomoTimer);
+    _resetPomoTimer = setTimeout(() => resetPomoUI(), 1000);
 }
 
 export function resetPomoUI() {
@@ -553,6 +610,7 @@ export function resetPomoUI() {
     GalleryBreak.abort();
     document.getElementById('timer-notify-modal').classList.remove('active');
     _pomoPendingAction = null;
+    if (_resetPomoTimer) { clearTimeout(_resetPomoTimer); _resetPomoTimer = null; }
     document.getElementById('pomo-mini-widget').classList.add('hidden');
 
     document.querySelectorAll('#view-pomodoro .pomo-input, #view-pomodoro .pomo-select').forEach(el => el.disabled = false);
@@ -567,6 +625,9 @@ export function resetPomoUI() {
 
     timerStartTime = null;
     timerEndTriggered = false;
+    pausedElapsed = 0;
+    lastTickAt = null;
+    lastSavedStudyMinute = 0;
 
     if (isStopwatchMode) {
         document.getElementById('timer-display').textContent = "00:00";

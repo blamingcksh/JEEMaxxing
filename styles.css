@@ -63,6 +63,7 @@ body {
     background-color: var(--bg-base);
     color: var(--text-primary);
     height: 100vh;
+    height: 100dvh; /* iOS Safari non-standalone: vh > visible viewport → clipped bottom */
     display: flex;
     overflow: hidden;
     font-size: 14px;
@@ -132,6 +133,7 @@ body {
     display: flex;
     width: 100%;
     height: 100vh;
+    height: 100dvh;
     position: relative;
     z-index: 1;
     overflow: hidden;
@@ -343,6 +345,7 @@ body {
 .main-content {
     flex-grow: 1;
     height: 100vh;
+    height: 100dvh;
     padding: clamp(18px, 2.6vw, 34px) clamp(16px, 3vw, 44px);
     overflow-y: auto;
     display: flex;
@@ -3572,7 +3575,7 @@ button, .btn, .nav-item, .counter-btn, .cal-day, .mcq-option, .matrix-pill {
         border-radius: 16px;
     }
     .close-btn { top: 14px; right: 14px; font-size: 24px; }
-    .crop-modal-card { width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
+    .crop-modal-card { width: 100vw; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; border-radius: 0; }
     .source-image-item img { max-height: 46vh; }
 
     .btn { padding: 12px 20px; font-size: 12.5px; }

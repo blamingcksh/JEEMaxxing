@@ -29,11 +29,21 @@ function realTOD(){var d=new Date();return ((d.getHours()+d.getMinutes()/60)/24)
 function nightFactor(t){var u=t/100;return Math.max(0,Math.min(1,Math.abs(u-0.5)*2));}
 function normSub(s){s=(s||'').toString().toLowerCase().trim();return (s==='math'||s==='mathematics')?'maths':(SUBJ.indexOf(s)>=0?s:'physics');}
 function qEloOf(q){return (typeof q.qElo==='number'&&q.qElo>0)?q.qElo:1200;}
-function dayOf(iso){var d=new Date(iso);return isNaN(d.getTime())?'':d.toLocaleDateString('en-CA');}
-function todayStr(){return new Date().toLocaleDateString('en-CA');}
+function _fbPad2(n){return n<10?'0'+n:''+n;}
+function _fbYmd(d){return d.getFullYear()+'-'+_fbPad2(d.getMonth()+1)+'-'+_fbPad2(d.getDate());}
+function dayOf(iso){var d=new Date(iso);return isNaN(d.getTime())?'':_fbYmd(d);}
+function todayStr(){return _fbYmd(new Date());}
 function rc(id){var e=document.getElementById(id);return e?(parseInt(e.textContent,10)||0):0;}
 function liveTotal(){return rc('physics-count')+rc('chemistry-count')+rc('maths-count');}
-function solvedBank(){var qb=window.questionBank||[],o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(q&&q.status==='solved')o.push(q);}return o;}
+function solvedBank(){
+  var now=Date.now(),dirty=(typeof window.__jmaxDataDirty==='number')?window.__jmaxDataDirty:-1;
+  // Cache until the data-dirty flag moves (saves bump it), with a 60s TTL as
+  // a fallback for changes that bypass saveAllAsync — keeps the 30s bgSig
+  // poll O(1) instead of O(bank) on every tick.
+  if(_sbCache&&(dirty===_sbSig||now-_sbAt<60000))return _sbCache;
+  var qb=window.questionBank||[],o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(q&&q.status==='solved')o.push(q);}
+  _sbCache=o;_sbAt=now;_sbSig=dirty;return o;
+}
 function historical(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(dayOf(q.lastReviewedAt)!==tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined,oak:(q.oak!=null)?!!q.oak:undefined});}return o;}
 function todayReal(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(dayOf(q.lastReviewedAt)===tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined,oak:(q.oak!=null)?!!q.oak:undefined});}return o;}
 function computeBgTrees(){
@@ -50,6 +60,7 @@ var canvas,btn,pop,sw,opInput;
 var enabled=false,building=false,built=false,opacity=0.5,lastSig='';
 var raf=null,last=0,elT=0,orbit=0,curTOD=50,lastTOD=0;
 var juice=null,lastTreeCount=0;
+var _sbCache=null,_sbAt=0,_sbSig=-1;
 var TOD=[
   {t:0,  top:0x0a0e1c,bot:0x141a2a,sun:0x3a4a6a,sunI:0.15,hemi:0x2a3040,fog:0x0e1220},
   {t:22, top:0x2a3a5e,bot:0xe8956a,sun:0xffb27a,sunI:0.70,hemi:0x5a5a6a,fog:0x3a3040},
@@ -182,11 +193,13 @@ function juiceUpdate(J,el,dt,night){
 
 function buildScene(){
   renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
-  // iPad / iPhone GPUs fill the whole screen per frame — a 2x devicePixelRatio
-  // quad is 4x the fill rate of 1x. Cap at 1.0 on iOS for a 4x GPU saving at
-  // ~zero visible cost (the scene is a stylized wallpaper), 1.5 elsewhere.
-  var ios=/(iPad|iPhone|iPod)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-  renderer.setPixelRatio(Math.min(devicePixelRatio,ios?1:1.5));
+  // Fill-rate guard: only real iPhones/iPods get 1.0 (weak GPUs, full-screen
+  // 2x quad). iPadOS Safari presents as MacIntel + maxTouchPoints>1, and
+  // modern touch laptops match that too — they are NOT iPhones, so don't
+  // punish them with a blurry 1.0; cap at 1.5 instead.
+  var ua=navigator.userAgent;
+  var iosChip=/(iPhone|iPod)/.test(ua);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,iosChip?1:1.5));
   renderer.setSize(innerWidth,innerHeight);
   renderer.setClearColor(0x070809,1);
   scene=new THREE.Scene();
@@ -227,7 +240,10 @@ function bgSizeF(d){d=(d==null)?0.5:(d<0?0:d>1?1:d);return 0.6+0.7*d;}
 function bgOak(d,i){if(d&&d.oak!=null)return !!d.oak;var h=2166136261,s=String((d&&d.id!=null)?d.id:('x'+(d&&d.qElo||1200)+'|'+i));for(var k=0;k<s.length;k++){h^=s.charCodeAt(k);h=Math.imul(h,16777619);}return (h>>>0)/4294967296<0.10;}
 function placeTrees(data){
   if(!env||!env.geos)return;
-  (env.treeMeshes||[]).forEach(function(m){scene.remove(m);if(m.geometry)m.geometry.dispose();});
+  // m.geometry is the SHARED env.geos[k] geometry — disposing it here poisons
+  // the geometry for every later rebuild (three.js tries to re-upload a
+  // disposed buffer → renderer churn + blank trees). scene.remove only.
+  (env.treeMeshes||[]).forEach(function(m){scene.remove(m);});
   env.treeMeshes=[];
   var spots=env.spots;if(!spots||!spots.length)return;
   var groups={physics:[],chemistry:[],maths:[],oak:[]};
@@ -297,7 +313,7 @@ function watchCounters(){
   var ids=['physics-count','chemistry-count','maths-count'];
   var els=ids.map(function(id){return document.getElementById(id);});
   if(els.some(function(e){return !e;})){setTimeout(watchCounters,500);return;}
-  try{var mo=new MutationObserver(function(){if(enabled&&built)rebuildIfNeeded(true);});els.forEach(function(e){mo.observe(e,{childList:true,subtree:true,characterData:true});});}catch(e){}
+  try{var mo=new MutationObserver(function(){if(!enabled||!built)return;if(mo._t)return;mo._t=setTimeout(function(){mo._t=null;rebuildIfNeeded(false);},250);});els.forEach(function(e){mo.observe(e,{childList:true,subtree:true,characterData:true});});}catch(e){}
 }
 function boot(){
   if(!document.body){requestAnimationFrame(boot);return;}

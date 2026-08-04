@@ -26,6 +26,8 @@ import {
     waitForDriveToken, updateDailyHistory, getDailyHistory,
     executeUnifiedSync, cacheAllDriveImages,
     registerUiCallbacks, changeCount,
+    settleDayCounters,
+    recordCloudTombstone,
     // ── SR due-status helper (used by the cat-banner vulnerability scanner) ──
     getDueStatus,
     // ── Cognitive MMR band system (pre-ELO schema) ──
@@ -53,6 +55,8 @@ import {
     openErrorMatrix, filterErrors,
     addErrorBlock, renderErrorMatrixFromBank, initErrorLazyLoaders,
     removeErrorLog, openLightbox,
+    // ── Daily Fix Queue (wired to the inline onclick in index.html) ──
+    toggleDailyQueue,
     // ── SR practice log imports (new) ──
     openPracticeDrawer, closePracticeDrawer, submitPracticeLog,
     srSetResult, srSetAutonomy, srToggleFriction,
@@ -70,6 +74,10 @@ import {
 
 // ── Candlestick engine (powers both home-section graphs) ──
 import { drawCandlesticks, extractCountsFromSvg } from './candlestick-engine.js';
+
+// ── Inline-onclick bridges: index.html buttons call these in global scope ──
+window.toggleDailyQueue = toggleDailyQueue;           // Daily Fix Queue button
+window.cacheAllDriveImages = cacheAllDriveImages;     // Cache All Images button
 
 // ── P2P Leaderboard Arena (serverless WebRTC over WebTorrent trackers) ──
 // Pure vanilla module: no signaling backend, no OAuth. The arena brokers its
@@ -105,8 +113,11 @@ function getDailyHistorySync() {
         } else {
             merged.push({ date: todayStr, count: todayTotal });
         }
-        return merged.slice(-15);
-    } catch (e) { return []; }
+        return merged; // full ledger — unbounded, do NOT truncate to 15
+    } catch (e) {
+        console.warn('[app] getDailyHistorySync failed — streak/deload inputs fall back to empty:', e);
+        return [];
+    }
 }
 window._deloadDailyHistoryFn = getDailyHistorySync;
 
@@ -136,8 +147,12 @@ window._dailyHistoryCache = [];
 // ── Daily counter persistence for forest sync ─────────────────────────────
 const LS_DAILY_FOREST = 'jeemax_forest_daily_v1';
 
+// ICU-safe local YYYY-MM-DD key — must match storage.js formatDateKey()/
+// todayLocalKey() exactly, since these strings are used as ledger/comparison
+// keys (streak history, deload windows, forest stores).
 function todayLocalKey() {
-  return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
 function loadDailyForestStore() {
@@ -277,10 +292,25 @@ function snapshotCumDayStart() {   // call at the midnight reset, BEFORE studySe
   for (const s of ['physics', 'chemistry', 'maths']) _lastSeenStudy[s] = 0;
 }
 function _clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+// Validate image sources before injecting into HTML: only app-generated
+// data:image, https, or blob: URLs are allowed — anything else (crafted
+// `" onerror=…` payloads) is dropped.
+function _safeImgSrc(url) {
+    if (typeof url !== 'string' || !url) return '';
+    if (/^(data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,|https:\/\/|blob:)/i.test(url)) {
+        return url.replace(/"/g, '&quot;');
+    }
+    return '';
+}
+// NaN-safe qElo read: `x || 1200` only guards falsy, not NaN from corrupt
+// storage — NaN would flow into Math.max(...) and persist as NaN.
+function _safeQElo(q) {
+    return (q && typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0) ? q.qElo : 1200;
+}
 function applyDifficulty(q, subj, eloResult) {
   if (!q) return;
   const ns = _normalizeSubjectKey(subj);
-  const oldQ = eloResult ? (eloResult.oldQElo || 1200) : (q.qElo || 1200);
+  const oldQ = eloResult ? _safeQElo({ qElo: eloResult.oldQElo }) : _safeQElo(q);
   const oldU = eloResult ? (eloResult.oldSubjectElo || 1200) : (AppState.elo[ns] || 1200);
   const d = _clamp01((oldQ - oldU + 400) / 800);
   q.difficulty = d;
@@ -410,6 +440,7 @@ export function openModal(id) {
     const m = document.getElementById(id);
     if (!m) return;
     if (id === 'calendar-modal') renderCalendar();
+    if (id === 'practice-modal') { try { _ensureStreakLoop(); } catch (_) {} }
     m.style.display = 'flex';
     // Hydrate LaTeX in the freshly-opened modal synchronously (the observer
     // is a backup). Idempotent: already-rendered wrappers are never touched.
@@ -430,6 +461,10 @@ export function closeModal(e, id, force) {
         _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
         m.classList.remove('active');
         setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
+        if (id === 'practice-modal' && AppState.practiceTimer) {
+            clearInterval(AppState.practiceTimer);
+            AppState.practiceTimer = null;
+        }
     }
 }
 
@@ -468,7 +503,7 @@ function forceHideModal(id) {
 export function triggerStreakShield() {
     let visualizer = document.getElementById('streak-visualizer');
     if (!visualizer || visualizer.offsetParent === null) {
-        const all = document.querySelectorAll('#streak-visualizer');
+        const all = document.querySelectorAll('#streak-visualizer, #sr-streak-visualizer');
         for (const v of all) { if (v.offsetParent !== null) { visualizer = v; break; } }
     }
     if (!visualizer || visualizer.offsetParent === null) return;
@@ -1085,7 +1120,7 @@ export async function updateStreakDisplay() {
                 for (let i = 1; i <= 6; i++) {
                     const prev = new Date(deloadDate);
                     prev.setDate(prev.getDate() - i);
-                    const prevStr = prev.toLocaleDateString('en-CA');
+                    const prevStr = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0') + '-' + String(prev.getDate()).padStart(2, '0');
                     const entry = allHistory.find(h => h.date === prevStr);
                     if (!entry || (entry.count || 0) === 0) {
                         all6Solved = false;
@@ -1097,16 +1132,17 @@ export async function updateStreakDisplay() {
         }
     } catch (_) {}
 
+    const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     let streak = 0;
     let checkDate = new Date();
-    let todayStr = checkDate.toLocaleDateString('en-CA');
+    let todayStr = ymd(checkDate);
 
     if (!activeDates.has(todayStr)) {
         checkDate.setDate(checkDate.getDate() - 1);
     }
 
     for (let i = 0; i < 30; i++) {
-        let dStr = checkDate.toLocaleDateString('en-CA');
+        let dStr = ymd(checkDate);
         if (activeDates.has(dStr)) {
             streak++;
             checkDate.setDate(checkDate.getDate() - 1);
@@ -1284,8 +1320,12 @@ export async function renderGraph() {
     // Force a HARD ZERO on any day in the penalty log, overriding real solves.
     let penaltyDates = [];
     try {
-        penaltyDates = JSON.parse(localStorage.getItem('checkpoint:protocolZero') || '[]');
-    } catch (_) { /* ignore */ }
+        const raw = JSON.parse(localStorage.getItem('checkpoint:protocolZero') || '[]');
+        penaltyDates = Array.isArray(raw) ? raw : [];
+    } catch (e) {
+        console.warn('[protocolZero] Corrupt penalty log in localStorage — treating as empty:', e);
+        try { localStorage.removeItem('checkpoint:protocolZero'); } catch (_) {}
+    }
     const penaltySet = new Set(penaltyDates);
     const penaltyFlags = history.map(h => penaltySet.has(h.date));
 
@@ -1493,7 +1533,7 @@ export function renderChaptersList() {
         let div = document.createElement('div');
         div.className = 'chapter-item';
         div.innerHTML =
-            `<span>${ch}</span><span class="delete-chapter" onclick="event.stopPropagation(); deleteChapter('${ch}')">🗑</span>`;
+            `<span>${escapeHtml(ch)}</span><span class="delete-chapter" onclick="event.stopPropagation(); deleteChapter('${escapeAttribute(ch)}')">🗑</span>`;
         div.onclick = () => openChapterDetail(ch);
         cont.appendChild(div);
     });
@@ -1505,6 +1545,8 @@ export function deleteChapter(ch) {
         // Use splice to avoid reassigning the exported let binding
         for (let i = AppState.questionBank.length - 1; i >= 0; i--) {
             if (AppState.questionBank[i].subject === AppState.currentSubject && _chaptersMatch(AppState.questionBank[i].chapter, ch)) {
+                // Tombstone so a stale cloud snapshot can't resurrect the chapter's questions.
+                recordCloudTombstone(AppState.questionBank[i].id).catch(console.error);
                 AppState.questionBank.splice(i, 1);
             }
         }
@@ -1552,9 +1594,13 @@ export async function saveProfile() {
 }
 
 export async function saveTargets() {
-    baseTargets.physics = parseInt(document.getElementById('set-tgt-phys').value) || 10;
-    baseTargets.chemistry = parseInt(document.getElementById('set-tgt-chem').value) || 10;
-    baseTargets.maths = parseInt(document.getElementById('set-tgt-math').value) || 10;
+    const parseTarget = v => {
+        const n = parseInt(v, 10);
+        return isFinite(n) && n > 0 ? n : 10; // 0/negative/empty fall back to 10
+    };
+    baseTargets.physics = parseTarget(document.getElementById('set-tgt-phys').value);
+    baseTargets.chemistry = parseTarget(document.getElementById('set-tgt-chem').value);
+    baseTargets.maths = parseTarget(document.getElementById('set-tgt-math').value);
     await idbSet('basePhys', baseTargets.physics);
     await idbSet('baseChem', baseTargets.chemistry);
     await idbSet('baseMath', baseTargets.maths);
@@ -1955,6 +2001,7 @@ function endDraw(e) {
             return;
         }
         // ── Traditional multi-crop pipeline (untouched) ──────────────────
+        if (!croppedDataUrl) { alert('Crop failed to decode — try a smaller selection.'); redrawAllRectangles(sourceId); return; }
         const _cq = cropSession.allQuestions[cropSession.currentQuestionIdx];
         _cq.segments.push({
             sourceId,
@@ -2027,11 +2074,17 @@ export function clearLastSegment() {
 export function stitchSegmentsVertically(segments) {
     return new Promise(async (resolve) => {
         if (segments.length === 0) return resolve(null);
-        const imgs = await Promise.all(segments.map(seg => new Promise(res => {
+        // onerror resolves null so one corrupt segment can never leave the
+        // stitch promise permanently pending (spinner hang). Loaded segments
+        // are stitched; a total failure resolves null like an empty batch.
+        const loaded = await Promise.all(segments.map(seg => new Promise(res => {
             const img = new Image();
             img.onload = () => res(img);
+            img.onerror = () => res(null);
             img.src = seg.cropDataUrl;
         })));
+        const imgs = loaded.filter(Boolean);
+        if (imgs.length === 0) return resolve(null);
         const maxWidth = Math.max(...imgs.map(img => img.width));
         const totalHeight = imgs.reduce((sum, img) => sum + img.height, 0);
         const canvas = document.createElement('canvas');
@@ -2056,12 +2109,15 @@ export function combineImagesSideBySide(leftImg, rightImg) {
         const left = new Image();
         const right = new Image();
         let leftLoaded = false, rightLoaded = false;
+        let leftBad = false, rightBad = false;
         const tryCombine = () => {
             if ((leftImg && !leftLoaded) || (rightImg && !rightLoaded)) return;
-            const leftW = leftImg ? left.width : 0;
-            const leftH = leftImg ? left.height : 0;
-            const rightW = rightImg ? right.width : 0;
-            const rightH = rightImg ? right.height : 0;
+            // Both failed to decode — settle instead of hanging forever.
+            if (leftBad && rightBad) return resolve(null);
+            const leftW = leftLoaded && !leftBad ? left.width : 0;
+            const leftH = leftLoaded && !leftBad ? left.height : 0;
+            const rightW = rightLoaded && !rightBad ? right.width : 0;
+            const rightH = rightLoaded && !rightBad ? right.height : 0;
             const totalWidth = leftW + rightW;
             const maxHeight = Math.max(leftH, rightH);
             const canvas = document.createElement('canvas');
@@ -2070,16 +2126,16 @@ export function combineImagesSideBySide(leftImg, rightImg) {
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, totalWidth, maxHeight);
-            if (leftImg) ctx.drawImage(left, 0, 0);
-            if (rightImg) {
+            if (leftLoaded && !leftBad) ctx.drawImage(left, 0, 0);
+            if (rightLoaded && !rightBad) {
                 const yOffset = (maxHeight - rightH) / 2;
                 ctx.drawImage(right, leftW, yOffset);
             }
             resolve(canvas.toDataURL('image/png'));
         };
-        if (leftImg) { left.onload = () => { leftLoaded = true; tryCombine(); }; left.src = leftImg; }
+        if (leftImg) { left.onload = () => { leftLoaded = true; tryCombine(); }; left.onerror = () => { leftLoaded = true; leftBad = true; tryCombine(); }; left.src = leftImg; }
         else { leftLoaded = true; }
-        if (rightImg) { right.onload = () => { rightLoaded = true; tryCombine(); }; right.src = rightImg; }
+        if (rightImg) { right.onload = () => { rightLoaded = true; tryCombine(); }; right.onerror = () => { rightLoaded = true; rightBad = true; tryCombine(); }; right.src = rightImg; }
         else { rightLoaded = true; }
         if (leftLoaded && rightLoaded) tryCombine();
     });
@@ -2678,7 +2734,7 @@ export function saveAllQuestions() {
         AppState.currentFilter  = 'all';
         const detail = document.getElementById('detail-chapter-name');
         if (detail) detail.innerHTML =
-            `${AppState.currentChapter} <span style="font-size:14px; color:#8a8ad3;">(${AppState.currentSubject})</span>`;
+            `${escapeHtml(AppState.currentChapter)} <span style="font-size:14px; color:#8a8ad3;">(${escapeHtml(AppState.currentSubject)})</span>`;
         renderChaptersList();
         showPracticeSubview('practice-chapter-detail-view');
         _renderModeButtonsIntoChapterDetail();
@@ -3205,13 +3261,13 @@ export function showPreviewModal() {
         let visualAssetContainerHtml = '';
 
         if (q.imageDataUrl) {
-            visualAssetContainerHtml = `<img src="${q.imageDataUrl}" style="max-width:200px; border-radius:12px;">`;
+            visualAssetContainerHtml = `<img src="${_safeImgSrc(q.imageDataUrl)}" style="max-width:200px; border-radius:12px;">`;
         } else {
             if (q.diagramImageUrl) {
                 visualAssetContainerHtml = `
                     <div class="surgical-asset-box" style="border: 1px solid var(--glow-orange); padding:8px; border-radius:8px; background:rgba(249,115,22,0.05); flex-shrink:0;">
                         <small style="color: #f97316; font-weight:700;">📐 Diagram Mapped</small><br>
-                        <img src="${q.diagramImageUrl}" style="max-width:140px; border-radius:6px; margin:6px 0;">
+                        <img src="${_safeImgSrc(q.diagramImageUrl)}" style="max-width:140px; border-radius:6px; margin:6px 0;">
                         <button class="btn btn-danger btn-xs" style="display:block; width:100%; padding:2px;" onclick="event.stopPropagation(); window.yeetSurgicalDiagram(${idx})">✕ Wipe Asset</button>
                     </div>`;
             } else {
@@ -3882,7 +3938,7 @@ export function renderPracticeQuestionModal() {
     let questionImageHtml = '';
     if (!AppState.photoHidden) {
         if (AppState.currentQ.imageDataUrl) {
-            questionImageHtml = `<img id="practice-modal-img" src="${AppState.currentQ.imageDataUrl}" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; transition: opacity 0.3s; cursor: pointer;">`;
+            questionImageHtml = `<img id="practice-modal-img" src="${_safeImgSrc(AppState.currentQ.imageDataUrl)}" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; transition: opacity 0.3s; cursor: pointer;">`;
         } else if (AppState.currentQ.driveImageId && typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {
             questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading asset...</text></svg>" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; cursor: pointer;">`;
             fetchMediaFromDrive(AppState.currentQ.driveImageId, AppState.driveAccessToken).then(b64 => {
@@ -3895,7 +3951,7 @@ export function renderPracticeQuestionModal() {
         }
     }
     let diagramHtml = AppState.currentQ.diagramImageUrl ?
-        `<div><div class="diagram-hint">📐 Diagram:</div><img src="${AppState.currentQ.diagramImageUrl}" style="max-width:100%; max-height:300px; border-radius:12px;"></div>` :
+        `<div><div class="diagram-hint">📐 Diagram:</div><img src="${_safeImgSrc(AppState.currentQ.diagramImageUrl)}" style="max-width:100%; max-height:300px; border-radius:12px;"></div>` :
         '';
     let html =
         `<div style="text-align:center;">${questionImageHtml}${diagramHtml}`;
@@ -3964,7 +4020,7 @@ export function renderPracticeQuestionModal() {
     processElementMath(container);
     container.querySelectorAll('.mcq-option').forEach(el => {
         el.addEventListener('click', function (e) {
-            const optionText = this.getAttribute('data-option');
+            const optionText = decodeOption(this.getAttribute('data-option'));
             toggleMcqOption(this, optionText);
         });
     });
@@ -3981,6 +4037,18 @@ export function toggleMcqOption(element, optionText) {
         element.classList.toggle('selected');
         const allSelected = document.querySelectorAll('.mcq-option.selected');
         AppState.selectedMcq = Array.from(allSelected).map(el => el.dataset.option);
+    }
+}
+
+// Entity-decodes a data-option value (it was stored with escapeAttribute).
+// Without this, grading's indexOf() compares encoded text against raw options
+// and any option containing & < > " ' becomes unselectable.
+function decodeOption(raw) {
+    if (typeof raw !== 'string') return raw;
+    try {
+        return new DOMParser().parseFromString(raw, 'text/html').documentElement.textContent;
+    } catch (_) {
+        return raw;
     }
 }
 
@@ -4152,7 +4220,7 @@ function _getChapterAvgElo(subject, chapter) {
         q.subject === safeSubject && _chaptersMatch(q.chapter, chapter) && !q.isAnomaly
     );
     if (qs.length === 0) return 1200;
-    const sum = qs.reduce((acc, q) => acc + (q.qElo || 1200), 0);
+    const sum = qs.reduce((acc, q) => acc + _safeQElo(q), 0);
     return sum / qs.length;
 }
 
@@ -4463,7 +4531,7 @@ function _activeModeForQuestion(questionObj) {
 
 /** Look up the matching band target time in seconds. */
 function _eloTargetSeconds(q) {
-    const mins = (typeof q.targetTimeMins === 'number' && q.targetTimeMins > 0) ? q.targetTimeMins : _eloBandTargetTime(q.qElo || 1200);
+    const mins = (typeof q.targetTimeMins === 'number' && q.targetTimeMins > 0) ? q.targetTimeMins : _eloBandTargetTime(_safeQElo(q));
     return mins * 60;
 }
 
@@ -4689,8 +4757,9 @@ function _pickQuestionForMode(subject, chapter, mode) {
 function _setPracticeMode(mode) {
     if (!PRACTICE_MODES.includes(mode)) return;
     AppState.practiceFlowMode = mode;
-    // Reset hardcore daily counter if the date rolled over
-    const today = new Date().toISOString().slice(0, 10);
+    // Reset hardcore daily counter if the date rolled over (LOCAL day — UTC
+    // would reset at 05:30 IST and grant a fresh quota pre-midnight).
+    const today = todayLocalKey();
     if (mode === 'hardcore') {
         if (AppState.hardcoreDailyDate !== today) {
             AppState.hardcoreDailyDate = today;
@@ -5091,11 +5160,12 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         }
 
         AppState.elo[safeSubject] = newE_s;
+        AppState.eloUpdatedAt = Date.now(); // LWW clock for cloud merge
 
         if (dr.rawSubjectDelta > 0) {
             // Track hardcore daily use (only when winning on hardcore)
             if (mode === 'hardcore' && Sefc === 1) {
-                const today = new Date().toISOString().slice(0, 10);
+                const today = todayLocalKey();
                 if (AppState.hardcoreDailyDate !== today) {
                     AppState.hardcoreDailyDate = today;
                     AppState.hardcoreDailyCount = 0;
@@ -5129,6 +5199,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
             AppState.elo.maths || 1200
         );
         AppState.elo.global = newGlobal;
+        AppState.eloUpdatedAt = Date.now(); // LWW clock for cloud merge
 
         const oldTier = getRankTierDetails(oldE_s);
         const newTier = getRankTierDetails(newE_s);
@@ -5243,7 +5314,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
       // fast path incremented it, letting hardcore farm uncapped via
       // uncalibrated questions.
       if (_legacyMode === 'hardcore' && S === 1) {
-          const today = new Date().toISOString().slice(0, 10);
+          const today = todayLocalKey();
           if (AppState.hardcoreDailyDate !== today) {
               AppState.hardcoreDailyDate = today;
               AppState.hardcoreDailyCount = 0;
@@ -5287,6 +5358,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
 
     if (newE_s > 2999.99) newE_s = 2999.99;
     AppState.elo[safeSubject] = newE_s;
+    AppState.eloUpdatedAt = Date.now(); // LWW clock for cloud merge
 
     // ── Fixed Question Retro-Mutation Loop ──
     // FIXED: Changed learning scale from 20 down to an elegant fractional 0.05 convergence 
@@ -5351,6 +5423,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     const eM = AppState.elo.maths || 1200;
     const newGlobal = _computeGlobalMetaMMR(eP, eC, eM);
     AppState.elo.global = newGlobal;
+    AppState.eloUpdatedAt = Date.now(); // LWW clock for cloud merge
 
     const oldTier = getRankTierDetails(oldE_s);
     const newTier = getRankTierDetails(newE_s);
@@ -5907,7 +5980,7 @@ function _computeDefaultQEloForCurrentChapter() {
             q.subject === subject && _chaptersMatch(q.chapter, chapter) && !q.isAnomaly
         );
         if (qs.length === 0) return 1200;
-        const sum = qs.reduce((acc, q) => acc + (q.qElo || 1200), 0);
+        const sum = qs.reduce((acc, q) => acc + _safeQElo(q), 0);
         return Math.round(sum / qs.length);
     } catch (_) {
         return 1200;
@@ -5943,7 +6016,7 @@ export function practiceSubmit() {
         if (isMulti) {
             const selectedOptions = Array.from(
                 document.querySelectorAll('.mcq-option.selected')
-            ).map(el => el.dataset.option);
+            ).map(el => decodeOption(el.dataset.option));
 
             if (selectedOptions.length === 0) {
                 alert("Pick at least one option. You can't skip this.");
@@ -5978,7 +6051,8 @@ export function practiceSubmit() {
             }
 
             userAns = String.fromCharCode(65 + optIndex);
-            isCorrect = (userAns.toLowerCase() === AppState.currentQ.correctAnswer.toLowerCase());
+            const correctAnswer = AppState.currentQ.correctAnswer;
+            isCorrect = (correctAnswer != null && userAns.toLowerCase() === String(correctAnswer).toLowerCase());
         }
 
     } else if (AppState.currentQ.type === 'numeric') {
@@ -6353,6 +6427,8 @@ export async function deleteQuestion(id) {
                 AppState.questionBank.splice(i, 1);
             }
         }
+        // Tombstone the id so a stale cloud snapshot can never resurrect it.
+        recordCloudTombstone(id).catch(console.error);
 
         await saveAllAsync().catch(console.error);
 
@@ -6726,23 +6802,19 @@ function getConfigForStreak(streak) {
 // The standard Question Practice modal (#practice-modal in index.html) ships a
 // permanent <canvas id="streak-canvas"> that is merely hidden via display:none
 // when the modal is closed. The SR practice drawer (matrix.js) injects a SECOND
-// element with the same id while it is open and removes it again on close.
-// getElementById() always returns the first match in document order, so we fall
-// back to querySelectorAll('#streak-canvas') and pick the first instance whose
-// layout box is actually visible (offsetParent !== null). This lets a single
-// renderLoop drive the pixel flame regardless of which practice surface is on
-// screen, with zero stale references.
+// element (#sr-streak-canvas) while it is open and removes it again on close.
+// We scan both and pick the first instance whose layout box is actually
+// visible (offsetParent !== null). This lets a single renderLoop drive the
+// pixel flame regardless of which practice surface is on screen, with zero
+// stale references and no duplicate DOM ids.
 function _resolveActiveStreakCanvas() {
-    let canvas = document.getElementById('streak-canvas');
-    if (canvas && canvas.offsetParent !== null) return canvas;
-    // Either no canvas at all, or the first match is hidden — scan all matches.
-    const all = document.querySelectorAll('#streak-canvas');
+    const all = document.querySelectorAll('#streak-canvas, #sr-streak-canvas');
     for (const c of all) {
         if (c.offsetParent !== null) return c;
     }
     // No visible canvas. Return the first match (if any) so callers can detect
     // "element exists but hidden" vs "element missing entirely" if they need to.
-    return canvas || null;
+    return all[0] || null;
 }
 
 function renderLoop(timestamp) {
@@ -6750,15 +6822,15 @@ function renderLoop(timestamp) {
     // drawer constructs/destroys its DOM on invocation, so any cached reference
     // would go stale.
     const streakCanvas = _resolveActiveStreakCanvas();
-    if (!streakCanvas || streakCanvas.offsetParent === null) {
-        // No visible canvas on this tick — clear old animation metrics
-        // gracefully and await the next frame execution.
+    if (!streakCanvas || streakCanvas.offsetParent === null || document.hidden) {
+        // No visible canvas on this tick (or the tab is backgrounded) — stop
+        // the loop entirely instead of spinning at 60fps forever (battery).
+        // _ensureStreakLoop() restarts it when a canvas actually appears.
         particles = [];
         currentFrame = 0;
         lastTime = 0;
         currentIntensity = 0.62;
-        _streakRafScheduled = true;
-        requestAnimationFrame(renderLoop);
+        _streakRafScheduled = false;
         return;
     }
     // ── Accelerated 2D context ──
@@ -6815,12 +6887,26 @@ function renderLoop(timestamp) {
     requestAnimationFrame(renderLoop);
 }
 
-// Kick off the render loop unconditionally — it self-gates when no visible
-// canvas exists, so there is no cost to running it before any drawer/modal opens.
-if (!_streakRafScheduled) {
+// Kick off the render loop on demand only — it self-stops when no visible
+// canvas exists (battery), so starting it before any drawer/modal opens costs
+// exactly one cheap no-op frame.
+function _ensureStreakLoop() {
+    if (_streakRafScheduled) return;
     _streakRafScheduled = true;
     requestAnimationFrame(renderLoop);
 }
+
+// Restart the loop when a streak canvas enters the DOM (SR practice drawer
+// injects #sr-streak-canvas dynamically) or when the practice modal opens.
+try {
+    new MutationObserver(() => {
+        if (document.getElementById('streak-canvas') || document.getElementById('sr-streak-canvas')) {
+            _ensureStreakLoop();
+        }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+} catch (_) {}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) _ensureStreakLoop(); });
+window._ensureStreakLoop = _ensureStreakLoop;
 
 export function updateStreakVisualizer() {
     const numberEl = document.getElementById('streak-number');
@@ -6866,7 +6952,8 @@ export function deactivateOverheat() {
             ['wrong', 'incorrect', 'error', 'failed', 'missed'].includes(statusNow);
 
         if (isWrong) {
-            changeCount(AppState.currentQ.subject, 1);
+            // NOTE: no changeCount() here — wrong answers must not inflate the
+            // daily solved counter / error-matrix totals / streak data.
             triggerRedFlash();
             playWrongSound();
             AppState._ckComboBreak = true; // FIX: combo always breaks on a miss
@@ -6952,9 +7039,7 @@ export function deactivateOverheat() {
         if (wrongBtn) {
             const originalWrongClick = wrongBtn.onclick;
             wrongBtn.onclick = () => {
-                if (AppState.currentQ && AppState.currentQ.status === 'unsolved') {
-                    changeCount(AppState.currentQ.subject, 1);
-                }
+                // Wrong follow-up answer — deliberately NOT counted as solved.
                 triggerRedFlash();
                 playWrongSound();
                 AppState._ckComboBreak = true; // FIX: combo always breaks on a miss
@@ -6996,6 +7081,12 @@ async function runNewDayCycle(todayStr) {
     try { CNSLoad.resetDaily(); } catch (_) {}
     // ── Night Guard: reset dismissal flag at midnight ──
     try { NightGuard.resetDaily(); } catch (_) {}
+    // Fold yesterday's live counters into the permanent ledger BEFORE zeroing
+    // them: a solve at 23:59:59 whose save lands after the reset would
+    // otherwise be credited to neither day (or pollute the fresh day).
+    const _prevDay = new Date();
+    _prevDay.setDate(_prevDay.getDate() - 1);
+    try { await settleDayCounters(_prevDay.getFullYear() + '-' + String(_prevDay.getMonth() + 1).padStart(2, '0') + '-' + String(_prevDay.getDate()).padStart(2, '0')); } catch (_) {}
     solved.physics = 0;
     solved.chemistry = 0;
     solved.maths = 0;
@@ -7216,12 +7307,12 @@ window.populateAiDumpChapters = function () {
     let html = '';
     for (const [subj, chapters] of Object.entries(bySubject)) {
         html += `<div style="margin-bottom:12px;">`;
-        html += `<div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--accent-primary);">${icons[subj]||'📋'} ${subj.toUpperCase()}</div>`;
+        html += `<div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--accent-primary);">${icons[subj]||'📋'} ${escapeHtml(subj.toUpperCase())}</div>`;
         chapters.forEach(c => {
-            const id = `dump-${subj}-${c.chapter.replace(/[^a-zA-Z0-9]/g,'_')}`;
+            const id = `dump-${subj}-${String(c.chapter).replace(/[^a-zA-Z0-9]/g,'_')}`;
             html += `<label style="display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:13px;cursor:pointer;border-radius:4px;">
-                <input type="checkbox" checked data-dump-subj="${subj}" data-dump-chapter="${c.chapter}" id="${id}" style="accent-color:var(--accent-primary);">
-                ${c.chapter} <span style="color:var(--text-muted);font-size:11px;margin-left:auto;">${c.count} Qs${c.errorCount > 0 ? ' · ' + c.errorCount + ' err' : ''}</span>
+                <input type="checkbox" checked data-dump-subj="${escapeAttribute(subj)}" data-dump-chapter="${escapeAttribute(c.chapter)}" id="${escapeAttribute(id)}" style="accent-color:var(--accent-primary);">
+                ${escapeHtml(c.chapter)} <span style="color:var(--text-muted);font-size:11px;margin-left:auto;">${c.count} Qs${c.errorCount > 0 ? ' · ' + c.errorCount + ' err' : ''}</span>
             </label>`;
         });
         html += `</div>`;
@@ -7287,9 +7378,9 @@ window.exportMatrixDump = function () {
                 errorReason: q.errorReason || 'none',
                 status: q.status || 'unknown',
                 tags: q.tags || [],
-                qElo: q.qElo || 1200,
-                easeFactor: q.easeFactor || 2.5,
-                currentInterval: q.currentInterval || 0,
+                qElo: _safeQElo(q),
+                easeFactor: (typeof q.easeFactor === 'number' && isFinite(q.easeFactor)) ? q.easeFactor : 2.5,
+                currentInterval: Number(q.currentInterval) || 0,
                 isMastered: q.isMastered || false,
                 attemptTimeline: historySummary,
                 totalAttempts: historySummary.length,
@@ -9291,6 +9382,19 @@ document.addEventListener('DOMContentLoaded', function () {
   try { CK.shields = Math.max(0, parseInt(localStorage.getItem(LS_SHIELDS) || '0', 10) || 0); } catch (e) { CK.shields = 0; }
   const persistShields = () => { try { localStorage.setItem(LS_SHIELDS, String(CK.shields)); } catch (e) {} };
 
+  // ── Error visibility ──
+  // These ticks used to swallow every error silently — engine breakage was
+  // fully invisible. Log the first failure, then throttle to one console
+  // entry per 10s so a persistent fault can't spam the console.
+  let _ckErrAt = 0;
+  const ckErr = (e) => {
+    const now = Date.now();
+    if (now - _ckErrAt > 10000) {
+      _ckErrAt = now;
+      console.error('[CK engine tick]', e);
+    }
+  };
+
   const $ = (id) => document.getElementById(id);
   const setT = (id, t) => { if (CK.last[id] === t) return; CK.last[id] = t; const e = $(id); if (e) e.textContent = t; };
   const setRing = (id, p, c) => { const e = $(id); if (!e) return; e.style.setProperty('--p', Math.max(0, Math.min(100, p))); if (c) e.style.setProperty('--ring-c', c); };
@@ -9350,7 +9454,7 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         CK.sessionOpen = false;
       }
-    } catch (e) { /* never break the app */ }
+    } catch (e) { ckErr(e); }
   }
 
   // ---- Navigation helpers ----
@@ -9495,7 +9599,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const mini = $('pomo-mini-widget');
       setBeacon('pomodoro', 'Focus Mode', !!(mini && !mini.classList.contains('hidden')));
       setBeacon('practice', 'Grind Station', CK.sessionOpen && CK.sessionCorrect > 0);
-    } catch (e) {}
+    } catch (e) { ckErr(e); }
   }
   function slowTick() {
     try {
@@ -9504,7 +9608,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const low = heavy.low;
       const pItem = ckNavItem('practice', 'Grind Station');
       if (pItem) pItem.classList.toggle('nav-ck-pulse', !!low);
-    } catch (e) {}
+    } catch (e) { ckErr(e); }
   }
 
   function boot() {

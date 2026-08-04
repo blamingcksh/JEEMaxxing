@@ -17,6 +17,13 @@ const escapeHTML = (s) =>
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+// NaN-safe numeric coercion for peer telemetry fields (corrupt/string values
+// must not poison comparators or rendering).
+const _numOr = (v, fallback) => {
+  const n = Number(v);
+  return isFinite(n) ? n : fallback;
+};
+
 class Arena {
   constructor() {
     this.container = null;
@@ -34,6 +41,19 @@ class Arena {
     this._heartbeatInterval = null;
   }
 
+  _lsGet(key) {
+    try { return localStorage.getItem(key); } catch (_) { return null; }
+  }
+
+  _lsSet(key, val) {
+    try { localStorage.setItem(key, val); } catch (_) { /* private mode / quota */ }
+  }
+
+  _uuid() {
+    try { if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID(); } catch (_) {}
+    return 'peer-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
   init(container, opts = {}) {
     this.container = (typeof container === 'string') ? document.querySelector(container) : container;
     this.getState = opts.getState || (() => ({
@@ -41,7 +61,7 @@ class Arena {
     }));
 
     // Pre-hydrate internal nickname configuration state if it exists locally
-    const savedNick = localStorage.getItem('jeemax_arena_last_nickname');
+    const savedNick = this._lsGet('jeemax_arena_last_nickname');
     if (savedNick) this.nickname = savedNick;
 
     this._buildShell();
@@ -49,8 +69,8 @@ class Arena {
     this._render();
 
     // Trigger explicit Auto-Connect sequence if token matrix matches active state
-    const savedRoomRaw = localStorage.getItem('jeemax_arena_last_room_raw');
-    const shouldAutoConnect = localStorage.getItem('jeemax_arena_auto_connect');
+    const savedRoomRaw = this._lsGet('jeemax_arena_last_room_raw');
+    const shouldAutoConnect = this._lsGet('jeemax_arena_auto_connect');
     
     if (savedRoomRaw && shouldAutoConnect === 'true') {
       this.connect(savedRoomRaw, this.nickname);
@@ -60,15 +80,17 @@ class Arena {
   async connect(roomKey, nickname) {
     if (this.status !== 'offline') this.disconnect(false);
     
-    this.roomKey = roomKey.trim().toLowerCase().replace(/\s+/g, '-');
+    // Strip filter-hostile chars (eq-filter values) — broken filters silently
+    // fail the realtime channel otherwise.
+    this.roomKey = roomKey.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     this.nickname = nickname.trim() || ('Anon-' + Math.floor(Math.random() * 9000 + 1000));
-    this.peerId = localStorage.getItem('jeemax_arena_peer_id') || crypto.randomUUID();
-    localStorage.setItem('jeemax_arena_peer_id', this.peerId);
+    this.peerId = this._lsGet('jeemax_arena_peer_id') || this._uuid();
+    this._lsSet('jeemax_arena_peer_id', this.peerId);
 
     // Save configuration states to local disk architecture for refresh resilience
-    localStorage.setItem('jeemax_arena_last_room_raw', roomKey);
-    localStorage.setItem('jeemax_arena_last_nickname', this.nickname);
-    localStorage.setItem('jeemax_arena_auto_connect', 'true');
+    this._lsSet('jeemax_arena_last_room_raw', roomKey);
+    this._lsSet('jeemax_arena_last_nickname', this.nickname);
+    this._lsSet('jeemax_arena_auto_connect', 'true');
 
     this._setStatus('connecting');
 
@@ -124,7 +146,16 @@ class Arena {
           }
           this._scheduleRender();
         })
-        .subscribe();
+        .subscribe((status, err) => {
+          // No error callback → a bad filter silently kills the channel and
+          // the UI sits on "SYNCING ATOMICS…" forever. Surface + degrade.
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn('Arena realtime channel ' + status + ':', err || '');
+            this._setStatus('offline');
+          } else if (status === 'CLOSED') {
+            console.warn('Arena realtime channel closed');
+          }
+        });
 
       // 4. Start active presence heartbeat tracking loop (Every 30 seconds)
       this._heartbeatInterval = setInterval(() => this.broadcastTelemetry(), 30000);
@@ -141,7 +172,8 @@ class Arena {
     
     // Cleanly delete our own database row when clicking disconnect so the boards clear for friends[cite: 1]
     if (this.peerId && this.status === 'online') {
-      supabase.from('arena_leaderboard').delete().eq('peer_id', this.peerId).then(() => {});
+      supabase.from('arena_leaderboard').delete().eq('peer_id', this.peerId)
+        .then(() => {}).catch((err) => { console.warn('Arena row cleanup failed:', err); });
     }
 
     this.telemetry.clear();
@@ -151,7 +183,7 @@ class Arena {
 
     // If leaving intentionally via button click, kill auto-connect flag
     if (isManualClick) {
-      localStorage.setItem('jeemax_arena_auto_connect', 'false');
+      this._lsSet('jeemax_arena_auto_connect', 'false');
     }
   }
 
@@ -237,8 +269,8 @@ class Arena {
     const grid = this.container.querySelector('#lb-grid');
 
     // Retrieve storage backups to make sure inputs remain visible post-refresh
-    const savedNick = localStorage.getItem('jeemax_arena_last_nickname') || this.nickname;
-    const savedRoomRaw = localStorage.getItem('jeemax_arena_last_room_raw') || '';
+    const savedNick = this._lsGet('jeemax_arena_last_nickname') || this.nickname;
+    const savedRoomRaw = this._lsGet('jeemax_arena_last_room_raw') || '';
     
     if (nick) nick.value = savedNick;
     if (key) key.value = savedRoomRaw;
@@ -310,13 +342,16 @@ class Arena {
     
     this.telemetry.forEach((t, id) => {
       // Calculate active timeline state metrics without dropping/pruning structural elements[cite: 1]
-      const timeSinceUpdate = now - new Date(t.timestamp).getTime();
+      const ts = new Date(t.timestamp);
+      const timeSinceUpdate = isNaN(ts.getTime()) ? Infinity : now - ts.getTime();
       const isOnline = t.self ? (this.status === 'online') : (timeSinceUpdate <= offlineThreshold);
       
       rows.push({ ...t, id, isOnline });
     });
 
-    rows.sort((a, b) => (b.globalElo || 0) - (a.globalElo || 0));
+    // Numeric-coerce + NaN-guard so corrupt/string elo values can't produce
+    // NaN comparators (non-deterministic sort order).
+    rows.sort((a, b) => _numOr(b.globalElo, 0) - _numOr(a.globalElo, 0));
 
     grid.innerHTML = rows.length
       ? rows.map((r) => this._cardHTML(r)).join('')
@@ -335,7 +370,10 @@ class Arena {
     const studyH = (typeof r.studyHours === 'number') ? r.studyHours.toFixed(2) + 'h' : '—';
     const dv = (r.dailyVariation == null) ? '—' : escapeHTML(String(r.dailyVariation));
     const name = escapeHTML(r.nickname);
-    const timeString = r.timestamp ? new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Now';
+    const _ts = r.timestamp ? new Date(r.timestamp) : null;
+    const timeString = _ts && !isNaN(_ts.getTime())
+      ? _ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : '—';
     
     // Render an absolute positioned action item for purging un-dropped slots manually[cite: 1]
     const crossButton = !r.self 

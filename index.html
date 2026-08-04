@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
     <script>try{var _fx=JSON.parse(localStorage.getItem('jeemax_fx_prefs')||'null');if(_fx&&_fx.effects===false)document.documentElement.classList.add('fx-effects-off');}catch(e){}</script>
+    <script>/* Theme pre-boot: apply saved theme/mode BEFORE first paint so styles.css
+       resolves with the right data-theme/data-mode (no default-theme FOUC).
+       Invalid/unknown stored ids silently fall back to the defaults. */
+try{var _t=localStorage.getItem('jeemax_theme'),_m=localStorage.getItem('jeemax_mode');
+var _ths=['furnace','synthwave','glacier','overgrowth','bloodmoon','sakura','stealth'];
+var _mds=['midnight','dusk'];
+var _rt=document.documentElement;
+_rt.setAttribute('data-theme',_ths.indexOf(_t)>=0?_t:'furnace');
+_rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#050508">
@@ -173,8 +182,16 @@
                 </div>
 
                 <!-- Momentum Tracker (candlestick engine target) -->
-                        <!-- Grove Islands archipelago mounts here (grove-islands.js) -->
-        <div class="dash-card dash-card-momentum"></div>
+                <div class="dash-card dash-card-momentum">
+                    <div class="dash-card-head">
+                        <span class="kicker">// MOMENTUM</span>
+                        <h2 class="box-title">Momentum Tracker</h2>
+                        <p class="box-desc">Predictive yield momentum — OHLC candles, target lock, 5-day projection.</p>
+                    </div>
+                    <div class="graph-display">
+                        <svg id="dynamic-graph" preserveAspectRatio="none"></svg>
+                    </div>
+                </div>
 
                 <!-- Chapter Progress (weakest first) -->
                 <div class="dash-card dash-card-progress">
@@ -934,7 +951,16 @@ window.setMatrixFilter = function (group, value, el) {
 window.setMatrixSearch = function (value) {
     var carrier = document.getElementById('filter-tag');
     if (carrier) carrier.value = value;
-    if (typeof window.filterErrors === 'function') window.filterErrors();
+    if (typeof window.filterErrors === 'function') {
+        // Debounce the O(N) DOM filter pass — every keystroke used to
+        // re-scan every rendered card synchronously (stutters on mobile
+        // with many cards). 150ms trailing window; the last keystroke
+        // always lands.
+        clearTimeout(window.__matrixSearchDebounce);
+        window.__matrixSearchDebounce = setTimeout(function () {
+            window.filterErrors();
+        }, 150);
+    }
 };
 </script>
 
