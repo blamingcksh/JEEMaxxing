@@ -19,6 +19,7 @@ import {
     showLoading, hideLoading, readFileAsBase64,
     escapeHtml, escapeAttribute, formatTime, formatStudyDuration,
     cleanAndParseJson,
+    repairLatex, mathOk,
     uploadMediaToDrive, fetchMediaFromDrive, deleteMediaFromDrive,
     initDrive, handleDriveAuth, handleAuthExpiry,
     isDriveTokenValid, initializeCloudFolder, syncStateToCloud,
@@ -2065,6 +2066,8 @@ JSON ESCAPING RULES:
 - Use single dollar signs ($...$) for all inline characters, expressions, numbers, and units.
 - Use double dollar signs ($$...$$) ONLY for centered standalone equations.
 - CRITICAL: Because you are returning a raw JSON string, EVERY backslash must be explicitly double-escaped in your output text (e.g., type \\\\times, \\\\text, \\\\mathrm, \\\\frac) so that JSON.parse() can resolve the string successfully without hitting unexpected escape sequence tokens.
+- NEVER emit raw unicode math glyphs. Always: ≠ → \\\\neq, ≤ → \\\\le, ≥ → \\\\ge, ± → \\\\pm, × → \\\\times, ∞ → \\\\infty, ≡ → \\\\equiv, → → \\\\to. A glyph like ≢ must never appear as a literal character in any field.
+
 
 OUTPUT FORMAT:
 Return a flat single JSON array containing exactly ${pendingItems.length} objects matching this exact sequence: [ { "extractedText": "...", "options": ["A) ...", "B) ..."] }, ... ]. If there are no options inside a cell, leave that specific "options" array completely empty.`;
@@ -2089,9 +2092,12 @@ Return a flat single JSON array containing exactly ${pendingItems.length} object
         parsed.forEach((obj, i) => {
             const q = pendingItems[i];
             const options = Array.isArray(obj.options) ? obj.options : [];
-            q.extractedText = typeof obj.extractedText === 'string' ? obj.extractedText : '';
-            q.options = options;
+            q.extractedText = repairLatex(typeof obj.extractedText === 'string' ? obj.extractedText : '');
+            q.options = options.map(o => repairLatex(typeof o === 'string' ? o : o));
             q.type = options.length > 0 ? 'mcq' : 'text';
+            // Belt-and-suspenders: flag (never block) rows whose math still
+            // fails to render after the deterministic repair.
+            if (!mathOk(q.extractedText)) { q.latexRepairFailed = true; console.warn('[latex-repair] segment failed post-repair in extractTextForAll:', i); }
         });
     } catch (err) {
         // ── 6. Error handling boundary ──────────────────────────────────────
@@ -2143,8 +2149,12 @@ IMPORTANT – MULTI‑ANSWER QUESTIONS:
                     ans = (rawAnswer || "").toString().trim();
                 }
 
-                AppState.extractedItems[idx].correctAnswer = ans;
-                AppState.extractedItems[idx].solution = item.solution || "";
+                AppState.extractedItems[idx].correctAnswer = Array.isArray(ans) ? ans.map(a => repairLatex(a)) : repairLatex(ans);
+                AppState.extractedItems[idx].solution = repairLatex(typeof item.solution === 'string' ? item.solution : "");
+                if (!mathOk(AppState.extractedItems[idx].solution)) {
+                    AppState.extractedItems[idx].latexRepairFailed = true;
+                    console.warn('[latex-repair] answer-key solution failed post-repair:', idx);
+                }
 
                 if (Array.isArray(ans)) {
                     AppState.extractedItems[idx].type = 'mcq';
@@ -2198,8 +2208,12 @@ IMPORTANT – MULTI‑ANSWER QUESTIONS:
                     ans = (rawAnswer || "").toString().trim();
                 }
 
-                AppState.extractedItems[idx].correctAnswer = ans;
-                AppState.extractedItems[idx].solution = item.solution || "";
+                AppState.extractedItems[idx].correctAnswer = Array.isArray(ans) ? ans.map(a => repairLatex(a)) : repairLatex(ans);
+                AppState.extractedItems[idx].solution = repairLatex(typeof item.solution === 'string' ? item.solution : "");
+                if (!mathOk(AppState.extractedItems[idx].solution)) {
+                    AppState.extractedItems[idx].latexRepairFailed = true;
+                    console.warn('[latex-repair] text answer-key solution failed post-repair:', idx);
+                }
 
                 if (Array.isArray(ans)) {
                     AppState.extractedItems[idx].type = 'mcq';
@@ -2703,7 +2717,7 @@ export async function processGemTextDump() {
                         // Strip outer quotes
                         let rawOpt = o.substring(1, o.length - 1);
                         // FIX: Convert literal \n or \\n traps into real newlines, then collapse backslashes
-                        return _fixBackslashRuns(rawOpt);
+                        return repairLatex(_fixBackslashRuns(rawOpt));
                     });
                 }
             }
@@ -2716,12 +2730,12 @@ export async function processGemTextDump() {
                 if (ansRaw.startsWith('[')) {
                     const letterMatches = ansRaw.match(/"([^"]+)"/g);
                     if (letterMatches) {
-                        correctAnswer = letterMatches.map(l => _fixBackslashRuns(l.replace(/"/g, '').trim()));
+                        correctAnswer = letterMatches.map(l => repairLatex(_fixBackslashRuns(l.replace(/"/g, '').trim())));
                     }
                 } else {
                     // Same backslash normalization as options/solution/extractedText:
                     // JSON escapes turn "\frac" into "\\frac" — collapse back to one.
-                    correctAnswer = _fixBackslashRuns(ansRaw.substring(1, ansRaw.length - 1).trim());
+                    correctAnswer = repairLatex(_fixBackslashRuns(ansRaw.substring(1, ansRaw.length - 1).trim()));
                 }
             }
 
@@ -2749,9 +2763,9 @@ export async function processGemTextDump() {
             // FIX: Convert literal macro/newline traps (\n or \\n) into actual newline characters first.
             // This prevents KaTeX from choking on an "Undefined control sequence: \n" error,
             // allowing math symbols like \mathrm to render successfully.
-            extractedText = _fixBackslashRuns(extractedText);
+            extractedText = repairLatex(_fixBackslashRuns(extractedText));
             if (typeof solution === 'string') {
-                solution = _fixBackslashRuns(solution);
+                solution = repairLatex(_fixBackslashRuns(solution));
             }
 
             // ── Build a synthetic rawQ from the segment metadata so the qElo-stamping
@@ -2833,7 +2847,7 @@ export async function processGemTextDump() {
                 type: type,
                 timeTaken: 0,
                 solution: solution,
-                hint: _fixBackslashRuns(typeof rawQ.hint === 'string' ? rawQ.hint : ''),
+                hint: repairLatex(_fixBackslashRuns(typeof rawQ.hint === 'string' ? rawQ.hint : '')),
                 qElo: gemQElo,
                 targetTimeMins: gemTargetTime,
                 isAnomaly: false,
@@ -2879,6 +2893,16 @@ export async function processGemTextDump() {
             if (typeof it.qElo === 'number' && Math.abs(it.qElo - priorAvg) > 600) {
                 it.qElo = Math.round(priorAvg + 600 * Math.sign(it.qElo - priorAvg));
                 it.tags = (it.tags || []).concat(['over-chapter-ceiling']);
+            }
+        }
+
+        // Belt-and-suspenders: flag (never block) rows whose math still fails
+        // to render after the deterministic repair (KaTeX may not be loaded yet
+        // at ingest, in which case mathOk safely no-ops).
+        for (const it of parsedItems) {
+            if (!mathOk(it.extractedText) || !mathOk(it.solution)) {
+                it.latexRepairFailed = true;
+                console.warn('[latex-repair] gem segment failed post-repair:', it.extractedText ? it.extractedText.slice(0, 60) : '(no text)');
             }
         }
 
@@ -7611,6 +7635,35 @@ function _wrapBareLatex(text) {
             const close = text[i + 1] === '(' ? '\\)' : '\\]';
             const k = text.indexOf(close, i + 2);
             if (k !== -1) { out += text.slice(i, k + 2); i = k + 2; continue; }
+        }
+        if (c === '\\' && text.slice(i, i + 7) === '\\begin{') {
+            // Nested-environment-aware: wrap the WHOLE \\begin{env}...\\end{env}
+            // block as ONE math unit. A naive "stop at the first \\end{...}"
+            // breaks on nested environments (e.g. a \\begin{cases} inside an
+            // \\begin{align}) — it would cut the block short and leave the
+            // outer \\end{align} orphaned as red raw source. So we track the
+            // \\begin{ / \\end{ nesting depth and stop at the OUTERMOST
+            // matching \\end{env}.
+            const envOpen = /^\\begin\{([^}]*)\}/.exec(text.slice(i));
+            if (envOpen) {
+                let depth = 1;
+                let idx = i + envOpen[0].length;
+                const scan = /\\begin\{([^}]*)\}|\\end\{([^}]*)\}/g;
+                scan.lastIndex = idx;
+                let m, endIdx = -1;
+                while ((m = scan.exec(text)) !== null) {
+                    if (m[1] !== undefined) { depth++; }
+                    else { depth--; if (depth === 0) { endIdx = m.index; break; } }
+                }
+                if (endIdx !== -1) {
+                    const endOpen = /\\end\{([^}]*)\}/.exec(text.slice(endIdx));
+                    const endLen = endOpen ? endOpen[0].length : 2;
+                    const end = endIdx + endLen;
+                    out += '$$' + text.slice(i, end) + '$$';
+                    i = end;
+                    continue;
+                }
+            }
         }
         if (c === '\\' && /[a-zA-Z]/.test(text[i + 1] || '')) {
             let j = i + 1;
