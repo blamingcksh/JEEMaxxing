@@ -13,7 +13,7 @@ import {
     studySecs,
     monthNamesCal,
     MODEL_FALLBACK, CLIENT_ID, SCOPES,
-    saveAllAsync, loadDataAsync,
+    saveAllAsync, flushSaves, loadDataAsync,
     idbSet, idbGet,
     callGeminiWithFallback, cropImageFromBBox,
     showLoading, hideLoading, readFileAsBase64,
@@ -575,6 +575,9 @@ export async function switchTab(viewId, element) {
         catBanner.style.display = 'flex';
     }
 
+    // Flush any pending coalesced save BEFORE re-reading the bank from IDB,
+    // or a tab switch right after a solve could load stale persisted state.
+    try { await flushSaves(); } catch (_) {}
     await loadDataAsync();
     bootCumStudy();
     restoreDailyCountsIntoSolved();
@@ -1076,12 +1079,31 @@ export async function updateUI() {
 
     // ── Cognitive MMR Matrix hydration (global profile row + subject
     // monitors + deficit lockdown protocol). Runs on every updateUI tick so
-    // the dashboard always reflects the live rating state. ──
-    try { renderEloMatrix(); } catch (_) { /* never block updateUI */ }
-    try { renderChapterDecayGrid(); } catch (_) { /* never block updateUI */ }
-    try { renderChapterProgressList(); } catch (_) { /* never block updateUI */ }
+    // the dashboard always reflects the live rating state. These three are
+    // heavy full-DOM rebuilds that grow with the bank — gate them to the
+    // dashboard view so solving inside the practice modal (or any other tab)
+    // doesn't re-render hidden dashboard DOM every time. switchTab()
+    // re-renders them on entry, so nothing goes stale. ──
+    try {
+        const v = document.getElementById('view-dashboard');
+        if (v && v.classList.contains('active')) {
+            renderEloMatrix();
+            renderChapterDecayGrid();
+            renderChapterProgressList();
+        }
+    } catch (_) { /* never block updateUI */ }
 
-    updateStreakDisplay();
+    // ── Debounced streak refresh ──
+    // updateStreakDisplay() does an async getDailyHistory() IDB read on every
+    // call. changeCount fires updateUI per solve — that read on every solve is
+    // a hot-path cost that grows as the ledger grows. Collapse bursts to one
+    // refresh 800ms after the last change (still instant-feeling).
+    try {
+        clearTimeout(window.__streakRefreshTimer);
+        window.__streakRefreshTimer = setTimeout(() => { updateStreakDisplay(); }, 800);
+    } catch (_) {
+        updateStreakDisplay();
+    }
 }
 
 // ==================== STREAK VECTOR TRACKER ====================
@@ -7123,15 +7145,26 @@ function startMidnightRolloverWatcher() {
 // ==================== INITIALIZATION ====================
 async function initApp() {
     // Register UI callbacks so storage.js can call back into app.js
+    // ── View-gated hot-reloads ──
+    // changeCount() fires renderGraph + renderErrorMatrixFromBank on EVERY
+    // solve. When the user is inside the practice modal neither view is on
+    // screen, yet each call rebuilds the whole SVG / error-card DOM — that
+    // grows with the bank and is pure waste on a slow iPad. Gate each heavy
+    // render to its own view-section; switchTab() re-renders on entry, so
+    // nothing ever goes stale.
+    const _viewActive = (viewId) => {
+        const v = document.getElementById('view-' + viewId);
+        return !!(v && v.classList.contains('active'));
+    };
     registerUiCallbacks({
         lockTargetsOnly,
         updateUI,
         updateStudyTimeHeader: () => {
             import('./pomodoro.js').then(m => m.updateStudyTimeHeader());
         },
-        renderGraph,
+        renderGraph: () => { if (_viewActive('dashboard')) renderGraph(); },
         renderErrorMatrixFromBank: () => {
-            import('./matrix.js').then(m => m.renderErrorMatrixFromBank());
+            if (_viewActive('errors')) import('./matrix.js').then(m => m.renderErrorMatrixFromBank());
         },
     });
 
@@ -9490,7 +9523,15 @@ document.addEventListener('DOMContentLoaded', function () {
     return '<div class="nav-ck-arc"><div class="ck-ring nav-ck-ring" id="nav-ck-arc-' + key + '" style="--ring-c:' + color + '"><div class="ck-ring-hole"><span class="nav-ck-arc-lbl">' + label + '</span></div></div></div>';
   }
 
-  function ckFixToday() {
+  // ── Incremental "fixed today" counter ──
+  // ckFixToday() used to rescan EVERY history log of EVERY question on every
+  // navHeavy recompute — O(bank × 30 logs) of Date.parse churn on the 1s tick.
+  // Now it's a per-day cache: seeded once per day with a single full scan, then
+  // bumped in O(1) by the same hook matrix.js calls when a correct SR log is
+  // committed (__ckBumpTodayFix). The per-second tick becomes a pure cache hit.
+  const _fixDayKey = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  let _fixCache = { day: '', counts: { physics: 0, chemistry: 0, maths: 0 } };
+  function _scanFixToday() {
     const d = new Date();
     const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const dayEnd = dayStart + 86400000;
@@ -9499,8 +9540,6 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!q.historyLogs) continue;
       for (const l of q.historyLogs) {
         if (l && l.result === 'correct' && l.timestamp) {
-          // Date.parse is an order of magnitude cheaper than toLocaleDateString
-          // per log — this ran for every log of every question every second.
           const t = typeof l.timestamp === 'string' ? Date.parse(l.timestamp) : l.timestamp;
           if (t >= dayStart && t < dayEnd) {
             const s = (q.subject || '').toLowerCase(); if (s in c) c[s]++;
@@ -9510,6 +9549,22 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     return c;
   }
+  function ckFixToday() {
+    const day = _fixDayKey();
+    if (_fixCache.day !== day) _fixCache = { day, counts: _scanFixToday() };
+    return _fixCache.counts;
+  }
+  // Called by matrix.js submitPracticeLog on every correct SR log commit.
+  window.__ckBumpTodayFix = (subject) => {
+    try {
+      const day = _fixDayKey();
+      if (_fixCache.day !== day) _fixCache = { day, counts: _scanFixToday() };
+      const s = String(subject || '').toLowerCase();
+      if (s in _fixCache.counts) _fixCache.counts[s]++;
+      // Nudge the memoized nav derivation so the ring reflects it promptly.
+      try { window.__jmaxDataDirty = (window.__jmaxDataDirty || 0) + 1; } catch (_) {}
+    } catch (e) {}
+  };
   function ckReadyCount() {
     let n = 0;
     for (const q of AppState.questionBank) {
@@ -9539,12 +9594,19 @@ document.addEventListener('DOMContentLoaded', function () {
   // (window.__jmaxDataDirty) or (b) 30s TTL elapsed (keeps hour-of-day /
   // midnight drift correct). The per-second tick becomes a pure cache hit.
   const NAV_HEAVY_TTL = 30000;
+  const NAV_HEAVY_MIN_INTERVAL = 2000; // even when dirty, rescan at most every 2s
   let _navHeavy = { at: 0, dirty: -1, fix: null, ready: 0, low: null };
   function navHeavy() {
     const dirty = (typeof window.__jmaxDataDirty === 'number') ? window.__jmaxDataDirty : 0;
     const now = Date.now();
-    if (_navHeavy.fix !== null && now - _navHeavy.at <= NAV_HEAVY_TTL && dirty === _navHeavy.dirty) {
-      return _navHeavy;
+    if (_navHeavy.fix !== null && now - _navHeavy.at <= NAV_HEAVY_TTL) {
+      // ckFixToday is now O(1)-cached, but ckReadyCount/ckLowHealth still scan
+      // the bank. A dirty bump (per save) must not trigger a full rescan on
+      // the very next 1s tick — enforce a floor so a solve burst costs one
+      // rescan instead of one per second.
+      if (dirty === _navHeavy.dirty || now - _navHeavy.at < NAV_HEAVY_MIN_INTERVAL) {
+        return _navHeavy;
+      }
     }
     _navHeavy = { at: now, dirty, fix: ckFixToday(), ready: ckReadyCount(), low: ckLowHealth() };
     return _navHeavy;
@@ -9583,16 +9645,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
       const atRisk = new Date().getHours() >= 18 && totalSolved() === 0;
       sb.classList.toggle('ck-streak-danger', atRisk);
-      const risk = $('nav-ck-risk'); if (risk) risk.textContent = atRisk ? '🚨 STREAK AT RISK — solve 1 now' : (loopDone ? '🌌 LOOP CLOSED' : 'close it to keep the streak');
+      const riskText = atRisk ? '🚨 STREAK AT RISK — solve 1 now' : (loopDone ? '🌌 LOOP CLOSED' : 'close it to keep the streak');
+      const risk = $('nav-ck-risk'); if (risk && risk.textContent !== riskText) risk.textContent = riskText;
 
-      // tier ladder mini-map
+      // tier ladder mini-map — only rewrite DOM when the rungs actually change
+      // (this innerHTML churn every 1s also fired the global Math observer,
+      // which tree-walked the sidebar on every tick).
       const ladder = $('nav-ck-ladder');
       if (ladder && typeof ELO_RANK_TIERS !== 'undefined') {
         const elo = (AppState.elo && AppState.elo.global) || 1200;
         const cur = getRankTierDetails(elo).name;
         const idx = ELO_RANK_TIERS.findIndex(t => elo >= t.min && elo <= t.max);
         const show = ELO_RANK_TIERS.slice(Math.max(0, idx - 1), idx + 2);
-        ladder.innerHTML = show.map(t => '<div class="nav-ck-rung' + (t.name === cur ? ' here' : '') + '"><span class="nav-ck-rung-ic">' + t.icon + '</span><span class="nav-ck-rung-nm">' + t.name + '</span></div>').join('');
+        const html = show.map(t => '<div class="nav-ck-rung' + (t.name === cur ? ' here' : '') + '"><span class="nav-ck-rung-ic">' + t.icon + '</span><span class="nav-ck-rung-nm">' + t.name + '</span></div>').join('');
+        if (ladder.getAttribute('data-rungs') !== html) {
+          ladder.setAttribute('data-rungs', html);
+          ladder.innerHTML = html;
+        }
       }
 
       // beacons

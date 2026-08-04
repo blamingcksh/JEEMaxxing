@@ -973,7 +973,60 @@ export function formatStudyDuration(totalSecs) {
 }
 
 // ==================== DATA PERSISTENCE ====================
-export async function saveAllAsync() {
+// ── Save coalescing ────────────────────────────────────────────────────────
+// Every solve fires multiple full-bank commits back-to-back (changeCount →
+// saveAllAsync, practiceSubmit → saveAllAsync, …), each serializing the
+// ENTIRE bank (every question × up to 30 history logs) to IndexedDB. As the
+// bank grows that per-solve cost grows with it. All saveAllAsync() calls
+// landing within one trailing 600ms window now share a single commit;
+// `await saveAllAsync()` still resolves only after the real commit lands, so
+// durability semantics are unchanged. pagehide / visibility-hidden flush the
+// tail so a burst is never lost when leaving the page.
+let _saveTimer = null;
+let _saveBatch = null;
+let _saveBatchResolve = null;
+let _saveBatchReject = null;
+let _saveChain = Promise.resolve();
+
+export function saveAllAsync() {
+    if (!_saveTimer) {
+        _saveBatch = new Promise((resolve, reject) => {
+            _saveBatchResolve = resolve;
+            _saveBatchReject = reject;
+        });
+        _saveTimer = setTimeout(_commitCoalescedSave, 600);
+    }
+    return _saveBatch;
+}
+
+function _commitCoalescedSave() {
+    _saveTimer = null;
+    const resolve = _saveBatchResolve, reject = _saveBatchReject;
+    _saveBatchResolve = null;
+    _saveBatchReject = null;
+    // Serialize commits; a failed commit must never wedge the chain and block
+    // all future saves.
+    _saveChain = _saveChain
+        .catch(() => {})
+        .then(() => _doSaveAll())
+        .then(() => { if (resolve) resolve(); }, (e) => { if (reject) reject(e); });
+}
+
+/** Force any pending coalesced save to commit immediately. */
+export function flushSaves() {
+    if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _commitCoalescedSave();
+    }
+    return _saveBatch || Promise.resolve();
+}
+
+try {
+    window.addEventListener('pagehide', () => { flushSaves().catch(() => {}); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) flushSaves().catch(() => {}); });
+} catch (_) {}
+
+async function _doSaveAll() {
     // Persist the bank WITHOUT inline images (kept in the bounded image cache)
     // so every save is a small text-only payload — this was the intent of
     // `lightweightBank`; the previous code saved the image-laden bank instead,
