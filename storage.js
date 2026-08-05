@@ -864,9 +864,47 @@ export async function handleAuthExpiry() {
 // ==================== UTILITY FUNCTIONS ====================
 export function cleanAndParseJson(rawText) {
     let sanitized = rawText.replace(/```json|```/g, '').trim();
-    try { return JSON.parse(sanitized); } catch (initialError) {
+    // ── Bare-backslash LaTeX corruption repair ───────────────────────────────
+    // Gemini dumps routinely emit single-backslash LaTeX inside JSON strings
+    // (`"\frac{1}{2}"`). JSON.parse does NOT reject that — it silently maps
+    // `\f` → form-feed, `\t` → tab, `\b` → backspace, `\r` → CR, so `\frac`
+    // arrives as "\f" + "rac" and the math is mangled beyond repair. This is
+    // exactly why the same dump renders fine in the Gemini app (which never
+    // JSON-decodes it) but comes out broken here.
+    //
+    // Strategy: parse the raw text CLEAN first — valid dumps keep their real
+    // `\n` newlines untouched. If any decoded value carries a control char
+    // that clean question text never contains (form-feed / backspace / tab /
+    // CR), the dump was silently corrupted → re-parse with bare backslashes
+    // pre-doubled before b/f/n/r/t/u macro starts. Properly escaped `\\frac`
+    // and real `\n` / `\u0041` escapes are never touched; the `\n`+Capital
+    // literal artifact this can create is healed downstream by repairLatex's
+    // `\n`→newline rule.
+    //
+    // NOTE: the corruption check + re-parse is whole-document by design — a
+    // single stray control char anywhere re-runs preEscape over every string.
+    // It only fires on already-corrupted dumps, so the cost is bounded. Do NOT
+    // add `\n` to the corruption class: real newlines are legitimate in clean
+    // dumps, and `\neq`-corruption (`\n`+eq) is indistinguishable from a real
+    // newline at the raw-text level — it is the one macro that may still
+    // degrade silently in single-backslash dumps.
+    const hasCorruption = (val) => {
+        if (typeof val === 'string') return /[\x08\x0c\t\r]/.test(val);
+        if (Array.isArray(val)) return val.some(hasCorruption);
+        if (val && typeof val === 'object') return Object.keys(val).some(k => hasCorruption(val[k]));
+        return false;
+    };
+    const preEscape = (s) => s.replace(/(^|[^\\])\\([bfnrtu])(?=[a-zA-Z])/g, '$1\\\\$2');
+    try {
+        const parsed = JSON.parse(sanitized);
+        if (!hasCorruption(parsed)) return parsed;
+        return JSON.parse(preEscape(sanitized));
+    } catch (initialError) {
         try {
-            let multiEscaped = sanitized.replace(/\\([^"\\\/bfnrtu])/g, '\\\\$1');
+            // Fallback for genuinely invalid JSON: pre-escape macro starts
+            // (so `\underbrace` etc. survive), then double every bare
+            // backslash that isn't part of a valid JSON escape.
+            const multiEscaped = preEscape(sanitized).replace(/\\([^"\\\/bfnrtu])/g, '\\\\$1');
             return JSON.parse(multiEscaped);
         } catch (secondaryError) {
             throw new Error("Unable to parse JSON: " + secondaryError.message);
@@ -907,8 +945,20 @@ export function repairLatex(s) {
         // Unicode first so the backslashes it introduces (\times, \neq) sit
         // before a LETTER and are never re-doubled by the row-break rule below.
         .replace(/[≠≢≤≥±×∞≡→°µ]/g, (c) => LATEX_UNICODE_MAP[c] || c)
-        .replace(/(?<!\\)\\(?=[\s\d-])/g, '\\\\')
-        .replace(/\\n(?=[A-Z])/g, '\n');
+        // Lookbehind-free row-break repair. Regex lookbehind (?<!) throws a
+        // SyntaxError on Safari < 16.4 (older iPads) — that crashed every
+        // ingest AND every load-time bank repair on those devices. Semantics
+        // are identical: a lone backslash before a space/digit/hyphen is a
+        // collapsed `\\` separator artifact and gets re-stamped to `\\`;
+        // already-doubled `\\` (real row breaks) is never touched.
+        .replace(/(^|[^\\])\\(?=[\s\d-])/g, (m, pre) => pre + '\\\\')
+        .replace(/\\n(?=[A-Z])/g, '\n')
+        // KaTeX has no align/equation/eqnarray/gather environments — Gemini
+        // dumps love them, and KaTeX renders the env name as red raw source.
+        // Normalize to the supported `aligned` (idempotent: after one pass the
+        // env names no longer match).
+        .replace(/\\begin\{(align|equation|eqnarray|gather|flalign|multline)\*?\}/g, '\\begin{aligned}')
+        .replace(/\\end\{(align|equation|eqnarray|gather|flalign|multline)\*?\}/g, '\\end{aligned}');
 }
 
 /**

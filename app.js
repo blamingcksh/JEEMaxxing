@@ -2643,7 +2643,13 @@ function sanitizeGemTextDump(rawInput) {
  */
 function _fixBackslashRuns(s) {
     return String(s)
-        .replace(/\\+/g, '\\')
+        // Halve backslash PAIRS, never collapse runs to one. A raw `\\frac`
+        // (JSON escape of `\frac`) must become `\frac`, but a raw `\\\\` (JSON
+        // escape of the `\\` row separator inside aligned/matrix blocks) must
+        // become `\\` — the old .replace(/\\+/g,'\\') collapsed BOTH to `\`,
+        // which is why align blocks rendered as garbage here but fine in the
+        // Gemini app (Gemini never JSON-unescapes the dump).
+        .replace(/\\\\/g, '\\')
         .replace(/\\n(?!\w)/g, '\n');
 }
 
@@ -2661,6 +2667,93 @@ function _fixBackslashRuns(s) {
  * Fixed to safely collapse multi-backslash formatting traps down to single backslashes
  * so KaTeX/MathJax processes math symbols (\times, \text) on a single line.
  */
+// ── Real-JSON ingestion path ───────────────────────────────────────────────
+// Most dumps from AI Studio / the Gem are (near-)valid JSON. The legacy regex
+// pipeline below exists for genuinely broken dumps, but valid JSON deserves a
+// real parse: JSON.parse is O(n) (no catastrophic-backtracking freezes on huge
+// pastes) and — after cleanAndParseJson's bare-backslash pre-escape —
+// preserves LaTeX exactly. JSON already resolved `\\frac` → `\frac`, so we
+// must NOT re-collapse backslash runs: `\\` row separators in matrix/align
+// environments are sacred.
+function _repairLatexParsed(s) {
+    // Parsed JSON needs only the cleanups that are SAFE on clean LaTeX:
+    // collapse leftover double-backslash-before-macro artifacts from
+    // over-escaped dumps (`\\frac` → `\frac`) while preserving `\\ ` row
+    // breaks, then run the deterministic repair (unicode map, `\n` healing,
+    // KaTeX-unsupported align/equation env normalization).
+    if (typeof s !== 'string') return s;
+    return repairLatex(s.replace(/\\\\(?=[a-zA-Z{])/g, '\\'));
+}
+
+function _compileDumpObject(obj) {
+    const pick = (...keys) => {
+        for (const k of keys) {
+            const v = obj[k];
+            if (v !== undefined && v !== null && v !== '') return v;
+        }
+        return undefined;
+    };
+    const rawText = pick('extractedText', 'text', 'question', 'stem', 'body', 'problem');
+    if (typeof rawText !== 'string' || !rawText.trim()) return null;
+
+    const rawOpts = pick('options');
+    const options = Array.isArray(rawOpts)
+        ? rawOpts.map(o => _repairLatexParsed(typeof o === 'string' ? o : (o && typeof o.text === 'string' ? o.text : ''))).filter(Boolean)
+        : [];
+
+    const rawAns = pick('correctAnswer', 'answer', 'correctOption', 'correct', 'sol');
+    let correctAnswer = '';
+    if (Array.isArray(rawAns)) {
+        correctAnswer = rawAns.map(a => _repairLatexParsed(String(a).trim())).filter(Boolean);
+    } else if (rawAns !== undefined && rawAns !== null) {
+        correctAnswer = _repairLatexParsed(String(rawAns).trim());
+    }
+
+    let type = typeof obj.type === 'string' ? obj.type.trim().toLowerCase() : '';
+    const rawSol = pick('solution', 'explanation', 'reasoning', 'work', 'derivation');
+    const rawHint = pick('hint', 'clue', 'tip', 'nudge');
+    if (!type) {
+        if (options.length > 0) type = 'mcq';
+        else if (correctAnswer && /^-?\d+(\.\d+)?$/.test(String(correctAnswer).trim())) type = 'numeric';
+        else type = 'text';
+    }
+
+    const qEloNum = Number(pick('qElo'));
+    const gemQElo = (Number.isFinite(qEloNum) && qEloNum >= 800 && qEloNum <= 2550) ? Math.round(qEloNum) : null;
+    const tgtNum = Number(pick('targetTimeMins'));
+    const gemTargetTime = (Number.isFinite(tgtNum) && tgtNum > 0 && tgtNum <= 60) ? Math.round(tgtNum) : null;
+    const fallbackQElo = gemQElo !== null ? gemQElo : _computeDefaultQEloForCurrentChapter();
+    const tags = Array.isArray(obj.tags)
+        ? obj.tags.filter(t => typeof t === 'string').map(t => t.trim()).filter(Boolean).slice(0, 5)
+        : [];
+
+    return {
+        imageDataUrl: null,
+        questionOnlyDataUrl: null,
+        diagramImageUrl: null,
+        extractedText: _repairLatexParsed(rawText),
+        options,
+        correctAnswer,
+        type,
+        timeTaken: 0,
+        solution: _repairLatexParsed(typeof rawSol === 'string' ? rawSol : ''),
+        hint: _repairLatexParsed(typeof rawHint === 'string' ? rawHint : ''),
+        qElo: fallbackQElo,
+        targetTimeMins: gemTargetTime !== null ? gemTargetTime : _eloBandTargetTime(fallbackQElo),
+        isAnomaly: false,
+        qEloSource: gemQElo !== null ? 'gem-stamped' : 'uncalibrated',
+        qEloStampedBy: (typeof obj.model === 'string' && obj.model.trim()) ? obj.model.trim().slice(0, 64) : null,
+        qEloStampedAt: new Date().toISOString(),
+        tags,
+        difficulty: typeof obj.difficulty === 'string' ? obj.difficulty : null,
+        subject: _normalizeSubjectKey(AppState.currentSubject || 'physics'),
+        chapter: (typeof AppState.currentChapter === 'string' && AppState.currentChapter.trim())
+            ? AppState.currentChapter.trim() : null,
+        gemSubject: _normalizeSubjectKey(String(pick('subject', 'gemSubject') || '')),
+        gemChapter: sanitizeChapterName(pick('chapter', 'gemChapter')),
+    };
+}
+
 export async function processGemTextDump() {
     const terminalInput = document.getElementById('text-add-terminal')?.value.trim();
     if (!terminalInput) return alert("Terminal area is completely empty. Paste your Gem JSON payload.");
@@ -2668,12 +2761,37 @@ export async function processGemTextDump() {
     showLoading("Running structural text compiler... Sanitizing LaTeX math symbols...");
 
     try {
-        // ── Step 0: schema-drift sanitizer ──
-        // sanitizeGemTextDump rewrites common alias keys to canonical ones
-        // (stem→extractedText, answer→correctAnswer, explanation→solution), unwraps
-        // "(B)"→"B", and repairs unescaped inner quotes inside string values.
-        // It MUST run before the split below or the splitter finds zero
-        // "extractedText" anchors and the throw fires on every drift-bearing paste.
+        // ── Step 0: REAL-JSON fast path ──────────────────────────────────────
+        // Most dumps from AI Studio / the Gem are (near-)valid JSON arrays.
+        // cleanAndParseJson now pre-heals the silent single-backslash LaTeX
+        // corruption (JSON.parse would mangle `\frac` into a form-feed +
+        // "rac"), and _compileDumpObject maps field aliases without regex
+        // surgery. This path is also O(n) — no catastrophic-backtracking
+        // freezes on huge pastes. Only when this fails do we fall back to the
+        // legacy regex pipeline for genuinely broken dumps.
+        let parsedItems = null;
+        try {
+            const _parsed = cleanAndParseJson(terminalInput);
+            const _arr = Array.isArray(_parsed) ? _parsed
+                : (_parsed && Array.isArray(_parsed.questions)) ? _parsed.questions
+                : (_parsed && Array.isArray(_parsed.items)) ? _parsed.items
+                : (_parsed && Array.isArray(_parsed.data)) ? _parsed.data
+                : null;
+            if (_arr) {
+                const _compiled = [];
+                for (const _obj of _arr) {
+                    if (!_obj || typeof _obj !== 'object') continue;
+                    const _item = _compileDumpObject(_obj);
+                    if (_item) _compiled.push(_item);
+                }
+                if (_compiled.length) parsedItems = _compiled;
+            }
+        } catch (_e) { /* not valid JSON — fall through to the legacy pipeline */ }
+
+        if (!parsedItems) {
+        // ── Legacy fallback — only for dumps the real JSON parse rejected ──
+        // sanitizeGemTextDump rewrites alias keys to canonical ones, unwraps
+        // "(B)"→"B", and repairs unescaped inner quotes before the splitter.
         const sanitizedInput = sanitizeGemTextDump(terminalInput);
         // Step 1: Isolate individual question segments using the unique "extractedText" key as a boundary anchor
         const segments = sanitizedInput.split(/"extractedText"\s*:\s*"/gi);
@@ -2681,7 +2799,7 @@ export async function processGemTextDump() {
             throw new Error("Could not find any structural 'extractedText' keys in the pasted payload.");
         }
 
-        const parsedItems = [];
+        parsedItems = [];
 
         // Loop through each isolated question block (skipping index 0)
         for (let i = 1; i < segments.length; i++) {
@@ -2868,6 +2986,7 @@ export async function processGemTextDump() {
                 gemChapter: sanitizeChapterName(rawQ.chapter),
 });
         }
+        } // ← end legacy regex path (real-JSON path produced parsedItems above)
 
         // ── NEW: anti-cheat distribution check per-chapter ────────────────
         // If ≥80% of a chapter's ingest batch lands in T6-T7 (elite/olympiad)
@@ -3016,6 +3135,24 @@ export function showPreviewModal() {
 // Export module logic to global window context
 window.processGemTextDump = processGemTextDump;
 window.showPreviewModal = showPreviewModal;
+
+// ── JSON dump file upload: reads the file into the text-track terminal so
+// the user can "just upload" a dump instead of copy-pasting. Ingestion then
+// runs the REAL-JSON fast path (processGemTextDump Step 0) — the same
+// cleanAndParseJson that heals bare-backslash LaTeX corruption. ──
+window.loadJsonDumpFile = function (input) {
+    const f = input && input.files && input.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+        const ta = document.getElementById('text-add-terminal');
+        if (ta) ta.value = r.result;
+        // Zero extra steps: kick off ingestion right after the file loads.
+        try { processGemTextDump(); } catch (e) { console.error('loadJsonDumpFile → processGemTextDump:', e); }
+    };
+    r.onerror = () => alert('Could not read that file. Make sure it is a plain .json / .txt file.');
+    r.readAsText(f);
+};
 
 // ==================== PRACTICE: QUESTION LIST ====================
 
@@ -3602,7 +3739,7 @@ export function answerMathHTML(raw) {
     // JSON extraction can leave doubled backslashes ("\\frac") in stored answers;
     // collapse runs to a single backslash so KaTeX sees valid LaTeX instead of
     // parsing "\\" as a line-break and rendering "frac" character-by-character.
-    s = s.replace(/\\+n/g, '\n').replace(/\\+/g, '\\');
+    s = s.replace(/\\+n/g, '\n').replace(/\\\\(?=[a-zA-Z{])/g, '\\');
     const esc = escapeHtml(s);
     if (/\$|\\\(|\\\[/.test(s)) return esc;                       // delimited — watchdog hydrates as-is
     if (/\\[a-zA-Z]{2,}/.test(s) || /[\^_][{}0-9a-zA-Z]/.test(s)) return '$' + esc + '$'; // bare LaTeX — wrap
