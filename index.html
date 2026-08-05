@@ -761,9 +761,12 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
             <div class="text-track-terminal">
                 <div class="text-track-header">
                     <span class="text-track-badge">⚡ GEM TEXT DUMP</span>
-                    <span style="font-size:11px;color:var(--text-muted)">Paste raw JSON array from your custom Gemini Gem</span>
+                    <span style="font-size:11px;color:var(--text-muted)">Paste a JSON array — or upload the dump file directly</span>
+                    <label class="btn btn-secondary" style="margin-left:auto;padding:3px 10px;font-size:11px;cursor:pointer;">📄 Upload .json
+                        <input type="file" id="json-dump-file" accept=".json,application/json,.txt" style="display:none" onchange="loadJsonDumpFile(this)">
+                    </label>
                 </div>
-                <textarea id="text-add-terminal" class="pomo-input text-track-terminal-input" rows="8" placeholder='[{"extractedText":"...","options":["A) ..."],"correctAnswer":"C","type":"mcq","solution":"..."}]'></textarea>
+                <textarea id="text-add-terminal" class="pomo-input text-track-terminal-input" rows="8" placeholder='[{"extractedText":"...","options":["A) ..."],"correctAnswer":"C","type":"mcq","solution":"..."}] — or upload a .json file above'></textarea>
             </div>
             <div style="display:flex;gap:12px;margin-top:16px">
                 <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Nvm</button>
