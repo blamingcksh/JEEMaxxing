@@ -10,7 +10,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v17';
+const VERSION = 'jeemax-v18';
 const SHELL = [
   './',
   './index.html',
@@ -77,13 +77,24 @@ const CDN_PREFIXES = [
 ];
 
 self.addEventListener('install', (event) => {
+  // ALL-SETTLED SHELL PRECACHE — a single 404 must never brick updates.
+  // cache.addAll() rejects the WHOLE install when any shell asset fails to
+  // fetch (a stale CDN, a not-yet-deployed file, a dropped font request). A
+  // failed install means the previous SW version stays active forever, and
+  // that stale worker keeps serving the OLD app.js against the NEW
+  // index.html — the exact "Analysis tab is dead / new nav does nothing"
+  // failure. With allSettled, every asset that CAN be cached is, activation
+  // always proceeds, and the network-first HTML fetch + stale-while-
+  // revalidate asset path cover anything that missed the cache.
   event.waitUntil(
-    caches.open(VERSION).then((cache) =>
-      cache.addAll(SHELL).then(() =>
-        // Best-effort CDN pre-cache — must not fail the install.
-        Promise.allSettled(CDN_SHELL.map((u) => cache.add(u)))
+    caches.open(VERSION)
+      .then((cache) =>
+        Promise.allSettled([
+          ...SHELL.map((u) => cache.add(u)),
+          ...CDN_SHELL.map((u) => cache.add(u)),
+        ])
       )
-    ).then(() => self.skipWaiting())
+      .then(() => self.skipWaiting())
   );
 });self.addEventListener('activate', (event) => {
   event.waitUntil(
