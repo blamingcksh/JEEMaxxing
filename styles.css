@@ -3882,11 +3882,6 @@ body::before {
         /* deep base wash */
         radial-gradient(120% 120% at 50% 0%, #0b0d14 0%, #070809 60%, #050507 100%);
     background-attachment: fixed;
-    animation: aesAurora 24s ease-in-out infinite alternate;
-}
-@keyframes aesAurora {
-    0%   { filter: hue-rotate(0deg)   saturate(1);   }
-    100% { filter: hue-rotate(-12deg) saturate(1.12); }
 }
 /* retune the legacy ambient layers (if present) to the new palette */
 .ambient-glow          { background: radial-gradient(circle, rgba(255,178,36,0.10), transparent 68%) !important; }
