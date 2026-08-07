@@ -49,6 +49,7 @@ import {
     toggleDynamicSubject, changeStudySubject,
     updateStudyTimeHeader, initAudioContext, playBell,
     confirmTimerNotification,
+    applyPomoConfig, readPomoConfig,
 } from './pomodoro.js';
 
 // Replace the existing matrix.js import block with:
@@ -57,7 +58,7 @@ import {
     addErrorBlock, renderErrorMatrixFromBank, initErrorLazyLoaders,
     removeErrorLog, openLightbox,
     // ── Daily Fix Queue (wired to the inline onclick in index.html) ──
-    toggleDailyQueue,
+    toggleDailyQueue, activateDailyQueue,
     // ── SR practice log imports (new) ──
     openPracticeDrawer, closePracticeDrawer, submitPracticeLog,
     srSetResult, srSetAutonomy, srToggleFriction,
@@ -78,6 +79,7 @@ import { drawCandlesticks, extractCountsFromSvg } from './candlestick-engine.js'
 
 // ── Inline-onclick bridges: index.html buttons call these in global scope ──
 window.toggleDailyQueue = toggleDailyQueue;           // Daily Fix Queue button
+window.activateDailyQueue = activateDailyQueue;       // boot-flow force-arm
 window.cacheAllDriveImages = cacheAllDriveImages;     // Cache All Images button
 
 // ── P2P Leaderboard Arena (serverless WebRTC over WebTorrent trackers) ──
@@ -6907,7 +6909,16 @@ async function runNewDayCycle(todayStr) {
 
     await saveAllAsync().catch(console.error);
     updateUI();
-    openModal('mood-modal');
+
+    // ── Daily Briefing boot sequence ──
+    // The cyberpunk intro overlay (mood step folds in from P3) replaces the
+    // bare Vibe Check popup after the daily reset. Falls back to the Vibe
+    // Check modal if the module isn't ready, so calibration never drops.
+    if (window.BootSequence && typeof window.BootSequence.maybeShow === 'function') {
+        try { window.BootSequence.maybeShow(); } catch (_) { openModal('mood-modal'); }
+    } else {
+        openModal('mood-modal');
+    }
 }
 
 // Live midnight rollover watcher: an app left open across midnight resets the
@@ -7048,7 +7059,11 @@ async function initApp() {
 
     await renderGraph();
     updateUI();
-    
+
+    // Restore the last-used pomodoro setup (subject / study / break / rounds /
+    // stopwatch / dynamic) onto the Focus Mode inputs BEFORE resetPomoUI paints
+    // the idle timer display, so the shown duration matches the restored config.
+    try { applyPomoConfig(); } catch (_) { /* never block initApp */ }
     resetPomoUI();
     updateStreakVisualizer();
 
@@ -7594,6 +7609,8 @@ window.showPracticeSubview = showPracticeSubview;
 window.renderErrorMatrixFromBank = renderErrorMatrixFromBank;
 window.updateStudyTimeHeader = updateStudyTimeHeader;
 window.resetPomoUI = resetPomoUI;
+window.applyPomoConfig = applyPomoConfig;
+window.readPomoConfig = readPomoConfig;
 window.finishAll = finishAll;
 
 window.formatTime = formatTime;
@@ -7627,6 +7644,9 @@ window.executeUnifiedSync = executeUnifiedSync;
 window.toggleStopwatchMode = toggleStopwatchMode;
 window.toggleDynamicSubject = toggleDynamicSubject;
 window.changeStudySubject = changeStudySubject;
+// Unlock the pomodoro AudioContext inside a user gesture (the Daily Briefing
+// flow needs it to arm the timer from a click, not a timer callback).
+window.initAudioContext = initAudioContext;
 window.toggleImmersive = toggleImmersive;
 window.confirmTimerNotification = confirmTimerNotification;
 window.toggleMiniWidget = toggleMiniWidget;
@@ -7682,6 +7702,9 @@ window.bounty = AppState.bounty;
 
 // ── Forest sync fix: expose live state safely ─────────────────────────────
 window.AppState = AppState;
+// Expose mode tuning (used by the Daily Briefing mode-gate, e.g. the hardcore
+// per-day cap) so the flow can't drift from the engine's real constants.
+window.MODE_TUNING = MODE_TUNING;
 window.solved = solved;
 
 try {

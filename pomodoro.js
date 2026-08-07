@@ -18,9 +18,11 @@ let timerStartTime = null;        // Date.now() at start/resume
 
 // ── Night Guard bridge: exposes timerStartTime for clock-cheat cross-check ──
 // isRunning() lets app.js lock the question filter while a session is live.
+// getConfig() exposes the persisted last-used setup (Daily Briefing / restore).
 window.__pomodoro = {
     getTimerStartTime: () => timerStartTime,
     isRunning: () => pomoState !== 'IDLE',
+    getConfig: () => readPomoConfig(),
 };
 
 // Lock/unlock the chapter-question filter dropdown while the timer runs.
@@ -38,6 +40,82 @@ let _resetPomoTimer = null;      // pending quitTimer UI reset
 
 let bellAudioCtx = null;
 let _pomoPendingAction = null;   // replaces window._pomoPendingAction
+
+// ── Pomodoro config persistence ────────────────────────────────────────────
+// The last-used timer setup is snapshotted to localStorage the moment a
+// session starts, then re-applied at boot. This keeps returning users' Focus
+// Mode settings stable across reloads, and lets the Daily Briefing flow
+// pre-fill / auto-arm the timer with the exact configuration last run.
+// Best-effort only — private mode / quota failures degrade silently.
+const POMO_CONFIG_KEY = 'jeemax_pomo_config';
+
+export function savePomoConfig() {
+    try {
+        const cfg = {
+            subject: studySubject,
+            study: parseInt(document.getElementById('pomo-study').value, 10) || 50,
+            break: parseInt(document.getElementById('pomo-break').value, 10) || 10,
+            sessions: parseInt(document.getElementById('pomo-sessions').value, 10) || 1,
+            stopwatch: isStopwatchMode,
+            dynamic: dynamicSubject,
+        };
+        localStorage.setItem(POMO_CONFIG_KEY, JSON.stringify(cfg));
+    } catch (err) {
+        console.warn('[pomodoro] config save failed:', err);
+    }
+}
+
+/** Sanitized last-used config, or null when nothing valid is stored. */
+export function readPomoConfig() {
+    try {
+        const raw = localStorage.getItem(POMO_CONFIG_KEY);
+        if (!raw) return null;
+        const cfg = JSON.parse(raw);
+        if (!cfg || typeof cfg !== 'object') return null;
+        return {
+            subject: isValidSubjectKey(cfg.subject) ? cfg.subject : 'physics',
+            study: Math.max(1, parseInt(cfg.study, 10) || 50),
+            break: Math.max(1, parseInt(cfg.break, 10) || 10),
+            sessions: Math.max(1, parseInt(cfg.sessions, 10) || 1),
+            stopwatch: !!cfg.stopwatch,
+            dynamic: !!cfg.dynamic,
+        };
+    } catch (err) {
+        // Corrupt payload — treat as no saved config, never crash boot.
+        console.warn('[pomodoro] config read failed:', err);
+        return null;
+    }
+}
+
+/** Write the last-used config back onto the Focus Mode inputs (idempotent). */
+export function applyPomoConfig() {
+    const cfg = readPomoConfig();
+    if (!cfg) return false;
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+    };
+    setVal('pomo-study', cfg.study);
+    setVal('pomo-break', cfg.break);
+    setVal('pomo-sessions', cfg.sessions);
+    const subjectEl = document.getElementById('pomo-subject');
+    if (subjectEl && isValidSubjectKey(cfg.subject)) {
+        subjectEl.value = cfg.subject;
+        if (studySubject !== cfg.subject) changeStudySubject();
+    }
+    // Apply stopwatch / dynamic directly (same module — legal) then reflect via
+    // the shared pure UI helpers. Calling the public toggles here would trigger
+    // their side effects: toggleStopwatchMode() always runs resetPomoUI().
+    if (cfg.stopwatch !== isStopwatchMode) {
+        isStopwatchMode = cfg.stopwatch;
+        _syncStopwatchUI();
+    }
+    if (cfg.dynamic !== dynamicSubject) {
+        dynamicSubject = cfg.dynamic;
+        _syncDynamicSubjectUI();
+    }
+    return true;
+}
 
 // ---- Page Visibility Listener (fixes background freezing) ----
 document.addEventListener('visibilitychange', async () => {
@@ -106,20 +184,7 @@ function isValidSubjectKey(value) {
 
 export function toggleDynamicSubject(btn) {
     dynamicSubject = !dynamicSubject;
-
-    const targetBtn = btn || document.getElementById('dynamic-subject-btn');
-    if (targetBtn) {
-        targetBtn.classList.toggle('on', dynamicSubject);
-        targetBtn.title = dynamicSubject
-            ? 'Dynamic mode ON: switch subject mid-session — time is tracked per subject'
-            : 'Dynamic mode OFF: subject is locked for the session';
-    }
-
-    // While running, keep the subject picker usable (or re-lock it).
-    if (pomoState !== 'IDLE') {
-        const select = document.getElementById('pomo-subject');
-        if (select) select.disabled = !dynamicSubject;
-    }
+    _syncDynamicSubjectUI();
 }
 
 export function changeStudySubject() {
@@ -391,10 +456,12 @@ function finishAllAfterPopup() {
 }
 
 // ---- Stopwatch toggle (unchanged UI) ----
-export function toggleStopwatchMode(btn) {
-    isStopwatchMode = !isStopwatchMode;
-
-    const targetBtn = btn || document.getElementById('stopwatch-toggle-btn');
+// Pure UI reflection of isStopwatchMode — no state mutation, no side effects.
+// Shared by the user toggle AND applyPomoConfig (boot restore) so a config
+// restore never trips toggle side effects (e.g. toggleStopwatchMode always
+// runs resetPomoUI()).
+function _syncStopwatchUI() {
+    const targetBtn = document.getElementById('stopwatch-toggle-btn');
     if (targetBtn) {
         targetBtn.textContent = isStopwatchMode ? 'On' : 'Off';
         targetBtn.style.background = isStopwatchMode ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.08)';
@@ -408,8 +475,30 @@ export function toggleStopwatchMode(btn) {
         inputs[2].style.display = isStopwatchMode ? 'none' : 'flex';
         inputs[3].style.display = isStopwatchMode ? 'none' : 'flex';
     }
+}
+
+// Pure UI reflection of dynamicSubject — same rationale as _syncStopwatchUI.
+function _syncDynamicSubjectUI() {
+    const targetBtn = document.getElementById('dynamic-subject-btn');
+    if (targetBtn) {
+        targetBtn.classList.toggle('on', dynamicSubject);
+        targetBtn.title = dynamicSubject
+            ? 'Dynamic mode ON: switch subject mid-session — time is tracked per subject'
+            : 'Dynamic mode OFF: subject is locked for the session';
+    }
+
+    // While running, keep the subject picker usable (or re-lock it).
+    if (pomoState !== 'IDLE') {
+        const select = document.getElementById('pomo-subject');
+        if (select) select.disabled = !dynamicSubject;
+    }
+}
+
+export function toggleStopwatchMode(btn) {
+    isStopwatchMode = !isStopwatchMode;
 
     if (pomoState !== 'IDLE') quitTimer();
+    _syncStopwatchUI();
     resetPomoUI();
 }
 
@@ -444,6 +533,13 @@ export function startTimer() {
     // Set start time and reset end flag
     timerStartTime = Date.now();
     timerEndTriggered = false;
+
+// Persist the exact configuration this session was launched with, so a
+// later boot (or the Daily Briefing flow) can restore it verbatim.
+// Mode toggles (stopwatch / dynamic) are captured here too — only started
+// sessions persist config; a bare toggle alone isn't saved until a session
+// actually begins.
+savePomoConfig();
 }
 
 export function transitionToStopwatch() {
