@@ -1080,36 +1080,49 @@ export function filterErrors() {
 
 // ==================== DAILY CORE QUEUE ====================
 
-export function toggleDailyQueue() {
-    _dailyQueueActive = !_dailyQueueActive;
-
+function _showDailyQueue() {
     const btn = document.getElementById('daily-queue-btn');
     const title = document.getElementById('error-matrix-title');
     const badge = document.getElementById('daily-queue-badge');
     const folders = document.querySelectorAll('.subject-folder');
+    if (btn) btn.classList.add('active');
+    if (title) title.textContent = '⚡ Daily Core Queue';
+    if (badge) badge.style.display = 'inline';
+    folders.forEach(f => f.style.opacity = '0.35');
+    document.querySelectorAll('.emf-pill-group[data-emf-filter="status"] .matrix-pill').forEach(p => p.classList.remove('active'));
+    _renderDailyQueueCards();
+}
 
-    if (_dailyQueueActive) {
-        if (btn) btn.classList.add('active');
-        if (title) title.textContent = '⚡ Daily Core Queue';
-        if (badge) badge.style.display = 'inline';
-        folders.forEach(f => f.style.opacity = '0.35');
-        document.querySelectorAll('.emf-pill-group[data-emf-filter="status"] .matrix-pill').forEach(p => p.classList.remove('active'));
-        _renderDailyQueueCards();
-    } else {
-        if (btn) btn.classList.remove('active');
-        if (badge) badge.style.display = 'none';
-        folders.forEach(f => f.style.opacity = '1');
-        const allPill = document.querySelector('.emf-pill-group[data-emf-filter="status"] .matrix-pill[data-emf-value="all"]');
-        if (allPill) allPill.classList.add('active');
-        const statusCarrier = document.getElementById('filter-status');
-        if (statusCarrier) statusCarrier.value = 'all';
-        if (title) {
-            const subj = AppState.currentErrorSubject;
-            title.textContent = `${subj.charAt(0).toUpperCase() + subj.slice(1)} Matrix`;
-        }
-        renderErrorMatrixFromBank();
-        filterErrors();
+function _hideDailyQueue() {
+    const btn = document.getElementById('daily-queue-btn');
+    const title = document.getElementById('error-matrix-title');
+    const badge = document.getElementById('daily-queue-badge');
+    const folders = document.querySelectorAll('.subject-folder');
+    if (btn) btn.classList.remove('active');
+    if (badge) badge.style.display = 'none';
+    folders.forEach(f => f.style.opacity = '1');
+    const allPill = document.querySelector('.emf-pill-group[data-emf-filter="status"] .matrix-pill[data-emf-value="all"]');
+    if (allPill) allPill.classList.add('active');
+    const statusCarrier = document.getElementById('filter-status');
+    if (statusCarrier) statusCarrier.value = 'all';
+    if (title) {
+        const subj = AppState.currentErrorSubject;
+        title.textContent = `${subj.charAt(0).toUpperCase() + subj.slice(1)} Matrix`;
     }
+    renderErrorMatrixFromBank();
+    filterErrors();
+}
+
+export function toggleDailyQueue() {
+    _dailyQueueActive = !_dailyQueueActive;
+    if (_dailyQueueActive) _showDailyQueue(); else _hideDailyQueue();
+}
+
+/** Force the queue ON (Daily Briefing landing) — never flips a stale toggle. */
+export function activateDailyQueue() {
+    if (_dailyQueueActive) return;
+    _dailyQueueActive = true;
+    _showDailyQueue();
 }
 
 function _getDailyQueueSnapshot() {
@@ -1613,6 +1626,26 @@ function _matrixChapterHealthContinuous(questions) {
     let health = (weightedSum / weightTotal) * 100;
     return Math.max(10, Math.min(100, health));
 }
+
+// Exposed for the Daily Briefing flow — the SAME health model the Chapter
+// Health Grid renders, so the boot flow's "weakest chapter first" ordering
+// always matches what the user sees in-app (no divergent reimplementation).
+window.getChapterHealth = (subject, chapter) => {
+    try {
+        const qs = AppState.questionBank.filter(q =>
+            q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') &&
+            _normSubj(q.subject) === _normSubj(subject) && q.chapter === chapter
+        );
+        return _matrixChapterHealthContinuous(qs);
+    } catch (_) { return 50; }
+};
+
+// Exposed for the Daily Briefing flow — the locked-in Daily Fix Queue in
+// priority order (ready errors, weakest easeFactor first, 5P/5M/10C). The
+// boot flow feeds this order straight into the practice queue.
+window._getDailyQueueSnapshot = () => {
+    try { return _getDailyQueueSnapshot(); } catch (_) { return []; }
+};
 
 export function renderChapterDecayGrid() {
     const container = document.getElementById('chapter-decay-grid');

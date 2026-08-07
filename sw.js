@@ -10,7 +10,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v15';
+const VERSION = 'jeemax-v16';
 const SHELL = [
   './',
   './index.html',
@@ -33,6 +33,7 @@ const SHELL = [
   './leaderboard.js',
   './lifeline.js',
   './nightguard.js',
+  './boot-sequence.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',
