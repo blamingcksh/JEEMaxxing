@@ -77,6 +77,11 @@ import {
 // ── Candlestick engine (powers both home-section graphs) ──
 import { drawCandlesticks, extractCountsFromSvg } from './candlestick-engine.js';
 
+// ── Analysis tab — self-contained analytics cockpit over the bank + vault. ──
+// The yield engine below is handed over via registerAnalysisDataSources() so
+// the module graph stays one-directional (analysis.js never imports app.js).
+import { renderAnalysis, registerAnalysisDataSources } from './analysis.js';
+
 // ── Inline-onclick bridges: index.html buttons call these in global scope ──
 window.toggleDailyQueue = toggleDailyQueue;           // Daily Fix Queue button
 window.activateDailyQueue = activateDailyQueue;       // boot-flow force-arm
@@ -218,7 +223,7 @@ function restoreDailyCountsIntoSolved() {
 // Generic IndexedDB mirror (key,value) handle shared with the grove script.
 try {
   window._idbMirror = {
-    set: (k, v) => { try { idbSet(k, v).catch(() => {}); } catch (e) {} },
+    set: (k, v) => { try { return idbSet(k, v).catch(() => {}); } catch (e) { return Promise.resolve(); } },
     get: async (k) => { try { return await idbGet(k); } catch (e) { return null; } }
   };
 } catch (_) {}
@@ -594,6 +599,8 @@ export async function switchTab(viewId, element) {
         try { renderChapterDecayGrid(); } catch (_) {}
         try { renderChapterProgressList(); } catch (_) {}
     }
+    // renderAnalysis() swallows its own errors and is async — no wrapper needed.
+    if (viewId === 'analysis') renderAnalysis();
     // ── P2P Leaderboard: re-sync the arena grid when the tab is shown ──
     if (viewId === 'leaderboard' && typeof LeaderboardNet !== 'undefined') {
         LeaderboardNet.refresh();
@@ -971,6 +978,15 @@ function _computeMacroImputationScalar() {
         YIELD_SUBJECT_WEIGHTS.chemistry * beta.chemistry * (qBar.chemistry / 1200)
     );
 }
+
+// ── Analysis tab data sources: pass the yield engine + weights to analysis.js
+// (registration must sit AFTER the YIELD_SUBJECT_WEIGHTS const initialiser —
+// the const is in the TDZ above this point). ──
+registerAnalysisDataSources({
+    yieldForDate: _computeYieldForDate,
+    macroScalar: _computeMacroImputationScalar,
+    subjectWeights: YIELD_SUBJECT_WEIGHTS,
+});
 
 // ==================== PREDICTIVE MOMENTUM ENGINE (candlestick edition) ====================
 export async function renderGraph() {

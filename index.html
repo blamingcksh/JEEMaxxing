@@ -80,6 +80,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
             <li><a class="nav-item" data-tab="pomodoro" onclick="switchTab('pomodoro', this)"><span class="icon">⚡</span><span class="text-label">Focus Mode</span></a></li>
             <li><a class="nav-item" data-tab="errors" onclick="switchTab('errors', this)"><span class="icon">☣</span><span class="text-label">The Vault</span></a></li>
             <li><a class="nav-item" data-tab="practice" onclick="switchTab('practice', this)"><span class="icon">📖</span><span class="text-label">Grind Station</span></a></li>
+            <li><a class="nav-item" data-tab="analysis" onclick="switchTab('analysis', this)"><span class="icon">📊</span><span class="text-label">Analysis</span></a></li>
             <li><a class="nav-item" data-tab="leaderboard" onclick="switchTab('leaderboard', this)"><span class="icon">🏆</span><span class="text-label">Arena</span></a></li>
             <li><a class="nav-item" data-tab="settings" onclick="switchTab('settings', this)"><span class="icon">⚙</span><span class="text-label">Config</span></a></li>
         </ul>
@@ -472,6 +473,98 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                 </div>
                 <div class="stats-row" id="stats-row" style="display:none"></div>
                 <div class="questions-grid" id="questions-grid-container"></div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════
+             VIEW · ANALYSIS (ANALYTICS COCKPIT)
+             All IDs are written by analysis.js at render time.
+        ════════════════════════════════════════════ -->
+        <section id="view-analysis" class="view-section">
+
+            <!-- Hero: big candlestick momentum tape -->
+            <div class="dash-card analysis-hero">
+                <div class="dash-card-head analysis-head">
+                    <div>
+                        <span class="kicker">// PROGRESS TAPE</span>
+                        <h2 class="box-title">Momentum Analysis</h2>
+                        <p class="box-desc">Daily grind as OHLC candles — green beats the target, red misses it, purple projects the next 5 days.</p>
+                    </div>
+                    <div class="analysis-controls">
+                        <div class="analysis-pill-group" id="analysis-metric-pills">
+                            <button class="matrix-pill active" data-metric="yield" onclick="setAnalysisMetric('yield', this)" title="Difficulty- and friction-weighted cognitive output">Cognitive Yield</button>
+                            <button class="matrix-pill" data-metric="solves" onclick="setAnalysisMetric('solves', this)" title="Raw questions solved per day">Raw Solves</button>
+                            <button class="matrix-pill" data-metric="fixes" onclick="setAnalysisMetric('fixes', this)" title="Correct spaced-repetition re-attempts per day">Error Fixes</button>
+                        </div>
+                        <div class="analysis-pill-group" id="analysis-range-pills">
+                            <button class="matrix-pill active" data-range="15" onclick="setAnalysisRange('15', this)">15D</button>
+                            <button class="matrix-pill" data-range="30" onclick="setAnalysisRange('30', this)">30D</button>
+                            <button class="matrix-pill" data-range="90" onclick="setAnalysisRange('90', this)">90D</button>
+                            <button class="matrix-pill" data-range="all" onclick="setAnalysisRange('all', this)">ALL</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="graph-display analysis-graph-display">
+                    <svg id="analysis-progress-graph" preserveAspectRatio="none"></svg>
+                </div>
+                <div class="analysis-hero-meta" id="analysis-hero-meta"></div>
+            </div>
+
+            <!-- KPI tiles -->
+            <div class="analysis-kpi-grid" id="analysis-kpi-grid"></div>
+
+            <div class="dash-grid analysis-grid">
+
+                <!-- Subject breakdown -->
+                <div class="dash-card analysis-span-7">
+                    <div class="dash-card-head">
+                        <span class="kicker">// QUESTION BANK</span>
+                        <h2 class="box-title">Subject Breakdown</h2>
+                        <p class="box-desc">Accuracy is locked to each question's FIRST attempt — no re-solve inflation.</p>
+                    </div>
+                    <div id="analysis-subject-body"></div>
+                </div>
+
+                <!-- Chapter ranking (weakest first) -->
+                <div class="dash-card analysis-span-5">
+                    <div class="dash-card-head">
+                        <span class="kicker">// CONQUEST MAP</span>
+                        <h2 class="box-title">Chapter Ranking</h2>
+                        <p class="box-desc">Weakest first. Click a chapter to open it in The Vault.</p>
+                    </div>
+                    <div id="analysis-chapter-body"></div>
+                </div>
+
+                <!-- Error-matrix forensics -->
+                <div class="dash-card analysis-span-7">
+                    <div class="dash-card-head">
+                        <span class="kicker">// ERROR MATRIX FORENSICS</span>
+                        <h2 class="box-title">Mistake Type &amp; Friction Profile</h2>
+                        <p class="box-desc">Where the points leak: errorReason tags vs the friction layer of every SR attempt log.</p>
+                    </div>
+                    <div id="analysis-error-body"></div>
+                </div>
+
+                <!-- Vault SR health -->
+                <div class="dash-card analysis-span-5">
+                    <div class="dash-card-head">
+                        <span class="kicker">// SPACED REPETITION</span>
+                        <h2 class="box-title">Vault Health</h2>
+                        <p class="box-desc">Due-status distribution + retention metrics across the error vault.</p>
+                    </div>
+                    <div id="analysis-sr-body"></div>
+                </div>
+
+                <!-- Cognitive MMR -->
+                <div class="dash-card analysis-span-12">
+                    <div class="dash-card-head">
+                        <span class="kicker">// COGNITIVE MMR</span>
+                        <h2 class="box-title">Rating Matrix</h2>
+                        <p class="box-desc">Subject ratings + global meta-MMR against the calibrated 7-band grid.</p>
+                    </div>
+                    <div id="analysis-elo-body"></div>
+                </div>
+
             </div>
         </section>
 
