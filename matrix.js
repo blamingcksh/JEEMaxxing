@@ -386,19 +386,15 @@ function _renderAnswerStage(q) {
                 <button class="sr-confirm-btn" id="sr-confirm-btn" type="button" onclick="srConfirmAnswer()" disabled>Confirm Answer</button>
             </div>`;
     }
-    // Non-MCQ: go straight to a self-report prompt (reveal the answer if on file).
-    const hasAnswer = _hasLoadedAnswer(q);
-    if (hasAnswer) {
-        const correctAns = typeof window.answerMathHTML === 'function'
-            ? window.answerMathHTML(q.correctAnswer)
-            : _esc(Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer);
+    // Non-MCQ: the answer stays HIDDEN until the user taps "Reveal Answer"
+    // (parity with the question-bank practice modal — the stored answer must
+    // never be visible while the user is still attempting the question).
+    // srRevealAnswer() swaps in the answer + self-report buttons on demand.
+    if (_hasLoadedAnswer(q)) {
         return `
             <div class="sr-self-report sr-self-report-inline">
-                <div class="sr-self-report-label">Correct answer on file: <strong>${correctAns}</strong>. Did you get it right?</div>
-                <div class="sr-self-report-btns">
-                    <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
-                    <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
-                </div>
+                <div class="sr-self-report-label">Free-response question — solved it? Tap to reveal the answer, then grade yourself.</div>
+                <button class="sr-confirm-btn" id="sr-reveal-answer-btn" type="button" onclick="srRevealAnswer()">🔍 Reveal Answer</button>
             </div>`;
     }
     return `
@@ -752,6 +748,35 @@ export function srSelfReport(result) {
     const q = _currentDrawerQuestion();
     if (!q) return;
     _applyResult(result, 'self', q);
+}
+
+// Non-MCQ with an answer on file: reveal the stored answer + self-report
+// buttons ONLY after the user explicitly taps "Reveal Answer" (parity with
+// the question-bank practice modal — the answer must stay hidden while the
+// user is still attempting the question).
+export function srRevealAnswer() {
+    const q = _currentDrawerQuestion();
+    if (!q) return;
+    const stage = document.getElementById('sr-answer-stage');
+    if (!stage) return;
+    const correctAns = typeof window.answerMathHTML === 'function'
+        ? window.answerMathHTML(q.correctAnswer)
+        : _esc(Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer);
+    stage.innerHTML = `
+        <div class="sr-self-report sr-self-report-inline">
+            <div class="sr-self-report-label">Correct answer: <strong>${correctAns}</strong>. Did you get it right?</div>
+            <div class="sr-self-report-btns">
+                <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
+                <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
+            </div>
+        </div>`;
+    // Hydrate LaTeX inside the freshly revealed answer WITHOUT stripping the
+    // <strong> emphasis wrapper (_renderKatexIn replaces innerHTML, so run it
+    // on the strong element itself, not the whole label).
+    if (window.katex) {
+        const answerEl = stage.querySelector('.sr-self-report-label strong');
+        if (answerEl) _renderKatexIn(answerEl);
+    }
 }
 
 export function srToggleImage() {
