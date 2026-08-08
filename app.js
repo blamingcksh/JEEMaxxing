@@ -4475,8 +4475,11 @@ function _isUnexecutedModeQuestion(q) {
  * with side preferences for low solveCount and tag diversity.
  * Returns the question or null if the chapter simply has no unexecuted
  * candidates even after widening the window.
+ *
+ * @param {Set} [seenSet]  Optional set of question objects already served this
+ *   run — those are never re-picked, so Next can never repeat a question.
  */
-function _pickQuestionForMode(subject, chapter, mode) {
+function _pickQuestionForMode(subject, chapter, mode, seenSet) {
     if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return null;
     const cfg = MODE_TUNING[mode];
     // Defensive: normalize the subject key so a display-name caller
@@ -4487,6 +4490,7 @@ function _pickQuestionForMode(subject, chapter, mode) {
     const bank = AppState.questionBank.filter(q =>
         q.subject === subject && _chaptersMatch(q.chapter, chapter) &&
         _isUnexecutedModeQuestion(q) &&
+        (!seenSet || !seenSet.has(q)) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
         !q.isAnomaly
     );
@@ -4594,10 +4598,55 @@ function _pickQuestionForMode(subject, chapter, mode) {
         || bestEffort;
 }
 
+// ── Mode navigation history (Flow State / Hardcore) ─────────────────────────
+// The mode serves ONE question at a time (single-item pool at index 0), so the
+// classic index-based Prev/Next can never navigate. Instead we keep
+// browser-style back/forward stacks of { q, submitted } snapshots: Prev
+// reviews previously served questions, and Next re-advances through the
+// forward stack or serves a genuinely fresh question that has never been shown
+// this run. Skipped (unsubmitted) questions land in the back stack like any
+// other — they are never re-served as "new", but Prev can still return to them.
+let _modeBackStack = [];    // entries previously served (oldest first)
+let _modeForwardStack = []; // entries skipped over by Prev, replayed by Next
+
+function _clearModeHistory() {
+    _modeBackStack = [];
+    _modeForwardStack = [];
+}
+
+function _modeSeenSet() {
+    const set = new Set();
+    for (const e of _modeBackStack) set.add(e.q);
+    for (const e of _modeForwardStack) set.add(e.q);
+    return set;
+}
+
+/** Present a mode question (history entry or fresh pick) as the current one. */
+function _serveModeEntry(entry) {
+    if (!entry || !entry.q) return;
+    AppState.practiceQuestions = [entry.q];
+    AppState.practiceSubmittedFlags = [!!entry.submitted];
+    AppState.currentPracticeIndex = 0;
+    AppState.practiceSeconds = 0;
+    updatePracticeTimerDisplay();
+    if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+    if (!entry.submitted) {
+        AppState.practiceTimer = setInterval(() => {
+            AppState.practiceSeconds++;
+            updatePracticeTimerDisplay();
+        }, 1000);
+    } else {
+        AppState.practiceTimer = null;
+    }
+    renderPracticeQuestionModal();
+}
+
 /** Set the active practice mode and persist it. */
 function _setPracticeMode(mode) {
     if (!PRACTICE_MODES.includes(mode)) return;
     AppState.practiceFlowMode = mode;
+    // Fresh run — drop any navigation history left over from a previous mode.
+    _clearModeHistory();
     // Reset hardcore daily counter if the date rolled over (LOCAL day — UTC
     // would reset at 05:30 IST and grant a fresh quota pre-midnight).
     const today = todayLocalKey();
@@ -4656,6 +4705,7 @@ function _exitPracticeMode() {
     AppState.practiceQuestions = [];
     AppState.practiceSubmittedFlags = [];
     AppState.currentPracticeIndex = 0;
+    _clearModeHistory();
     saveAllAsync().catch(console.error);
     _renderModeBadge();
     // Queue is empty now — close any lingering practice modal instead of
@@ -4668,11 +4718,14 @@ function _exitPracticeMode() {
  * Refill AppState.practiceQuestions with one mode-appropriate question,
  * reset practiceSubmittedFlags, currentPracticeIndex. This is the post-solve
  * auto-refill for Flow / Hardcore.
+ *
+ * @param {Set} [seenSet]  Passed through to _pickQuestionForMode so a refill
+ *   never re-serves a question already shown this run (see practiceNext).
  */
-function _rebuildPracticeQuestionsForMode() {
+function _rebuildPracticeQuestionsForMode(seenSet) {
     const mode = AppState.practiceFlowMode;
     if (mode === 'standard' || !PRACTICE_MODES.includes(mode)) return;
-    const q = _pickQuestionForMode(AppState.currentSubject, AppState.currentChapter, mode);
+    const q = _pickQuestionForMode(AppState.currentSubject, AppState.currentChapter, mode, seenSet);
     if (!q) {
         // No more mode-eligible questions in this chapter — gracefully exit
         // the mode so the user is not stuck staring at a blank practice modal.
@@ -4685,6 +4738,7 @@ function _rebuildPracticeQuestionsForMode() {
         AppState.practiceSubmittedFlags = [];
         AppState.currentPracticeIndex = 0;
         AppState.practiceSeconds = 0;
+        _clearModeHistory();
         if (typeof renderPracticeQuestionModal === 'function') renderPracticeQuestionModal();
         return;
     }
@@ -6149,34 +6203,35 @@ export function confirmErrorLog() {
 
 export function practiceNext() {
     // CRITICAL: Flow / Hardcore mode auto-refill — keep the user locked in.
-    // Before advancing the index, if a mode is active, refill the queue with
-    // a freshly-picked mode-appropriate question. This is what makes the
-    // "tap one button, sit back for 45 minutes" UX work end-to-end.
+    // The mode serves one question at a time, so Next first replays the
+    // forward stack (questions you stepped back from with Prev), and when the
+    // forward stack is empty serves a genuinely fresh mode-appropriate
+    // question that has never been shown this run. Every question left behind
+    // — solved or skipped — lands in the back stack so Prev can review it.
     if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') {
-        _rebuildPracticeQuestionsForMode();
+        const curQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
+        const curSubmitted = curQ ? !!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] : false;
+
+        // Re-advance through the forward stack before serving anything new.
+        if (_modeForwardStack.length > 0) {
+            if (curQ) _modeBackStack.push({ q: curQ, submitted: curSubmitted });
+            _serveModeEntry(_modeForwardStack.pop());
+            return;
+        }
+
+        // Fresh pick — exclude every question already served this run so the
+        // same question can never reappear (the old picker could re-serve the
+        // current unsubmitted question, making Next feel broken/random).
+        if (curQ) _modeBackStack.push({ q: curQ, submitted: curSubmitted });
+        _rebuildPracticeQuestionsForMode(_modeSeenSet());
         if (AppState.practiceQuestions.length > 0) {
-            // Refill produced a fresh question — present it at index 0 with a
-            // fresh timer. Without this branch the 1-item refilled pool fails
-            // the `index + 1 < length` check below and the mode dies after
-            // ONE solve with a bogus "Queue completely cleared!" alert.
-            AppState.currentPracticeIndex = 0;
-            AppState.practiceSeconds = 0;
-            updatePracticeTimerDisplay();
-            if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
-            if (!AppState.practiceSubmittedFlags[0]) {
-                AppState.practiceTimer = setInterval(() => {
-                    AppState.practiceSeconds++;
-                    updatePracticeTimerDisplay();
-                }, 1000);
-            } else {
-                AppState.practiceTimer = null;
-            }
-            renderPracticeQuestionModal();
+            _serveModeEntry({ q: AppState.practiceQuestions[0], submitted: false });
             return;
         }
         // Refill found nothing — _rebuildPracticeQuestionsForMode already
         // alerted and exited the mode. Close quietly without the generic
         // "queue cleared" double-alert.
+        _clearModeHistory();
         if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
         closePracticeModal();
         showQuestionList();
@@ -6209,6 +6264,18 @@ export function practiceNext() {
 }
 
 export function practicePrev() {
+    // Flow / Hardcore mode: the pool is a single question pinned at index 0,
+    // so the standard index check below can never fire. Review the back stack
+    // instead (browser-style) — the current question is pushed onto the
+    // forward stack so Next can re-advance to it.
+    if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') {
+        if (_modeBackStack.length === 0) return;
+        const curQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
+        const curSubmitted = curQ ? !!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] : false;
+        if (curQ) _modeForwardStack.push({ q: curQ, submitted: curSubmitted });
+        _serveModeEntry(_modeBackStack.pop());
+        return;
+    }
     if (AppState.currentPracticeIndex > 0) {
         AppState.currentPracticeIndex--;
         AppState.practiceSeconds = 0;
@@ -6232,6 +6299,10 @@ export function practicePrev() {
 export function closePracticeModal() {
     closeModalStr('practice-modal');
     if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+    // A closed modal must not leak its run's navigation history into the next
+    // session — without this, a standard session started right after closing a
+    // Flow/Hardcore run could inherit stale back/forward stacks.
+    _clearModeHistory();
     if (document.getElementById('practice-question-list-view').classList.contains('active')) {
         showQuestionList();
     }
