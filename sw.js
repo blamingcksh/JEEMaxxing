@@ -10,7 +10,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v18';
+const VERSION = 'jeemax-v19';
 const SHELL = [
   './',
   './index.html',

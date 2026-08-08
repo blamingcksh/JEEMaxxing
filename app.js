@@ -66,7 +66,7 @@ import {
     toggleCardHistory,
     // ── Practice drawer MCQ flow (new) ──
     srSelectOption, srConfirmAnswer, srSelfReport, srToggleImage,
-    srToggleHint,
+    srToggleHint, srRevealAnswer,
     // ── Error resolution dashboard (NEW) ──
     renderErrorResolutionDashboard,
     renderChapterDecayGrid,
@@ -7775,6 +7775,7 @@ window.srUpdateManualTime = srUpdateManualTime;
 window.srSelectOption = srSelectOption;
 window.srConfirmAnswer = srConfirmAnswer;
 window.srSelfReport = srSelfReport;
+window.srRevealAnswer = srRevealAnswer;
 window.srToggleImage = srToggleImage;
 window.srToggleHint = srToggleHint;
 window.toggleCardHistory = toggleCardHistory;
