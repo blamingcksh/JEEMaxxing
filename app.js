@@ -67,6 +67,9 @@ import {
     // ── Practice drawer MCQ flow (new) ──
     srSelectOption, srConfirmAnswer, srSelfReport, srToggleImage,
     srToggleHint, srRevealAnswer,
+    // ── MCQ answer grading (shared with the SR drawer — full-option-string
+    //    answers like "B) \frac{I}{4}" must resolve to the letter "B") ──
+    resolveMcqCorrectLetters,
     // ── Error resolution dashboard (NEW) ──
     renderErrorResolutionDashboard,
     renderChapterDecayGrid,
@@ -5911,7 +5914,7 @@ export function practiceSubmit() {
                 return idx >= 0 ? String.fromCharCode(65 + idx) : null;
             }).filter(Boolean);
 
-            const correctSorted = AppState.currentQ.correctAnswer.slice().sort();
+            const correctSorted = resolveMcqCorrectLetters(AppState.currentQ).sort();
             const selectedSorted = selectedLetters.slice().sort();
 
             isCorrect = (
@@ -5934,8 +5937,10 @@ export function practiceSubmit() {
             }
 
             userAns = String.fromCharCode(65 + optIndex);
-            const correctAnswer = AppState.currentQ.correctAnswer;
-            isCorrect = (correctAnswer != null && userAns.toLowerCase() === String(correctAnswer).toLowerCase());
+            // Full-option-string answers ("B) \frac{I}{4}") resolve to their
+            // leading letter so a correct pick is graded correctly instead of
+            // being compared to the whole stored string and always failing.
+            isCorrect = resolveMcqCorrectLetters(AppState.currentQ).includes(userAns);
         }
 
     } else if (AppState.currentQ.type === 'numeric') {

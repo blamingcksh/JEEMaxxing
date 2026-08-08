@@ -321,14 +321,103 @@ function _optionLetter(opt, idx) {
     return String.fromCharCode(65 + idx);
 }
 
-// Normalise a correctAnswer value into a sorted array of uppercase letters.
-function _normalizeAnswer(ans) {
-    if (ans == null) return [];
-    if (Array.isArray(ans)) {
-        return ans.map(a => String(a).trim().toUpperCase().charAt(0)).filter(Boolean);
+// Resolve the correct option LETTERS for an MCQ question from its stored
+// correctAnswer — WITHOUT scanning the whole string for A-D characters.
+//
+// Why: answers frequently arrive as FULL OPTION STRINGS ("B) \frac{I}{4}")
+// and a naive `/A-D/g` regex flags every A-D character ANYWHERE in the
+// string — LaTeX commands (\frac contains 'a' + 'c') and prose ("Towards"
+// contains 'a' + 'd') get misread as extra correct options, so a single-
+// answer MCQ lights up A, B AND C as correct at once. Only these are
+// trusted, in priority order:
+//   1. an explicit leading option-letter prefix ("B) …", "(C) …", "D. …")
+//   2. a bare letter / letter list ("B", "B, C", "B C", "B and C", "AB")
+//   3. an exact normalized match of the answer text against an option's
+//      text (each option's own letter prefix stripped first)
+// Resolved letters are validated against the question's option count so a
+// stray letter (e.g. the "I" of \frac{I}{4} — option index 8) can never be
+// reported as a correct option on a 4-option question.
+export function resolveMcqCorrectLetters(q) {
+    if (!q) return [];
+    const raw = q.correctAnswer;
+    if (raw == null) return [];
+    const options = Array.isArray(q.options) ? q.options : [];
+
+    const out = [];
+    const push = (l) => {
+        l = String(l).trim().toUpperCase();
+        if (l && /^[A-Z]$/.test(l) && out.indexOf(l) === -1) out.push(l);
+    };
+    // Drop letters that don't map to a real option index — the "I" inside
+    // "\frac{I}{4}" is NOT option "I" on a 4-option question. With NO options
+    // there can be no correct option letters at all (free-text part labels
+    // like "(a) …, (b) …" must never resolve to "A"). Every caller already
+    // guarantees options exist for real MCQ questions.
+    const valid = () => {
+        if (options.length === 0) return [];
+        return out.filter(l => {
+            const idx = l.charCodeAt(0) - 65;
+            return idx >= 0 && idx < options.length;
+        });
+    };
+
+    // ── Array form: ["B", "C"] or ["B) …", "C) …"] ──
+    if (Array.isArray(raw)) {
+        for (const entry of raw) {
+            const s = String(entry).trim();
+            const lead = s.match(/^[\(]?([A-Za-z])[\)\.\s:]/);
+            if (lead) push(lead[1]);
+            else if (/^[A-Za-z]$/.test(s)) push(s);
+        }
+        const v = valid();
+        if (v.length) return v.sort();
+        // Multi-part free-text array ("(a) …, (b) …") — let text matching try.
+        return _matchAnswerToOptions(options, raw.join(' '));
     }
-    const matches = String(ans).trim().toUpperCase().match(/[A-D]/g);
-    return matches ? matches : [];
+
+    const s = String(raw).trim();
+    if (!s) return [];
+
+    // ── Bare letter list: "B", "B, C", "B C", "B and C" ──
+    if (/^[A-Za-z](?:\s*(?:,|&|and|\s)\s*[A-Za-z])*$/i.test(s)) {
+        for (const tok of s.split(/[^A-Za-z]+/)) if (tok) push(tok);
+        const v = valid();
+        if (v.length) return v.sort();
+    }
+
+    // ── Compact multi-letter without separators: "AB", "ACD" ──
+    if (/^[A-Za-z]{2,4}$/.test(s)) {
+        for (const ch of s) push(ch);
+        const v = valid();
+        if (v.length) return v.sort();
+    }
+
+    // ── Leading option-letter prefix: "B) \frac{I}{4}" → B ──
+    const lead = s.match(/^[\(]?([A-Za-z])[\)\.\s:]/);
+    if (lead) {
+        push(lead[1]);
+        const v = valid();
+        if (v.length) return v.sort();
+        return _matchAnswerToOptions(options, s);
+    }
+
+    // ── Fallback: the answer text equals an option's text verbatim ──
+    return _matchAnswerToOptions(options, s);
+}
+
+// Exact-match the stored answer text against the option texts (each option's
+// own "A) " prefix stripped). Never fuzzy — a clean answer ("I") only
+// resolves when it matches an option verbatim ("D) I").
+function _matchAnswerToOptions(options, answerText) {
+    if (!Array.isArray(options) || options.length === 0) return [];
+    const norm = (t) => String(t).replace(/^[\(]?[A-Za-z][\)\.\s:]\s*/, '').trim().toLowerCase();
+    const target = norm(answerText);
+    if (!target) return [];
+    const out = [];
+    options.forEach((opt, i) => {
+        if (norm(opt) === target) out.push(String.fromCharCode(65 + i));
+    });
+    return out;
 }
 
 function _hasLoadedAnswer(q) {
@@ -495,7 +584,7 @@ function _applyResult(result, source, q) {
 
     if (source === 'auto') {
         // Mark MCQ options: correct → green, selected-wrong → red
-        const correctSet = new Set(_normalizeAnswer(q.correctAnswer));
+        const correctSet = new Set(resolveMcqCorrectLetters(q));
         document.querySelectorAll('.sr-mcq-option').forEach(opt => {
             opt.style.pointerEvents = 'none';
             const letter = opt.getAttribute('data-letter');
@@ -736,7 +825,7 @@ export function srConfirmAnswer() {
     if (_drawerState.selectedOptions.length === 0) return;
     if (_hasLoadedAnswer(q)) {
         const selected = [..._drawerState.selectedOptions].sort();
-        const correct = _normalizeAnswer(q.correctAnswer).sort();
+        const correct = resolveMcqCorrectLetters(q).sort();
         const isCorrect = selected.length === correct.length && selected.every((l, i) => l === correct[i]);
         _applyResult(isCorrect ? 'correct' : 'incorrect', 'auto', q);
     } else {
