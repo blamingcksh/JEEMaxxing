@@ -303,6 +303,302 @@ function snapshotCumDayStart() {   // call at the midnight reset, BEFORE studySe
   for (const s of ['physics', 'chemistry', 'maths']) _lastSeenStudy[s] = 0;
 }
 function _clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+// ==================== GEM DIAGRAM AUTO-CROP MAP ====================
+// The Gem dump may carry per-question crop coordinates. When a question's
+// diagram lives inside one of the source screenshots the user uploaded to
+// Gemini, the Gem can emit:
+//
+//   "imageRef": "a1",                              // which tagged source image
+//   "cropBox": { "x":0.1, "y":0.2, "w":0.3, "h":0.25 }  // normalized 0..1 box
+//
+// Aliases, array form ([x,y,w,h]) and pixel-scale coordinates are all
+// tolerated (see _parseGemImageRef / _resolveGemBbox). On ingest the app
+// counts the distinct tags, asks the user to upload ONE image per tag, and
+// auto-crops every referenced diagram via cropImageFromBBox — no manual
+// bounding-box drawing.
+// PRIMARY aliases are unambiguous (any non-empty value is trusted).
+const _GEM_TAG_PRIMARY_ALIASES = ['imageRef', 'imageTag', 'diagramRef', 'imgTag', 'sourceImage'];
+// EXTENDED aliases (image/img/figure/…) are only trusted when the value looks
+// like a short tag token — a data URL / http URL / long blob is NOT a tag.
+const _GEM_TAG_EXTENDED_ALIASES = ['image', 'img', 'figure', 'figRef', 'sourceImg', 'imageNumber', 'figureNumber', 'imageIndex'];
+const _GEM_BBOX_ALIASES = ['cropBox', 'bbox', 'box', 'crop', 'region', 'coords', 'cropCoords'];
+
+// A tag value is trusted only when it's a SHORT single-token string ("a1",
+// "2", "s2") or a small number — never an embedded image payload.
+function _looksLikeGemTag(v) {
+    if (typeof v === 'number') return Number.isFinite(v) && v >= 0;
+    if (typeof v !== 'string') return false;
+    const s = v.trim();
+    if (!s || s.length > 24) return false;
+    if (/^(data:image\/|https?:\/\/|blob:|file:)/i.test(s)) return false;
+    if (/[\s\n\r\t]/.test(s)) return false;
+    return true;
+}
+
+// In-session store: normalized tag -> base64 data URL of the uploaded source
+// screenshot. Deliberately in-memory only — survives modal reopens during the
+// session, never touches storage quota.
+let _gemImageSources = {};
+
+function _firstDefined(obj, keys) {
+    for (const k of keys) {
+        const v = obj[k];
+        if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return undefined;
+}
+
+function _normGemTag(tag) {
+    return String(tag == null ? '' : tag).trim().toLowerCase();
+}
+
+/**
+ * Parse a cropBox value into {x,y,w,h} numbers. Accepts an object
+ * ({x,y,w,h} / {left,top,width,height} / {x1,y1,x2,y2}) or a flat array
+ * [x,y,w,h]. Returns null when the box is unparseable or has no area.
+ */
+function _parseGemBbox(raw) {
+    if (!raw) return null;
+    let x, y, w, h;
+    if (Array.isArray(raw)) {
+        if (raw.length < 4) return null;
+        [x, y, w, h] = raw.slice(0, 4).map(Number);
+    } else if (typeof raw === 'object') {
+        const left = raw.x ?? raw.left ?? raw.x1 ?? raw.originX;
+        const top = raw.y ?? raw.top ?? raw.y1 ?? raw.originY;
+        const right = raw.x2 ?? raw.right;
+        const bottom = raw.y2 ?? raw.bottom;
+        x = Number(left);
+        y = Number(top);
+        w = Number(raw.w ?? raw.width ?? (right != null && left != null ? Number(right) - Number(left) : undefined));
+        h = Number(raw.h ?? raw.height ?? (bottom != null && top != null ? Number(bottom) - Number(top) : undefined));
+    }
+    if (![x, y, w, h].every(v => Number.isFinite(v))) return null;
+    if (w <= 0 || h <= 0) return null;
+    return { x, y, w, h };
+}
+
+/**
+ * Extract the gem auto-crop mapping from a dump question object.
+ * Returns { tag, bbox } (bbox may be null when coordinates are missing) or
+ * null when the question references no tagged source image.
+ */
+// Shared ref extraction: pulls the tag (primary aliases first, then guarded
+// extended aliases) + optional cropBox out of a ref-bearing object.
+function _pickGemRef(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    let tag = _firstDefined(obj, _GEM_TAG_PRIMARY_ALIASES);
+    if (tag === undefined) {
+        const ext = _firstDefined(obj, _GEM_TAG_EXTENDED_ALIASES);
+        if (_looksLikeGemTag(ext)) tag = ext;
+    }
+    if (tag === undefined) return null;
+    if (typeof tag === 'number') tag = String(tag);
+    tag = String(tag).trim();
+    if (!tag) return null;
+    return { tag, bbox: _parseGemBbox(_firstDefined(obj, _GEM_BBOX_ALIASES)) };
+}
+
+function _parseGemImageRef(obj) {
+    return _pickGemRef(obj);
+}
+
+/**
+ * Resolve the cropped image bound to a single MCQ option. The auto-crop map
+ * stores crops keyed by option letter ("A"), but dumps can also tag options by
+ * their full string — try exact first, then a leading-letter match.
+ */
+function _gemOptionImageUrl(q, opt) {
+    if (!q || !q.optionImageUrls || typeof opt !== 'string') return null;
+    const direct = q.optionImageUrls[opt];
+    if (direct) return direct;
+    // Full-string keys from older/foreign dumps may differ only by case.
+    const upper = q.optionImageUrls[opt.toUpperCase()];
+    if (upper) return upper;
+    const m = opt.match(/^\s*([A-Za-z])\s*[\)\.:]/);
+    if (m) {
+        return q.optionImageUrls[m[1].toUpperCase()] || q.optionImageUrls[m[1]] || null;
+    }
+    return null;
+}
+
+// ── Per-option image refs. The dump can carry images inside individual MCQ
+// options, e.g.:
+//   "optionImages": {"A": {"imageRef":"a1","cropBox":{...}}, "B": "a1"}
+// or an array form:
+//   "optionImages": [{"option":"A","imageRef":"a1","cropBox":{...}}]
+// Returns { 'A': {tag,bbox}, ... } or null. ──
+function _parseGemOptionImages(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    const raw = _firstDefined(obj, ['optionImages', 'optionImageRefs', 'optionsImages', 'optionsImageRefs', 'optionsImg']);
+    if (raw === undefined) return null;
+    const out = {};
+    const add = (key, ref) => {
+        if (ref === null || !key) return;
+        let k = String(key).trim().toUpperCase();
+        // Normalize full option strings ("A) 10 m", "B. 5 cm", "C: …") down to
+        // the bare letter so crop storage and _gemOptionImageUrl lookups share
+        // one key — otherwise an upper-cased full string would never resolve.
+        const m = k.match(/^([A-Z])\s*[\)\.:]/);
+        if (m) k = m[1];
+        if (!k || out[k]) return; // first wins
+        out[k] = { tag: ref.tag, bbox: ref.bbox || null };
+    };
+    if (Array.isArray(raw)) {
+        for (const entry of raw) {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+            const key = _firstDefined(entry, ['option', 'opt', 'label', 'key', 'letter']);
+            if (key === undefined) continue;
+            add(key, _pickGemRef(entry));
+        }
+    } else if (typeof raw === 'object') {
+        for (const k of Object.keys(raw)) {
+            const v = raw[k];
+            // Bare tag strings are accepted as shorthand ({"A": "a1"}); URLs
+            // and data blobs are never mistaken for tags.
+            let ref;
+            if (typeof v === 'string' || typeof v === 'number') {
+                ref = _looksLikeGemTag(v) ? { tag: (typeof v === 'number' ? String(v) : v.trim()), bbox: null } : null;
+            } else {
+                ref = _pickGemRef(v);
+            }
+            add(k, ref);
+        }
+    }
+    return Object.keys(out).length ? out : null;
+}
+
+// ── Solution/answer image ref, e.g.
+//   "solutionImage": {"imageRef":"a2","cropBox":{...}}
+// or a bare tag string, with a standalone crop fallback on
+// solutionCrop / solutionCropBox / solCropBox / answerCrop. ──
+function _parseGemSolutionImage(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    let ref = null;
+    const raw = _firstDefined(obj, ['solutionImage', 'solImage', 'solutionImageRef', 'solutionRef', 'answerImage']);
+    if (raw !== undefined) {
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+            ref = _pickGemRef(raw);
+        } else if (_looksLikeGemTag(raw)) {
+            ref = { tag: (typeof raw === 'number' ? String(raw) : String(raw).trim()), bbox: null };
+        }
+    }
+    if (!ref) return null;
+    if (!ref.bbox) {
+        ref.bbox = _parseGemBbox(_firstDefined(obj, ['solutionCrop', 'solutionCropBox', 'solCropBox', 'answerCrop', 'solutionBox']));
+    }
+    return ref;
+}
+
+// All tagged-image references on an item (diagram + per-option + solution),
+// each with its kind so the map modal and cropper can handle every crop.
+function _gemTagEntries(item) {    const out = [];
+    if (item && item.gemImage && item.gemImage.tag) out.push({ kind: 'diagram', tag: item.gemImage.tag, bbox: item.gemImage.bbox });
+    if (item && item.gemOptionImages && typeof item.gemOptionImages === 'object') {
+        for (const k of Object.keys(item.gemOptionImages)) {
+            const ref = item.gemOptionImages[k];
+            if (ref && ref.tag) out.push({ kind: 'option', opt: k, tag: ref.tag, bbox: ref.bbox });
+        }
+    }
+    if (item && item.gemSolutionImage && item.gemSolutionImage.tag) {
+        out.push({ kind: 'solution', tag: item.gemSolutionImage.tag, bbox: item.gemSolutionImage.bbox });
+    }
+    return out;
+}
+
+/**
+ * Distinct tagged source images referenced by an ingestion batch, in order of
+ * first appearance (the "how many are there" count the user asked for).
+ */
+function _collectGemImageTags(items) {
+    const seen = new Set();
+    const tags = [];
+    for (const it of items || []) {
+        for (const entry of _gemTagEntries(it)) {
+            const t = typeof entry.tag === 'string' ? entry.tag.trim() : '';
+            if (!t) continue;
+            const key = _normGemTag(t);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            tags.push(t);
+        }
+    }
+    return tags;
+}
+
+/**
+ * Normalize a parsed bbox against the actual decoded image dimensions.
+ * Coordinates above 1.0 are treated as raw PIXEL offsets (auto-detected) and
+ * converted to fractions; everything is then clamped into the unit square so
+ * cropImageFromBBox never draws outside the canvas. Returns null when the box
+ * collapses to nothing.
+ */
+function _resolveGemBbox(bbox, imgW, imgH) {
+    if (!bbox) return null;
+    let { x, y, w, h } = bbox;
+    // Pixel-scale auto-detection. Coordinates are NORMALIZED (0..1) unless the
+    // box is unambiguous pixel geometry: offsets/sizes that could never be
+    // fractions — e.g. {x:120, y:340, w:260, h:190}. A slightly sloppy
+    // normalized box (x:-0.02 or w:1.05 from Gemini) must NOT be misread as
+    // pixels, so we require x,y ≥ 0 AND w,h ≥ 1 before converting.
+    const inRange = (v) => v >= -0.25 && v <= 1.25;
+    const allNormalized = [x, y, w, h].every(inRange);
+    const looksPixel = x >= 0 && y >= 0 && w >= 1 && h >= 1;
+    if (!allNormalized && looksPixel && imgW > 0 && imgH > 0) {
+        x /= imgW; w /= imgW; y /= imgH; h /= imgH;
+    }
+    // Clamp into the unit square and enforce a minimum crop size.
+    x = Math.min(Math.max(x, 0), 0.9999);
+    y = Math.min(Math.max(y, 0), 0.9999);
+    w = Math.min(Math.max(w, 0), 1 - x);
+    h = Math.min(Math.max(h, 0), 1 - y);
+    if (w < 0.001 || h < 0.001) return null;
+    return { x, y, w, h };
+}
+
+/**
+ * Legacy-regex equivalent of _parseGemImageRef: pulls imageRef + cropBox out
+ * of the raw metadata string that the freeform parser assembles per segment.
+ */
+function _compileLegacyGemImageRef(metadata) {
+    if (!metadata) return null;
+    let tag = null;
+    for (const key of _GEM_TAG_PRIMARY_ALIASES) {
+        const m = metadata.match(new RegExp('"' + key + '"\\s*:\\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"', 'i'));
+        if (m && m[1]) { tag = m[1]; break; }
+    }
+    if (tag === null) {
+        // Extended aliases: accept a quoted string or a bare number, guarded
+        // by the same short-tag heuristic so data URLs never match.
+        for (const key of _GEM_TAG_EXTENDED_ALIASES) {
+            const m = metadata.match(new RegExp('"' + key + '"\\s*:\\s*(?:"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"|(\\d+))', 'i'));
+            if (m) {
+                const raw = m[1] !== undefined ? m[1] : m[2];
+                if (_looksLikeGemTag(raw)) { tag = String(raw); break; }
+            }
+        }
+    }
+    if (tag === null) return null;
+    let rawBbox = null;
+    for (const key of _GEM_BBOX_ALIASES) {
+        const objM = metadata.match(new RegExp('"' + key + '"\\s*:\\s*\\{([\\s\\S]*?)\\}', 'i'));
+        if (objM && objM[1]) {
+            const num = (k) => {
+                const m = objM[1].match(new RegExp('"' + k + '"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)', 'i'));
+                return m ? parseFloat(m[1]) : NaN;
+            };
+            rawBbox = { x: num('x'), y: num('y'), w: num('w'), h: num('h') };
+            break;
+        }
+        const arrM = metadata.match(new RegExp('"' + key + '"\\s*:\\s*\\[([\\d.,\\s-]+)\\]', 'i'));
+        if (arrM && arrM[1]) {
+            const nums = arrM[1].split(',').map(s => parseFloat(s.trim())).filter(n => Number.isFinite(n));
+            if (nums.length >= 4) { rawBbox = { x: nums[0], y: nums[1], w: nums[2], h: nums[3] }; break; }
+        }
+    }
+    return { tag, bbox: _parseGemBbox(rawBbox) };
+}
 // Validate image sources before injecting into HTML: only app-generated
 // data:image, https, or blob: URLs are allowed — anything else (crafted
 // `" onerror=…` payloads) is dropped.
@@ -2357,6 +2653,13 @@ export function saveAllQuestions() {
             gemChapter: (typeof q.gemChapter === 'string' && q.gemChapter) ? q.gemChapter : null,
             imageDataUrl: q.imageDataUrl,
             diagramImageUrl: q.diagramImageUrl || null,
+            // ── Gem auto-crop provenance: survives into the bank so a skipped
+            // or failed map can be re-run later (the coords are tiny JSON). ──
+            gemImage: q.gemImage || null,
+            gemOptionImages: q.gemOptionImages || null,
+            gemSolutionImage: q.gemSolutionImage || null,
+            optionImageUrls: q.optionImageUrls || null,
+            solutionImageUrl: q.solutionImageUrl || null,
             extractedText: q.extractedText || "",
             options: q.options || [],
             correctAnswer: finalAnswer,
@@ -2748,10 +3051,23 @@ function _compileDumpObject(obj) {
         ? obj.tags.filter(t => typeof t === 'string').map(t => t.trim()).filter(Boolean).slice(0, 5)
         : [];
 
+    // ── Gem diagram auto-crop mapping: imageRef tag + cropBox coordinates.
+    // Baked into the dump by the Gem so the app can auto-crop the diagram
+    // (and now per-option images + a solution image) from the tagged source
+    // screenshots the user uploads post-ingest. ──
+    const gemImage = _parseGemImageRef(obj);
+    const gemOptionImages = _parseGemOptionImages(obj);
+    const gemSolutionImage = _parseGemSolutionImage(obj);
+
     return {
         imageDataUrl: null,
         questionOnlyDataUrl: null,
         diagramImageUrl: null,
+        optionImageUrls: null,
+        solutionImageUrl: null,
+        gemImage,
+        gemOptionImages,
+        gemSolutionImage,
         extractedText: _repairLatexParsed(rawText),
         options,
         correctAnswer,
@@ -2976,10 +3292,21 @@ export async function processGemTextDump() {
                 ? rawQ.tags.filter(t => typeof t === 'string').map(t => t.trim()).filter(Boolean).slice(0, 5)
                 : [];
 
+            // ── Gem diagram auto-crop mapping (legacy path): same imageRef +
+            // cropBox extraction, done with regexes over the raw metadata. ──
+            // (Per-option / solution images are parsed on the real-JSON fast
+            // path only — regex surgery on nested arrays is too fragile.)
+            const legacyGemImage = _compileLegacyGemImageRef(metadata);
+
             parsedItems.push({
                 imageDataUrl: null,
                 questionOnlyDataUrl: null,
                 diagramImageUrl: null,
+                optionImageUrls: null,
+                solutionImageUrl: null,
+                gemImage: legacyGemImage,
+                gemOptionImages: null,
+                gemSolutionImage: null,
                 extractedText: extractedText,
                 options: options,
                 correctAnswer: correctAnswer,
@@ -3051,8 +3378,9 @@ export async function processGemTextDump() {
         }
 
         AppState.extractedItems = parsedItems;
+        // Fresh dump → fresh diagram map (previous session uploads are stale).
+        _gemImageSources = {};
         hideLoading();
-        alert(`Ingestion locked: ${AppState.extractedItems.length} items compiled successfully. Mounting preview grid.`);
 
         // ── Bug 2 fix: dismiss the parent upload-modal SYNCHRONOUSLY so it
         // can't resurface after Save All. ──
@@ -3065,8 +3393,21 @@ export async function processGemTextDump() {
         // is fully gone before the preview grid mounts.
         forceHideModal('upload-modal');
 
-        // Pass control flow directly to your interactive validation view
-        showPreviewModal();
+        // ── Gem diagram auto-crop map ──
+        // When the dump carries imageRef tags + cropBox coordinates, route to
+        // the mapping modal first: the user uploads one image per tagged source
+        // screenshot and the baked-in coordinates auto-crop every referenced
+        // diagram (no manual bounding-box drawing). Plain dumps skip straight
+        // to the preview grid as before.
+        const gemTags = _collectGemImageTags(parsedItems);
+        if (gemTags.length) {
+            alert(`Ingestion locked: ${parsedItems.length} items compiled. 🗺 ${gemTags.length} tagged source image${gemTags.length !== 1 ? 's' : ''} referenced (${gemTags.join(', ')}) — upload them to auto-crop the diagrams.`);
+            openGemImageMappingModal();
+        } else {
+            alert(`Ingestion locked: ${parsedItems.length} items compiled successfully. Mounting preview grid.`);
+            // Pass control flow directly to your interactive validation view
+            showPreviewModal();
+        }
 
     } catch (err) {
         console.error("Text track execution crash:", err);
@@ -3090,11 +3431,24 @@ export function showPreviewModal() {
             visualAssetContainerHtml = `<img src="${_safeImgSrc(q.imageDataUrl)}" style="max-width:200px; border-radius:12px;">`;
         } else {
             if (q.diagramImageUrl) {
+                const srcTag = (q.gemImage && q.gemImage.tag)
+                    ? ` · 📍 from <b>${escapeHtml(q.gemImage.tag)}</b>${q._gemAutoMapped ? ' · auto-crop' : ''}`
+                    : '';
                 visualAssetContainerHtml = `
                     <div class="surgical-asset-box" style="border: 1px solid var(--glow-orange); padding:8px; border-radius:8px; background:rgba(249,115,22,0.05); flex-shrink:0;">
-                        <small style="color: #f97316; font-weight:700;">📐 Diagram Mapped</small><br>
+                        <small style="color: #f97316; font-weight:700;">📐 Diagram Mapped${srcTag}</small><br>
                         <img src="${_safeImgSrc(q.diagramImageUrl)}" style="max-width:140px; border-radius:6px; margin:6px 0;">
                         <button class="btn btn-danger btn-xs" style="display:block; width:100%; padding:2px;" onclick="event.stopPropagation(); window.yeetSurgicalDiagram(${idx})">✕ Wipe Asset</button>
+                    </div>`;
+            } else if (q.gemImage && q.gemImage.tag) {
+                // Tagged source image still waiting for its upload → the 🗺
+                // Diagram Map (top of the modal) auto-crops it; manual crop
+                // stays available as a fallback.
+                visualAssetContainerHtml = `
+                    <div class="surgical-asset-trigger" style="text-align:center; padding:10px; border:1px dashed #b45309; border-radius:8px; flex-shrink:0; min-width:140px; background:rgba(249,115,22,0.04);">
+                        <span class="gem-ref-chip" style="margin-left:0; display:inline-block; margin-bottom:6px;">📍${escapeHtml(q.gemImage.tag)}</span>
+                        <button class="btn btn-secondary btn-sm" style="display:block; width:100%;" onclick="event.stopPropagation(); window.triggerSurgicalDiagramUpload(${idx})">➕ Add Diagram</button>
+                        <p style="font-size:10px; color:#fbbf24; margin-top:4px; line-height:1.1;">Auto-crop pending — upload tag <b>${escapeHtml(q.gemImage.tag)}</b> in 🗺 Diagram Map.</p>
                     </div>`;
             } else {
                 visualAssetContainerHtml = `
@@ -3117,21 +3471,51 @@ export function showPreviewModal() {
             processedTextHtml = `<p style="font-size:12px; color:#64748b; font-style:italic;">No text extracted yet — run "Extract Text" for multicrop items.</p>`;
         }
 
-        // Clean option layout rows
+        // Clean option layout rows — auto-cropped per-option images render
+        // under their matching option letter (bound via the 🗺 Diagram Map).
         let optionsPreview = '';
         if (q.options && q.options.length) {
             optionsPreview = `<div style="margin: 6px 0; padding-left: 8px; border-left: 2px solid #3b82f6;">
-                ${q.options.map(o => `<p style="font-size:13px; color:#93c5fd; margin: 2px 0;">${escapeHtml(o)}</p>`).join('')}
+                ${q.options.map(o => {
+                    const optImg = _gemOptionImageUrl(q, o)
+                        ? `<div style="margin:2px 0 6px;"><img src="${_safeImgSrc(_gemOptionImageUrl(q, o))}" style="max-width:130px; border-radius:6px; border:1px solid rgba(59,130,246,0.5);"></div>`
+                        : '';
+                    return `<p style="font-size:13px; color:#93c5fd; margin:2px 0;">${escapeHtml(o)}</p>${optImg}`;
+                }).join('')}
             </div>`;
         }
         
         let solutionPreview = q.solution ? `<p style="font-size:12px; color:#6ee7b7; margin-top:4px; font-weight:500;">📝 Solution Context Loaded</p>` : '';
+        if (q.solutionImageUrl) {
+            solutionPreview += `<div style="margin-top:4px;"><small style="color:#6ee7b7; font-weight:700;">💡 Solution Diagram</small><br><img src="${_safeImgSrc(q.solutionImageUrl)}" style="max-width:140px; border-radius:6px; border:1px solid rgba(110,231,183,0.4);"></div>`;
+        }
+
+        // ── Pending auto-crop chips: option/solution refs still waiting for
+        // their tagged screenshot upload in the 🗺 Diagram Map. ──
+        let pendingAssetHtml = '';
+        if (q.gemOptionImages && typeof q.gemOptionImages === 'object') {
+            for (const k of Object.keys(q.gemOptionImages)) {
+                const ref = q.gemOptionImages[k];
+                if (ref && ref.tag && !(q.optionImageUrls && q.optionImageUrls[k])) {
+                    pendingAssetHtml += `<span class="gem-ref-chip" style="margin:2px 4px 0 0; display:inline-block;">📄 opt ${escapeHtml(k)} ← <b>${escapeHtml(ref.tag)}</b></span>`;
+                }
+            }
+        }
+        if (q.gemSolutionImage && q.gemSolutionImage.tag && !q.solutionImageUrl) {
+            pendingAssetHtml += `<span class="gem-ref-chip" style="margin:2px 4px 0 0; display:inline-block;">💡 solution ← <b>${escapeHtml(q.gemSolutionImage.tag)}</b></span>`;
+        }
         let hintPreview = q.hint ? `<p style="font-size:12px; color:#fbbf24; margin-top:2px; font-weight:500;">💡 Hint Loaded</p>` : '';
         let answerDisplay = Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || '');
         
+        // ── Gem provenance chip: which tagged source image this question's
+        // diagram comes from (auto-crop coordinates baked into the dump). ──
+        const gemChip = (q.gemImage && q.gemImage.tag)
+            ? `<span class="gem-ref-chip" title="Diagram source tag: ${escapeAttribute(q.gemImage.tag)}${q.gemImage.bbox ? ' · crop coords baked into the dump' : ''}">📍${escapeHtml(q.gemImage.tag)}</span>`
+            : '';
+
         div.innerHTML = `
             <div style="margin-bottom: 6px; display:flex; justify-content:space-between; align-items:center;">
-                <strong>Question ${idx + 1}</strong> ${typeBadge}
+                <strong>Question ${idx + 1}</strong> ${gemChip} ${typeBadge}
             </div>
             <div style="display:flex; gap:16px; align-items:flex-start; justify-content:space-between;">
                 <div style="flex:1; min-width:0;">
@@ -3139,6 +3523,7 @@ export function showPreviewModal() {
                     ${optionsPreview}
                     ${solutionPreview}
                     ${hintPreview}
+                    ${pendingAssetHtml ? `<div style="margin-top:6px;">${pendingAssetHtml}</div>` : ''}
                 </div>
                 ${visualAssetContainerHtml}
             </div>
@@ -3149,7 +3534,36 @@ export function showPreviewModal() {
             
         container.appendChild(div);
     });
-    
+
+    // ── 🗺 Diagram Map reopen: visible whenever any question in this batch
+    // references a tagged source image (lets the user upload/map later, or
+    // re-map after wiping an auto-crop). ──
+    const anyGemRef = (AppState.extractedItems || []).some(it => it.gemImage && it.gemImage.tag);
+    const btnReopen = document.getElementById('btn-reopen-gem-map');
+    if (btnReopen) btnReopen.style.display = anyGemRef ? 'inline-block' : 'none';
+
+    // ── No-tag guidance banner ──
+    // When the dump carried no imageRef tags at all, the per-tag upload prompt
+    // never fires. Surface WHY and what to do (paste the gem instruction block
+    // or bind diagrams manually) so it never looks like a dead end.
+    const oldBanner = document.getElementById('gem-map-no-tags-banner');
+    if (oldBanner) oldBanner.remove();
+    if (!anyGemRef) {
+        const banner = document.createElement('div');
+        banner.id = 'gem-map-no-tags-banner';
+        banner.className = 'gem-map-banner';
+        banner.innerHTML = `
+            <div style="flex:1;min-width:220px;">
+                <b>🗺 No tagged images in this dump</b> — so there's no per-image upload prompt here.
+                Questions whose diagrams live inside screenshots need <code>imageRef</code> + <code>cropBox</code>
+                fields in the dump to be auto-cropped. Paste the instruction block into your Gemini Gem,
+                re-generate, and this screen will ask you to upload each tagged image (a1, a2, …).
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="window.copyGemImageInstructions()">📋 Copy Gemini instructions</button>
+            <span style="font-size:11px;color:var(--text-muted);">…or use <b>➕ Add Diagram</b> on each question below.</span>`;
+        container.insertBefore(banner, container.firstChild);
+    }
+
     openModal('preview-modal');
 }
 
@@ -3174,6 +3588,325 @@ window.loadJsonDumpFile = function (input) {
     r.onerror = () => alert('Could not read that file. Make sure it is a plain .json / .txt file.');
     r.readAsText(f);
 };
+
+// ==================== GEM DIAGRAM AUTO-CROP MAP (UI) ====================
+// The instruction block users paste into Gemini so future dumps carry
+// imageRef + cropBox coordinates. Also shown (copyable) inside the map modal.
+const GEM_MAP_INSTRUCTION_BLOCK = `When a question's diagram (figure, circuit, graph, chemical structure) lives inside one of the source screenshots I upload, attach two extra fields to that question object:
+  "imageRef": "<tag of that source screenshot, e.g. a1>",
+  "cropBox": {"x": 0.12, "y": 0.30, "w": 0.40, "h": 0.35}
+
+Option & solution figures work the same way:
+  "optionImages":   {"A": {"imageRef": "a1", "cropBox": {"x":0.4,"y":0.2,"w":0.2,"h":0.2}}, "B": "a1"},
+  "solutionImage":  {"imageRef": "a2", "cropBox": {"x":0.1,"y":0.5,"w":0.5,"h":0.4}}
+- optionImages maps an option LETTER ("A", "B", ...) to a ref; a bare tag string is fine when the figure needs no coords.
+- solutionImage is the worked-solution figure; bare tag strings also work.
+- One figure per option letter, one solution figure per question — omit the fields you don't need.
+
+Tagging:
+- Label the uploaded screenshots a1, a2, a3, ... (or s1, s2, ...) in upload order and use EXACTLY those labels as imageRef — I will re-upload the same screenshots under the same tags in JEEMaxxing.
+- One question gets at most ONE imageRef/cropBox pair; many questions may share a tag with different cropBox values.
+
+Coordinates (the app crops EXACTLY this region):
+- x/y = top-left corner as FRACTIONS of the ORIGINAL screenshot's width/height (0.0 to 1.0); w/h = width/height as fractions too.
+- Keep x+w <= 1 and y+h <= 1; add ~1-2% padding so the crop never clips the diagram's border.
+- If a figure spans a whole screenshot, use {"x":0,"y":0,"w":1,"h":1}.
+- If a question has no figure in any screenshot, omit these fields entirely.
+- imageRef/cropBox are plain strings and numbers — no LaTeX escaping applies to them.`;
+
+function _gemIdKey(key) {
+    return String(key).replace(/[^a-z0-9_-]/gi, '_');
+}
+
+/**
+ * Open the 🗺 Gem Diagram Map modal. Counts the distinct tagged source images
+ * the batch references ("how many are there"), renders one upload tile per
+ * tag, and previews the crop regions as overlays once an image is picked.
+ */
+function openGemImageMappingModal() {
+    const items = AppState.extractedItems || [];
+    const tags = _collectGemImageTags(items);
+    const body = document.getElementById('gem-image-map-body');
+    const intro = document.getElementById('gem-map-intro');
+    if (!body) return;
+
+    if (!tags.length) {
+        showPreviewModal();
+        return;
+    }
+
+    if (intro) {
+        intro.innerHTML =
+            `The dump references <b>${tags.length}</b> tagged source image${tags.length !== 1 ? 's' : ''}: ` +
+            `<b>${escapeHtml(tags.join(', '))}</b>. Upload each tagged image below — the coordinates baked ` +
+            `into the dump auto-crop every diagram, option image and solution image. No manual cropping.`;
+    }
+
+    // tag (normalized) -> { indices, kinds }
+    const tagInfo = new Map();
+    items.forEach((it, idx) => {
+        for (const entry of _gemTagEntries(it)) {
+            const key = _normGemTag(entry.tag);
+            if (!tagInfo.has(key)) tagInfo.set(key, { indices: [], kinds: new Set() });
+            const info = tagInfo.get(key);
+            if (!info.indices.includes(idx)) info.indices.push(idx);
+            info.kinds.add(entry.kind);
+        }
+    });
+
+    body.innerHTML = '';
+    tags.forEach(tag => {
+        const key = _normGemTag(tag);
+        const idKey = _gemIdKey(key);
+        const info = tagInfo.get(key) || { indices: [], kinds: new Set() };
+        const idxs = info.indices;
+        const qLabels = idxs.map(i => '#' + (i + 1)).join(', ');
+        const kindLabel = ['diagram', 'option', 'solution']
+            .filter(k => info.kinds.has(k))
+            .map(k => k === 'option' ? 'option images' : k + 's')
+            .join(' + ');
+
+        const row = document.createElement('div');
+        row.className = 'gem-map-row';
+        row.innerHTML = `
+            <div class="gem-map-tagchip" title="Crops referencing this image: ${escapeAttribute(qLabels)}">${escapeHtml(tag)}</div>
+            <div class="gem-map-upload">
+                <label class="file-upload-label compact-upload" for="gem-img-${idKey}" style="margin:0;">
+                    <span class="file-icon">🖼️</span>
+                    <span class="file-text">Upload image tagged <b>${escapeHtml(tag)}</b></span>
+                </label>
+                <input type="file" id="gem-img-${idKey}" accept="image/*" style="display:none">
+                <span class="file-selected-text" id="gem-img-name-${idKey}">No file yet — ${idxs.length} question${idxs.length !== 1 ? 's' : ''} reference${idxs.length !== 1 ? '' : 's'} this image (${escapeHtml(kindLabel)})</span>
+            </div>
+            <div class="gem-map-preview" id="gem-map-preview-${idKey}" style="display:none">
+                <canvas id="gem-map-canvas-${idKey}" class="gem-map-preview-canvas"></canvas>
+                <small class="gem-map-preview-caption">Boxes = every crop region · <b>Q#</b> diagram · <b>·A</b> option · <b>·SOL</b> solution.</small>
+            </div>`;
+        body.appendChild(row);
+
+        const input = row.querySelector('input[type=file]');
+        input.addEventListener('change', (e) => handleGemImageFileSelect(tag, e.target));
+
+        // Reopened map: re-surface an upload that is still in the session store
+        // (so the user sees what's already locked instead of a blank tile).
+        if (_gemImageSources[key]) {
+            const nameEl = row.querySelector('.file-selected-text');
+            if (nameEl) {
+                nameEl.textContent = '✔ Locked (kept in session)';
+                nameEl.style.color = 'var(--glow-green)';
+            }
+            _drawGemBboxOverlay(tag);
+        }
+    });
+
+    // ── Modal-stacking fix: #gem-image-map-modal sits EARLIER in the DOM than
+    // #preview-modal, so with equal .modal-overlay z-index the preview would
+    // paint OVER the freshly opened map (the reopen button lives inside the
+    // preview). Dismiss the preview synchronously first — the map always hands
+    // back to showPreviewModal() anyway (mirrors triggerSurgicalDiagramUpload).
+    forceHideModal('preview-modal');
+
+    const instEl = document.getElementById('gem-map-instruction-text');
+    if (instEl) instEl.textContent = GEM_MAP_INSTRUCTION_BLOCK;
+
+    const status = document.getElementById('gem-image-map-status');
+    if (status) {
+        status.textContent = '';
+        status.className = 'gem-map-status';
+    }
+
+    openModal('gem-image-map-modal');
+}
+
+/**
+ * File-picker change handler per tag: stores the base64 source image and
+ * draws the crop-region overlay so the user can verify the coordinates.
+ */
+async function handleGemImageFileSelect(tag, input) {
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+    const key = _normGemTag(tag);
+    const idKey = _gemIdKey(key);
+    try {
+        const b64 = await readFileAsBase64(file);
+        _gemImageSources[key] = b64;
+        const nameEl = document.getElementById('gem-img-name-' + idKey);
+        if (nameEl) {
+            nameEl.textContent = '✔ Locked: ' + file.name;
+            nameEl.style.color = 'var(--glow-green)';
+        }
+        _drawGemBboxOverlay(tag);
+    } catch (e) {
+        console.error('[gem-map] failed to read image for tag ' + tag + ':', e);
+    }
+}
+
+/**
+ * Render the uploaded source image on a canvas and overlay every crop region
+ * the dump references for this tag, labelled with the question numbers.
+ */
+function _drawGemBboxOverlay(tag) {
+    const key = _normGemTag(tag);
+    const idKey = _gemIdKey(key);
+    const src = _gemImageSources[key];
+    const canvas = document.getElementById('gem-map-canvas-' + idKey);
+    const preview = document.getElementById('gem-map-preview-' + idKey);
+    if (!canvas || !src) return;
+
+    const img = new Image();
+    img.onload = () => {
+        const MAX_W = 340;
+        const MAX_H = 480;   // cap the canvas height too — tall screenshots
+        const scale = Math.min(1, MAX_W / img.width, MAX_H / img.height);
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const items = AppState.extractedItems || [];
+        const KIND_COLORS = { diagram: '#22d3ee', option: '#facc15', solution: '#e879f9' };
+        items.forEach((it, idx) => {
+            for (const entry of _gemTagEntries(it)) {
+                if (_normGemTag(entry.tag) !== key) continue;
+                const nb = _resolveGemBbox(entry.bbox, img.width, img.height);
+                if (!nb) continue;
+                const color = KIND_COLORS[entry.kind] || '#22d3ee';
+                const rx = nb.x * canvas.width, ry = nb.y * canvas.height;
+                const rw = nb.w * canvas.width, rh = nb.h * canvas.height;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(rx, ry, rw, rh);
+                ctx.fillStyle = color;
+                ctx.font = 'bold 11px sans-serif';
+                const label = '#' + (idx + 1) + (entry.kind === 'option' ? '·' + entry.opt : entry.kind === 'solution' ? '·SOL' : '');
+                ctx.fillText(label, rx + 3, ry + 14);
+            }
+        });
+        if (preview) preview.style.display = 'block';
+    };
+    img.onerror = () => { /* corrupt source — leave the tile empty */ };
+    img.src = src;
+}
+
+/**
+ * The "enter" step: crop every referenced diagram from its uploaded tagged
+ * image using the dump's coordinates, bind each crop to diagramImageUrl, then
+ * hand off to the preview grid. Any tag without an upload (or any failed
+ * crop) is reported inline and falls back to the manual ➕ Add Diagram flow.
+ */
+async function applyGemImageCrops() {
+    const items = AppState.extractedItems || [];
+    // Every (item, tagged-image-ref) pair is a crop job — diagrams, per-option
+    // images and the solution image all flow through the same map.
+    const jobs = [];
+    items.forEach((it) => { for (const entry of _gemTagEntries(it)) jobs.push({ it, entry }); });
+    const status = document.getElementById('gem-image-map-status');
+    if (!jobs.length) {
+        skipGemImageMapping();
+        return;
+    }
+
+    showLoading('Auto-cropping diagrams, option images and solution images from tagged screenshots...');
+    const dimsCache = {};
+    const counts = { diagram: 0, option: 0, solution: 0 };
+    const totals = { diagram: 0, option: 0, solution: 0 };
+    let failed = 0;
+    const missingTags = [];
+    const assignCrop = (it, entry, crop) => {
+        if (entry.kind === 'diagram') {
+            it.diagramImageUrl = crop;
+            it._gemAutoMapped = true;
+        } else if (entry.kind === 'option') {
+            it.optionImageUrls = it.optionImageUrls || {};
+            it.optionImageUrls[entry.opt] = crop;
+        } else {
+            it.solutionImageUrl = crop;
+        }
+    };
+    try {
+        for (const { it, entry } of jobs) {
+            totals[entry.kind]++;
+            const key = _normGemTag(entry.tag);
+            const src = _gemImageSources[key];
+            if (!src) {
+                if (!missingTags.includes(entry.tag)) missingTags.push(entry.tag);
+                continue;
+            }
+            if (!dimsCache[key]) {
+                dimsCache[key] = await new Promise(res => {
+                    const img = new Image();
+                    img.onload = () => res({ w: img.width, h: img.height });
+                    img.onerror = () => res(null);
+                    img.src = src;
+                });
+            }
+            const dims = dimsCache[key];
+            if (!dims) { failed++; continue; }
+            const nb = _resolveGemBbox(entry.bbox, dims.w, dims.h);
+            if (!nb) { failed++; continue; }
+            const crop = await cropImageFromBBox(src, nb);
+            if (crop) {
+                assignCrop(it, entry, crop);
+                counts[entry.kind]++;
+            } else {
+                failed++;
+            }
+        }
+    } catch (e) {
+        console.error('[gem-map] applyGemImageCrops failed:', e);
+        failed = jobs.length - (counts.diagram + counts.option + counts.solution);
+    } finally {
+        hideLoading();
+    }
+
+    const parts = [
+        `✓ Auto-mapped ${counts.diagram}/${totals.diagram} diagram${totals.diagram !== 1 ? 's' : ''}`,
+        `${counts.option}/${totals.option} option image${totals.option !== 1 ? 's' : ''}`,
+        `${counts.solution}/${totals.solution} solution image${totals.solution !== 1 ? 's' : ''}.`,
+    ];
+    if (missingTags.length) parts.push(`Missing upload${missingTags.length !== 1 ? 's' : ''}: ${missingTags.join(', ')}.`);
+    if (failed) parts.push(`${failed} crop${failed !== 1 ? 's' : ''} failed — use ➕ Add Diagram / manual binds for those.`);
+    if (status) {
+        status.textContent = parts.join(' ');
+        status.className = 'gem-map-status ' + (missingTags.length || failed ? 'gem-map-status-warn' : 'gem-map-status-ok');
+    }
+    setTimeout(() => {
+        forceHideModal('gem-image-map-modal');
+        showPreviewModal();
+    }, 1100);
+}
+
+function skipGemImageMapping() {
+    forceHideModal('gem-image-map-modal');
+    showPreviewModal();
+}
+
+function copyGemImageInstructions() {
+    const el = document.getElementById('gem-map-instruction-text');
+    const text = el ? el.textContent : GEM_MAP_INSTRUCTION_BLOCK;
+    const done = () => {
+        const btn = document.getElementById('btn-copy-gem-instr');
+        if (btn) {
+            const old = btn.textContent;
+            btn.textContent = '✔ Copied!';
+            setTimeout(() => { btn.textContent = old; }, 1500);
+        }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => {});
+    } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (_) {}
+        ta.remove();
+        done();
+    }
+}
 
 // ==================== PRACTICE: QUESTION LIST ====================
 
@@ -3838,9 +4571,13 @@ export function renderPracticeQuestionModal() {
         const isMulti = Array.isArray(AppState.currentQ.correctAnswer);
         html += `<div style="margin-top:16px;"><strong>${isMulti ? 'Pick all that hit' : 'Lock in your answer'}:</strong><br>`;
         AppState.currentQ.options.forEach(opt => {
+            const optImg = _gemOptionImageUrl(AppState.currentQ, opt)
+                ? `<img src="${_safeImgSrc(_gemOptionImageUrl(AppState.currentQ, opt))}" alt="Option figure" style="display:block; max-width:140px; max-height:140px; border-radius:8px; margin:8px auto 0; border:1px solid rgba(59,130,246,0.5);">`
+                : '';
             html += `<div class="mcq-option ${isMulti ? 'multi-option' : ''}"
                           data-option="${escapeAttribute(opt)}">
                     ${escapeHtml(opt)}
+                    ${optImg}
                   </div>`;
         });
         html += `</div>`;
@@ -6177,6 +6914,15 @@ export function showSolutionPopup() {
     // Raw text injection — hydrate synchronously (the observer is a backup).
     // Clear any stale render stamp so re-opens with new solutions re-render.
     contentEl.textContent = solutionText;
+    // Auto-cropped solution diagram (bound via the 🗺 Diagram Map) renders
+    // above the worked solution, same slot the question diagram uses.
+    const solutionImgEl = document.getElementById('solution-image');
+    if (AppState.currentQ.solutionImageUrl && solutionImgEl) {
+        solutionImgEl.src = _safeImgSrc(AppState.currentQ.solutionImageUrl);
+        solutionImgEl.style.display = 'block';
+    } else if (solutionImgEl) {
+        solutionImgEl.style.display = 'none';
+    }
     if (contentEl.hasAttribute('data-math-rendered')) contentEl.removeAttribute('data-math-rendered');
     processElementMath(contentEl);
     openModal('solution-modal');
@@ -7680,6 +8426,12 @@ window.yeetSurgicalDiagram = function(index) {
     AppState.extractedItems[index].diagramImageUrl = null;
     showPreviewModal();
 };
+
+// ── Gem Diagram Auto-Crop Map bridges (inline onclick hooks in index.html) ──
+window.openGemImageMappingModal = openGemImageMappingModal;
+window.skipGemImageMapping = skipGemImageMapping;
+window.applyGemImageCrops = applyGemImageCrops;
+window.copyGemImageInstructions = copyGemImageInstructions;
 // Expose applyFilter globally so the inline `onchange="applyFilter()"`
 // attribute on #question-filter (inside #practice-question-list-view) can
 // resolve it. Without this, the function stays module-scoped and the filter

@@ -869,6 +869,29 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
     </div>
 </div>
 
+<!-- Gem Diagram Auto-Crop Map: one upload per tagged source screenshot; the
+     cropBox coordinates baked into the dump auto-crop every referenced diagram. -->
+<div id="gem-image-map-modal" class="modal-overlay" onclick="closeModal(event, 'gem-image-map-modal')">
+    <div class="modal-card gem-map-modal-card">
+        <button class="close-btn" onclick="closeModalStr('gem-image-map-modal')" aria-label="Close">✕</button>
+        <h2>🗺 Gem Diagram Map</h2>
+        <p id="gem-map-intro" class="box-desc" style="margin-bottom:14px;"></p>
+        <div id="gem-image-map-body"></div>
+        <div id="gem-image-map-status" class="gem-map-status"></div>
+        <details class="gem-map-instructions" id="gem-map-instructions">
+            <summary>📋 Copy this into Gemini so your dumps carry crop coordinates</summary>
+            <div class="gem-map-instr-actions">
+                <button class="btn btn-secondary btn-sm" id="btn-copy-gem-instr" onclick="window.copyGemImageInstructions()">📋 Copy</button>
+            </div>
+            <pre id="gem-map-instruction-text" class="gem-map-instruction-text"></pre>
+        </details>
+        <div style="display:flex;gap:12px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap;">
+            <button class="btn btn-secondary" onclick="window.skipGemImageMapping()">Skip → Preview</button>
+            <button class="btn btn-primary" onclick="window.applyGemImageCrops()">🗺 Auto-Crop & Map →</button>
+        </div>
+    </div>
+</div>
+
 <!-- Crop Studio -->
 <div id="crop-modal" class="modal-overlay">
     <div class="modal-card crop-modal-card">
@@ -896,6 +919,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
             <label class="file-upload-btn" for="answer-key-image">📎 Upload Answer Key</label>
             <input type="file" id="answer-key-image" accept="image/*" style="display:none">
             <button class="btn btn-secondary" onclick="processAnswerKey()">Map Answers via Image</button>
+            <button class="btn btn-secondary" id="btn-reopen-gem-map" onclick="window.openGemImageMappingModal()" style="display:none">🗺 Diagram Map</button>
         </div>
         <textarea id="answer-key-text" class="pomo-input" rows="3" placeholder="Or paste the answer key below (AI will figure it out)…"></textarea>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0">
@@ -942,6 +966,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
     <div class="solution-modal-card">
         <button class="close-btn" onclick="closeModalStr('solution-modal')" aria-label="Close">✕</button>
         <h2>Full Solution Breakdown</h2>
+        <img id="solution-image" alt="Solution diagram" style="display:none; max-width:100%; max-height:300px; border-radius:12px; margin-bottom:12px; border:1px solid rgba(110,231,183,0.4);">
         <div id="solution-content" class="solution-latex latex"></div>
         <button class="btn btn-secondary" style="margin-top:16px" onclick="closeModalStr('solution-modal')">Close</button>
     </div>

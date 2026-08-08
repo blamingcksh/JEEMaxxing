@@ -10,7 +10,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v19';
+const VERSION = 'jeemax-v23'; // Vault parity: error-matrix cards + SR drawer render gem diagrams / option / solution figures
 const SHELL = [
   './',
   './index.html',

@@ -210,7 +210,8 @@ export function openPracticeDrawer(qId) {
     _drawerState.targetTimeMins = q.targetTimeMins || 5;
 
     const dueInfo = getDueStatus(q);
-    const hasImage = (q.imageDataUrl && q.imageDataUrl.length > 100) || !!q.driveImageId;
+    const hasImage = (q.imageDataUrl && q.imageDataUrl.length > 100) || !!q.driveImageId
+        || (q.diagramImageUrl && q.diagramImageUrl.length > 100);
 
     const overlay = document.createElement('div');
     overlay.className = 'sr-practice-overlay';
@@ -319,6 +320,19 @@ function _optionLetter(opt, idx) {
     const m = String(opt).trim().match(/^([A-Za-z])[.)\s]/);
     if (m) return m[1].toUpperCase();
     return String.fromCharCode(65 + idx);
+}
+
+// Auto-cropped figure bound to a single MCQ option (Gem Diagram Map output,
+// stored under the option letter). Local mirror of app.js's _gemOptionImageUrl
+// — matrix.js cannot import app.js (circular module dependency), same
+// convention as the duplicated _safeImgSrc above.
+function _optionImgUrl(q, opt, idx) {
+    if (!q || !q.optionImageUrls || typeof opt !== 'string') return null;
+    const letter = _optionLetter(opt, idx);
+    return q.optionImageUrls[letter]
+        || q.optionImageUrls[opt]
+        || q.optionImageUrls[opt.toUpperCase()]
+        || null;
 }
 
 // Resolve the correct option LETTERS for an MCQ question from its stored
@@ -447,14 +461,20 @@ function _renderQuestionMedia(q) {
         imgHtml = `<img class="sr-question-img" id="sr-question-img" src="${_safeImgSrc(q.imageDataUrl)}" alt="Question image">`;
     } else if (q.driveImageId) {
         imgHtml = `<img class="sr-question-img lazy-practice-img" id="sr-question-img" data-drive-id="${_esc(q.driveImageId || '')}" data-qid="${_esc(q.id)}" src="${placeholderSrc}" alt="Question image">`;
-    } else {
-        return ''; // no image to show → no hide button either
     }
+    // Gem auto-crop diagram renders beneath the question image — parity with
+    // the practice modal ("📐 Diagram:" block).
+    const diagramHtml = (q.diagramImageUrl && q.diagramImageUrl.length > 100)
+        ? `<div class="sr-question-diagram"><div class="sr-diagram-label">📐 Diagram</div>` +
+          `<img class="sr-question-diagram-img" id="sr-question-diagram-img" src="${_safeImgSrc(q.diagramImageUrl)}" alt="Diagram" onclick="event.stopPropagation();window.openLightbox&&openLightbox(this.src)"></div>`
+        : '';
+    if (!imgHtml && !diagramHtml) return ''; // no media to show → no hide button either
     // The hide-image button now lives in the drawer header (so it never
-    // overlaps the image). This wrapper just holds the image itself.
+    // overlaps the image). This wrapper just holds the media itself.
     return `
         <div class="sr-question-media" id="sr-question-media">
-            <div class="sr-question-img-wrap" id="sr-question-img-wrap">${imgHtml}</div>
+            ${imgHtml ? `<div class="sr-question-img-wrap" id="sr-question-img-wrap">${imgHtml}</div>` : ''}
+            ${diagramHtml}
         </div>`;
 }
 
@@ -463,9 +483,13 @@ function _renderAnswerStage(q) {
         const isMulti = Array.isArray(q.correctAnswer);
         const optsHtml = q.options.map((opt, i) => {
             const letter = _optionLetter(opt, i);
+            const optImg = _optionImgUrl(q, opt, i)
+                ? `<img class="sr-mcq-img" src="${_safeImgSrc(_optionImgUrl(q, opt, i))}" alt="Option figure">`
+                : '';
             return `<div class="sr-mcq-option" data-letter="${_esc(letter)}" data-option="${_esc(opt)}" onclick="srSelectOption(this)" role="button" tabindex="0">
                 <span class="sr-mcq-letter">${_esc(letter)}</span>
                 <span class="sr-mcq-text">${_esc(opt)}</span>
+                ${optImg}
             </div>`;
         }).join('');
         return `
@@ -567,10 +591,15 @@ function _applyResult(result, source, q) {
         } else if (source === 'self') {
             suffix = ' (self-reported)';
         }
+        // Auto-cropped solution figure (Gem Diagram Map) surfaces beneath the
+        // result banner — parity with the practice modal's "Peep Solution".
+        const solImg = (q.solutionImageUrl && q.solutionImageUrl.length > 100)
+            ? `<img class="sr-solution-img" src="${_safeImgSrc(q.solutionImageUrl)}" alt="Solution diagram">`
+            : '';
         if (result === 'correct') {
-            zone.innerHTML = `<div class="sr-result-banner correct">✅ Correct${suffix}</div>`;
+            zone.innerHTML = `<div class="sr-result-banner correct">✅ Correct${suffix}</div>${solImg}`;
         } else {
-            zone.innerHTML = `<div class="sr-result-banner incorrect">❌ Incorrect${suffix}</div>`;
+            zone.innerHTML = `<div class="sr-result-banner incorrect">❌ Incorrect${suffix}</div>${solImg}`;
         }
     }
 
@@ -851,8 +880,13 @@ export function srRevealAnswer() {
     const correctAns = typeof window.answerMathHTML === 'function'
         ? window.answerMathHTML(q.correctAnswer)
         : _esc(Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer);
+    // Auto-cropped solution figure (Gem Diagram Map) renders above the reveal.
+    const solImg = (q.solutionImageUrl && q.solutionImageUrl.length > 100)
+        ? `<img class="sr-solution-img" src="${_safeImgSrc(q.solutionImageUrl)}" alt="Solution diagram">`
+        : '';
     stage.innerHTML = `
         <div class="sr-self-report sr-self-report-inline">
+            ${solImg}
             <div class="sr-self-report-label">Correct answer: <strong>${correctAns}</strong>. Did you get it right?</div>
             <div class="sr-self-report-btns">
                 <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
@@ -870,9 +904,11 @@ export function srRevealAnswer() {
 
 export function srToggleImage() {
     _drawerState.imageHidden = !_drawerState.imageHidden;
-    const wrap = document.getElementById('sr-question-img-wrap');
+    // Toggle the whole media stage (question image + gem diagram) so hiding
+    // the photo hides every visual — parity with the practice modal.
+    const media = document.getElementById('sr-question-media');
     const btn = document.getElementById('sr-hide-img-btn');
-    if (wrap) wrap.style.display = _drawerState.imageHidden ? 'none' : 'block';
+    if (media) media.style.display = _drawerState.imageHidden ? 'none' : 'block';
     if (btn) btn.textContent = _drawerState.imageHidden ? '👁 Show Image' : '👁 Hide Image';
 }
 
@@ -1412,6 +1448,10 @@ function _buildErrorCardHTML(q) {
     let imgHtml = '';
     if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
         imgHtml = `<img class="lazy-error-img" data-drive-id="${_esc(q.driveImageId || '')}" data-qid="${_esc(q.id)}" src="${LAZY_IMG_PLACEHOLDER}" onclick="event.stopPropagation();">`;
+    } else if (q.diagramImageUrl && q.diagramImageUrl.length > 100) {
+        // Gem auto-crop diagram (no whole-question screenshot on file) — the
+        // lazy loader serves it from the bank's diagramImageUrl.
+        imgHtml = `<img class="lazy-error-img" data-diagram="1" data-qid="${_esc(q.id)}" src="${LAZY_IMG_PLACEHOLDER}" title="Diagram" onclick="event.stopPropagation();">`;
     } else {
         imgHtml = '<div style="font-size:10px;color:var(--text-muted);">No Image</div>';
     }
@@ -1651,12 +1691,14 @@ export function initErrorLazyLoaders() {
                 // a slow Drive fetch is in flight, the token changes → bail,
                 // so we never resurrect an off-screen image with a base64 blob.
                 const token = (img._lazyToken = (img._lazyToken || 0) + 1);
+                const isDiagram = img.getAttribute('data-diagram') === '1';
                 // 1) Serve from the in-memory bank first (instant, offline-safe).
                 let base64 = null;
                 const q = AppState.questionBank.find(x => String(x.id) === String(qId));
-                if (q && q.imageDataUrl && q.imageDataUrl.length > 100) base64 = q.imageDataUrl;
+                if (q && !isDiagram && q.imageDataUrl && q.imageDataUrl.length > 100) base64 = q.imageDataUrl;
+                if (q && isDiagram && q.diagramImageUrl && q.diagramImageUrl.length > 100) base64 = q.diagramImageUrl;
                 // 2) Fall back to Drive only when no local copy exists.
-                if (!base64 && driveId && AppState.driveAccessToken) {
+                if (!base64 && !isDiagram && driveId && AppState.driveAccessToken) {
                     try { base64 = await fetchMediaFromDrive(driveId, AppState.driveAccessToken); }
                     catch(e) { console.error("Lazy load failed", e); }
                 }
@@ -1664,7 +1706,7 @@ export function initErrorLazyLoaders() {
                 img.src = base64;
                 img.onclick = () => openLightbox(base64);
                 img.dataset.loaded = '1';
-                if (q && !q.imageDataUrl) q.imageDataUrl = base64;
+                if (q && !isDiagram && !q.imageDataUrl) q.imageDataUrl = base64;
             } else if (img.dataset.loaded === '1') {
                 // Scrolled past → free the decoded bitmap. Reload is instant
                 // from the in-memory bank when the card scrolls back.

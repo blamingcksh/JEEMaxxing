@@ -186,6 +186,40 @@ A floating **drawing overlay** (canvas + toolbar with pencil, color palette, era
 - **Chapter-ceiling guard** — qElo is clamped to ±600 of the destination chapter's running average.
 - **LaTeX repair** — `repairLatex()` deterministically fixes broken delimiters/backslash runs; `mathOk()` validates; failed rows get `latexRepairFailed` flagged (never blocked).
 - **Placement** — questions land in the *active session's* subject/chapter; the Gem's own stamps are kept only as provenance (`gemSubject`/`gemChapter`).
+- **Gem auto-crop coordinates** — when the dump carries `imageRef` (which tagged source screenshot) + `cropBox` (crop region), ingestion opens the **🗺 Diagram Map**, counts the distinct tags, asks for one upload per tag, and auto-crops every referenced diagram into `diagramImageUrl` via `cropImageFromBBox` — no manual cropping.
+
+##### Gem diagram auto-crop (`imageRef` + `cropBox`)
+
+When a question's diagram lives inside one of the source screenshots, the Gem
+emits coordinates so the app crops it automatically:
+
+```json
+{
+  "extractedText": "A projectile is fired...",
+  "options": ["A) ...", "B) ..."],
+  "correctAnswer": "B",
+  "solution": "...",
+  "imageRef": "a1",
+  "cropBox": { "x": 0.12, "y": 0.30, "w": 0.40, "h": 0.35 },
+  "optionImages": { "A": { "imageRef": "a1", "cropBox": { "x": 0.55, "y": 0.10, "w": 0.30, "h": 0.40 } } },
+  "solutionImage": { "imageRef": "a2", "cropBox": { "x": 0.1, "y": 0.5, "w": 0.5, "h": 0.4 } }
+}
+```
+
+- `imageRef` — tag of the source screenshot the diagram lives in (`a1`, `a2`, `s1`, …). Aliases: `imageTag`, `diagramRef`, `imgTag`, `sourceImage`; loose matches on `image`/`img`/`figure`/`imageNumber` are also accepted when the value is a short tag token (a URL or data URL is never treated as a tag).
+- `cropBox` — top-left (`x`,`y`) + size (`w`,`h`) as **fractions** (0–1) of the screenshot. Aliases: `bbox`, `box`, `crop`, `region`, `coords`, `cropCoords`; object or `[x, y, w, h]` array form; pixel-scale coordinates are auto-detected and normalized at crop time.
+
+**Option & solution images** — the same mechanism works for figures inside
+individual MCQ options and the worked solution:
+
+- `optionImages` — map of option letter → `{ imageRef, cropBox }` (or an array of `{ option, imageRef, cropBox }` entries). Aliases: `optionImageRefs`, `optionsImages`, `optionsImageRefs`, `optionsImg`. Renders under the matching option in preview **and** the practice modal.
+- `solutionImage` — `{ imageRef, cropBox }` (or a bare tag string). Aliases: `solImage`, `solutionImageRef`, `solutionRef`, `answerImage`, with standalone crop fallbacks `solutionCrop` / `solutionCropBox` / `solCropBox` / `answerCrop`. Renders above the worked solution in the solution popup.
+
+On ingest the app counts the distinct tags ("how many are there"), prompts one
+upload per tag, and auto-crops every referenced asset (diagram, per-option
+image, solution image) in a single pass — the manual ➕ Add Diagram flow
+remains as fallback. The copy-paste Gemini instruction block lives inside the
+🗺 Diagram Map modal.
 
 #### Preview modal
 
@@ -193,6 +227,7 @@ Before saving, every extracted item is shown in a grid where you can:
 
 - Verify/edit the **answer key** per row (manual answer input).
 - **Add / wipe a diagram** asset (`window.triggerSurgicalDiagramUpload`, `window.yeetSurgicalDiagram`).
+- **🗺 Diagram Map** — reopen the auto-crop mapper for any question that references a tagged source image (`imageRef`).
 - Review type badges, options, solution/hint presence.
 - Then **Save All** commits the batch to the bank.
 
@@ -373,6 +408,8 @@ See [Data & Persistence](#data--persistence-layer) — the key user-facing featu
   extractedText, options[], correctAnswer,  // string | string[] | numeric
   solution, hint,
   imageDataUrl, diagramImageUrl, driveImageId,
+  optionImageUrls, solutionImageUrl,        // gem auto-crop outputs ({'A': dataUrl, ...} / dataUrl)
+  gemImage, gemOptionImages, gemSolutionImage,  // gem crop provenance (imageRef + cropBox coords)
   qElo, targetTimeMins, isAnomaly,          // Elo schema
   qEloSource,                                // 'gem-stamped' | 'uncalibrated'
   qEloStampedBy, qEloStampedAt, tags, difficulty,
@@ -434,7 +471,7 @@ npx serve .
 ## 📱 PWA & Offline
 
 - `manifest.webmanifest` — installable, standalone, dark theme, maskable icons.
-- `sw.js` (cache version `jeemax-v15`):
+- `sw.js` (cache version `jeemax-v23`):
   - **Network-first for HTML** — a cached `index.html` can never pin old code; fresh shell served every load, cached copy only when offline.
   - **Stale-while-revalidate** for JS/CSS/fonts; CDN prefix whitelist (`jsdelivr`, `esm.sh`, `unpkg`, Google Identity).
   - **KaTeX vendored locally** (`vendor/katex/`) so math renders offline.

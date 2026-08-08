@@ -275,11 +275,20 @@ function _imgSample(data) {
     return data.length + ':' + data.slice(0, 24) + data.slice(-24);
 }
 
+function _imgMapSample(map) {
+    if (!map || typeof map !== 'object') return '';
+    const keys = Object.keys(map).sort();
+    let sig = '{';
+    for (const k of keys) sig += k + ':' + _imgSample(map[k]) + ';';
+    return sig + '}';
+}
+
 function _imageCacheSignature(cache) {
     const ids = Object.keys(cache).sort();
     let sig = ids.length + '|';
     for (const id of ids) {
-        sig += id + '=' + _imgSample(cache[id].imageDataUrl) + '/' + _imgSample(cache[id].diagramImageUrl) + ';';
+        sig += id + '=' + _imgSample(cache[id].imageDataUrl) + '/' + _imgSample(cache[id].diagramImageUrl)
+            + '/' + _imgMapSample(cache[id].optionImageUrls) + '/' + _imgSample(cache[id].solutionImageUrl) + ';';
     }
     return sig;
 }
@@ -292,14 +301,41 @@ function _collectImageCacheFromBank() {
         const id = String(q.id);
         const img = (q.imageDataUrl && q.imageDataUrl.length > 100) ? q.imageDataUrl : null;
         const diag = (q.diagramImageUrl && q.diagramImageUrl.length > 100) ? q.diagramImageUrl : null;
-        if (!img && !diag) continue;
+        let opts = null;
+        if (q.optionImageUrls && typeof q.optionImageUrls === 'object') {
+            const filtered = {};
+            for (const k of Object.keys(q.optionImageUrls)) {
+                const v = q.optionImageUrls[k];
+                if (typeof v === 'string' && v.length > 100) filtered[k] = v;
+            }
+            if (Object.keys(filtered).length) opts = filtered;
+        }
+        const sol = (q.solutionImageUrl && q.solutionImageUrl.length > 100) ? q.solutionImageUrl : null;
+        if (!img && !diag && !opts && !sol) continue;
         const prev = _imageCache[id];
         // Keep the previous timestamp when content is unchanged (prevents
         // recency churn from the constant saves).
-        const ts = (prev && prev.imageDataUrl === img && prev.diagramImageUrl === diag) ? prev.ts : now;
-        cache[id] = { imageDataUrl: img, diagramImageUrl: diag, ts };
+        const samePrev = prev
+            && prev.imageDataUrl === img && prev.diagramImageUrl === diag
+            && JSON.stringify(prev.optionImageUrls || null) === JSON.stringify(opts)
+            && prev.solutionImageUrl === sol;
+        const ts = samePrev ? prev.ts : now;
+        cache[id] = { imageDataUrl: img, diagramImageUrl: diag, optionImageUrls: opts, solutionImageUrl: sol, ts };
     }
     return cache;
+}
+
+/**
+ * Strip every heavy image payload off a bank question before it touches the
+ * lightweight bank write — the image vault re-attaches them on load.
+ */
+function _stripBankImages(q) {
+    const copy = { ...q };
+    copy.imageDataUrl = null;
+    copy.diagramImageUrl = null;
+    copy.solutionImageUrl = null;
+    copy.optionImageUrls = null;
+    return copy;
 }
 
 /**
@@ -343,6 +379,8 @@ export async function hydrateImageCache() {
         // Never clobber a fresh image fetched in-session with older cache data.
         if (!q.imageDataUrl && e.imageDataUrl) q.imageDataUrl = e.imageDataUrl;
         if (!q.diagramImageUrl && e.diagramImageUrl) q.diagramImageUrl = e.diagramImageUrl;
+        if (!q.optionImageUrls && e.optionImageUrls) q.optionImageUrls = e.optionImageUrls;
+        if (!q.solutionImageUrl && e.solutionImageUrl) q.solutionImageUrl = e.solutionImageUrl;
     }
 }
 
@@ -1694,7 +1732,7 @@ export async function executeUnifiedSync() {
             }
         }
         if (subText) subText.textContent = "Updating interface fields...";
-        await idbSet('jeemax_question_bank', AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })));
+        await idbSet('jeemax_question_bank', AppState.questionBank.map(_stripBankImages));
         await persistImageCacheIfChanged();
         await idbSet('jeemax_chapters', AppState.chapters);
         await idbSet('jeemax_solved', solved);
@@ -1713,7 +1751,7 @@ export async function executeUnifiedSync() {
         }
         // Strip inline images from the cloud payload (mirrors syncStateToCloud)
         // — driveImageId re-fetches them on demand; keeps Drive JSON lean.
-        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory() };
+        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(_stripBankImages), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory() };
         if (!fileId) {
             let createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
                 method: 'POST', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' },
@@ -1818,11 +1856,11 @@ export async function syncStateToCloud(force = false) {
             if (q.diagramImageUrl && q.diagramImageUrl.length > 100 && !q.driveDiagramId) {
                 try { q.driveDiagramId = await uploadMediaToDrive(q.diagramImageUrl, `Diag_${q.id}.png`, AppState.cloudFolderId, AppState.driveAccessToken); newlyUploaded = true; } catch (err) { console.error(`Failed to upload diagram frame for Q_${q.id}:`, err); }
             }
-            let cloudQ = { ...q }; cloudQ.imageDataUrl = null; cloudQ.diagramImageUrl = null;
+            let cloudQ = _stripBankImages(q);
             cloudQuestionBank.push(cloudQ);
         }
         if (newlyUploaded) {
-            await idbSet('jeemax_question_bank', AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })));
+            await idbSet('jeemax_question_bank', AppState.questionBank.map(_stripBankImages));
             await persistImageCacheIfChanged();
         }
         if (subText) subText.textContent = "Syncing system state...";
@@ -1882,7 +1920,7 @@ export async function loadStateFromCloud(isBackground = false) {
                 // Persist the merged bank so the merge survives a crash before
                 // the next saveAllAsync, and so the heartbeat doesn't re-run
                 // the same merge on every poll.
-                try { await idbSet('jeemax_question_bank', AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null }))); } catch (e) {}
+                try { await idbSet('jeemax_question_bank', AppState.questionBank.map(_stripBankImages)); } catch (e) {}
             }
             if (cloudState.chapters) {
                 for (let subj in cloudState.chapters) { if (!AppState.chapters[subj]) AppState.chapters[subj] = []; cloudState.chapters[subj].forEach(ch => { if (!AppState.chapters[subj].includes(ch)) AppState.chapters[subj].push(ch); }); }
