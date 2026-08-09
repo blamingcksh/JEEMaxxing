@@ -53,23 +53,67 @@ OUTPUT FORMAT (strict JSON, one object per question)
   "answer":         "<canonical answer>",
   "hint":           "<optional 1-line>",
   "explanation":    "<2–4 line worked solution; first line is the KEY STEP>",  "model":          "gem-stamped-v3",
-  "imageRef":       "<tag of the source screenshot, e.g. a1 — OPTIONAL: only when the diagram lives inside one of the uploaded screenshots>",
+  "imageRef":       "<tag of the source screenshot, e.g. a1 — OPTIONAL: only when the diagram lives inside one of the uploaded screenshots, or when cropping the whole question (multi-figure case)>",
   "cropBox":        {"x":0.12,"y":0.30,"w":0.40,"h":0.35}   // OPTIONAL: fractions of the screenshot; see DIAGRAM AUTO-CROP COORDINATES below
-  "optionImages":   {"A":{"imageRef":"a1","cropBox":{"x":0.4,"y":0.2,"w":0.2,"h":0.2}},"B":"a1"}   // OPTIONAL: figures inside individual MCQ options; see DIAGRAM AUTO-CROP COORDINATES below
+  "optionImages":   {"A":{"imageRef":"a1","cropBox":{"x":0.4,"y":0.2,"w":0.2,"h":0.2}},"B":"a1"}   // OPTIONAL: EXACTLY-ONE-figure questions only — figures inside individual MCQ options; see DIAGRAM AUTO-CROP COORDINATES below
   "solutionImage":  {"imageRef":"a2","cropBox":{"x":0.1,"y":0.5,"w":0.5,"h":0.4}}   // OPTIONAL: worked-solution figure; see DIAGRAM AUTO-CROP COORDINATES below
 }
 Required fields MUST be present. Never emit NaN/null/undefined.
 imageRef/cropBox/optionImages/solutionImage are OPTIONAL — attach them ONLY when the corresponding figure lives inside one of the uploaded screenshots (see DIAGRAM AUTO-CROP COORDINATES below).
 ─────────────────────────────────────────────────────────────────────────────────────────────────
-DIAGRAM AUTO-CROP COORDINATES (imageRef + cropBox) — NEW
+DIAGRAM AUTO-CROP COORDINATES (imageRef + cropBox) — v3
 ─────────────────────────────────────────────────────────────────────────────────────────────────
-When a question's diagram (figure, circuit, graph, coordinate axes, ray
-diagram, chemical structure, etc.) lives INSIDE one of the source screenshots
-the user uploaded alongside the question images, attach TWO extra fields to
-that question object:
+WORKFLOW — TWO PHASES. MAP FIRST, THEN EMIT. This is the single most important
+rule in this section — do NOT skip Phase 1.
+Phase 1 — DIAGRAM MAP PASS (BEFORE writing ANY question JSON):
+  Scan EVERY uploaded screenshot top-to-bottom and produce a complete FIGURE
+  MAP listing every single figure: its tag, its normalized box, and which
+  question + position it belongs to. Write the map as scratch work — it must
+  NEVER appear in your final output (the first byte of your reply must still
+  be `[`). You may build this map per screenshot/segment instead of one giant
+  table.
+    # | tag | coords                           | location
+    1 | a1  | {x:0.05,y:0.10,w:0.60,h:0.55}    | circuit — Q12 stem
+    2 | a1  | {x:0.65,y:0.10,w:0.25,h:0.20}    | graph — Q12 option B
+    3 | a2  | {x:0.10,y:0.50,w:0.50,h:0.40}    | solution sketch — Q12
+  Map rules:
+  - EVERY figure in EVERY screenshot appears EXACTLY once. Missing figures are
+    the #1 mapping failure — be exhaustive.
+  - Apply the THREE CASES below while mapping: a question with 2+ figures gets
+    ONE whole-question box, never several per-figure boxes.
+  - Use the accuracy protocol for every box. Anchor each figure to visible
+    landmarks first (the text lines above/below it, page edges, other
+    figures), then convert to fractions.
+  - If you cannot pin a figure's exact edges with high confidence, map its
+    ENTIRE question block (case 3) instead — a whole-question box is far more
+    accurate than a guessed tight box. Never guess tight bounds.
+  - After drafting, LOOK AT EACH SCREENSHOT AGAIN and verify every box: it
+    wraps its figure with ~2–3% outward padding and spills into no neighbour.
+Phase 2 — EMIT THE JSON:
+  Copy imageRef/cropBox/optionImages/solutionImage values VERBATIM from the
+  map. Never re-estimate coordinates during generation. If a figure is missing
+  from the map, STOP and return to Phase 1 — never guess.
 
-  "imageRef": "<tag of the source screenshot>",
-  "cropBox":  { "x": 0.12, "y": 0.30, "w": 0.40, "h": 0.35 }
+WHICH FIELDS TO ATTACH — THREE CASES (decide per question while mapping):
+1. NO FIGURE anywhere (pure text question) → omit imageRef, cropBox,
+   optionImages entirely.
+2. EXACTLY ONE FIGURE → crop just that figure:
+   - figure in the STEM            → "imageRef" + "cropBox" on the question object.
+   - figure inside ONE option      → "optionImages": {"C": {"imageRef":"a1","cropBox":{...}}}
+   - figure in the WORKED SOLUTION → "solutionImage": {"imageRef":"a2","cropBox":{...}}
+   (A stem diagram + a solution figure together is fine: the stem figure goes
+   on imageRef/cropBox and the solution figure goes on solutionImage.)
+3. TWO OR MORE FIGURES (two in the stem, figures in two or more options, or
+   one in the stem AND one in an option) → DO NOT map the figures individually.
+   Crop the WHOLE QUESTION: emit ONE imageRef/cropBox pair whose box covers the
+   ENTIRE question block exactly as printed — the first line of the stem, all
+   options (for MCQs) and EVERY figure inside it. Omit optionImages in this
+   case; the whole-question box IS the question's image. A whole-question box
+   is ALSO the default whenever you are unsure of a figure's exact bounds —
+   you only estimate the question's outer edges, and a full question block is
+   far easier to box correctly than several small figures. When the screenshot
+   stacks multiple questions, keep the box tight around THIS question — never
+   spill into an adjacent question's text or figures.
 
 TAGGING CONVENTION
 1. Label the uploaded screenshots a1, a2, a3, … (or s1, s2, …) in the order
@@ -77,35 +121,67 @@ TAGGING CONVENTION
    re-upload the SAME screenshots under the SAME tags in JEEMaxxing.
 2. If the user names the tags explicitly ("this one is s2"), use their labels
    verbatim (trim whitespace, keep case as given).
-3. One question → at most ONE imageRef/cropBox pair (the app binds one diagram
-   per question). If a question needs multiple figures, include them in one
-   tight region or attach only the primary diagram.
+3. One question → at most ONE imageRef/cropBox pair. Multi-figure questions
+   (case 3) get a single whole-question box, never several per-figure boxes.
 4. Many questions may share the SAME imageRef with DIFFERENT cropBox values
-   (different diagrams cropped from the same screenshot).
+   (different questions cropped from the same screenshot).
 
 OPTION & SOLUTION FIGURES (same mechanism, different fields)
 - optionImages: an object mapping an option LETTER → ref, e.g.
     "optionImages": {"A": {"imageRef":"a1","cropBox":{...}}, "B": "a1"}
   A bare tag string is fine when that figure needs no coordinates. This crops
   a figure inside an individual MCQ option and renders it under that option.
+  Use it ONLY in case 2 — when the question has exactly ONE figure and that
+  figure sits inside a single option. If figures appear in two or more options
+  (or in both the stem and an option), switch to case 3: crop the whole
+  question instead — do not emit optionImages for those.
 - solutionImage: a ref for the worked-solution figure, e.g.
     "solutionImage": {"imageRef":"a2","cropBox":{...}}   (bare tag string also OK)
-  Renders above the worked solution in the solution popup.
+  Renders above the worked solution in the solution popup. Independent of the
+  stem/option figures — attach it even when the stem already has one.
 - One figure per option letter, at most one solution figure per question.
 - All the coordinate rules below apply identically to these refs.
 
-COORDINATE RULES (the app crops EXACTLY this region — be precise)
-- x,y = top-left corner of the diagram as FRACTIONS of the screenshot's
-  width/height. Range [0, 1].
+COORDINATE RULES — GET THE BOX RIGHT (accuracy protocol)
+SEMANTICS (get these exactly right — this is where boxes go wrong)
+- x,y = TOP-LEFT corner of the region as FRACTIONS of the FULL ORIGINAL
+  screenshot's width/height. Range [0, 1]. x,y is the TOP-LEFT corner — NOT
+  the centre of the figure, NOT the bottom-left.
 - w,h = width/height of the crop region as FRACTIONS too. Range (0, 1].
-- Coordinates are relative to the FULL original screenshot as uploaded, never
-  a downscaled preview.
-- Add ~1–2% padding around the diagram so the crop never clips its border.
-- Keep x+w ≤ 1 and y+h ≤ 1. Out-of-range boxes get clamped — sloppy = cut figures.
+  w,h are SIZES — never the right/bottom edges. If you think in corners
+  (x2,y2), convert: w = x2 − x, h = y2 − y.
+- Compute fractions against the FULL uploaded screenshot, never the
+  downscaled preview in the chat. A figure that looks large in the preview
+  can be a small fraction of a tall original page.
+
+ESTIMATION METHOD (do this — do not free-guess)
+- ANCHOR FIRST: locate the figure relative to visible landmarks you can trust
+  — the stem text directly above/below it, the option lines, the page margins,
+  other figures — THEN convert that layout into fractions. Reasoning "the
+  figure starts just under the 3rd line of the stem and ends just above the
+  options" is far more reliable than eyeballing a raw number.
+- Overlay a mental 4×4 grid to sanity-check (each cell = 0.25 wide and 0.25
+  tall): locate the figure's cell(s), then refine each boundary to 2 decimals.
+- WORKED EXAMPLES (typical JEE layouts):
+  * Figure filling the bottom two-thirds of a portrait page →
+      { "x": 0.03, "y": 0.32, "w": 0.94, "h": 0.65 }
+  * Small figure top-centre, right under the stem →
+      { "x": 0.34, "y": 0.06, "w": 0.32, "h": 0.22 }
+  * Figure on the right half, vertically centred →
+      { "x": 0.52, "y": 0.38, "w": 0.45, "h": 0.30 }
+  * Whole question with 2+ figures (case 3) — box wraps the entire block →
+      { "x": 0.02, "y": 0.02, "w": 0.96, "h": 0.55 }
+- PADDING: extend EVERY edge outward by ~2–3% (minimum 0.02) so the crop
+  never clips a border, arrow tip or label. Round outward — x/y DOWN, w/h UP
+  — to 2 decimals. Never emit a razor-thin box that exactly touches the
+  figure's border.
+- VERIFY before emitting: (a) the box is centred on the figure, not offset;
+  (b) it includes captions/labels that belong to the figure; (c) x+w ≤ 1 and
+  y+h ≤ 1 hold. If any boundary is uncertain, ENLARGE the box — a slightly
+  generous crop is usable, an amputated figure is not.
 - If the diagram spans the whole screenshot: { "x":0, "y":0, "w":1, "h":1 }.
-- If a question has NO diagram inside a screenshot, OMIT both fields entirely.
-- When unsure of the exact region, prefer a slightly LARGER box (the user can
-  still re-crop manually) over a too-small one that amputates the figure.
+- If a question has NO diagram inside a screenshot, OMIT the fields entirely
+  (case 1).
 
 ESCAPING NOTE
 - imageRef is a plain short string ("a1") and cropBox values are plain
@@ -224,6 +300,8 @@ BATCH FORMAT
 For 1000-question batches, emit as ONE JSON array on a single line per
 object (NDJSON is also fine). DO NOT wrap in markdown unless asked.
 DO NOT include preamble. The first byte is `[` or `{`.
+Output ONLY the JSON array — never the figure map or scratch notes from
+Phase 1 of DIAGRAM AUTO-CROP COORDINATES; they are internal working only.
 
 If asked for "raw dump": emit a ```json fenced block, one object per
 line. The parser pulls qElo, targetTimeMins, tags, difficulty, model
@@ -305,7 +383,7 @@ EXAMPLES:
    "options": ["$\\begin{pmatrix} 1 \\\\ 2 \\end{pmatrix}$"]
 
 
-✅ GOOD (with diagram auto-crop — circuit diagram sits in screenshot a1):
+✅ GOOD (EXACTLY ONE figure in the stem — crop just the circuit; solution figure too):
 {
   "id": "jee-phys-cur-q12",
   "type": "mcq",
@@ -323,6 +401,26 @@ EXAMPLES:
   "model": "gem-stamped-v3",
   "imageRef": "a1",
   "cropBox": { "x": 0.05, "y": 0.10, "w": 0.60, "h": 0.55 },
-  "optionImages": {"B": {"imageRef": "a1", "cropBox": { "x": 0.65, "y": 0.10, "w": 0.25, "h": 0.20 }}},
   "solutionImage": {"imageRef": "a2", "cropBox": { "x": 0.10, "y": 0.50, "w": 0.50, "h": 0.40 }}
+}
+
+✅ GOOD (TWO or more figures — one in the stem, one inside an option — so crop
+the WHOLE question block; no optionImages):
+{
+  "id": "jee-phys-opt-q31",
+  "type": "mcq",
+  "subject": "physics",
+  "chapter": "Optics",
+  "qElo": 1600,
+  "targetTimeMins": 7,
+  "difficulty": "hard",
+  "tags": ["optics", "visualization", "multi-step"],
+  "stem": "The ray diagram below (and the figures inside the options) show the setup. Find the position of the final image.",
+  "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+  "answer": "C",
+  "hint": "Trace the chief ray first.",
+  "explanation": "KEY STEP: locate the image formed by the first surface.",
+  "model": "gem-stamped-v3",
+  "imageRef": "a1",
+  "cropBox": { "x": 0.02, "y": 0.02, "w": 0.96, "h": 0.55 }
 }

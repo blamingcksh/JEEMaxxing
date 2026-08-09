@@ -3592,26 +3592,42 @@ window.loadJsonDumpFile = function (input) {
 // ==================== GEM DIAGRAM AUTO-CROP MAP (UI) ====================
 // The instruction block users paste into Gemini so future dumps carry
 // imageRef + cropBox coordinates. Also shown (copyable) inside the map modal.
-const GEM_MAP_INSTRUCTION_BLOCK = `When a question's diagram (figure, circuit, graph, chemical structure) lives inside one of the source screenshots I upload, attach two extra fields to that question object:
-  "imageRef": "<tag of that source screenshot, e.g. a1>",
-  "cropBox": {"x": 0.12, "y": 0.30, "w": 0.40, "h": 0.35}
+const GEM_MAP_INSTRUCTION_BLOCK = `CROP MAPPING — attach these to the question object you emit. When a question's figure(s) live inside one of the source screenshots I upload:
 
-Option & solution figures work the same way:
-  "optionImages":   {"A": {"imageRef": "a1", "cropBox": {"x":0.4,"y":0.2,"w":0.2,"h":0.2}}, "B": "a1"},
-  "solutionImage":  {"imageRef": "a2", "cropBox": {"x":0.1,"y":0.5,"w":0.5,"h":0.4}}
-- optionImages maps an option LETTER ("A", "B", ...) to a ref; a bare tag string is fine when the figure needs no coords.
-- solutionImage is the worked-solution figure; bare tag strings also work.
-- One figure per option letter, one solution figure per question — omit the fields you don't need.
+TWO-PHASE WORKFLOW (mandatory — map FIRST, then emit):
+PHASE 1 — DIAGRAM MAP PASS: before writing ANY question JSON, scan EVERY uploaded
+screenshot and list every figure with its tag, normalized box and location — scratch
+work only, NEVER include it in the output. Every figure appears exactly once. Use the
+accuracy rules below; if you cannot pin a figure's exact edges, crop its WHOLE question
+block instead of guessing a tight box. Re-check each box against the screenshot.
+PHASE 2 — EMIT: copy imageRef/cropBox/optionImages/solutionImage values VERBATIM from
+the map. Never re-estimate coordinates while generating.
+
+Then use EXACTLY ONE of these cases per question:
+CASE 1 — NO figure anywhere: omit imageRef / cropBox / optionImages entirely.
+CASE 2 — EXACTLY ONE figure: crop just that figure.
+   - figure in the STEM      -> "imageRef": "a1", "cropBox": {...}
+   - figure inside ONE option -> "optionImages": {"B": {"imageRef": "a1", "cropBox": {...}}}
+   - figure in the SOLUTION  -> "solutionImage": {"imageRef": "a2", "cropBox": {...}}
+   (A stem figure + a solution figure can both appear: imageRef/cropBox + solutionImage.)
+CASE 3 — TWO OR MORE figures (in the stem, across options, or both): crop the WHOLE question.
+   Emit ONE "imageRef" + "cropBox" whose box covers the ENTIRE question block — stem text,
+   all options and every figure, exactly as printed. Do NOT emit optionImages here; the
+   whole-question box IS the image. Also the default whenever you are unsure of a figure's
+   exact bounds. If the screenshot stacks several questions, keep the box tight to THIS
+   question — never spill into the neighbour.
 
 Tagging:
 - Label the uploaded screenshots a1, a2, a3, ... (or s1, s2, ...) in upload order and use EXACTLY those labels as imageRef — I will re-upload the same screenshots under the same tags in JEEMaxxing.
 - One question gets at most ONE imageRef/cropBox pair; many questions may share a tag with different cropBox values.
 
-Coordinates (the app crops EXACTLY this region):
-- x/y = top-left corner as FRACTIONS of the ORIGINAL screenshot's width/height (0.0 to 1.0); w/h = width/height as fractions too.
-- Keep x+w <= 1 and y+h <= 1; add ~1-2% padding so the crop never clips the diagram's border.
-- If a figure spans a whole screenshot, use {"x":0,"y":0,"w":1,"h":1}.
-- If a question has no figure in any screenshot, omit these fields entirely.
+Coordinates (the app crops EXACTLY this region — be precise):
+- x/y = TOP-LEFT corner as FRACTIONS of the FULL ORIGINAL screenshot (0.0 to 1.0); w/h = width/height as fractions. Not the centre, not the preview's scale.
+- ANCHOR FIRST: locate each figure relative to visible landmarks (stem text above/below, option lines, page edges, other figures), THEN convert that layout to fractions.
+- Sanity-check with a mental 4x4 grid (cells 0.25 apart), then refine each edge to 2 decimals.
+- Round every edge OUTWARD (x/y down, w/h up) by ~2-3% so the crop never clips a border, arrow tip or label.
+- Keep x+w <= 1 and y+h <= 1. If unsure of any edge, ENLARGE the box — a generous crop is usable, an amputated figure is not.
+- Case 3 whole-question box example: {"x":0.02,"y":0.02,"w":0.96,"h":0.55}; full-page figure: {"x":0,"y":0,"w":1,"h":1}.
 - imageRef/cropBox are plain strings and numbers — no LaTeX escaping applies to them.`;
 
 function _gemIdKey(key) {
