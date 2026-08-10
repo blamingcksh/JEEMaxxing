@@ -157,6 +157,10 @@ window._dailyHistoryCache = [];
 
 // ── Daily counter persistence for forest sync ─────────────────────────────
 const LS_DAILY_FOREST = 'jeemax_forest_daily_v1';
+// Dedicated day-settlement sentinel: the last day the daily counter reset
+// (runNewDayCycle) actually completed. This — NOT jeemax_last_calibrated_date
+// — gates the boot-time reset (see _readLastSettledDay / _markDaySettled).
+const LS_LAST_SETTLED = 'jeemax_last_settled_date';
 
 // ICU-safe local YYYY-MM-DD key — must match storage.js formatDateKey()/
 // todayLocalKey() exactly, since these strings are used as ledger/comparison
@@ -939,6 +943,11 @@ export async function calibrateMood(mood) {
     } catch (_) {}
 
     await idbSet('jeemax_mood_multiplier', AppState.moodMultiplier);
+    // NOTE: jeemax_last_calibrated_date is intentionally NO LONGER the daily
+    // rollover gate (that's jeemax_last_settled_date — see _readLastSettledDay).
+    // It is kept as a plain mood-prompt timestamp; do NOT key the counter reset
+    // off it again, or same-day reopens after skipping the vibe check will wipe
+    // today's solved/studySecs counters.
     await idbSet('jeemax_last_calibrated_date', todayLocalKey());
     await saveAllAsync();
     await updateUI();
@@ -7729,6 +7738,42 @@ updateStreakVisualizer();
 // ==================== DAILY ROLLOVER ====================
 // Counter reset shared by the boot path and the live midnight watcher,
 // so a tab left open across midnight also resets the daily counts.
+//
+// ── Day-settlement sentinel (fixes same-day counter wipes) ────────────────
+// The daily reset used to be gated on `jeemax_last_calibrated_date`, which is
+// ONLY written when the user completes the vibe check. Skipping the daily
+// briefing left it stale, so a SAME-DAY reopen fired runNewDayCycle() and
+// zeroed today's solved + studySecs counters in IndexedDB. This dedicated key
+// records the last day the cycle ACTUALLY completed and is the boot gate
+// instead. For pre-fix installs it seeds from the daily-briefing guard
+// (jeemax_boot_seq_date) — that key is only ever written by runNewDayCycle's
+// maybeShow, i.e. it IS "the last day the cycle ran" — so the first post-fix
+// boot can't wipe a same-day session either.
+const LS_BRIEFING_GUARD = 'jeemax_boot_seq_date';
+
+async function _markDaySettled(todayStr) {
+    try { localStorage.setItem(LS_LAST_SETTLED, todayStr); } catch (_) {}
+    try { await idbSet(LS_LAST_SETTLED, todayStr); } catch (_) {}
+}
+
+async function _readLastSettledDay() {
+    // IDB is the source of truth; the LS mirror covers private-mode/eviction.
+    try {
+        const idb = await idbGet(LS_LAST_SETTLED);
+        if (typeof idb === 'string' && idb) return idb;
+    } catch (_) {}
+    try {
+        const ls = localStorage.getItem(LS_LAST_SETTLED);
+        if (ls) return ls;
+    } catch (_) {}
+    // Pre-fix installs: the briefing guard is the last day the cycle ran.
+    try {
+        const legacy = localStorage.getItem(LS_BRIEFING_GUARD);
+        if (legacy) return legacy;
+    } catch (_) {}
+    return null;
+}
+
 async function runNewDayCycle(todayStr) {
     // ── Deload Engine: auto-fire forced deload before the day turns ──
     // Runs at midnight so the forced deload takes effect for the day being
@@ -7762,6 +7807,10 @@ async function runNewDayCycle(todayStr) {
     studySecs.maths = 0;
 
     await saveAllAsync().catch(console.error);
+    // Mark the day settled ONLY after the zeroing+save committed — a crash
+    // mid-cycle must not skip the next boot's cycle (re-running is idempotent:
+    // settleDayCounters takes a max, and the counters are already zero).
+    try { await _markDaySettled(todayStr); } catch (_) {}
     updateUI();
 
     // ── Daily Briefing boot sequence ──
@@ -7888,11 +7937,15 @@ async function initApp() {
     if (errChemIn) errChemIn.value = errChem;
     if (errMathIn) errMathIn.value = errMath;
 
-    // Verify calibration timeline
+    // Verify day rollover — gated on the LAST ACTUALLY-SETTLED day, NOT the
+    // mood-calibration date. The old gate (jeemax_last_calibrated_date) is
+    // only written when the user completes the vibe check; a same-day reopen
+    // after skipping the briefing left it stale and runNewDayCycle() wiped
+    // today's solved/studySecs counters in IndexedDB.
     const todayStr = todayLocalKey();
-    const lastCalDate = await idbGet('jeemax_last_calibrated_date');
+    const lastSettled = await _readLastSettledDay();
 
-    if (lastCalDate !== todayStr) {
+    if (lastSettled !== todayStr) {
         await runNewDayCycle(todayStr);
     } else {
         AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
