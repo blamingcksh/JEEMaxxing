@@ -1,12 +1,15 @@
-// Smoke test — Flow State / Hardcore practice-mode Prev/Next navigation.
+// Smoke test — Flow State / Hardcore adaptive practice (Skip + Continue).
 // Imports the REAL app.js (with stubbed browser globals + an ESM loader that
 // short-circuits the https esm.sh import in leaderboard.js) and drives the
-// real practiceNext() / practicePrev() through a real mode entry, asserting:
-//   • Next always serves a genuinely fresh question (never repeats)
-//   • Prev reviews previously served questions (browser-style back stack)
-//   • Next re-advances through the forward stack after going back
-//   • submitted flags are preserved across navigation
+// real mode entry points, asserting:
+//   • Next/Prev are no-ops inside a mode (advancement is Skip / Continue)
+//   • Continue serves genuinely fresh, never-repeated questions
 //   • exhausting the eligible pool exits the mode gracefully
+//   • Skip is no-regret: no Elo/qElo/solveCount/status/time mutation
+//   • Skip reason tunes the next pick ("too easy" → harder next)
+//   • "already know" retires a question from future mode picks
+//   • Hardcore keeps the ≥1800 floor; Flow/Hardcore pick different questions
+//   • standard practice Prev/Next navigation is untouched
 //
 // Run: node scripts/smoke-practice-nav.mjs
 
@@ -124,76 +127,111 @@ function seedBank(n, subject, chapter, baseElo, userElo) {
     AppState.hardcoreDailyDate = null;
 }
 
+const mk = (id, qElo, extra) => ({
+    id, subject: 'physics', chapter: 'Thermo', status: 'unsolved', type: 'mcq',
+    options: ['A', 'B', 'C', 'D'], correctAnswer: 'A', qElo, extractedText: 'Q ' + id,
+    ...(extra || {}),
+});
+
 const currentId = () => {
     const q = AppState.practiceQuestions[AppState.currentPracticeIndex];
     return q && q.id;
 };
 const currentSubmitted = () => AppState.practiceSubmittedFlags[AppState.currentPracticeIndex];
 
-console.log('── Flow State: Next serves fresh questions, Prev reviews ──');
+console.log('── Flow mode: Next/Prev no-ops; Continue advances ──');
 {
-    seedBank(4, 'physics', 'Thermo', 920, 1200);
+    seedBank(0, 'physics', 'Thermo', 0, 1200);
+    AppState.questionBank = [mk('f0', 1000), mk('f1', 1010), mk('f2', 1020), mk('f3', 1030)];
     globalThis.startFlowPractice();
+    const q1 = currentId();
     ok(AppState.practiceFlowMode === 'flow', 'startFlowPractice activates flow mode');
     ok(AppState.practiceQuestions.length === 1, 'mode keeps a single-question pool');
 
-    const served = [currentId()];
-    practiceNext(); served.push(currentId());
-    practiceNext(); served.push(currentId());
-    ok(new Set(served).size === 3, 'three Next taps serve three distinct questions (no repeats)');
-
-    const q3 = served[2], q2 = served[1], q1 = served[0];
+    practiceNext();
+    ok(currentId() === q1, 'Next is a no-op in Flow mode');
     practicePrev();
-    ok(currentId() === q2, 'Prev reviews the previously served question');
-    practicePrev();
-    ok(currentId() === q1, 'Prev walks back to the first question');
-    practicePrev();
-    ok(currentId() === q1, 'Prev at the start of the run is a safe no-op');
+    ok(currentId() === q1, 'Prev is a no-op in Flow mode');
 
-    practiceNext();
-    ok(currentId() === q2, 'Next replays the forward stack (back to q2)');
-    practiceNext();
-    ok(currentId() === q3, 'Next replays the forward stack (back to q3)');
-    practiceNext();
-    ok(currentId() === 'q3', 'Next drains the forward stack then serves a fresh 4th question');
-    ok(new Set(served.concat(currentId())).size === 4, 'all four questions in the run are distinct');
+    globalThis.continuePractice();
+    const q2 = currentId();
+    ok(q2 !== q1, 'Continue serves a fresh question');
+    globalThis.continuePractice();
+    const q3 = currentId();
+    ok(q3 !== q1 && q3 !== q2, 'Continue never re-serves an earlier question');
+    globalThis.continuePractice();
+    ok(currentId() !== q1 && currentId() !== q2 && currentId() !== q3, 'Continue drains all four questions');
+    ok(AppState.practiceFlowMode === 'flow', 'Continue keeps Flow mode active');
 
-    practiceNext();
-    ok(AppState.practiceFlowMode === 'standard', 'exhausting the eligible pool exits the mode');
+    globalThis.continuePractice();
+    ok(AppState.practiceFlowMode === 'standard', 'exhausting the pool exits the mode');
     ok(AppState.practiceQuestions.length === 0, 'queue is cleared on exhaustion');
 }
 
-console.log('── Flow State: submitted flags survive Prev/Next ──');
+console.log('── Flow mode: Skip is no-regret and advances ──');
 {
-    seedBank(3, 'physics', 'Thermo', 920, 1200);
+    seedBank(0, 'physics', 'Thermo', 0, 1200);
+    AppState.questionBank = [mk('s0', 1300), mk('s1', 1320), mk('s2', 1340)];
     globalThis.startFlowPractice();
-    const q1 = currentId();
-    practiceNext(); // q2
-    ok(currentSubmitted() === false, 'fresh question starts unsubmitted');
-    AppState.practiceSubmittedFlags[0] = true; // simulate "solved"
-    practiceNext(); // q3
-    practicePrev(); // back to q2
-    ok(currentId() !== q1 && currentSubmitted() === true, 'Prev restores the submitted flag for review');
-    practiceNext(); // forward replay → q3
-    ok(currentSubmitted() === false, 'forward replay restores q3 as unsubmitted');
+    const q0 = currentId();
+    const q0Obj = AppState.practiceQuestions[0];
+    const eloBefore = AppState.elo.physics;
+    const globalBefore = AppState.elo.global;
+
+    globalThis.skipQuestion('too hard');
+
+    ok(currentId() !== q0, 'Skip advances to a fresh question');
+    ok(AppState.practiceFlowMode === 'flow', 'Skip keeps Flow mode active');
+    ok(q0Obj.status === 'unsolved', 'Skip does not change status');
+    ok((q0Obj.solveCount || 0) === 0, 'Skip does not increment solveCount');
+    ok(q0Obj.qElo === 1300, 'Skip does not drift qElo');
+    ok((q0Obj.skips || 0) === 1, 'Skip stamps skips=1');
+    ok(Array.isArray(q0Obj.skipReasons) && q0Obj.skipReasons.includes('too hard'), 'Skip records the reason');
+    ok(AppState.elo.physics === eloBefore && AppState.elo.global === globalBefore, 'Skip does not change Elo');
+    ok(q0Obj.lastReviewedAt === undefined && q0Obj.timeTaken === undefined && !q0Obj.firstAttemptResult, 'Skip leaves review/time/attempt untouched');
 }
 
-console.log('── Hardcore: same navigation contract ──');
+console.log('── Flow mode: Skip "too easy" serves a harder next question ──');
 {
-    seedBank(3, 'physics', 'Thermo', 1850, 1850);
+    seedBank(0, 'physics', 'Thermo', 0, 1200);
+    AppState.questionBank = [mk('e0', 1000), mk('e1', 1300), mk('e2', 1600), mk('e3', 1900)];
+    globalThis.startFlowPractice();
+    const first = AppState.practiceQuestions[0];
+    ok(first.id === 'e0', 'Flow starts on the easiest question (got ' + first.id + ')');
+    globalThis.skipQuestion('too easy');
+    const next = AppState.practiceQuestions[0];
+    ok(next.id !== 'e0', 'Skip advances past the skipped question');
+    ok(next.qElo > first.qElo, 'Skip "too easy" serves a harder next question (' + next.qElo + ' > ' + first.qElo + ')');
+}
+
+console.log('── Flow mode: "already know" retires the question from mode picks ──');
+{
+    seedBank(0, 'physics', 'Thermo', 0, 1200);
+    AppState.questionBank = [mk('k0', 1000), mk('k1', 1300), mk('k2', 1600)];
+    globalThis.startFlowPractice();
+    const q0 = AppState.practiceQuestions[0];
+    globalThis.skipQuestion('already know');
+    ok(q0.modeRetired === true, '"already know" sets modeRetired');
+    ok(q0.status === 'unsolved' && (q0.solveCount || 0) === 0, 'retired-but-unattempted question is otherwise untouched');
+
+    globalThis.exitPracticeMode();
+    globalThis.startFlowPractice();
+    const firstAgain = AppState.practiceQuestions[0];
+    ok(firstAgain.id !== 'k0', 'a modeRetired question is never re-served (got ' + firstAgain.id + ')');
+}
+
+console.log('── Hardcore: ≥1800 floor enforced + Continue advances ──');
+{
+    seedBank(0, 'physics', 'Thermo', 0, 1200);
+    AppState.questionBank = [mk('h0', 1850), mk('h1', 1900), mk('h2', 1950)];
     globalThis.startHardcorePractice();
     ok(AppState.practiceFlowMode === 'hardcore', 'startHardcorePractice activates hardcore mode');
+    const hElo = AppState.practiceQuestions[0] && AppState.practiceQuestions[0].qElo;
+    ok(hElo >= 1800, 'Hardcore serves a ≥1800 question (got ' + hElo + ')');
     const q1 = currentId();
-    practiceNext();
-    ok(currentId() !== q1, 'Hardcore Next serves a different question');
-    practicePrev();
-    ok(currentId() === q1, 'Hardcore Prev reviews the previous question');
-    practiceNext();
-    ok(currentId() !== q1, 'Hardcore Next re-advances after Prev');
-    practiceNext();
-    ok(currentId() === 'q2', 'Hardcore drains the pool to the last question');
-    practiceNext();
-    ok(AppState.practiceFlowMode === 'standard', 'Hardcore exits gracefully when the pool is empty');
+    globalThis.continuePractice();
+    ok(currentId() !== q1, 'Hardcore Continue serves a different question');
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore Continue keeps mode active');
 }
 
 console.log('── Standard practice: classic index navigation is untouched ──');
@@ -225,10 +263,6 @@ console.log('── Standard practice: classic index navigation is untouched ─
 
 console.log('── Flow vs Hardcore serve DIFFERENT questions (hardcore floor) ──');
 {
-    const mk = (id, qElo) => ({
-        id, subject: 'physics', chapter: 'Thermo', status: 'unsolved', type: 'mcq',
-        options: ['A', 'B', 'C', 'D'], correctAnswer: 'A', qElo, extractedText: 'Q ' + id,
-    });
     const mixed = [
         mk('e0', 1200), mk('e1', 1250), mk('e2', 1300),
         mk('h0', 1900), mk('h1', 1950), mk('h2', 2000),

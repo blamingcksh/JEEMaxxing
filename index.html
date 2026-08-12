@@ -977,10 +977,12 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
             </div>
         </div>
         <div id="practice-modal-content"></div>
-        <div class="pm-footer">
-            <button class="btn btn-secondary" onclick="practicePrev()">← Prev</button>
+        <div class="pm-footer" id="practice-footer">
+            <button class="btn btn-secondary" id="practice-prev-btn" onclick="practicePrev()">← Prev</button>
+            <button class="btn btn-secondary" id="practice-skip-btn" onclick="window.openSkipPopover()" style="display:none">Skip ⏭</button>
             <button class="btn btn-primary" id="practice-submit-btn" onclick="practiceSubmit()">Lock In Answer</button>
-            <button class="btn btn-secondary" onclick="practiceNext()">Next →</button>
+            <button class="btn btn-secondary" id="practice-continue-btn" onclick="window.continuePractice()" style="display:none">Continue →</button>
+            <button class="btn btn-secondary" id="practice-next-btn" onclick="practiceNext()">Next →</button>
         </div>
     </div>
 </div>
