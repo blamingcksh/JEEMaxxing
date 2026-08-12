@@ -215,7 +215,7 @@
   document.addEventListener('focusin', function (e) {
     if (!wantSound()) return;
     var t = e.target; if (!t || !t.matches) return;
-    if (t.matches('.pomo-input, .pomo-select, .matrix-search, .lb-input, .cp-integer-input')) {
+    if (t.matches('.pomo-input, .pomo-select, .matrix-search, .cp-integer-input')) {
       try { if (t.matches(':focus-visible')) sound('blip'); } catch (err) {}
     }
   }, true);

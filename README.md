@@ -1,6 +1,6 @@
 # ⚡ JEEMaxxing — Locked In
 
-A **client-side JEE grind command center**: focus timers, a question vault with spaced-repetition scheduling, an Elo-style skill rating engine, a live growing forest, P2P leaderboards, cloud backup, and accountability systems that actively police your procrastination.
+A **client-side JEE grind command center**: focus timers, a question vault with spaced-repetition scheduling, an Elo-style skill rating engine, a live growing forest, cloud backup, and accountability systems that actively police your procrastination.
 
 Everything runs in the browser. No build step, no server. All data lives in **IndexedDB + localStorage** (optionally mirrored to **Google Drive**), and the app works fully offline as an installable PWA.
 
@@ -18,7 +18,7 @@ Everything runs in the browser. No build step, no server. All data lives in **In
    - [Spaced Repetition & Error Matrix](#spaced-repetition--error-matrix)
    - [Accountability (Slump Sentry / Checkpoints)](#accountability-slump-sentry--checkpoints)
    - [Recovery Systems (CNS Load, Lifeline, Deload)](#recovery-systems-cns-load-lifeline-deload)
-   - [Gamification & Growth (Forest, Streaks, Leaderboards)](#gamification--growth-forest-streaks-leaderboards)
+   - [Gamification & Growth (Forest, Streaks)](#gamification--growth-forest-streaks)
    - [Cloud Sync & Google Drive](#cloud-sync--google-drive)
    - [Theme & UI Layer](#theme--ui-layer)
 5. [Internal Data Model](#internal-data-model)
@@ -47,7 +47,7 @@ JEEMaxxing is a **vanilla ES6 module** application. There is no framework, no bu
 │                    + forest-bg.js + forest-juice.js          │
 │                    + forest-island-juice.js + gallery-break.js│
 │                    cns-load.js · deload.js · lifeline.js     │
-│                    nightguard.js · leaderboard.js            │
+│                    nightguard.js                             │
 ├─────────────────────────────────────────────────────────────┤
 │  Charting          candlestick-engine.js (SVG graphs)        │
 ├─────────────────────────────────────────────────────────────┤
@@ -80,7 +80,6 @@ JEEMaxxing is a **vanilla ES6 module** application. There is no framework, no bu
 | `deload.js` | — | Deload-day engine: automatic + manual deload scheduling, streak preservation. |
 | `lifeline.js` | — | Flow-state lifeline: when CNS load is high, shifts practice difficulty windows easier. |
 | `nightguard.js` | — | Overnight maintenance: pending-write flush, streak/target rollover, silent data protection. |
-| `leaderboard.js` | — | Serverless P2P leaderboard arena over WebRTC (WebTorrent trackers). |
 | `grove-islands.js` | ~1,859 | The **island biome** forest: island canvas, trees, clouds, growth physics. |
 | `forest-island-full.js` | — | Full island renderer (trees, palms, rocks, water) driven by solve counts. |
 | `forest-island-juice.js` | ~814 | Polish layer: animations, particles, ambient effects on the island. |
@@ -335,7 +334,7 @@ Overnight/overnight-flush maintenance: ensures pending `saveAllAsync` writes lan
 
 ---
 
-### 🌳 Gamification & Growth (Forest, Streaks, Leaderboards)
+### 🌳 Gamification & Growth (Forest, Streaks)
 
 #### The Forest (multiple engines)
 
@@ -356,14 +355,6 @@ Computed from the daily history ledger:
 - Solving ≥1 question per day extends the streak.
 - **Deload days** preserve the streak.
 - After 18:00 with zero solves, the sidebar shows the "🚨 STREAK AT RISK" state.
-
-#### P2P Leaderboard Arena (`leaderboard.js`)
-
-A **serverless WebRTC leaderboard**:
-
-- No backend, no OAuth — handshake via public **WebTorrent WebSocket trackers**, then a direct `RTCDataChannel` exchange.
-- Broadcasts a 4-field telemetry packet (solves, Elo, study time, name) via `LeaderboardNet.broadcastTelemetry()` — fired on practice solves and study-time mutations.
-- Fully decoupled from local persistence: never reads `questionBank`, API keys, or backup configs.
 
 ---
 
@@ -446,7 +437,6 @@ See [Data & Persistence](#data--persistence-layer) — the key user-facing featu
 | `window._studySecsForCns` | app boot | CNS reset on pomodoro quit |
 | `window._deloadDailyHistoryFn` | app boot | deload 48h missed-day check |
 | `window.__cnsLoad` | `cns-load.js` | lifeline + mode gating |
-| `LeaderboardNet.broadcastTelemetry()` | solve/study-time mutations | P2P arena |
 | `window.__scratchpad` | app boot | scratchpad API (`toggle`, `clear`, `getColor`, …) |
 
 ---
