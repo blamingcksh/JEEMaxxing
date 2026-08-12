@@ -223,6 +223,35 @@ console.log('── Standard practice: classic index navigation is untouched ─
         'standard end-of-queue closes without mode interference');
 }
 
+console.log('── Flow vs Hardcore serve DIFFERENT questions (hardcore floor) ──');
+{
+    const mk = (id, qElo) => ({
+        id, subject: 'physics', chapter: 'Thermo', status: 'unsolved', type: 'mcq',
+        options: ['A', 'B', 'C', 'D'], correctAnswer: 'A', qElo, extractedText: 'Q ' + id,
+    });
+    const mixed = [
+        mk('e0', 1200), mk('e1', 1250), mk('e2', 1300),
+        mk('h0', 1900), mk('h1', 1950), mk('h2', 2000),
+    ];
+
+    seedBank(0, 'physics', 'Thermo', 0, 1200);
+    AppState.questionBank = mixed.slice();
+    globalThis.startFlowPractice();
+    const flowPick = currentId();
+    const flowElo = AppState.practiceQuestions[0] && AppState.practiceQuestions[0].qElo;
+    ok(AppState.practiceFlowMode === 'flow', 'Flow activates on a mixed chapter');
+    ok(flowElo < 1800, 'Flow serves a non-hardcore question (got ' + flowElo + ')');
+
+    seedBank(0, 'physics', 'Thermo', 0, 1200);
+    AppState.questionBank = mixed.slice();
+    globalThis.startHardcorePractice();
+    const hardPick = currentId();
+    const hardElo = AppState.practiceQuestions[0] && AppState.practiceQuestions[0].qElo;
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore activates on a mixed chapter');
+    ok(hardElo >= 1800, 'Hardcore serves a ≥1800 question (got ' + hardElo + ')');
+    ok(hardPick !== flowPick, 'Flow and Hardcore do NOT serve the same question (' + flowPick + ' vs ' + hardPick + ')');
+}
+
 console.log('\nAll practice-nav assertions passed (' + passed + ' checks).');
 // Boot machinery (KaTeX watchdog, coalesced-save timers, …) keeps the event
 // loop alive in a stub environment — exit explicitly. Failures above throw
