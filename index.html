@@ -81,7 +81,6 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
             <li><a class="nav-item" data-tab="errors" onclick="switchTab('errors', this)"><span class="icon">☣</span><span class="text-label">The Vault</span></a></li>
             <li><a class="nav-item" data-tab="practice" onclick="switchTab('practice', this)"><span class="icon">📖</span><span class="text-label">Grind Station</span></a></li>
             <li><a class="nav-item" data-tab="analysis" onclick="switchTab('analysis', this)"><span class="icon">📊</span><span class="text-label">Analysis</span></a></li>
-            <li><a class="nav-item" data-tab="leaderboard" onclick="switchTab('leaderboard', this)"><span class="icon">🏆</span><span class="text-label">Arena</span></a></li>
             <li><a class="nav-item" data-tab="settings" onclick="switchTab('settings', this)"><span class="icon">⚙</span><span class="text-label">Config</span></a></li>
         </ul>
 
@@ -282,6 +281,46 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Focus Soundscape — procedural ambient engine (focus-sound.js)
+                 presets are rendered by focus-sound.js into #sc-presets;
+                 sliders (#sc-volume / #sc-depth / #sc-brightness / #sc-density)
+                 are wired by focus-sound.js at boot. Power toggles via FocusSound. -->
+            <div class="soundscape-panel" id="focus-sound-panel">
+                <div class="sc-head">
+                    <div>
+                        <span class="kicker">// FOCUS SOUNDSCAPE</span>
+                        <h2 class="box-title">Ambient Sound Engine</h2>
+                        <p class="box-desc">Real recordings &amp; pre-rendered loops — nothing synthesised live, so it stays smooth. Pick a bed, then dial depth, brightness &amp; tone until it hits just right.</p>
+                    </div>
+                    <button type="button" class="sc-power-btn" id="sc-power" onclick="FocusSound.toggle()" aria-label="Play soundscape">▶</button>
+                </div>
+                <div class="sc-presets" id="sc-presets"></div>
+                <div class="sc-sliders">
+                    <div class="sc-slider-row">
+                        <span class="sc-slider-label" title="Master loudness of the sound bed">Volume</span>
+                        <input type="range" id="sc-volume" class="sc-range" min="0" max="100" value="60" title="Master loudness of the sound bed">
+                        <span class="sc-slider-val" id="sc-volume-val">60%</span>
+                    </div>
+                    <div class="sc-slider-row">
+                        <span class="sc-slider-label" title="Low-end body — how deep and grounded it feels">Depth</span>
+                        <input type="range" id="sc-depth" class="sc-range" min="0" max="100" value="50" title="Low-end body — how deep and grounded it feels">
+                        <span class="sc-slider-val" id="sc-depth-val">50%</span>
+                    </div>
+                    <div class="sc-slider-row">
+                        <span class="sc-slider-label" title="High-frequency air and sparkle">Brightness</span>
+                        <input type="range" id="sc-brightness" class="sc-range" min="0" max="100" value="50" title="High-frequency air and sparkle">
+                        <span class="sc-slider-val" id="sc-brightness-val">50%</span>
+                    </div>
+                    <div class="sc-slider-row">
+                        <span class="sc-slider-label" title="Tone — dark &amp; muffled ⇢ bright &amp; airy. On Rain: calm roof rain ⇢ heavy rain">Tone</span>
+                        <input type="range" id="sc-density" class="sc-range" min="0" max="100" value="50" title="Tone — dark &amp; muffled ⇢ bright &amp; airy. On Rain: calm roof rain ⇢ heavy rain">
+                        <span class="sc-slider-val" id="sc-density-val">50%</span>
+                    </div>
+                </div>
+                <div class="sc-hint">Depth = low-end rumble · Brightness = air &amp; sparkle · Tone = dark ⇢ airy (Rain: calm ⇢ heavy)</div>
+                <div class="sc-status" id="sc-status"></div>
             </div>
 
             <div class="hours-box">
@@ -565,21 +604,6 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                     <div id="analysis-elo-body"></div>
                 </div>
 
-            </div>
-        </section>
-
-        <!-- ═══════════════════════════════════════════
-             VIEW · ARENA (P2P LEADERBOARD)
-        ════════════════════════════════════════════ -->
-        <section id="view-leaderboard" class="view-section">
-            <div class="glow-wrapper">
-                <div class="glow-box-inner">
-                    <span class="kicker">// LIVE TELEMETRY</span>
-                    <h2 class="box-title">P2P Leaderboard Arena</h2>
-                    <p class="box-desc">Serverless WebRTC · WebTorrent tracker signaling · zero-auth friend rooms. Share a Friend Connection Key with a rival — they appear here the instant the data channel opens.</p>
-                    <!-- leaderboard.js injects its full shell here -->
-                    <div id="leaderboard-mount"></div>
-                </div>
             </div>
         </section>
 
@@ -1084,7 +1108,7 @@ window.setMatrixSearch = function (value) {
 <script defer src="./vendor/katex/katex.min.js" onerror="window.__katexLoadFailed=true;"></script>
 <!-- Google Identity Services — storage.js initDrive() needs google.accounts.oauth2 -->
 <script defer src="https://accounts.google.com/gsi/client"></script>
-<!-- Main controller module — imports storage / pomodoro / matrix / candlestick / leaderboard -->
+<!-- Main controller module — imports storage / pomodoro / matrix / candlestick -->
 <script type="module" src="./app.js"></script>
 <!-- 4-Pillar Accountability Checkpoint System — self-mounting (hub, control
      panel, lockdown overlays, toasts are all injected at runtime) -->
@@ -1094,6 +1118,7 @@ window.setMatrixSearch = function (value) {
 <script type="module" src="./boot-sequence.js"></script>
 <script src="theme.js" defer></script>
 <script src="dashboard-clean.js" defer></script>
+<script src="focus-sound.js" defer></script>
 
 <!-- ════════════════════════════════════════════════════════════════════════
      BENTO RESIZE CONTROLLER v4 — persistence + drag-release hardened.

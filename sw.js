@@ -10,7 +10,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v23'; // Vault parity: error-matrix cards + SR drawer render gem diagrams / option / solution figures
+const VERSION = 'jeemax-v26'; // Arena (P2P leaderboard) tab removed — social fluff isn't prep
 const SHELL = [
   './',
   './index.html',
@@ -22,6 +22,7 @@ const SHELL = [
   './fx.js',
   './matrix.js',
   './pomodoro.js',
+  './focus-sound.js',
   './theme.js',
   './dashboard-clean.js',
   './forest-bg.js',
@@ -30,7 +31,6 @@ const SHELL = [
   './candlestick-engine.js',
   './cns-load.js',
   './deload.js',
-  './leaderboard.js',
   './lifeline.js',
   './nightguard.js',
   './boot-sequence.js',
@@ -169,7 +169,7 @@ self.addEventListener('fetch', (event) => {
   // for local files — index.html is served with ?v= hashing in some setups).
   // .html included so the manifest start_url (./index.html) is served from
   // cache offline; .woff2 for the vendored KaTeX fonts.
-  if (isLocal && url.pathname.includes('.') && !/(\.js|\.css|\.png|\.webmanifest|\.ico|\.woff2?|\.html)$/.test(url.pathname)) {
+  if (isLocal && url.pathname.includes('.') && !/(\.js|\.css|\.png|\.webmanifest|\.ico|\.woff2?|\.html|\.mp3|\.wav)$/.test(url.pathname)) {
     return;
   }
 
