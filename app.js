@@ -4256,6 +4256,10 @@ export function saveEditQuestion() {
 }
 
 export function startPracticeWithQuestion(questions, index) {
+    // Standard list entry — a mode left armed (e.g. ✕-closed mid-run) must not
+    // leak its footer/nav state into this session.
+    AppState.practiceFlowMode = 'standard';
+    _modeAdaptive.targetPwin = null;
     AppState.practiceQuestions = questions;
     AppState.currentPracticeIndex = index;
     AppState.practiceSubmittedFlags = new Array(questions.length).fill(false);
@@ -4267,6 +4271,7 @@ export function startPracticeWithQuestion(questions, index) {
         updatePracticeTimerDisplay();
     }, 1000);
     renderPracticeQuestionModal();
+    _renderModeFooter();
     openModal('practice-modal');
     AppState.photoHidden = false;
     document.getElementById('hide-photo-toggle').textContent = '📷 Hide Image';
@@ -5221,7 +5226,8 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
         _isUnexecutedModeQuestion(q) &&
         (!seenSet || !seenSet.has(q)) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
-        !q.isAnomaly
+        !q.isAnomaly &&
+        !q.modeRetired
     );
     // ── Hardcore floor enforcement ────────────────────────────────────────
     // The closest-elo bridge (scanBestEffort) used to ignore minQeloFloor, so
@@ -5237,6 +5243,8 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
     if (!bank.length) return null;
     const userElo = (AppState.elo && AppState.elo[subject]) || 1200;
     const hasMin = (q) => cfg.minQeloFloor ? q.qElo >= cfg.minQeloFloor : true;
+    // Skip deprioritization rank — fewer skips first (retired already excluded).
+    const _skipRank = (q) => Math.min(9999, Number(q.skips) || 0);
 
     // Two-pass scan: strict window → fallback window.
     function scan(lo, hi, requireFloor) {
@@ -5245,8 +5253,10 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
             return P >= lo && P <= hi && (!requireFloor || hasMin(q));
         });
         if (!candidates.length) return null;
-        // Sort by smallest solveCount then most-stale; break ties randomly.
+        // Sort by fewest skips, then smallest solveCount, then most-stale.
         candidates.sort((a, b) => {
+            const ra = _skipRank(a) - _skipRank(b);
+            if (ra !== 0) return ra;
             const sa = (a.solveCount || 0) - (b.solveCount || 0);
             if (sa !== 0) return sa;
             const ta = a.lastSolvedAt ? new Date(a.lastSolvedAt).getTime() : 0;
@@ -5256,27 +5266,16 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
         return candidates[0];
     }
 
-    // ── Best-effort 3rd-pass fallback: when both P_win scans miss, return the
-    // coldest unexecuted chapter question regardless of qElo band. Prevents the
-    // Flow / Hardcore buttons from looking broken in chapters whose qElo
-    // range is too narrow to ever reach the strict P_win window or the
-    // minQeloFloor (e.g. fresh maths/3D Geometry with qElo 1250-1600 vs.
-    // a 1200-rated user: Flow wants P_win∈[0.75,0.85] which requires qElo
-    // ≈1320-1370 — nowhere in this bank. Hardcore wants qElo≥1800 floor
-    // which is outside the chapter's empirical band.). The user gets a
-    // console.warn so they know the strict window didn't match. ──
-    // ── Closest-Elo Bridging ──
-    // The band's centre P_win is (PwinMin + PwinMax) / 2. From the canonical
-    // formula  P = 1 / (1 + 10^((Q − E) / 400))   solve for Q so we know
-    // which qElo is the IDEAL target for this mode. Then sort by smallest
-    // |qElo − ideal| so the user gets the closest-match question even when
-    // no qElo falls inside the strict window.
-    const targetP   = (cfg.PwinMin + cfg.PwinMax) / 2;
-    const safeP     = Math.max(0.01, Math.min(0.99, targetP));
-    const idealQElo = Math.round(userElo - 400 * Math.log10(safeP / (1 - safeP)));
+    // Live adaptive target P_win (drifts with performance/skips), falling back
+    // to the mode's sweet-spot midpoint on a fresh run.
+    const targetP   = Math.max(0.01, Math.min(0.99,
+        (_modeAdaptive.targetPwin == null) ? (cfg.PwinMin + cfg.PwinMax) / 2 : _modeAdaptive.targetPwin));
+    const idealQElo = Math.round(userElo - 400 * Math.log10(targetP / (1 - targetP)));
     function scanBestEffort() {
         if (!bank.length) return null;
         const sorted = bank.slice().sort((a, b) => {
+            const ra = _skipRank(a) - _skipRank(b);
+            if (ra !== 0) return ra;
             const ga = Math.abs(a.qElo - idealQElo);
             const gb = Math.abs(b.qElo - idealQElo);
             if (ga !== gb) return ga - gb;        // smallest gap to ideal wins
@@ -5290,7 +5289,7 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
     }
     const bestEffort = scanBestEffort();
     if (bestEffort && (mode === 'hardcore' || mode === 'flow')) {
-        const strictSc  = scan(cfg.PwinMin, cfg.PwinMax, mode === 'hardcore');
+        const strictSc  = scan(Math.max(0.01, targetP - 0.10), Math.min(0.99, targetP + 0.10), mode === 'hardcore');
         const fallbackSc = scan(cfg.PwinFallbackMin, cfg.PwinFallbackMax, mode === 'hardcore');
         if (!strictSc && !fallbackSc) {
             const qEloMin   = Math.min.apply(null, bank.map(x => x.qElo));
@@ -5298,7 +5297,7 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
             const chosenGap = Math.abs(bestEffort.qElo - idealQElo);
             console.warn(
                 '[practice mode] No ' + mode + '-eligible chapter questions match the ' +
-                'strict P_win [' + cfg.PwinMin + ', ' + cfg.PwinMax + '] window ' +
+                'target P_win ' + targetP.toFixed(3) + ' window ' +
                 '(userElo=' + userElo + ', chapter qElo range ' + qEloMin + '–' + qEloMax + '). ' +
                 'Closest-elo bridge: picked qElo ' + bestEffort.qElo + ' (gap ' + chosenGap +
                 ' pts from ideal ' + idealQElo + ') so the user gets a question instead ' +
@@ -5309,8 +5308,10 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
     // ── Flow Lifeline: shift P_win windows toward easier problems when
     // CNS_LOAD crosses the fire threshold. Rebalances challenge-skill into
     // the flow channel. The lifeline dismisses after ONE solve. ──
-    let _pwMin = cfg.PwinMin;
-    let _pwMax = cfg.PwinMax;
+    // Base strict window is symmetric around the live adaptive target (±0.10);
+    // fallback stays the mode's configured wide window.
+    let _pwMin = Math.max(0.01, targetP - 0.10);
+    let _pwMax = Math.min(0.99, targetP + 0.10);
     let _fbMin = cfg.PwinFallbackMin;
     let _fbMax = cfg.PwinFallbackMax;
     try {
@@ -5338,27 +5339,279 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
         || bestEffort;
 }
 
-// ── Mode navigation history (Flow State / Hardcore) ─────────────────────────
-// The mode serves ONE question at a time (single-item pool at index 0), so the
-// classic index-based Prev/Next can never navigate. Instead we keep
-// browser-style back/forward stacks of { q, submitted } snapshots: Prev
-// reviews previously served questions, and Next re-advances through the
-// forward stack or serves a genuinely fresh question that has never been shown
-// this run. Skipped (unsubmitted) questions land in the back stack like any
-// other — they are never re-served as "new", but Prev can still return to them.
-let _modeBackStack = [];    // entries previously served (oldest first)
-let _modeForwardStack = []; // entries skipped over by Prev, replayed by Next
+// ── Mode state (Flow State / Hardcore) ─────────────────────────────────────
+// The mode serves ONE question at a time (single-item pool at index 0). There
+// is no Prev/Next — advancement is owned by the Continue button (_modeAdvance)
+// and the Skip action. We only track the set of questions already served this
+// run so the picker never re-serves them. Skipped questions are marked seen
+// the same way but left pristine (no-regret) apart from a deprioritizing skip
+// stamp.
+let _modeSeenIds = new Set();
+
+// Session-scoped adaptive difficulty throttle: the live target win-probability
+// the picker aims at. Reset on mode entry; drifts with performance + skips.
+const _modeAdaptive = { targetPwin: null };
 
 function _clearModeHistory() {
-    _modeBackStack = [];
-    _modeForwardStack = [];
+    _modeSeenIds = new Set();
 }
 
 function _modeSeenSet() {
-    const set = new Set();
-    for (const e of _modeBackStack) set.add(e.q);
-    for (const e of _modeForwardStack) set.add(e.q);
-    return set;
+    return _modeSeenIds;
+}
+
+/** Mode's default sweet-spot target P_win (midpoint of the strict window). */
+function _modeCenter(mode) {
+    const cfg = MODE_TUNING[mode] || MODE_TUNING.standard;
+    return (cfg.PwinMin + cfg.PwinMax) / 2;
+}
+
+/**
+ * Adaptive difficulty throttle — nudges the session target P_win based on the
+ * just-solved outcome, EMA-smoothed so it never swings wildly. Raising the
+ * target means "serve easier next", lowering means "serve harder next".
+ */
+function _modeNextTargetPwin(mode, outcome) {
+    const cfg = MODE_TUNING[mode] || MODE_TUNING.standard;
+    const center = _modeCenter(mode);
+    const lo = Math.max(0.05, (cfg.PwinMin || 0.5) - 0.10);
+    const hi = Math.min(0.95, (cfg.PwinMax || 0.5) + 0.15);
+    const cur = (_modeAdaptive.targetPwin == null) ? center : _modeAdaptive.targetPwin;
+    let delta = 0;
+    if (outcome && outcome.correct) {
+        const sweet = (typeof cfg.winSweetSpot === 'number') ? cfg.winSweetSpot : 0.5;
+        const tau = Number(outcome.tau);
+        const hasTiming = isFinite(tau) && tau > 0;
+        const fast = hasTiming ? _clamp01(1 - (tau - sweet)) : 0; // untimed → neutral
+        delta = 0.06 * fast;                       // fast & correct → harder next
+    } else {
+        const d = _clamp01(((Number(outcome && outcome.qElo) || 1200) - (Number(outcome && outcome.userElo) || 1200) + 400) / 800);
+        delta = -0.10 * (1.5 - d);                 // miss an easy q → ease up a lot
+    }
+    const target = Math.max(lo, Math.min(hi, center + delta));
+    _modeAdaptive.targetPwin = cur * 0.5 + target * 0.5;
+    return _modeAdaptive.targetPwin;
+}
+
+/** Skip reason → immediate (non-EMA) target-P_win nudge for the next pick. */
+function _modeAdjustTargetForSkip(reason) {
+    const mode = AppState.practiceFlowMode;
+    const cfg = MODE_TUNING[mode];
+    if (!cfg) return;
+    if (reason === 'already know' || reason === 'not now') return; // no window change
+    const cur = (_modeAdaptive.targetPwin == null) ? _modeCenter(mode) : _modeAdaptive.targetPwin;
+    const delta = (reason === 'too hard') ? 0.08 : (reason === 'too easy') ? -0.08 : 0;
+    const lo = Math.max(0.05, (cfg.PwinMin || 0.5) - 0.10);
+    const hi = Math.min(0.95, (cfg.PwinMax || 0.5) + 0.15);
+    _modeAdaptive.targetPwin = Math.max(lo, Math.min(hi, cur + delta));
+}
+
+// ── No-regret Skip + Undo + reason popover ─────────────────────────────────
+let _skipUndoTimer = null;
+let _skipPopoverDismissBound = false;
+
+function _dismissSkipUndoToast() {
+    if (_skipUndoTimer) { clearTimeout(_skipUndoTimer); _skipUndoTimer = null; }
+    const t = document.getElementById('skip-undo-toast');
+    if (t && t.parentNode) t.parentNode.removeChild(t);
+}
+
+function _showSkipUndoToast(onUndo) {
+    try {
+        _dismissSkipUndoToast();
+        const toast = document.createElement('div');
+        toast.id = 'skip-undo-toast';
+        toast.className = 'skip-undo-toast';
+        toast.innerHTML = '<span>Question skipped — nothing was lost.</span><button id="skip-undo-btn" type="button">Undo</button>';
+        document.body.appendChild(toast);
+        const undoBtn = document.getElementById('skip-undo-btn');
+        if (undoBtn) undoBtn.onclick = () => { if (onUndo) onUndo(); _dismissSkipUndoToast(); };
+        _skipUndoTimer = setTimeout(_dismissSkipUndoToast, 5000);
+    } catch (_) { /* toast is cosmetic */ }
+}
+
+function _injectSkipStyles() {
+    if (document.getElementById('mode-skip-style')) return;
+    const style = document.createElement('style');
+    style.id = 'mode-skip-style';
+    style.textContent = `
+.skip-popover {
+  position:fixed; z-index:100000; min-width:180px;
+  background:rgba(15,17,26,.97); border:1px solid rgba(61,220,255,.25);
+  border-radius:12px; padding:10px; box-shadow:0 10px 40px rgba(0,0,0,.5);
+  font-family:'Orbitron',sans-serif;
+}
+.skip-popover .skip-popover-title { font-size:10px; letter-spacing:.5px; color:#8aa0c8; margin-bottom:8px; text-transform:uppercase; }
+.skip-popover button {
+  display:block; width:100%; text-align:left; margin:4px 0; padding:8px 10px;
+  background:rgba(255,255,255,.05); color:#e8eefb; border:1px solid rgba(255,255,255,.08);
+  border-radius:8px; cursor:pointer; font-size:12.5px; transition:background .15s ease, border-color .15s ease;
+}
+.skip-popover button:hover { background:rgba(61,220,255,.14); border-color:rgba(61,220,255,.4); }
+.skip-undo-toast {
+  position:fixed; z-index:100001; bottom:22px; left:50%; transform:translateX(-50%);
+  display:flex; align-items:center; gap:12px; padding:10px 14px;
+  background:rgba(15,17,26,.96); border:1px solid rgba(61,220,255,.3);
+  border-radius:999px; box-shadow:0 8px 30px rgba(0,0,0,.45);
+  color:#dfe7f5; font-size:12.5px; animation:eloChipIn .3s ease;
+}
+.skip-undo-toast button {
+  background:rgba(61,220,255,.16); color:#8be9ff; border:1px solid rgba(61,220,255,.4);
+  border-radius:999px; padding:4px 12px; cursor:pointer; font-weight:700; font-size:12px;
+}
+.skip-undo-toast button:hover { background:rgba(61,220,255,.28); }
+`;
+    document.head.appendChild(style);
+}
+
+function _dismissSkipPopover() {
+    const p = document.getElementById('skip-popover');
+    if (p && p.parentNode) p.parentNode.removeChild(p);
+    if (_skipPopoverDismissBound) {
+        document.removeEventListener('click', _onDocClickDismissSkip);
+        _skipPopoverDismissBound = false;
+    }
+}
+
+function _onDocClickDismissSkip(e) {
+    try {
+        const p = document.getElementById('skip-popover');
+        if (p && !p.contains(e.target)) _dismissSkipPopover();
+    } catch (_) { /* ignore */ }
+}
+
+function openSkipPopover() {
+    if (!AppState.practiceFlowMode || AppState.practiceFlowMode === 'standard') return;
+    _injectSkipStyles();
+    _dismissSkipPopover();
+    const btn = document.getElementById('practice-skip-btn');
+    const pop = document.createElement('div');
+    pop.id = 'skip-popover';
+    pop.className = 'skip-popover';
+    pop.innerHTML =
+        '<div class="skip-popover-title">Skip — why?</div>' +
+        '<button data-reason="too hard" type="button">📈 Too hard</button>' +
+        '<button data-reason="too easy" type="button">📉 Too easy</button>' +
+        '<button data-reason="already know" type="button">✅ Already know it</button>' +
+        '<button data-reason="not now" type="button">⏳ Not now</button>';
+    document.body.appendChild(pop);
+    pop.querySelectorAll('button[data-reason]').forEach(b => {
+        b.onclick = () => { const reason = b.getAttribute('data-reason'); _dismissSkipPopover(); skipQuestion(reason); };
+    });
+    // Anchor above the Skip button (clamped into the viewport).
+    const vw = (typeof window.innerWidth === 'number' && window.innerWidth) || 800;
+    const r = btn ? btn.getBoundingClientRect() : null;
+    const ph = pop.offsetHeight || 160;
+    const left = r ? Math.max(8, Math.min(vw - 200, r.left)) : 16;
+    const top = r ? (r.top - ph - 10 >= 8 ? r.top - ph - 10 : r.bottom + 10) : 16;
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+    // Dismiss on any outside click (deferred so this click doesn't close it).
+    setTimeout(() => {
+        if (!_skipPopoverDismissBound) {
+            document.addEventListener('click', _onDocClickDismissSkip);
+            _skipPopoverDismissBound = true;
+        }
+    }, 0);
+}
+window.openSkipPopover = openSkipPopover;
+
+/**
+ * No-regret skip: stamps a deprioritizing marker but leaves the question
+ * untouched (no Elo/qElo/solveCount/status/time mutation). Optionally nudges
+ * the next pick via the reason, then advances to a fresh question.
+ */
+function skipQuestion(reason) {
+    const mode = AppState.practiceFlowMode;
+    if (!mode || mode === 'standard') return;
+    const q = AppState.practiceQuestions[AppState.currentPracticeIndex];
+    if (!q) return;
+    if (AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return; // already answered
+    const before = {
+        skips: q.skips || 0,
+        lastSkippedAt: q.lastSkippedAt,
+        skipReasons: (q.skipReasons || []).slice(),
+        modeRetired: q.modeRetired || false,
+    };
+    q.skips = (q.skips || 0) + 1;
+    q.lastSkippedAt = new Date().toISOString();
+    q.skipReasons = q.skipReasons || [];
+    q.skipReasons.push(reason || 'not now');
+    if (q.skipReasons.length > 3) q.skipReasons = q.skipReasons.slice(-3);
+    if (reason === 'already know' || q.skips >= 3) q.modeRetired = true;
+
+    _modeAdjustTargetForSkip(reason);
+    _modeSeenIds.add(q);
+    saveAllAsync().catch(console.error);
+
+    _showSkipUndoToast(() => {
+        q.skips = before.skips;
+        q.lastSkippedAt = before.lastSkippedAt;
+        q.skipReasons = before.skipReasons;
+        q.modeRetired = before.modeRetired;
+        saveAllAsync().catch(console.error);
+    });
+
+    _rebuildPracticeQuestionsForMode(_modeSeenIds);
+    if (AppState.practiceQuestions.length > 0) {
+        _serveModeEntry({ q: AppState.practiceQuestions[0], submitted: false });
+        _hideModeContinueButton();
+    } else {
+        // Skipping exhausted the pool — _rebuildPracticeQuestionsForMode already
+        // exited the mode. Tear down the modal like _modeAdvance does.
+        if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+        closePracticeModal();
+        showQuestionList();
+    }
+}
+window.skipQuestion = skipQuestion;
+
+/** Advance to the next adaptive question (Continue button). */
+function _modeAdvance() {
+    const mode = AppState.practiceFlowMode;
+    if (!mode || mode === 'standard') return;
+    const curQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
+    if (curQ) _modeSeenIds.add(curQ);
+    _rebuildPracticeQuestionsForMode(_modeSeenIds);
+    if (AppState.practiceQuestions.length > 0) {
+        _serveModeEntry({ q: AppState.practiceQuestions[0], submitted: false });
+        _hideModeContinueButton();
+        return;
+    }
+    // Pool exhausted — _rebuildPracticeQuestionsForMode already exited the mode.
+    if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+    closePracticeModal();
+    showQuestionList();
+}
+window.continuePractice = _modeAdvance;
+
+/** Show/hide the footer actions for the current mode state. */
+function _renderModeFooter() {
+    const inMode = !!(AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard');
+    const prev = document.getElementById('practice-prev-btn');
+    const next = document.getElementById('practice-next-btn');
+    const skip = document.getElementById('practice-skip-btn');
+    const cont = document.getElementById('practice-continue-btn');
+    if (prev) prev.style.display = inMode ? 'none' : '';
+    if (next) next.style.display = inMode ? 'none' : '';
+    if (skip) skip.style.display = inMode ? '' : 'none';
+    if (cont) cont.style.display = 'none';
+}
+
+function _showModeContinueButton() {
+    const cont = document.getElementById('practice-continue-btn');
+    if (cont) cont.style.display = '';
+    const skip = document.getElementById('practice-skip-btn');
+    if (skip) skip.style.display = 'none';
+}
+
+function _hideModeContinueButton() {
+    const cont = document.getElementById('practice-continue-btn');
+    if (cont) cont.style.display = 'none';
+    if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') {
+        const skip = document.getElementById('practice-skip-btn');
+        if (skip) skip.style.display = '';
+    }
 }
 
 /** Present a mode question (history entry or fresh pick) as the current one. */
@@ -5385,8 +5638,10 @@ function _serveModeEntry(entry) {
 function _setPracticeMode(mode) {
     if (!PRACTICE_MODES.includes(mode)) return;
     AppState.practiceFlowMode = mode;
-    // Fresh run — drop any navigation history left over from a previous mode.
+    // Fresh run — drop any navigation history left over from a previous mode
+    // and reset the adaptive throttle to the mode's sweet spot.
     _clearModeHistory();
+    _modeAdaptive.targetPwin = _modeCenter(mode);
     // Reset hardcore daily counter if the date rolled over (LOCAL day — UTC
     // would reset at 05:30 IST and grant a fresh quota pre-midnight).
     const today = todayLocalKey();
@@ -5400,6 +5655,7 @@ function _setPracticeMode(mode) {
             // Revert mode + repaint badge so the UI doesn't lie about state.
             AppState.practiceFlowMode = 'standard';
             _renderModeBadge();
+            _renderModeFooter();
             saveAllAsync().catch(console.error);
             return;
         }
@@ -5407,6 +5663,7 @@ function _setPracticeMode(mode) {
     saveAllAsync().catch(console.error);
     _rebuildPracticeQuestionsForMode();
     _renderModeBadge();
+    _renderModeFooter();
     // ── Open the practice modal with the freshly-picked mode question ──
     // Previously this block only RE-rendered the modal contents without
     // calling openModal('practice-modal'), so clicking FLOW / HARDCORE built
@@ -5440,6 +5697,7 @@ function _setPracticeMode(mode) {
 /** Exit practice mode back to standard filter-by-status. */
 function _exitPracticeMode() {
     AppState.practiceFlowMode = 'standard';
+    _modeAdaptive.targetPwin = null;
     if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
     AppState.practiceSeconds = 0;
     AppState.practiceQuestions = [];
@@ -5448,6 +5706,7 @@ function _exitPracticeMode() {
     _clearModeHistory();
     saveAllAsync().catch(console.error);
     _renderModeBadge();
+    _renderModeFooter();
     // Queue is empty now — close any lingering practice modal instead of
     // re-rendering a blank question (renderPracticeQuestionModal guards
     // against empty queues, but the modal shell would linger otherwise).
@@ -5472,7 +5731,9 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
         const label = mode === 'flow' ? 'Flow' : 'Hardcore';
         alert('No more ' + label + '-eligible questions in this chapter. Exiting to standard mode.');
         AppState.practiceFlowMode = 'standard';
+        _modeAdaptive.targetPwin = null;
         _renderModeBadge();
+        _renderModeFooter();
         saveAllAsync().catch(console.error);
         AppState.practiceQuestions = [];
         AppState.practiceSubmittedFlags = [];
@@ -6751,6 +7012,15 @@ export function practiceSubmit() {
         AppState.currentQ.status = 'wrong';
     }
 
+    // ── Adaptive-mode perf snapshot (captured BEFORE qElo/Elo mutate) ──
+    const _modePerf = (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard' && !AppState.bountyMode)
+        ? {
+            qElo: _safeQElo(AppState.currentQ),
+            userElo: AppState.elo[_normalizeSubjectKey(AppState.currentQ.subject)] || 1200,
+            targetSecs: Math.max(1, _eloTargetSeconds(AppState.currentQ)),
+        }
+        : null;
+
     // ── Cognitive MMR: Elo Migration (MCQ / Numeric resolution) ──
     // Synchronous, execution-blocking. Mutates AppState.elo (subject + global)
     // and AppState.currentQ.qElo in-place BEFORE saveAllAsync so the updated
@@ -6795,6 +7065,19 @@ export function practiceSubmit() {
     // Refresh the dashboard MMR matrix so the new rating is visible immediately.
     try { renderEloMatrix(); } catch (_) { /* ignore */ }
 
+    // ── Adaptive mode: update the difficulty throttle from this outcome and
+    // surface the Continue action (the next question is picked on Continue). ──
+    if (_modePerf) {
+        const _tau = AppState.practiceSeconds / _modePerf.targetSecs;
+        _modeNextTargetPwin(AppState.practiceFlowMode, {
+            correct: isCorrect,
+            tau: _tau,
+            qElo: _modePerf.qElo,
+            userElo: _modePerf.userElo,
+        });
+        _showModeContinueButton();
+    }
+
     if (!isCorrect) {
         setTimeout(() => {
             const cont = document.getElementById('practice-modal-content');
@@ -6825,6 +7108,9 @@ export function addTextQuestionFollowUp() {
 
     document.getElementById('text-correct-btn').onclick = () => {
         const wasAlreadySolved = (AppState.currentQ.status === 'solved');
+        const _modePerfTxt = (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard' && !AppState.bountyMode)
+            ? { qElo: _safeQElo(AppState.currentQ), userElo: AppState.elo[_normalizeSubjectKey(AppState.currentQ.subject)] || 1200, targetSecs: Math.max(1, _eloTargetSeconds(AppState.currentQ)), secs: AppState._frozenTextQSeconds || AppState.practiceSeconds }
+            : null;
         // Lock first-attempt result — only the first attempt counts for accuracy.
         if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'correct';
         AppState.currentQ.status = 'solved';
@@ -6855,10 +7141,17 @@ export function addTextQuestionFollowUp() {
         container.appendChild(banner);
         if (_eloRes) { try { injectEloShiftChip(_eloRes); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
+        if (_modePerfTxt) {
+            _modeNextTargetPwin(AppState.practiceFlowMode, { correct: true, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
+            _showModeContinueButton();
+        }
         document.getElementById('practice-submit-btn').style.display = 'none';
     };
 
     document.getElementById('text-wrong-btn').onclick = () => {
+        const _modePerfTxt = (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard' && !AppState.bountyMode)
+            ? { qElo: _safeQElo(AppState.currentQ), userElo: AppState.elo[_normalizeSubjectKey(AppState.currentQ.subject)] || 1200, targetSecs: Math.max(1, _eloTargetSeconds(AppState.currentQ)), secs: AppState._frozenTextQSeconds || AppState.practiceSeconds }
+            : null;
         // Lock first-attempt result — only the first attempt counts for accuracy.
         if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'incorrect';
         AppState.currentQ.status = 'wrong';
@@ -6894,6 +7187,10 @@ export function addTextQuestionFollowUp() {
             openModal('error-reason-modal');
         };
         container.appendChild(logBtn);
+        if (_modePerfTxt) {
+            _modeNextTargetPwin(AppState.practiceFlowMode, { correct: false, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
+            _showModeContinueButton();
+        }
         document.getElementById('practice-submit-btn').style.display = 'none';
     };
 
@@ -6947,41 +7244,10 @@ export function confirmErrorLog() {
 }
 
 export function practiceNext() {
-    // CRITICAL: Flow / Hardcore mode auto-refill — keep the user locked in.
-    // The mode serves one question at a time, so Next first replays the
-    // forward stack (questions you stepped back from with Prev), and when the
-    // forward stack is empty serves a genuinely fresh mode-appropriate
-    // question that has never been shown this run. Every question left behind
-    // — solved or skipped — lands in the back stack so Prev can review it.
-    if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') {
-        const curQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
-        const curSubmitted = curQ ? !!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] : false;
-
-        // Re-advance through the forward stack before serving anything new.
-        if (_modeForwardStack.length > 0) {
-            if (curQ) _modeBackStack.push({ q: curQ, submitted: curSubmitted });
-            _serveModeEntry(_modeForwardStack.pop());
-            return;
-        }
-
-        // Fresh pick — exclude every question already served this run so the
-        // same question can never reappear (the old picker could re-serve the
-        // current unsubmitted question, making Next feel broken/random).
-        if (curQ) _modeBackStack.push({ q: curQ, submitted: curSubmitted });
-        _rebuildPracticeQuestionsForMode(_modeSeenSet());
-        if (AppState.practiceQuestions.length > 0) {
-            _serveModeEntry({ q: AppState.practiceQuestions[0], submitted: false });
-            return;
-        }
-        // Refill found nothing — _rebuildPracticeQuestionsForMode already
-        // alerted and exited the mode. Close quietly without the generic
-        // "queue cleared" double-alert.
-        _clearModeHistory();
-        if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
-        closePracticeModal();
-        showQuestionList();
-        return;
-    }
+    // Flow / Hardcore mode: advancement is owned by the Continue button
+    // (_modeAdvance) and the Skip action — there is no Next in mode. Guard
+    // against stray calls (legacy hooks) so they can't double-advance.
+    if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
     if (AppState.currentPracticeIndex + 1 < AppState.practiceQuestions.length) {
         AppState.currentPracticeIndex++;
         AppState.practiceSeconds = 0;
@@ -7009,18 +7275,8 @@ export function practiceNext() {
 }
 
 export function practicePrev() {
-    // Flow / Hardcore mode: the pool is a single question pinned at index 0,
-    // so the standard index check below can never fire. Review the back stack
-    // instead (browser-style) — the current question is pushed onto the
-    // forward stack so Next can re-advance to it.
-    if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') {
-        if (_modeBackStack.length === 0) return;
-        const curQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
-        const curSubmitted = curQ ? !!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] : false;
-        if (curQ) _modeForwardStack.push({ q: curQ, submitted: curSubmitted });
-        _serveModeEntry(_modeBackStack.pop());
-        return;
-    }
+    // Flow / Hardcore mode: no Prev — review happens on the result screen only.
+    if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
     if (AppState.currentPracticeIndex > 0) {
         AppState.currentPracticeIndex--;
         AppState.practiceSeconds = 0;

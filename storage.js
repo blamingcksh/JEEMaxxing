@@ -845,6 +845,14 @@ export function migrateQuestionBankSR() {
         if (q.qEloStampedAt === undefined) { q.qEloStampedAt = null; dirty = true; }
         if (typeof q.solveCount !== 'number') { q.solveCount = 0; dirty = true; }
         if (q.lastSolvedAt === undefined) { q.lastSolvedAt = null; dirty = true; }
+        // ── No-regret skip ledger (Flow/Hardcore) ──
+        // A skip is non-destructive: it only stamps these counters so the mode
+        // picker can deprioritize the question. Elo/qElo/solveCount/status are
+        // never touched by the skip action.
+        if (typeof q.skips !== 'number') { q.skips = 0; dirty = true; }
+        if (q.lastSkippedAt === undefined) { q.lastSkippedAt = null; dirty = true; }
+        if (!Array.isArray(q.skipReasons)) { q.skipReasons = []; dirty = true; }
+        if (q.modeRetired === undefined) { q.modeRetired = false; dirty = true; }
         // Anti-cheat flags populated by processGemTextDump on ingest.
         if (q.stampBatchSuspiciousDistribution === undefined) { q.stampBatchSuspiciousDistribution = false; dirty = true; }
         if (q.stampBatchSuspiciousStdev === undefined) { q.stampBatchSuspiciousStdev = false; dirty = true; }
