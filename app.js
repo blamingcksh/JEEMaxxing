@@ -90,13 +90,6 @@ window.toggleDailyQueue = toggleDailyQueue;           // Daily Fix Queue button
 window.activateDailyQueue = activateDailyQueue;       // boot-flow force-arm
 window.cacheAllDriveImages = cacheAllDriveImages;     // Cache All Images button
 
-// ── P2P Leaderboard Arena (serverless WebRTC over WebTorrent trackers) ──
-// Pure vanilla module: no signaling backend, no OAuth. The arena brokers its
-// own WebRTC handshake through public WebTorrent WebSocket trackers and
-// exchanges a 4-field telemetry packet over a direct RTCDataChannel. It is
-// fully decoupled from local persistence — it never reads AppState.questionBank,
-// API keys, or backup configs, and never calls saveAllAsync.
-import { LeaderboardNet } from './leaderboard.js';
 import { CNSLoad } from './cns-load.js';
 import { DeloadEngine } from './deload.js';
 import { Lifeline } from './lifeline.js';
@@ -852,21 +845,6 @@ export function toggleSidebar() {
     document.querySelector('.collapse-btn').textContent = sb.classList.contains('collapsed') ? '→' : 'Shrink';
 }
 
-// ── P2P Leaderboard Arena helper ──────────────────────────────────────
-// Computes the cumulative study-hours metric consumed by the leaderboard
-// telemetry packet: sum of the ABSOLUTE INTEGER values of the per-subject
-// studySecs counters (physics / chemistry / maths), divided by 3600 to
-// present standard decimal hours. Pure read — never mutates studySecs and
-// never touches the high-frequency canvas / candlestick render frames.
-function _leaderboardStudyHours() {
-    const s = studySecs || {};
-    const sum =
-        Math.abs(Math.floor(Number(s.physics) || 0)) +
-        Math.abs(Math.floor(Number(s.chemistry) || 0)) +
-        Math.abs(Math.floor(Number(s.maths) || 0));
-    return sum / 3600;
-}
-
 export async function switchTab(viewId, element) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     const targetView = document.getElementById('view-' + viewId);
@@ -904,10 +882,6 @@ export async function switchTab(viewId, element) {
     }
     // renderAnalysis() swallows its own errors and is async — no wrapper needed.
     if (viewId === 'analysis') renderAnalysis();
-    // ── P2P Leaderboard: re-sync the arena grid when the tab is shown ──
-    if (viewId === 'leaderboard' && typeof LeaderboardNet !== 'undefined') {
-        LeaderboardNet.refresh();
-    }
 }
 
 export function showPracticeSubview(id) {
@@ -2751,11 +2725,6 @@ export function saveAllQuestions() {
         console.log('[saveAllQuestions] Auto-navigated to fresh-imported chapter:',
             firstNew.subject, '/', firstNew.chapter);
     }
-    // ── P2P Leaderboard: broadcast telemetry on local question import ──
-    // Mirrors the practiceSubmit() hook. Fire-and-forget; the arena packet
-    // carries only the 4 sanctioned fields (elo/variance/studyHours/ts) and
-    // is fully isolated from the sync pipeline above.
-    try { if (typeof LeaderboardNet !== 'undefined') LeaderboardNet.broadcastTelemetry(); } catch (_) {}
     // ── Bug 2 fix: tear down the preview modal + upload modal synchronously
     // and wipe the text-track terminal so the next batch starts clean. ──
     // closeModalStr() defers display='none' by 300ms for the fade-out
@@ -3349,7 +3318,7 @@ export async function processGemTextDump() {
         // If ≥80% of a chapter's ingest batch lands in T6-T7 (elite/olympiad)
         // AND the chapter's prior running avg was below T3, flag the batch
         // as suspicious — Gem-stamped qElo might be inflated to make the
-        // chapter look elite on the leaderboard. Also detect low-stdev
+        // chapter look elite. Also detect low-stdev
         // automation (stdDev < 15 over >20 questions = same-script timing).
         const chapterStats = _auditGemBatchByChapter(parsedItems);
         for (const it of parsedItems) {
@@ -4723,11 +4692,6 @@ function _injectPracticeTimeIntoStudySecs() {
 
         // Persist the mutation to IndexedDB/Cloud sync pipelines.
         saveAllAsync().catch(console.error);
-        // ── P2P Leaderboard: study-duration update → telemetry broadcast ──
-        // Fires whenever studySecs mutates. Runs strictly AFTER the local
-        // save so the wire packet reflects the freshest counters; it never
-        // touches IndexedDB or the sync framework itself.
-        try { if (typeof LeaderboardNet !== 'undefined') LeaderboardNet.broadcastTelemetry(); } catch (_) {}
     } catch (e) {
         console.error('Failed to inject practice time into studySecs:', e);
     }
@@ -6796,12 +6760,6 @@ export function practiceSubmit() {
  if (AppState.currentQ && AppState.currentQ.status === 'solved') stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
  saveAllAsync().catch(console.error);
 
-    // ── P2P Leaderboard: question-submitted → telemetry broadcast ──
-    // Non-blocking. The arena reads AppState.elo.global + #variance-val +
-    // studyHours via getState() and pushes a 4-field packet to every open
-    // RTCDataChannel. Strictly isolated from the save/sync pipeline above.
-    try { if (typeof LeaderboardNet !== 'undefined') LeaderboardNet.broadcastTelemetry(); } catch (_) {}
-
     // ── Stop the practice-question timer ──
     // Without this clearInterval, the timer keeps ticking past answer submission,
     // pushing practiceSeconds higher than the actual solve time. The next modal
@@ -7882,35 +7840,6 @@ async function initApp() {
     // chapter-scoped dedupe spread across chapters. Idempotent + non-blocking.
     _autoPurgeDuplicateQuestions();
 
-    // ── P2P Leaderboard Arena: mount the serverless WebRTC surface ──
-    // The arena reads ONLY the four sanctioned live state variables via the
-    // getState closure (nickname from #display-username, AppState.elo.global,
-    // #variance-val compliance text, studySecs-derived hours). It never
-    // transmits/parses/exposes AppState.questionBank, API keys, or backup
-    // configs, and never calls saveAllAsync — local files stay isolated.
-    //
-    // Mount target is #leaderboard-mount (inside #view-leaderboard's
-    // glow-wrapper chrome) so the arena injects its connection panel + card
-    // grid WITHOUT overwriting the app's section title/subtitle.
-    try {
-        const _lbMount = document.getElementById('leaderboard-mount') ||
-                         document.getElementById('view-leaderboard');
-        if (_lbMount && typeof LeaderboardNet !== 'undefined') {
-            LeaderboardNet.init(_lbMount, {
-                getState: () => ({
-                    nickname: (document.getElementById('display-username') &&
-                               document.getElementById('display-username').textContent) || 'Anon',
-                    globalElo: (AppState.elo && AppState.elo.global) || 1200,
-                    dailyVariation: (document.getElementById('variance-val') &&
-                                     document.getElementById('variance-val').textContent) || '0%',
-                    studyHours: _leaderboardStudyHours(),
-                }),
-            });
-        }
-    } catch (_lbErr) {
-        console.error('Leaderboard arena init fault:', _lbErr);
-    }
-
     // Check active target locks
     const lockDate = await idbGet('jeeTargetLockDate');
     if (lockDate) {
@@ -8261,7 +8190,6 @@ function _autoPurgeDuplicateQuestions() {
 
 // ==================== WINDOW GLOBAL WIRING ====================
 window.switchTab = switchTab;
-window.LeaderboardNet = LeaderboardNet;
 window.toggleSidebar = toggleSidebar;
 window.openModal = openModal;
 window.closeModal = closeModal;
