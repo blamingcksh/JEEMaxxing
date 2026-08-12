@@ -5216,13 +5216,24 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
     // the mode buttons look dead. Both current assignment sites already pass
     // normalized keys, so this is a no-op for valid input.
     subject = _normalizeSubjectKey(subject);
-    const bank = AppState.questionBank.filter(q =>
+    let bank = AppState.questionBank.filter(q =>
         q.subject === subject && _chaptersMatch(q.chapter, chapter) &&
         _isUnexecutedModeQuestion(q) &&
         (!seenSet || !seenSet.has(q)) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
         !q.isAnomaly
     );
+    // ── Hardcore floor enforcement ────────────────────────────────────────
+    // The closest-elo bridge (scanBestEffort) used to ignore minQeloFloor, so
+    // a low-rated user clicking Hardcore whose chapter band never reached the
+    // strict/fallback P_win windows would be handed the SAME easy question
+    // Flow serves (both fell through to best-effort bridging). Filter the pool
+    // up front so EVERY scan — strict, fallback, and best-effort — respects
+    // the hardcore floor, and Hardcore exits gracefully when the chapter has
+    // no ≥minQeloFloor questions instead of silently downgrading to easy ones.
+    if (mode === 'hardcore' && cfg.minQeloFloor) {
+        bank = bank.filter(q => q.qElo >= cfg.minQeloFloor);
+    }
     if (!bank.length) return null;
     const userElo = (AppState.elo && AppState.elo[subject]) || 1200;
     const hasMin = (q) => cfg.minQeloFloor ? q.qElo >= cfg.minQeloFloor : true;
