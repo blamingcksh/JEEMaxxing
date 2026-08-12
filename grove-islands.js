@@ -275,10 +275,12 @@ function initScene() {
   var card = document.getElementById('gi-card');
   if (!card) return;
   miniRenderer = new THREE.WebGLRenderer({ canvas: card, antialias: true });
-  miniRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  miniRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   miniRenderer.shadowMap.enabled = true;
-  miniRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  miniRenderer.shadowMap.type = THREE.PCFShadowMap;   // tiny card: basic PCF looks identical, far cheaper than PCFSoft
   miniRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  miniRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  miniRenderer.toneMappingExposure = 1.1;
 
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xe6f4ea, 55, 190);
@@ -290,7 +292,7 @@ function initScene() {
   scene.add(hemi);
   sun = new THREE.DirectionalLight(0xfff4d6, 1.9);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
   sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
   sun.shadow.camera.near = 1; sun.shadow.camera.far = 90;
@@ -303,7 +305,7 @@ function initScene() {
     vertexShader: 'varying vec3 vP; void main(){ vP=(modelMatrix*vec4(position,1.)).xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
     fragmentShader: 'uniform vec3 uTop,uHorizon; varying vec3 vP;\n    void main(){ float h=normalize(vP).y; float t=smoothstep(-.08,.5,h);\n    gl_FragColor=vec4(mix(uHorizon,uTop,t),1.); }'
   });
-  scene.add(new THREE.Mesh(new THREE.SphereGeometry(260, 24, 16), skyMat));
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(260, 16, 12), skyMat));
 
   // Static calm water — the old shader animated per-vertex waves plus a per-pixel
   // ripple/sparkle term (sin/cos/pow) every frame, a real GPU cost on low-end
@@ -314,12 +316,14 @@ function initScene() {
     uniforms: {
       uDeep: { value: new THREE.Color(0x2c7da6) },
       uShallow: { value: new THREE.Color(0x7fd4c4) },
-      uSky: { value: new THREE.Color(0xe6f4ea) }
+      uSky: { value: new THREE.Color(0xe6f4ea) },
+      uShoreR: { value: 14 },
+      uFoam: { value: new THREE.Color(0xf2fbf5) }
     },
     vertexShader: 'varying vec2 vXZ;\n    void main(){\n      vec4 wp = modelMatrix*vec4(position,1.);\n      vXZ = wp.xz;\n      gl_Position = projectionMatrix*viewMatrix*wp;\n    }',
-    fragmentShader: 'uniform vec3 uDeep,uShallow,uSky; varying vec2 vXZ;\n    void main(){\n      float d = length(vXZ);\n      float m = smoothstep(8.,55.,d);\n      vec3 col = mix(uShallow,uDeep,m);\n      col = mix(col, uSky, smoothstep(58.,88.,d));\n      gl_FragColor = vec4(col,1.);\n    }'
+    fragmentShader: 'uniform vec3 uDeep,uShallow,uSky,uFoam; uniform float uShoreR; varying vec2 vXZ;\n    void main(){\n      float d = length(vXZ);\n      float m = smoothstep(8.,55.,d);\n      vec3 col = mix(uShallow,uDeep,m);\n      float foam = exp(-(d-uShoreR)*(d-uShoreR)*0.55);\n      col = mix(col, uFoam, foam*0.6);\n      col = mix(col, uSky, smoothstep(58.,88.,d));\n      gl_FragColor = vec4(col,1.);\n    }'
   });
-  var water = new THREE.Mesh(new THREE.CircleGeometry(90, 72), waterMat);
+  var water = new THREE.Mesh(new THREE.CircleGeometry(90, 48), waterMat);
   water.rotation.x = -Math.PI / 2;
   scene.add(water);
 
@@ -871,6 +875,7 @@ function buildWorld(biome, view) {
   var disc = buildLandDisc(biome, seed, R, isl.groundHeight, topY);
   w.uniqueGeos.push(disc.geometry, disc.material);
   group.add(disc);
+  waterMat.uniforms.uShoreR.value = R * 1.08;   // foam ring hugs this island's coastline
   if (isl.river && isl.river.length) {
     var riverW = buildRiverWater(isl.river, isl.groundHeight, topY, Math.max(0.7, R * 0.06), biome.water ? biome.water.shallow : 0x7fd4c4);
     group.add(riverW);
@@ -983,6 +988,7 @@ function applyEnvironment(biome) {
   waterMat.uniforms.uDeep.value.setHex(biome.water.deep);
   waterMat.uniforms.uShallow.value.setHex(biome.water.shallow);
   waterMat.uniforms.uSky.value.setHex(biome.sky.horizon);
+  waterMat.uniforms.uFoam.value.setHex(biome.sky.horizon).lerp(new THREE.Color(0xffffff), 0.4);
   var L = biome.light;
   sun.position.set(L.sunPos[0], L.sunPos[1], L.sunPos[2]);
   sun.color.setHex(L.sunColor); sun.intensity = L.sunInt;
@@ -1373,10 +1379,12 @@ function ensureFull() {
   var cvs = document.getElementById('gi-full-canvas');
   if (!cvs) return;
   fullRenderer = new THREE.WebGLRenderer({ canvas: cvs, antialias: true });
-  fullRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  fullRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
   fullRenderer.shadowMap.enabled = true;
   fullRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
   fullRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  fullRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  fullRenderer.toneMappingExposure = 1.1;
   bindOrbit(cvs, fullOrbit);
   try { new ResizeObserver(sizeCanvases).observe(cvs); } catch (e) {}
 }
