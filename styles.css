@@ -2895,45 +2895,6 @@ select.pomo-select, select.pomo-input {
 @keyframes loadingPulse { 0% { width: 0%; } 50% { width: 70%; } 100% { width: 100%; } }
 
 /* ════════════════════════════════════════════════════════════════════════
-   P2P LEADERBOARD ARENA — token bridge onto .lb-shell
-   ════════════════════════════════════════════════════════════════════════ */
-.lb-shell {
-    --glow: #2ee06e;
-    --glow-dim: rgba(154, 163, 181, 0.25);
-    --danger: var(--glow-red);
-    --bg: transparent;
-    --card: rgba(13, 16, 23, 0.7);
-    --card-2: rgba(8, 10, 15, 0.6);
-    --line: rgba(255, 178, 36, 0.14);
-    --text: var(--text-primary);
-    --muted: var(--text-secondary);
-    font-family: var(--font-body);
-}
-.lb-shell h2 { font-family: var(--font-display); }
-.lb-shell .lb-input { background: rgba(5, 6, 10, 0.65); border-color: var(--line-strong); }
-.lb-shell .lb-input:focus {
-    border-color: var(--telemetry);
-    box-shadow: 0 0 0 3px rgba(61, 220, 255, 0.15);
-}
-.lb-shell .lb-btn { font-family: var(--font-display); letter-spacing: 0.4px; }
-.lb-shell .lb-card { border-radius: 14px; }
-.lb-shell .lb-card.self {
-    border-color: rgba(255, 178, 36, 0.5);
-    box-shadow: 0 0 0 1px rgba(255, 178, 36, 0.15), 0 10px 30px -14px rgba(255, 178, 36, 0.35);
-}
-.lb-shell .lb-self-tag { background: var(--furnace); color: #171207; }
-.lb-shell .lb-trend.up { color: var(--glow-green); }
-.lb-shell .lb-trend.down { color: var(--glow-red); }
-.lb-shell .lb-presence.online { background: var(--glow-green); box-shadow: 0 0 10px rgba(46, 224, 110, 0.85); }
-.lb-shell .lb-room-info code { background: rgba(5, 6, 10, 0.65); color: #a5ecff; font-family: var(--font-num); }
-.lb-shell .lb-empty {
-    border-color: rgba(255, 178, 36, 0.22);
-    background: var(--bg-surface);
-    color: var(--text-secondary);
-}
-@media (max-width: 640px) { .lb-shell .lb-grid { grid-template-columns: 1fr; } }
-
-/* ════════════════════════════════════════════════════════════════════════
    4-PILLAR CHECKPOINT SYSTEM (checkpoint.js runtime UI)
    ════════════════════════════════════════════════════════════════════════ */
 .checkpoint-lockdown {
@@ -4874,11 +4835,6 @@ html[data-mode="dusk"] .bento-toolbar { background: rgba(255,250,240,0.07) !impo
 html[data-mode="dusk"] .bento-ctrl-btn { background: rgba(24,26,44,0.8) !important; }
 
 /* ── Misc floating surfaces ────────────────────────────────────────────── */
-html[data-mode="dusk"] .lb-shell {
-  --card: rgba(255,250,240,0.07);
-  --card-2: rgba(255,250,240,0.04);
-  --line: rgba(255,246,228,0.14);
-}
 html[data-mode="dusk"] .air-popup {
   background: linear-gradient(160deg, rgba(58,62,92,0.96), rgba(44,48,74,0.97)) !important;
 }
@@ -7924,3 +7880,1385 @@ body.gi-full-open { overflow: hidden; }
     margin: 0 auto 10px;
     border: 1px solid rgba(110, 231, 183, 0.4);
 }
+/* ════════════════════════════════════════════════════════════════════════
+   DASHBOARD v3 · "LUMEN" — complete bento reskin
+   ------------------------------------------------------------------------
+   A full visual re-design of the Grind Hub boxes: per-card accent identity,
+   refined glass chrome with depth, redesigned headers (kicker chip + title
+   + description), hero-grade subject tiles, animated progress fills, and a
+   staggered entrance. CSS-only + append-only → reversible by deleting this
+   block. No JS / HTML / data touched. Adapts to every accent theme via the
+   --aes-* variables and to Midnight/Dusk via var(--aes-glass).
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Per-card accent identity ───────────────────────────────────────── */
+/* Each box owns a hue so the whole dashboard reads as one colour-coded
+   cockpit: amber = output, cyan = momentum, green = conquest, red = decay. */
+#view-dashboard .dash-card-tracker  { --card-accent: rgba(255,178,36,0.55);  --card-accent2: rgba(255,122,26,0.38);  --card-glow: rgba(255,178,36,0.30);  --card-accent-solid: #ffb224; }
+#view-dashboard .dash-card-momentum { --card-accent: rgba(61,220,255,0.52);  --card-accent2: rgba(167,139,250,0.40); --card-glow: rgba(61,220,255,0.28);  --card-accent-solid: #3ddcff; }
+#view-dashboard .dash-card-progress { --card-accent: rgba(34,197,94,0.52);   --card-accent2: rgba(45,212,191,0.38);  --card-glow: rgba(34,197,94,0.28);   --card-accent-solid: #22c55e; }
+#view-dashboard .dash-card-decay    { --card-accent: rgba(248,113,113,0.52); --card-accent2: rgba(249,115,22,0.40); --card-glow: rgba(248,113,113,0.28); --card-accent-solid: #f87171; }
+
+/* ── 2. Card chrome — depth, radius, hover lift + accent ring ──────────── */
+#view-dashboard .dash-card {
+    clip-path: none !important;
+    border-radius: 20px !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.10),
+        inset 0 0 0 1px rgba(0,0,0,0.16),
+        0 24px 48px -32px rgba(0,0,0,0.9) !important;
+    transition: transform .28s cubic-bezier(.22,1,.36,1), box-shadow .28s ease;
+}
+#view-dashboard .dash-card:hover {
+    transform: translateY(-5px);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.14),
+        inset 0 0 0 1px rgba(0,0,0,0.14),
+        0 34px 64px -30px rgba(0,0,0,0.95),
+        0 0 0 1px var(--card-glow, rgba(255,178,36,0.3)),
+        0 0 34px -12px var(--card-glow, rgba(255,178,36,0.3)) !important;
+}
+
+/* corner accent tick — grows + glows in the card's own hue */
+#view-dashboard .dash-card::before {
+    height: 2.5px !important;
+    width: 48px !important;
+    border-radius: 3px !important;
+    background: linear-gradient(90deg, var(--card-accent-solid, var(--aes-amber)), transparent) !important;
+    box-shadow: 0 0 12px var(--card-glow, rgba(255,178,36,0.4));
+    transition: width .4s cubic-bezier(.22,1,.36,1);
+    z-index: 2;
+}
+#view-dashboard .dash-card:hover::before { width: 112px !important; }
+
+/* ── 3. Gradient hairline borders — give the flat cards a voice ────────── */
+/* The hero (tracker) keeps its spinning conic edge; momentum keeps its
+   cyan→violet frame. Progress + decay get matching static gradient frames. */
+#view-dashboard .dash-card-progress,
+#view-dashboard .dash-card-decay {
+    border: 1px solid transparent !important;
+    background:
+        var(--aes-glass) padding-box,
+        linear-gradient(160deg,
+            var(--card-accent),
+            rgba(255,255,255,0.05) 42%,
+            var(--card-accent2)) border-box !important;
+}
+
+/* ── 4. Headers — kicker chip + gradient title + description + divider ─── */
+#view-dashboard .dash-card-head {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 16px !important;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+#view-dashboard .dash-card-head .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.6px;
+    text-transform: uppercase;
+    color: var(--card-accent-solid, var(--aes-amber)) !important;
+    padding: 4px 11px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-left: 2px solid var(--card-accent-solid, var(--aes-amber));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    margin-bottom: 2px;
+}
+/* momentum's LIVE pulse dot sits inside the chip — kill its stray margin */
+#view-dashboard .dash-card-momentum .kicker::before { margin-right: 0; }
+
+#view-dashboard .dash-card-head .box-title {
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    line-height: 1.15;
+    margin: 0 !important;
+    background: linear-gradient(180deg, #ffffff, #c8d1e6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+/* bring the descriptions back — styled, so they add hierarchy not noise */
+#view-dashboard .dash-card-head .box-desc {
+    display: block !important;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    margin: 0 !important;
+    max-width: 56ch;
+}
+
+/* ── 5. Subject tiles — halos, hairlines, hero numbers ─────────────────── */
+#view-dashboard .compact-subject-card {
+    position: relative;
+    border-radius: 16px !important;
+    padding: 16px 16px 15px !important;
+    gap: 12px !important;
+    border: 1px solid var(--aes-line) !important;
+    background:
+        radial-gradient(120% 100% at 50% -20%, var(--tile-halo, transparent), transparent 56%),
+        linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.015)) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: transform .22s cubic-bezier(.22,1,.36,1), border-color .22s ease, box-shadow .22s ease;
+}
+#view-dashboard .compact-subject-card[data-subject="physics"]   { --tile-accent: #3ddcff; --tile-halo: rgba(61,220,255,0.16); }
+#view-dashboard .compact-subject-card[data-subject="chemistry"] { --tile-accent: #22c55e; --tile-halo: rgba(34,197,94,0.16); }
+#view-dashboard .compact-subject-card[data-subject="maths"]     { --tile-accent: #ffb224; --tile-halo: rgba(255,178,36,0.16); }
+
+/* top hairline in the tile's hue */
+#view-dashboard .compact-subject-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 14px; right: 14px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--tile-accent), transparent);
+    opacity: 0.75;
+    pointer-events: none;
+}
+#view-dashboard .compact-subject-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255,255,255,0.18) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        0 16px 32px -20px rgba(0,0,0,0.85),
+        0 0 20px -8px var(--tile-halo);
+}
+#view-dashboard .compact-subject-card h4 {
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: var(--text-primary);
+}
+#view-dashboard .compact-subject-card .subj-glyph {
+    width: 24px; height: 24px;
+    border-radius: 8px;
+    font-size: 11px; font-weight: 700;
+    box-shadow: 0 0 12px -3px var(--tile-accent);
+}
+#view-dashboard .compact-stats { display: flex; align-items: baseline; justify-content: space-between; }
+#view-dashboard .compact-stats .counter {
+    font-family: var(--aes-num, 'Space Grotesk', monospace);
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    filter: drop-shadow(0 0 12px var(--tile-halo));
+}
+#view-dashboard .compact-stats .target {
+    font-family: var(--aes-num, 'Space Grotesk', monospace);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* progress pill — inset track, glowing, shimmering fill */
+#view-dashboard .distribution-pill {
+    height: 8px !important;
+    border-radius: 999px !important;
+    background: rgba(0,0,0,0.42) !important;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.04);
+    overflow: hidden;
+}
+#view-dashboard .distribution-fill {
+    border-radius: 999px;
+    box-shadow: 0 0 10px var(--tile-accent);
+    transition: width .5s cubic-bezier(.22,1,.36,1);
+}
+
+/* counter controls — tactile pills */
+#view-dashboard .counter-controls { display: flex; gap: 8px !important; }
+#view-dashboard .counter-btn {
+    flex: 1;
+    height: 32px !important;
+    border-radius: 10px !important;
+    background: rgba(255,255,255,0.05) !important;
+    border: 1px solid var(--aes-line) !important;
+    color: var(--text-secondary) !important;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: var(--aes-num, monospace);
+    cursor: pointer;
+    transition: background .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+#view-dashboard .counter-btn:hover {
+    background: var(--tile-halo) !important;
+    border-color: var(--tile-accent) !important;
+    color: #fff !important;
+    box-shadow: 0 0 14px -2px var(--tile-halo);
+    transform: translateY(-1px);
+}
+#view-dashboard .counter-btn:active { transform: scale(0.9); }
+
+/* ── 6. Variance strip — Δ chip + gradient readout ─────────────────────── */
+#view-dashboard .variance-card {
+    margin-top: 14px !important;
+    padding: 12px 18px !important;
+    border-radius: 14px !important;
+    background: rgba(0,0,0,0.28) !important;
+    border: 1px solid var(--aes-line) !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+#view-dashboard .variance-card span.lbl {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+#view-dashboard .variance-card span.lbl::before {
+    content: 'Δ';
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 19px; height: 19px;
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--aes-amber);
+    background: rgba(255,178,36,0.12);
+    border: 1px solid rgba(255,178,36,0.30);
+}
+#view-dashboard .variance-card span.val {
+    font-family: var(--aes-num, 'Space Grotesk', monospace);
+    font-size: 22px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(180deg, #ffffff, var(--aes-amber));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ── 7. Momentum legend chips ──────────────────────────────────────────── */
+#view-dashboard .dc-mom-legend { gap: 8px 12px; margin-top: 14px; }
+#view-dashboard .dc-lg {
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: border-color .18s ease, color .18s ease, transform .18s ease;
+}
+#view-dashboard .dc-lg:hover {
+    border-color: rgba(255,255,255,0.16);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+/* ── 8. Chapter Progress rows — hover slide + accent rail ──────────────── */
+#chapter-progress-list { gap: 6px !important; }
+.cp-row {
+    padding: 9px 11px !important;
+    border-radius: 12px !important;
+    background: rgba(255,255,255,0.03) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    transition: transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.cp-row:hover {
+    transform: translateX(3px);
+    background: rgba(255,255,255,0.055) !important;
+    border-color: rgba(255,255,255,0.14) !important;
+    box-shadow: -3px 0 0 0 var(--aes-amber);
+}
+.cp-chip {
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    font-size: 11.5px;
+    font-weight: 800;
+    color: #0b0e14;
+    background: linear-gradient(135deg, #e2e8f0, #94a3b8);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+}
+.cp-name { color: var(--text-primary); }
+.cp-bar {
+    height: 8px;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.06);
+    overflow: hidden;
+}
+.cp-fill       { border-radius: 6px; background: linear-gradient(90deg, #f97316, #fb7185) !important; box-shadow: 0 0 8px rgba(249,115,22,0.40); }
+.cp-fill-mid   { background: linear-gradient(90deg, var(--glow-yellow), #f97316) !important; box-shadow: 0 0 8px rgba(234,179,8,0.40); }
+.cp-fill-full  { background: linear-gradient(90deg, var(--glow-green), #4ade80) !important; box-shadow: 0 0 8px rgba(34,197,94,0.40); }
+.cp-pct { font-size: 12.5px; font-weight: 800; }
+
+/* ── 9. Chapter Health legend chips ────────────────────────────────────── */
+#view-dashboard .decay-legend { gap: 8px; margin-top: 12px; }
+#view-dashboard .decay-legend .legend-chip {
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: border-color .18s ease, transform .18s ease;
+}
+#view-dashboard .decay-legend .legend-chip:hover {
+    border-color: rgba(255,255,255,0.16);
+    transform: translateY(-1px);
+}
+
+/* ── 10. Time Bank — hero status strip ─────────────────────────────────── */
+.dc-time-card {
+    border-radius: 20px !important;
+    padding: 20px 26px !important;
+    gap: 18px 30px !important;
+    background:
+        radial-gradient(120% 160% at 12% 0%, rgba(61,220,255,0.10), transparent 55%),
+        linear-gradient(180deg, rgba(16,20,30,0.82), rgba(10,13,20,0.86)) padding-box,
+        conic-gradient(from var(--aes-angle, 0deg),
+            var(--telemetry, #3ddcff), rgba(61,220,255,0.10),
+            var(--vault, #a78bfa), rgba(61,220,255,0.10),
+            var(--telemetry, #3ddcff)) border-box;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.10),
+        0 24px 50px -30px rgba(0,0,0,0.9),
+        0 0 44px -18px rgba(61,220,255,0.28) !important;
+    animation: aesSpin 14s linear infinite;
+}
+/* Dusk: swap the dark padding-box wash for the light evening glass */
+html[data-mode="dusk"] .dc-time-card {
+    background:
+        radial-gradient(120% 160% at 12% 0%, rgba(61,220,255,0.08), transparent 55%),
+        linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.04)) padding-box,
+        conic-gradient(from var(--aes-angle, 0deg),
+            var(--telemetry, #3ddcff), rgba(61,220,255,0.14),
+            var(--vault, #a78bfa), rgba(61,220,255,0.14),
+            var(--telemetry, #3ddcff)) border-box;
+}
+
+/* Dusk: calm the hero Tracker — the full-saturation neon ring + amber
+   bloom read harsh against the light evening glass. */
+html[data-mode="dusk"] #view-dashboard .dash-card-tracker {
+    background:
+        linear-gradient(180deg, rgba(255,250,240,0.10), rgba(255,250,240,0.04)) padding-box,
+        conic-gradient(from var(--aes-angle),
+            rgba(255,178,36,0.38),
+            rgba(61,220,255,0.34),
+            rgba(167,139,250,0.34),
+            rgba(255,178,36,0.38)) border-box !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-tracker::after {
+    background: radial-gradient(120% 80% at 50% -10%, rgba(255,178,36,0.05), transparent 60%);
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-tracker::before {
+    background: linear-gradient(90deg, rgba(255,178,36,0.50), transparent) !important;
+    box-shadow: none !important;
+}
+.dc-time-icon {
+    width: 48px; height: 48px;
+    border-radius: 14px;
+    color: var(--telemetry, #3ddcff);
+    background: rgba(61,220,255,0.10);
+    border: 1px solid rgba(61,220,255,0.30);
+    box-shadow: 0 0 22px -6px rgba(61,220,255,0.55), inset 0 1px 0 rgba(255,255,255,0.10);
+}
+.dc-time-total {
+    font-size: clamp(30px, 4vw, 42px);
+    filter: drop-shadow(0 0 16px rgba(61,220,255,0.30));
+}
+.dc-time-chip {
+    padding: 9px 15px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.09);
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+/* ── 11. Entrance — staggered rise for the supporting cards ────────────── */
+@keyframes dashRise {
+    from { opacity: 0; transform: translateY(16px) scale(0.99); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes dashShimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+    html:not(.fx-effects-off) #view-dashboard .distribution-fill {
+        background-size: 200% 100% !important;
+        animation: dashShimmer 3s linear infinite;
+    }
+    html:not(.fx-effects-off) #view-dashboard.active .dash-card-momentum,
+    html:not(.fx-effects-off) #view-dashboard.active .dash-card-progress,
+    html:not(.fx-effects-off) #view-dashboard.active .dash-card-decay {
+        animation: dashRise .55s cubic-bezier(.22,1,.36,1) backwards;
+    }
+    html:not(.fx-effects-off) #view-dashboard.active .dash-card-momentum { animation-delay: .08s; }
+    html:not(.fx-effects-off) #view-dashboard.active .dash-card-progress { animation-delay: .14s; }
+    html:not(.fx-effects-off) #view-dashboard.active .dash-card-decay    { animation-delay: .20s; }
+}
+
+/* ── 12. Motion guards — FX toggle + reduced-motion users stay calm ────── */
+html.fx-effects-off #view-dashboard .dash-card,
+html.fx-effects-off .dc-time-card,
+html.fx-effects-off #view-dashboard .distribution-fill {
+    animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+    #view-dashboard .dash-card,
+    #view-dashboard .compact-subject-card,
+    .dc-time-card,
+    .cp-row {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   DUSK · TRUE-GLASS — every dashboard box transparent
+   Replaces the light cream fill with a pure frosted-glass surface in Dusk
+   mode. Per-card gradient hairline borders are preserved for colour coding.
+   Append-only + reversible: delete this block to restore the cream Dusk.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* all cards: drop the cream glass, keep a whisper of top-light for depth */
+html[data-mode="dusk"] #view-dashboard .dash-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)) !important;
+}
+
+/* hero Tracker — transparent body, keep the muted spinning edge */
+html[data-mode="dusk"] #view-dashboard .dash-card-tracker {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)) padding-box,
+        conic-gradient(from var(--aes-angle),
+            rgba(255,178,36,0.34),
+            rgba(61,220,255,0.30),
+            rgba(167,139,250,0.30),
+            rgba(255,178,36,0.34)) border-box !important;
+}
+
+/* Momentum — transparent body, cyan→violet frame */
+html[data-mode="dusk"] #view-dashboard .dash-card-momentum {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)) padding-box,
+        linear-gradient(150deg, rgba(61,220,255,0.50), rgba(61,220,255,0.08) 45%,
+            rgba(167,139,250,0.40)) border-box !important;
+}
+
+/* Progress + Decay — transparent body, accent frame */
+html[data-mode="dusk"] #view-dashboard .dash-card-progress,
+html[data-mode="dusk"] #view-dashboard .dash-card-decay {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)) padding-box,
+        linear-gradient(160deg,
+            var(--card-accent), rgba(255,255,255,0.05) 42%,
+            var(--card-accent2)) border-box !important;
+}
+
+/* Time Bank — transparent, keep the cyan conic edge */
+html[data-mode="dusk"] .dc-time-card {
+    background:
+        radial-gradient(120% 160% at 12% 0%, rgba(61,220,255,0.06), transparent 55%),
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)) padding-box,
+        conic-gradient(from var(--aes-angle, 0deg),
+            var(--telemetry, #3ddcff), rgba(61,220,255,0.12),
+            var(--vault, #a78bfa), rgba(61,220,255,0.12),
+            var(--telemetry, #3ddcff)) border-box;
+}
+
+/* nested boxes → transparent */
+html[data-mode="dusk"] #view-dashboard .compact-subject-card,
+html[data-mode="dusk"] #view-dashboard .variance-card,
+html[data-mode="dusk"] .cp-row,
+html[data-mode="dusk"] #view-dashboard .dc-lg,
+html[data-mode="dusk"] .dc-time-chip,
+html[data-mode="dusk"] #view-dashboard .decay-legend .legend-chip {
+    background: rgba(255,255,255,0.015) !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-head .kicker {
+    background: transparent !important;
+}
+
+/* chart frame — see-through, keep the inner depth shadow */
+html[data-mode="dusk"] .graph-display {
+    background:
+        radial-gradient(120% 90% at 50% 0%, rgba(255,240,210,0.04), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)) !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   DUSK · MONOCHROME — no colours, only transparency
+   Neutralises every accent on the dashboard boxes (gradient borders, corner
+   ticks, kicker accents, subject tiles, counters, fills, glyphs, time bank)
+   so Dusk reads as pure frosted glass. Append-only + reversible.
+   Data-viz (candles + health bars + their legend dots) stays semantic.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* cards: neutral hairline, transparent fill, no spinning edge */
+html[data-mode="dusk"] #view-dashboard .dash-card-tracker,
+html[data-mode="dusk"] #view-dashboard .dash-card-momentum,
+html[data-mode="dusk"] #view-dashboard .dash-card-progress,
+html[data-mode="dusk"] #view-dashboard .dash-card-decay {
+    border: 1px solid rgba(255,255,255,0.09) !important;
+    background: transparent !important;
+    animation: none !important;
+}
+/* corner tick → faint neutral, no glow */
+html[data-mode="dusk"] #view-dashboard .dash-card::before {
+    background: linear-gradient(90deg, rgba(255,255,255,0.22), transparent) !important;
+    box-shadow: none !important;
+}
+/* hero amber bloom off */
+html[data-mode="dusk"] #view-dashboard .dash-card-tracker::after {
+    background: none !important;
+}
+
+/* header: neutral kicker + title + live-dot */
+html[data-mode="dusk"] #view-dashboard .dash-card-head .kicker {
+    color: var(--text-secondary) !important;
+    border-left-color: rgba(255,255,255,0.22) !important;
+    background: transparent !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-momentum .kicker::before {
+    background: rgba(255,255,255,0.45) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-head .box-title {
+    background: none !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+}
+
+/* subject tiles: neutral hairline, glyph, counter, fill, buttons */
+html[data-mode="dusk"] #view-dashboard .compact-subject-card::before {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent) !important;
+}
+html[data-mode="dusk"] #view-dashboard .compact-subject-card .subj-glyph {
+    background: rgba(255,255,255,0.07) !important;
+    color: var(--text-secondary) !important;
+    border-color: rgba(255,255,255,0.14) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] #view-dashboard .compact-subject-card .counter {
+    background: none !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    filter: none !important;
+}
+html[data-mode="dusk"] #view-dashboard .distribution-fill {
+    background: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.24)) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] #view-dashboard .counter-btn:hover {
+    background: rgba(255,255,255,0.10) !important;
+    border-color: rgba(255,255,255,0.25) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+}
+
+/* variance strip: Δ chip + value → neutral */
+html[data-mode="dusk"] #view-dashboard .variance-card span.lbl::before {
+    color: var(--text-secondary) !important;
+    background: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.14) !important;
+}
+html[data-mode="dusk"] #view-dashboard .variance-card span.val {
+    background: none !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+}
+
+/* chapter progress: bars + pct + hover rail → neutral */
+html[data-mode="dusk"] .cp-fill,
+html[data-mode="dusk"] .cp-fill-mid,
+html[data-mode="dusk"] .cp-fill-full {
+    background: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.24)) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] .cp-pct {
+    color: var(--text-secondary) !important;
+}
+html[data-mode="dusk"] .cp-row:hover {
+    box-shadow: -3px 0 0 0 rgba(255,255,255,0.30) !important;
+}
+
+/* momentum: chart-frame brackets + drop-shadow → neutral */
+html[data-mode="dusk"] #view-dashboard .dash-card-momentum .graph-display::before {
+    border-top-color: rgba(255,255,255,0.30) !important;
+    border-left-color: rgba(255,255,255,0.30) !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-momentum .graph-display::after {
+    border-bottom-color: rgba(255,255,255,0.30) !important;
+    border-right-color: rgba(255,255,255,0.30) !important;
+}
+html[data-mode="dusk"] #view-dashboard .dash-card-momentum #dynamic-graph,
+html[data-mode="dusk"] #dynamic-graph.graph-bull-run {
+    filter: none !important;
+}
+
+/* time bank: neutral border/fill/icon/number/dots */
+html[data-mode="dusk"] .dc-time-card {
+    border: 1px solid rgba(255,255,255,0.09) !important;
+    background: transparent !important;
+    animation: none !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 24px 50px -30px rgba(0,0,0,0.45) !important;
+}
+html[data-mode="dusk"] .dc-time-icon {
+    color: var(--text-secondary) !important;
+    background: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.14) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] .dc-time-total {
+    background: none !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
+    filter: none !important;
+}
+html[data-mode="dusk"] .dc-time-chip i {
+    background: rgba(255,255,255,0.45) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] .dc-time-chip:hover {
+    border-color: rgba(255,255,255,0.20) !important;
+    box-shadow: none !important;
+}
+
+/* trend flashes (green/red inset glow on the section) off */
+html[data-mode="dusk"] #view-dashboard.trend-bull-market,
+html[data-mode="dusk"] #view-dashboard.trend-under-liquidation {
+    box-shadow: none !important;
+}
+
+/* the frosted backdrop-blur is what makes the boxes read as opaque —
+   drop it in Dusk so they're genuinely see-through */
+html[data-mode="dusk"] #view-dashboard .dash-card,
+html[data-mode="dusk"] .dc-time-card {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   DUSK · MONOCHROME — POMODORO TAB (no colours, only transparency)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* spinning conic ring off → neutral hairline on the box edge */
+html[data-mode="dusk"] .glow-wrapper::before {
+    display: none !important;
+}
+html[data-mode="dusk"] .glow-box-inner {
+    background: transparent !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    border: 1px solid rgba(255,255,255,0.10);
+}
+html[data-mode="dusk"] #view-pomodoro .kicker {
+    color: var(--text-secondary) !important;
+}
+
+/* timer cyan glow off */
+html[data-mode="dusk"] .timer-display {
+    text-shadow: none !important;
+}
+
+/* progress fill → neutral */
+html[data-mode="dusk"] .progress-bar-fill {
+    background: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.24)) !important;
+}
+
+/* beaker → neutral */
+html[data-mode="dusk"] .beaker-container {
+    box-shadow: none !important;
+    border-color: rgba(255,255,255,0.16) !important;
+}
+html[data-mode="dusk"] .beaker-liquid {
+    background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.30), rgba(255,255,255,0.18)) !important;
+}
+
+/* buttons → neutral */
+html[data-mode="dusk"] .btn-quit {
+    background: rgba(255,255,255,0.06) !important;
+    color: var(--text-primary) !important;
+    border-color: rgba(255,255,255,0.16) !important;
+}
+html[data-mode="dusk"] .btn-quit:hover { background: rgba(255,255,255,0.10) !important; }
+html[data-mode="dusk"] .btn-break-opt {
+    background: rgba(255,255,255,0.06) !important;
+    color: var(--text-primary) !important;
+    border-color: rgba(255,255,255,0.16) !important;
+}
+html[data-mode="dusk"] .btn-break-opt:hover { background: rgba(255,255,255,0.10) !important; }
+html[data-mode="dusk"] .pomo-dynamic-btn.on {
+    background: rgba(255,255,255,0.12) !important;
+    border-color: rgba(255,255,255,0.28) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] .pomo-settings-btn:hover {
+    border-color: rgba(255,255,255,0.28) !important;
+    box-shadow: none !important;
+}
+
+/* input focus ring → neutral */
+html[data-mode="dusk"] .pomo-select:focus,
+html[data-mode="dusk"] .pomo-input:focus {
+    border-color: rgba(255,255,255,0.35) !important;
+    box-shadow: none !important;
+}
+
+/* hours box → transparent */
+html[data-mode="dusk"] .hours-box {
+    background: transparent !important;
+}
+
+/* floating mini pomo widget → neutral + transparent */
+html[data-mode="dusk"] .pomo-mini-widget {
+    background: rgba(255,255,255,0.05) !important;
+    border-color: rgba(255,255,255,0.14) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+html[data-mode="dusk"] .mini-status.study,
+html[data-mode="dusk"] .mini-status.break,
+html[data-mode="dusk"] .mini-subject {
+    color: var(--text-secondary) !important;
+    text-shadow: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   POMODORO · LUMEN — Lock-In Mode redesign
+   Two-column cockpit: timer hero (left) + config panel (right), redesigned
+   header / controls / timer / buttons and per-subject hour-stat cards.
+   All colours flow through --pomo-* / --hs-* vars so Dusk stays monochrome.
+   Append-only + reversible: delete this block to restore the original.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── accent tokens (midnight) + Dusk neutralisation ────────────────────── */
+#view-pomodoro {
+    --pomo-accent: #ffb224;
+    --pomo-accent2: #ff7a1a;
+    --pomo-accent-soft: rgba(255,178,36,0.16);
+    --pomo-cyan: #3ddcff;
+    --pomo-cyan-soft: rgba(61,220,255,0.14);
+    --pomo-green: #22c55e;
+    --pomo-green-soft: rgba(34,197,94,0.16);
+    --pomo-red: #f87171;
+    --pomo-red-bg: rgba(248,113,113,0.10);
+    --pomo-red-border: rgba(248,113,113,0.30);
+    --pomo-red-bg-hover: rgba(248,113,113,0.20);
+    --pomo-primary-bg: linear-gradient(100deg, #ffb224, #ff7a1a);
+    --pomo-primary-ink: #1a1206;
+    --pomo-fill: linear-gradient(90deg, #ffb224, #ff7a1a, #3ddcff);
+    --pomo-liquid: linear-gradient(180deg, #ffd166, #ff9f1c, #ff6b35);
+}
+html[data-mode="dusk"] #view-pomodoro {
+    --pomo-accent: rgba(255,255,255,0.55);
+    --pomo-accent2: rgba(255,255,255,0.4);
+    --pomo-accent-soft: rgba(255,255,255,0.08);
+    --pomo-cyan: rgba(255,255,255,0.5);
+    --pomo-cyan-soft: rgba(255,255,255,0.06);
+    --pomo-green: rgba(255,255,255,0.5);
+    --pomo-green-soft: rgba(255,255,255,0.08);
+    --pomo-red: var(--text-primary);
+    --pomo-red-bg: rgba(255,255,255,0.06);
+    --pomo-red-border: rgba(255,255,255,0.16);
+    --pomo-red-bg-hover: rgba(255,255,255,0.10);
+    --pomo-primary-bg: rgba(255,255,255,0.08);
+    --pomo-primary-ink: var(--text-primary);
+    --pomo-fill: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.24));
+    --pomo-liquid: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.30), rgba(255,255,255,0.18));
+}
+
+/* ── layout: header spans, timer hero left, config panel right ─────────── */
+#view-pomodoro .glow-box-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+    grid-template-areas:
+        "header header"
+        "timer  controls";
+    column-gap: 32px;
+    row-gap: 24px;
+    align-items: start;
+    padding: clamp(22px, 3vw, 36px);
+}
+#view-pomodoro .pomo-header       { grid-area: header; }
+#view-pomodoro .timer-container   { grid-area: timer; }
+#view-pomodoro .pomodoro-controls { grid-area: controls; }
+
+/* ── header ────────────────────────────────────────────────────────────── */
+#view-pomodoro .pomo-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+#view-pomodoro .pomo-header .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.6px;
+    text-transform: uppercase;
+    color: var(--pomo-accent);
+    padding: 4px 11px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-left: 2px solid var(--pomo-accent);
+    margin-bottom: 8px;
+}
+#view-pomodoro .pomo-header .box-title {
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 23px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    line-height: 1.15;
+    margin: 0 0 4px;
+    color: #fff;
+}
+#view-pomodoro .pomo-header .box-desc {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    max-width: 54ch;
+}
+#view-pomodoro .pomo-settings-btn {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text-secondary);
+    font-size: 16px;
+    transition: all .18s ease;
+}
+#view-pomodoro .pomo-settings-btn:hover {
+    border-color: rgba(255,255,255,0.3);
+    color: #fff;
+    box-shadow: none;
+    transform: rotate(30deg);
+}
+
+/* ── config panel ──────────────────────────────────────────────────────── */
+#view-pomodoro .pomodoro-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 22px 20px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+}
+#view-pomodoro .pomodoro-controls .input-group { display: flex; flex-direction: column; gap: 8px; }
+#view-pomodoro .pomodoro-controls label {
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+#view-pomodoro .pomo-input,
+#view-pomodoro .pomo-select {
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    color: #fff;
+    font-size: 14px;
+    padding: 0 14px;
+    transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+#view-pomodoro .pomo-input:hover,
+#view-pomodoro .pomo-select:hover { border-color: rgba(255,255,255,0.20); }
+#view-pomodoro .pomo-input:focus,
+#view-pomodoro .pomo-select:focus {
+    border-color: var(--pomo-cyan);
+    box-shadow: 0 0 0 3px var(--pomo-cyan-soft);
+    background: rgba(255,255,255,0.07);
+}
+#view-pomodoro .pomo-dynamic-btn {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1;
+    transition: all .18s ease;
+}
+#view-pomodoro .pomo-dynamic-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+#view-pomodoro .pomo-dynamic-btn.on {
+    background: var(--pomo-green-soft);
+    border-color: var(--pomo-green);
+    color: #fff;
+    box-shadow: 0 0 14px -4px var(--pomo-green);
+}
+
+/* ── timer hero ────────────────────────────────────────────────────────── */
+#view-pomodoro .timer-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 6px 0 8px;
+    min-height: 340px;
+}
+#view-pomodoro .timer-display {
+    font-family: var(--aes-num, 'Space Grotesk', monospace);
+    font-size: clamp(64px, 9vw, 118px);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -3px;
+    margin-bottom: 18px;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    text-shadow: 0 0 30px var(--pomo-cyan);
+}
+#view-pomodoro .timer-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 16px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 26px;
+}
+#view-pomodoro .timer-status::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--pomo-accent);
+    box-shadow: 0 0 9px var(--pomo-accent);
+    animation: dcLivePulse 1.8s ease-in-out infinite;
+}
+#view-pomodoro .progress-bar-container {
+    width: 100%;
+    max-width: 520px;
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.05);
+    overflow: hidden;
+    margin-bottom: 26px;
+}
+#view-pomodoro .progress-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--pomo-fill);
+    background-size: 200% 100%;
+    box-shadow: 0 0 12px var(--pomo-accent-soft);
+    transition: width 1s linear;
+}
+#view-pomodoro .beaker-container {
+    width: 150px;
+    height: 170px;
+    border-radius: 0 0 34px 34px;
+    background: rgba(255,255,255,0.03);
+    border: 2px solid rgba(255,255,255,0.16);
+    border-top: none;
+    box-shadow: inset 0 -20px 40px var(--pomo-accent-soft);
+}
+#view-pomodoro .beaker-liquid {
+    background: var(--pomo-liquid);
+    transition: height 1s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+}
+
+/* ── actions ───────────────────────────────────────────────────────────── */
+#view-pomodoro .timer-actions { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+#view-pomodoro .btn-start {
+    min-width: 170px;
+    padding: 15px 38px;
+    border-radius: 14px;
+    background: var(--pomo-primary-bg);
+    color: var(--pomo-primary-ink);
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 0.6px;
+    box-shadow: 0 10px 26px -10px var(--pomo-accent2), inset 0 1px 0 rgba(255,255,255,0.35);
+}
+#view-pomodoro .btn-start:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.08);
+    box-shadow: 0 14px 32px -10px var(--pomo-accent2), inset 0 1px 0 rgba(255,255,255,0.4);
+}
+#view-pomodoro .btn-pause {
+    min-width: 130px;
+    padding: 15px 28px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.16);
+    color: #fff;
+    font-weight: 700;
+}
+#view-pomodoro .btn-pause:hover { background: rgba(255,255,255,0.14); }
+#view-pomodoro .btn-quit {
+    min-width: 130px;
+    padding: 15px 28px;
+    border-radius: 14px;
+    background: var(--pomo-red-bg);
+    border: 1px solid var(--pomo-red-border);
+    color: var(--pomo-red);
+    font-weight: 700;
+}
+#view-pomodoro .btn-quit:hover { background: var(--pomo-red-bg-hover); }
+#view-pomodoro .break-actions { display: none; justify-content: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+#view-pomodoro .break-actions.active { display: flex; }
+#view-pomodoro .btn-break-opt {
+    padding: 11px 20px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text-secondary);
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 12px;
+    font-weight: 700;
+    transition: all .18s ease;
+}
+#view-pomodoro .btn-break-opt:hover { background: rgba(255,255,255,0.12); color: #fff; transform: translateY(-1px); }
+
+/* ── hour-stat cards ───────────────────────────────────────────────────── */
+#view-pomodoro .hours-box {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+#view-pomodoro .hour-stat {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 20px 22px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    text-align: left;
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+#view-pomodoro .hour-stat:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,0.14);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 14px 28px -18px rgba(0,0,0,0.8);
+}
+#view-pomodoro .hour-stat:nth-child(1) { --hs-accent: #3ddcff; --hs-halo: rgba(61,220,255,0.16); }
+#view-pomodoro .hour-stat:nth-child(2) { --hs-accent: #22c55e; --hs-halo: rgba(34,197,94,0.16); }
+#view-pomodoro .hour-stat:nth-child(3) { --hs-accent: #ffb224; --hs-halo: rgba(255,178,36,0.16); }
+html[data-mode="dusk"] #view-pomodoro .hour-stat { --hs-accent: rgba(255,255,255,0.85); --hs-halo: transparent; }
+#view-pomodoro .hour-stat::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 14px; right: 14px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--hs-accent), transparent);
+    opacity: 0.7;
+    pointer-events: none;
+}
+#view-pomodoro .hour-stat h4 {
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin: 0;
+}
+#view-pomodoro .hour-stat .val {
+    font-family: var(--aes-num, 'Space Grotesk', monospace);
+    font-size: 32px;
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--hs-accent);
+    filter: drop-shadow(0 0 12px var(--hs-halo));
+}
+
+/* ── Dusk: keep the new panels transparent ─────────────────────────────── */
+html[data-mode="dusk"] #view-pomodoro .pomo-header .kicker,
+html[data-mode="dusk"] #view-pomodoro .pomodoro-controls,
+html[data-mode="dusk"] #view-pomodoro .hour-stat {
+    background: transparent !important;
+}
+
+/* ── responsive: collapse to a single column ───────────────────────────── */
+@media (max-width: 900px) {
+    #view-pomodoro .glow-box-inner {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "header"
+            "timer"
+            "controls";
+    }
+    #view-pomodoro .hours-box { grid-template-columns: 1fr; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   SOUNDSCAPE · LUMEN — Focus Soundscape panel (focus-sound.js)
+   Procedural ambient-engine UI: preset chips + 4 shaping sliders + power.
+   Uses --pomo-* accents so Dusk stays monochrome automatically.
+   Append-only + reversible: delete this block to remove the styling.
+   ════════════════════════════════════════════════════════════════════════ */
+
+#view-pomodoro .soundscape-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-top: 16px;
+    padding: clamp(20px, 3vw, 30px);
+    border-radius: 18px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+#view-pomodoro .sc-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+#view-pomodoro .sc-head .kicker {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.6px;
+    text-transform: uppercase;
+    color: var(--pomo-accent);
+    padding: 4px 11px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-left: 2px solid var(--pomo-accent);
+    margin-bottom: 8px;
+}
+#view-pomodoro .sc-head .box-title {
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    line-height: 1.15;
+    margin: 0 0 4px;
+    color: #fff;
+}
+#view-pomodoro .sc-head .box-desc {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    max-width: 60ch;
+}
+
+/* ── power button ───────────────────────────────────────────────────────── */
+#view-pomodoro .sc-power-btn {
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: var(--pomo-accent-soft);
+    border: 1px solid var(--pomo-accent);
+    color: var(--pomo-accent);
+    font-size: 15px;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: all .18s ease;
+}
+#view-pomodoro .sc-power-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 18px -4px var(--pomo-accent);
+}
+#view-pomodoro .sc-power-btn.on {
+    background: var(--pomo-accent);
+    color: var(--pomo-primary-ink);
+    box-shadow: 0 0 22px -4px var(--pomo-accent);
+}
+
+/* ── preset grid ────────────────────────────────────────────────────────── */
+#view-pomodoro .sc-presets {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+}
+#view-pomodoro .sc-preset {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 13px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-secondary);
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .16s ease;
+    text-align: left;
+}
+#view-pomodoro .sc-preset:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.18);
+    color: #fff;
+    transform: translateY(-1px);
+}
+#view-pomodoro .sc-preset .sc-preset-icon { font-size: 17px; line-height: 1; }
+#view-pomodoro .sc-preset.active {
+    background: var(--pomo-accent-soft);
+    border-color: var(--pomo-accent);
+    color: #fff;
+    box-shadow: 0 0 16px -6px var(--pomo-accent), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+/* ── sliders ────────────────────────────────────────────────────────────── */
+#view-pomodoro .sc-sliders {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px 22px;
+}
+#view-pomodoro .sc-slider-row {
+    display: grid;
+    grid-template-columns: 78px 1fr 42px;
+    align-items: center;
+    gap: 12px;
+}
+#view-pomodoro .sc-slider-label {
+    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+#view-pomodoro .sc-slider-val {
+    font-family: var(--aes-num, 'Space Grotesk', monospace);
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    text-align: right;
+}
+#view-pomodoro .sc-range {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.12);
+    outline: none;
+    cursor: pointer;
+}
+#view-pomodoro .sc-range::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; border: none;
+    box-shadow: 0 0 0 3px var(--pomo-accent-soft), 0 0 10px var(--pomo-accent);
+    cursor: pointer;
+    transition: transform .12s ease;
+}
+#view-pomodoro .sc-range::-webkit-slider-thumb:hover { transform: scale(1.15); }
+#view-pomodoro .sc-range::-moz-range-thumb {
+    width: 16px; height: 16px; border: none; border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--pomo-accent-soft), 0 0 10px var(--pomo-accent);
+    cursor: pointer;
+}
+
+/* ── status line ────────────────────────────────────────────────────────── */
+#view-pomodoro .sc-status {
+    font-size: 12px;
+    color: var(--text-secondary);
+    letter-spacing: 0.3px;
+    min-height: 16px;
+}
+
+/* ── Dusk: transparent + monochrome (accent vars already neutralise, but
+      kill the residual white glow on the range thumb + power ring) ─────── */
+html[data-mode="dusk"] #view-pomodoro .soundscape-panel {
+    background: transparent !important;
+    border-color: rgba(255,255,255,0.10) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] #view-pomodoro .sc-power-btn {
+    background: rgba(255,255,255,0.08) !important;
+    border-color: rgba(255,255,255,0.20) !important;
+    color: var(--text-primary) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] #view-pomodoro .sc-power-btn.on {
+    background: rgba(255,255,255,0.16) !important;
+    color: #fff !important;
+}
+html[data-mode="dusk"] #view-pomodoro .sc-preset.active {
+    background: rgba(255,255,255,0.10) !important;
+    border-color: rgba(255,255,255,0.28) !important;
+    box-shadow: none !important;
+}
+html[data-mode="dusk"] #view-pomodoro .sc-range::-webkit-slider-thumb,
+html[data-mode="dusk"] #view-pomodoro .sc-range::-moz-range-thumb {
+    background: #cfcfcf !important;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.12) !important;
+}
+
+/* ── responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    #view-pomodoro .sc-slider-row { grid-template-columns: 68px 1fr 40px; }
+}
+
+/* ── REAL-recording badge on preset chips ───────────────────────────────── */
+#view-pomodoro .sc-preset .sc-preset-real {
+    margin-left: auto;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 1.1px;
+    padding: 2px 5px;
+    border-radius: 999px;
+    background: var(--pomo-accent-soft);
+    color: var(--pomo-accent);
+    border: 1px solid var(--pomo-accent);
+    opacity: 0.85;
+    white-space: nowrap;
+}
+html[data-mode="dusk"] #view-pomodoro .sc-preset .sc-preset-real {
+    background: rgba(255,255,255,0.08) !important;
+    color: var(--text-secondary) !important;
+    border-color: rgba(255,255,255,0.20) !important;
+}
+
+/* ── knob legend hint ───────────────────────────────────────────────────── */
+#view-pomodoro .sc-hint {
+    font-size: 11.5px;
+    letter-spacing: 0.3px;
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+html[data-mode="dusk"] #view-pomodoro .sc-hint { color: var(--text-secondary) !important; }
+
