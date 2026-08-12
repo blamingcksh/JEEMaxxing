@@ -305,16 +305,19 @@ function initScene() {
   });
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(260, 24, 16), skyMat));
 
+  // Static calm water — the old shader animated per-vertex waves plus a per-pixel
+  // ripple/sparkle term (sin/cos/pow) every frame, a real GPU cost on low-end
+  // devices. This frozen version keeps the same shallow→deep→horizon gradient
+  // with zero per-frame work: a flat colored plane, no uTime anywhere.
   waterMat = new THREE.ShaderMaterial({
     transparent: false, fog: false,
     uniforms: {
-      uTime: { value: 0 },
       uDeep: { value: new THREE.Color(0x2c7da6) },
       uShallow: { value: new THREE.Color(0x7fd4c4) },
       uSky: { value: new THREE.Color(0xe6f4ea) }
     },
-    vertexShader: 'uniform float uTime; varying vec2 vXZ;\n    void main(){\n      vec4 wp = modelMatrix*vec4(position,1.);\n      float w = sin(wp.x*.35+uTime*1.2)*.16 + cos(wp.z*.3+uTime*.9)*.16 + sin((wp.x+wp.z)*.14+uTime*.5)*.1;\n      wp.y += w; vXZ = wp.xz;\n      gl_Position = projectionMatrix*viewMatrix*wp;\n    }',
-    fragmentShader: 'uniform float uTime; uniform vec3 uDeep,uShallow,uSky; varying vec2 vXZ;\n    void main(){\n      float d = length(vXZ);\n      float m = smoothstep(8.,55.,d);\n      vec3 col = mix(uShallow,uDeep,m);\n      float rip = sin(d*.9 - uTime*2.)*.5+.5;\n      col += rip*.045*(1.-m);\n      float sp = pow(sin(vXZ.x*2.1+uTime*3.)*sin(vXZ.y*1.7-uTime*2.3)*.5+.5, 9.)*.22;\n      col += sp;\n      col = mix(col, uSky, smoothstep(58.,88.,d));\n      gl_FragColor = vec4(col,1.);\n    }'
+    vertexShader: 'varying vec2 vXZ;\n    void main(){\n      vec4 wp = modelMatrix*vec4(position,1.);\n      vXZ = wp.xz;\n      gl_Position = projectionMatrix*viewMatrix*wp;\n    }',
+    fragmentShader: 'uniform vec3 uDeep,uShallow,uSky; varying vec2 vXZ;\n    void main(){\n      float d = length(vXZ);\n      float m = smoothstep(8.,55.,d);\n      vec3 col = mix(uShallow,uDeep,m);\n      col = mix(col, uSky, smoothstep(58.,88.,d));\n      gl_FragColor = vec4(col,1.);\n    }'
   });
   var water = new THREE.Mesh(new THREE.CircleGeometry(90, 72), waterMat);
   water.rotation.x = -Math.PI / 2;
@@ -812,9 +815,15 @@ function buildRiverWater(river, gh, topY, width, color) {
     else if (i === n - 1) { dx = px0 - river[n - 2].x; dz = pz0 - river[n - 2].z; }
     else { dx = river[i + 1].x - river[i - 1].x; dz = river[i + 1].z - river[i - 1].z; }
     var len = Math.hypot(dx, dz) || 1, px = -dz / len, pz = dx / len;
-    var y2 = topY + gh(px0, pz0) + 0.34;
-    verts.push(px0 + px * width, y2, pz0 + pz * width);
-    verts.push(px0 - px * width, y2, pz0 - pz * width);
+    // Sample each edge vertex at its OWN ground height instead of reusing the
+    // channel-centre height for the whole cross-section. The old flat ribbon sat
+    // at centre+0.34 while the carved banks rise (width*1.35*fade) above the
+    // centre, so it clipped into the ground and flickered where the channel runs
+    // deep. Hugging the terrain keeps the water just above the channel walls.
+    var xL = px0 + px * width, zL = pz0 + pz * width;
+    var xR = px0 - px * width, zR = pz0 - pz * width;
+    verts.push(xL, topY + gh(xL, zL) + 0.34, zL);
+    verts.push(xR, topY + gh(xR, zR) + 0.34, zR);
   }
   var idx = [];
   for (var k = 0; k < n - 1; k++) {
@@ -1770,11 +1779,21 @@ function buildChrome() {
   });
 }
 
-function loop() {
+var lastProc = 0;
+function loop(now) {
   raf = requestAnimationFrame(loop);
+  // Idle guard: animate only while the grove is actually on screen — either the
+  // full explorer (fullOpen) or the dashboard mini card (miniVisible). On Focus
+  // Mode / the Vault / anywhere else, skip ALL physics + rendering so we burn
+  // zero CPU/GPU instead of integrating tree springs into a hidden view.
+  if (document.hidden || (!fullOpen && !miniVisible)) { lastProc = 0; return; }
+  // Frame budget: full explorer ~60fps, the small mini card ~30fps. Skipped
+  // frames don't drain the clock, so dt stays true to real elapsed time.
+  var interval = fullOpen ? 16 : 34;
+  if (now - lastProc < interval) return;
+  lastProc = now;
   var dt = Math.min(clock.getDelta(), 0.05);
   var t = clock.elapsedTime;
-  waterMat.uniforms.uTime.value = t;
   if (world) {
     for (var i = 0; i < world.springs.length; i++) {
       var e = world.springs[i];
