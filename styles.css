@@ -8396,15 +8396,19 @@ html[data-mode="dusk"] .graph-display {
         linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)) !important;
 }
 
-/* ════════════════════════════════════════════════════════════════════════
-   DUSK · MONOCHROME — no colours, only transparency
-   Neutralises every accent on the dashboard boxes (gradient borders, corner
-   ticks, kicker accents, subject tiles, counters, fills, glyphs, time bank)
-   so Dusk reads as pure frosted glass. Append-only + reversible.
-   Data-viz (candles + health bars + their legend dots) stays semantic.
-   ════════════════════════════════════════════════════════════════════════ */
 
-/* cards: neutral hairline, transparent fill, no spinning edge */
+/* the frosted backdrop-blur is what makes the boxes read as opaque —
+   drop it in Dusk so they're genuinely see-through */
+html[data-mode="dusk"] #view-dashboard .dash-card,
+html[data-mode="dusk"] .dc-time-card {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+/* ── DUSK · TRANSPARENT BOXES (feedback colours kept) ───────────────────
+   Boxes are see-through with a faint neutral hairline. Subject glyphs,
+   distribution fills, chapter-progress bars, counters and variance chips
+   keep their colour as feedback. Append-only + reversible. */
 html[data-mode="dusk"] #view-dashboard .dash-card-tracker,
 html[data-mode="dusk"] #view-dashboard .dash-card-momentum,
 html[data-mode="dusk"] #view-dashboard .dash-card-progress,
@@ -8413,17 +8417,13 @@ html[data-mode="dusk"] #view-dashboard .dash-card-decay {
     background: transparent !important;
     animation: none !important;
 }
-/* corner tick → faint neutral, no glow */
 html[data-mode="dusk"] #view-dashboard .dash-card::before {
     background: linear-gradient(90deg, rgba(255,255,255,0.22), transparent) !important;
     box-shadow: none !important;
 }
-/* hero amber bloom off */
 html[data-mode="dusk"] #view-dashboard .dash-card-tracker::after {
     background: none !important;
 }
-
-/* header: neutral kicker + title + live-dot */
 html[data-mode="dusk"] #view-dashboard .dash-card-head .kicker {
     color: var(--text-secondary) !important;
     border-left-color: rgba(255,255,255,0.22) !important;
@@ -8437,25 +8437,8 @@ html[data-mode="dusk"] #view-dashboard .dash-card-head .box-title {
     background: none !important;
     -webkit-text-fill-color: var(--text-primary) !important;
 }
-
-/* subject tiles: neutral hairline, glyph, counter, fill, buttons */
 html[data-mode="dusk"] #view-dashboard .compact-subject-card::before {
     background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent) !important;
-}
-html[data-mode="dusk"] #view-dashboard .compact-subject-card .subj-glyph {
-    background: rgba(255,255,255,0.07) !important;
-    color: var(--text-secondary) !important;
-    border-color: rgba(255,255,255,0.14) !important;
-    box-shadow: none !important;
-}
-html[data-mode="dusk"] #view-dashboard .compact-subject-card .counter {
-    background: none !important;
-    -webkit-text-fill-color: var(--text-primary) !important;
-    filter: none !important;
-}
-html[data-mode="dusk"] #view-dashboard .distribution-fill {
-    background: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.24)) !important;
-    box-shadow: none !important;
 }
 html[data-mode="dusk"] #view-dashboard .counter-btn:hover {
     background: rgba(255,255,255,0.10) !important;
@@ -8463,33 +8446,6 @@ html[data-mode="dusk"] #view-dashboard .counter-btn:hover {
     color: #fff !important;
     box-shadow: none !important;
 }
-
-/* variance strip: Δ chip + value → neutral */
-html[data-mode="dusk"] #view-dashboard .variance-card span.lbl::before {
-    color: var(--text-secondary) !important;
-    background: rgba(255,255,255,0.06) !important;
-    border-color: rgba(255,255,255,0.14) !important;
-}
-html[data-mode="dusk"] #view-dashboard .variance-card span.val {
-    background: none !important;
-    -webkit-text-fill-color: var(--text-primary) !important;
-}
-
-/* chapter progress: bars + pct + hover rail → neutral */
-html[data-mode="dusk"] .cp-fill,
-html[data-mode="dusk"] .cp-fill-mid,
-html[data-mode="dusk"] .cp-fill-full {
-    background: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.24)) !important;
-    box-shadow: none !important;
-}
-html[data-mode="dusk"] .cp-pct {
-    color: var(--text-secondary) !important;
-}
-html[data-mode="dusk"] .cp-row:hover {
-    box-shadow: -3px 0 0 0 rgba(255,255,255,0.30) !important;
-}
-
-/* momentum: chart-frame brackets + drop-shadow → neutral */
 html[data-mode="dusk"] #view-dashboard .dash-card-momentum .graph-display::before {
     border-top-color: rgba(255,255,255,0.30) !important;
     border-left-color: rgba(255,255,255,0.30) !important;
@@ -8498,12 +8454,6 @@ html[data-mode="dusk"] #view-dashboard .dash-card-momentum .graph-display::after
     border-bottom-color: rgba(255,255,255,0.30) !important;
     border-right-color: rgba(255,255,255,0.30) !important;
 }
-html[data-mode="dusk"] #view-dashboard .dash-card-momentum #dynamic-graph,
-html[data-mode="dusk"] #dynamic-graph.graph-bull-run {
-    filter: none !important;
-}
-
-/* time bank: neutral border/fill/icon/number/dots */
 html[data-mode="dusk"] .dc-time-card {
     border: 1px solid rgba(255,255,255,0.09) !important;
     background: transparent !important;
@@ -8528,20 +8478,6 @@ html[data-mode="dusk"] .dc-time-chip i {
 html[data-mode="dusk"] .dc-time-chip:hover {
     border-color: rgba(255,255,255,0.20) !important;
     box-shadow: none !important;
-}
-
-/* trend flashes (green/red inset glow on the section) off */
-html[data-mode="dusk"] #view-dashboard.trend-bull-market,
-html[data-mode="dusk"] #view-dashboard.trend-under-liquidation {
-    box-shadow: none !important;
-}
-
-/* the frosted backdrop-blur is what makes the boxes read as opaque —
-   drop it in Dusk so they're genuinely see-through */
-html[data-mode="dusk"] #view-dashboard .dash-card,
-html[data-mode="dusk"] .dc-time-card {
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
 }
 
 /* ════════════════════════════════════════════════════════════════════════
