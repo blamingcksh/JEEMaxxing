@@ -877,6 +877,7 @@ export async function switchTab(viewId, element) {
     }
     if (viewId === 'dashboard') {
         await renderGraph();
+        try { void renderDailyVarianceHeatmap(); } catch (_) {}
         try { renderChapterDecayGrid(); } catch (_) {}
         try { renderChapterProgressList(); } catch (_) {}
     }
@@ -1009,6 +1010,15 @@ export async function updateUI() {
         varEl.style.color = variance >= 0 ? 'var(--glow-green)' : 'var(--glow-red)';
     }
 
+    // ── Contribution graph: use the same daily variance definition as the
+    // live strip above, but keep the historical grid on the dashboard ledger.
+    try {
+        const dashboard = document.getElementById('view-dashboard');
+        if (dashboard && dashboard.classList.contains('active')) {
+            void renderDailyVarianceHeatmap();
+        }
+    } catch (_) { /* the graph must never block the live counters */ }
+
     // ── Cognitive MMR Matrix hydration (global profile row + subject
     // monitors + deficit lockdown protocol). Runs on every updateUI tick so
     // the dashboard always reflects the live rating state. These three are
@@ -1036,6 +1046,155 @@ export async function updateUI() {
     } catch (_) {
         updateStreakDisplay();
     }
+}
+
+// ==================== DAILY VARIANCE CONTRIBUTION GRAPH ====================
+// GitHub-style 53-week grid over the permanent daily solve ledger. The level
+// is deliberately target-relative so the green intensity means something:
+//   0 = no solves, 1 = under 50% of target, 2 = under target,
+//   3 = target to +25%, 4 = more than +25% over target.
+let _varianceHeatmapRenderToken = 0;
+// Last-render fingerprint (date key + ledger length + live totals). Lets the
+// grid skip pointless rebuilds on updateUI ticks where nothing changed.
+let _varianceHeatmapFingerprint = '';
+
+function _varianceDateKey(date) {
+    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+}
+
+function _varianceEntryCount(entry) {
+    if (!entry || typeof entry !== 'object') return 0;
+    const keys = ['physics', 'chemistry', 'maths'];
+    const hasBreakdown = keys.some(key => Object.prototype.hasOwnProperty.call(entry, key));
+    if (hasBreakdown) return keys.reduce((sum, key) => sum + (Number(entry[key]) || 0), 0);
+    return Number(entry.count) || 0;
+}
+
+function _varianceLevel(count, target) {
+    if (count <= 0) return 0;
+    const ratio = target > 0 ? count / target : 1;
+    if (ratio < 0.5) return 1;
+    if (ratio < 1) return 2;
+    if (ratio < 1.25) return 3;
+    return 4;
+}
+
+export async function renderDailyVarianceHeatmap() {
+    const grid = document.getElementById('daily-variance-grid');
+    if (!grid) return;
+
+    let history = Array.isArray(window._dailyHistoryCache) ? window._dailyHistoryCache : null;
+    if (!history || history.length === 0) {
+        try { history = await getDailyHistory(); } catch (_) { history = []; }
+    }
+
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const todayKey = _varianceDateKey(today);
+    const liveTotal = solved.physics + solved.chemistry + solved.maths;
+
+    // Cheap skip, deliberately BEFORE the render token is bumped so a no-op
+    // tick never invalidates an in-flight render. The grid only changes when
+    // the date, the ledger, or the live counters change.
+    const fingerprint = todayKey + '|' + (history ? history.length : 0) + '|' + liveTotal;
+    if (fingerprint === _varianceHeatmapFingerprint) return;
+    _varianceHeatmapFingerprint = fingerprint;
+
+    const token = ++_varianceHeatmapRenderToken;
+
+    const historyByDate = new Map();
+    (history || []).forEach(entry => {
+        if (entry && entry.date) historyByDate.set(entry.date, entry);
+    });
+
+    // Always prefer live counters for today; the ledger can lag while a solve
+    // is being coalesced into IndexedDB.
+    historyByDate.set(todayKey, {
+        date: todayKey,
+        physics: solved.physics,
+        chemistry: solved.chemistry,
+        maths: solved.maths,
+        count: liveTotal,
+    });
+
+    const liveTarget = AppState.activeTargets.physics + AppState.activeTargets.chemistry + AppState.activeTargets.maths;
+    const historicalTarget = baseTargets.physics + baseTargets.chemistry + baseTargets.maths;
+    const targetFor = dateKey => dateKey === todayKey ? liveTarget : historicalTarget;
+    const varianceFor = (count, target) => target > 0 ? ((count - target) / target) * 100 : 0;
+    const formatVariance = value => (value > 0 ? '+' : '') + value.toFixed(1) + '%';
+
+    // Anchor the full current calendar year to Sunday–Saturday weeks, like
+    // GitHub's contribution graph. Future dates stay visible as empty cells;
+    // only the alignment padding before January 1 and after December 31 hides.
+    const windowStart = new Date(today.getFullYear(), 0, 1, 12);
+    const windowEnd = new Date(today.getFullYear(), 11, 31, 12);
+    const gridStart = new Date(windowStart);
+    gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+    const gridEnd = new Date(windowEnd);
+    gridEnd.setDate(gridEnd.getDate() + (6 - gridEnd.getDay()));
+
+    // Collect the week starts once so the month-label row lines up with the
+    // exact same columns as the dots below it.
+    const weekStarts = [];
+    for (let weekStart = new Date(gridStart); weekStart <= gridEnd; weekStart.setDate(weekStart.getDate() + 7)) {
+        weekStarts.push(new Date(weekStart));
+    }
+
+    // Month labels sit in the week column that contains the 1st of the month.
+    const monthsEl = document.getElementById('daily-variance-months');
+    let monthsHtml = '';
+    if (monthsEl) {
+        const monthSlots = new Array(weekStarts.length).fill('');
+        const monthLetters = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+        for (let m = 0; m < 12; m++) {
+            const first = new Date(today.getFullYear(), m, 1, 12);
+            for (let i = 0; i < weekStarts.length; i++) {
+                const weekEnd = new Date(weekStarts[i]);
+                weekEnd.setDate(weekStarts[i].getDate() + 7);
+                if (first >= weekStarts[i] && first < weekEnd) {
+                    monthSlots[i] = monthLetters[m];
+                    break;
+                }
+            }
+        }
+        monthsHtml = monthSlots.map(label =>
+            `<span class="daily-variance-month">${label}</span>`).join('');
+    }
+
+    const weekHtml = [];
+    for (let w = 0; w < weekStarts.length; w++) {
+        const weekStart = weekStarts[w];
+        const dots = [];
+
+        for (let day = 0; day < 7; day++) {
+            const date = new Date(weekStart);
+            date.setDate(weekStart.getDate() + day);
+            const dateKey = _varianceDateKey(date);
+            const isOutsideWindow = date < windowStart || date > windowEnd;
+            const isFuture = dateKey > todayKey;
+            const entry = historyByDate.get(dateKey);
+            const count = isOutsideWindow || isFuture ? 0 : _varianceEntryCount(entry);
+            const target = targetFor(dateKey) || 1;
+            const variance = varianceFor(count, target);
+            const level = isOutsideWindow || isFuture ? 0 : _varianceLevel(count, target);
+            const isToday = dateKey === todayKey;
+            const label = isOutsideWindow
+                ? `${dateKey}: outside calendar year`
+                : isFuture
+                    ? `${dateKey}: upcoming`
+                    : `${dateKey}: ${count} solved · ${formatVariance(variance)} variance`;
+            const outsideAttr = isOutsideWindow ? ' data-outside="true"' : '';
+            const todayAttr = isToday ? ' data-today="true"' : '';
+            dots.push(`<i class="daily-variance-dot" data-date="${dateKey}" data-level="${level}"${todayAttr}${outsideAttr} aria-hidden="true" title="${label}"></i>`);
+        }
+        weekHtml.push(`<span class="daily-variance-week">${dots.join('')}</span>`);
+    }
+
+    // A stale render (superseded by a newer call while awaiting the ledger)
+    // must never overwrite the freshest DOM.
+    if (token !== _varianceHeatmapRenderToken) return;
+    if (monthsEl) monthsEl.innerHTML = monthsHtml;
+    grid.innerHTML = weekHtml.join('');
 }
 
 // ==================== STREAK VECTOR TRACKER ====================

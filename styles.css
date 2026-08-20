@@ -9198,3 +9198,286 @@ html[data-mode="dusk"] #view-pomodoro .sc-preset .sc-preset-real {
 }
 html[data-mode="dusk"] #view-pomodoro .sc-hint { color: var(--text-secondary) !important; }
 
+/* ════════════════════════════════════════════════════════════════════════
+   DAILY VARIANCE CONTRIBUTION GRAPH
+   GitHub-style calendar-year grid; green intensity is relative to the daily
+   target. Super-minimal surface: fill-only cells on a quiet track, a single
+   green ramp (no borders, no glow), a right-aligned Less/More legend, and a
+   month-label row that lines up with the week columns below. The level ramp
+   lives as tokens on the card so dots and legend swatches always agree.
+   ════════════════════════════════════════════════════════════════════════ */
+#view-dashboard .dash-card-variance {
+    grid-column: span 12;
+    --dv-track: rgba(255,255,255,0.05);
+    --dv-1: rgba(74,222,128,0.14);
+    --dv-2: rgba(74,222,128,0.30);
+    --dv-3: rgba(74,222,128,0.48);
+    --dv-4: rgba(74,222,128,0.72);
+}
+.daily-variance-head {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-height: 15px;
+    margin-bottom: 7px;
+}
+.daily-variance-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.daily-variance-legend-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--dash-subtle, #747b86);
+}
+.daily-variance-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--dv-track);
+}
+.daily-variance-swatch[data-level="1"] { background: var(--dv-1); }
+.daily-variance-swatch[data-level="2"] { background: var(--dv-2); }
+.daily-variance-swatch[data-level="3"] { background: var(--dv-3); }
+.daily-variance-swatch[data-level="4"] { background: var(--dv-4); }
+.daily-variance-scroll {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 2px 7px;
+}
+.daily-variance-months {
+    display: flex;
+    width: min(100%, 848px);
+    min-width: 0;
+    gap: clamp(1px, 0.28vw, 4px);
+    margin-bottom: 4px;
+}
+.daily-variance-month {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.4px;
+    color: var(--dash-subtle, #747b86);
+    white-space: nowrap;
+    overflow: hidden;
+}
+.daily-variance-grid {
+    display: flex;
+    width: min(100%, 848px);
+    min-width: 0;
+    gap: clamp(1px, 0.28vw, 4px);
+    align-items: stretch;
+}
+.daily-variance-week {
+    display: grid;
+    flex: 1 1 0;
+    min-width: 0;
+    grid-template-rows: repeat(7, auto);
+    gap: clamp(1px, 0.28vw, 4px);
+}
+.daily-variance-dot {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    border-radius: 2.5px;
+    background: var(--dv-track);
+    box-sizing: border-box;
+    cursor: help;
+    transition: background .18s ease, box-shadow .18s ease;
+}
+.daily-variance-dot[data-level="1"] { background: var(--dv-1); }
+.daily-variance-dot[data-level="2"] { background: var(--dv-2); }
+.daily-variance-dot[data-level="3"] { background: var(--dv-3); }
+.daily-variance-dot[data-level="4"] { background: var(--dv-4); }
+.daily-variance-dot[data-outside="true"] {
+    opacity: 0;
+    pointer-events: none;
+}
+/* Today gets a quiet ring; hover swaps in a slightly brighter inner one.
+   No scaling, no glow — the restraint IS the aesthetic. */
+.daily-variance-dot[data-today="true"] {
+    outline: 1px solid rgba(255,255,255,0.32);
+    outline-offset: 1px;
+}
+.daily-variance-dot:hover {
+    position: relative;
+    z-index: 1;
+    box-shadow: inset 0 0 0 1px rgba(187,247,208,0.55);
+}
+@media (max-width: 560px) {
+    /* On narrow screens the columns shrink below what a label can hold;
+       the grid alone (plus hover tooltips) still carries the data. */
+    .daily-variance-month { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .daily-variance-dot { transition: none; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   PRODUCTION DASHBOARD SURFACE — restrained dark glass
+   Notion-inspired: neutral depth, quiet borders, readable hierarchy, and
+   semantic colour only where it communicates status or subject ownership.
+   Scoped to the dashboard so the focused/game-like treatment remains intact
+   everywhere else in the app.
+   ════════════════════════════════════════════════════════════════════════ */
+#view-dashboard {
+    --dash-ink: #f1f3f5;
+    --dash-muted: #9a9fa8;
+    --dash-subtle: #747b86;
+    --dash-border: rgba(255,255,255,0.085);
+    --dash-border-hover: rgba(255,255,255,0.16);
+    --dash-surface-top: rgba(30,34,42,0.86);
+    --dash-surface-bottom: rgba(21,24,31,0.78);
+    --dash-inset: rgba(255,255,255,0.055);
+}
+#view-dashboard .dash-grid { gap: 18px; }
+#view-dashboard .dash-card,
+#view-dashboard .dash-card.dash-card-tracker {
+    background: linear-gradient(180deg, var(--dash-surface-top), var(--dash-surface-bottom)) !important;
+    border: 1px solid var(--dash-border) !important;
+    border-radius: 14px !important;
+    box-shadow: inset 0 1px 0 var(--dash-inset), 0 10px 26px -20px rgba(0,0,0,0.9) !important;
+    transition: border-color .18s ease, box-shadow .18s ease !important;
+    animation: none !important;
+}
+#view-dashboard .dash-card:hover {
+    transform: none !important;
+    border-color: var(--dash-border-hover) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 14px 32px -22px rgba(0,0,0,0.95) !important;
+}
+#view-dashboard .dash-card::before {
+    width: 36px !important;
+    height: 1px !important;
+    background: rgba(255,255,255,0.22) !important;
+    box-shadow: none !important;
+}
+#view-dashboard .dash-card-tracker::after { display: none !important; }
+#view-dashboard .dash-card-head { margin-bottom: 14px; }
+#view-dashboard .dash-card-head .kicker {
+    color: var(--dash-subtle) !important;
+    font-size: 9px;
+    letter-spacing: 1.8px;
+}
+#view-dashboard .dash-card-head .box-title {
+    color: var(--dash-ink);
+    font-family: var(--font-body) !important;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+#view-dashboard .dash-card-head .box-desc {
+    display: block;
+    max-width: 56ch;
+    color: var(--dash-muted);
+    font-size: 12px;
+    line-height: 1.45;
+    margin-top: 3px;
+}
+
+/* Subject tiles keep their meaning through muted, solid accents — not glow. */
+#view-dashboard .compact-subject-card {
+    background: rgba(255,255,255,0.035) !important;
+    border: 1px solid rgba(255,255,255,0.075) !important;
+    border-radius: 11px !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.035) !important;
+    transition: background .18s ease, border-color .18s ease !important;
+}
+#view-dashboard .compact-subject-card:hover {
+    transform: none !important;
+    background: rgba(255,255,255,0.055) !important;
+    border-color: rgba(255,255,255,0.14) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.055) !important;
+}
+#view-dashboard .compact-subject-card .counter {
+    background: none !important;
+    -webkit-text-fill-color: currentColor !important;
+    text-shadow: none !important;
+}
+#view-dashboard .compact-subject-card[data-subject="physics"] .counter { color: #8bd8e8; }
+#view-dashboard .compact-subject-card[data-subject="chemistry"] .counter { color: #8fd1a5; }
+#view-dashboard .compact-subject-card[data-subject="maths"] .counter { color: #e4b77b; }
+#view-dashboard .counter-btn {
+    background: rgba(255,255,255,0.045) !important;
+    border-color: rgba(255,255,255,0.10) !important;
+    color: var(--dash-muted) !important;
+    box-shadow: none !important;
+}
+#view-dashboard .counter-btn:hover {
+    background: rgba(255,255,255,0.09) !important;
+    border-color: rgba(255,255,255,0.22) !important;
+    color: var(--dash-ink) !important;
+    box-shadow: none !important;
+}
+#view-dashboard .distribution-pill {
+    background: rgba(0,0,0,0.25) !important;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.45) !important;
+}
+#view-dashboard .distribution-fill { box-shadow: none !important; }
+#view-dashboard .variance-card {
+    background: rgba(255,255,255,0.035) !important;
+    border: 1px solid rgba(255,255,255,0.075) !important;
+    box-shadow: none !important;
+}
+
+#view-dashboard .graph-display {
+    background: linear-gradient(180deg, rgba(11,14,19,0.74), rgba(16,19,25,0.54)) !important;
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.035) !important;
+}
+#view-dashboard .dc-mom-legend { color: var(--dash-subtle); }
+
+/* The layout control is still discoverable, but visually belongs to the app. */
+#view-dashboard #dc-layout-fab {
+    color: var(--dash-muted);
+    background: rgba(25,28,35,0.92);
+    border-color: rgba(255,255,255,0.12);
+    box-shadow: 0 10px 28px -14px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+#view-dashboard #dc-layout-fab:hover {
+    color: var(--dash-ink);
+    border-color: rgba(255,255,255,0.24);
+    box-shadow: 0 12px 30px -14px rgba(0,0,0,0.95), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #view-dashboard .dash-card,
+    #view-dashboard .compact-subject-card,
+    #view-dashboard .counter-btn,
+    #view-dashboard .daily-variance-dot { transition: none !important; }
+}
+
+/* Keep the dashboard surface neutral even when the app-wide Dusk mode is on. */
+html[data-mode] #view-dashboard .dash-card,
+html[data-mode] #view-dashboard .dash-card.dash-card-tracker {
+    background: linear-gradient(180deg, var(--dash-surface-top), var(--dash-surface-bottom)) !important;
+    border-color: var(--dash-border) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(115%) !important;
+    backdrop-filter: blur(16px) saturate(115%) !important;
+    box-shadow: inset 0 1px 0 var(--dash-inset), 0 10px 26px -20px rgba(0,0,0,0.9) !important;
+}
+html[data-mode] #view-dashboard .dash-card:hover {
+    border-color: var(--dash-border-hover) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 14px 32px -22px rgba(0,0,0,0.95) !important;
+}
+html[data-mode] #view-dashboard .compact-subject-card {
+    background: rgba(255,255,255,0.035) !important;
+    border-color: rgba(255,255,255,0.075) !important;
+}
+html[data-mode] #view-dashboard .erm-subject-row,
+html[data-mode] #view-dashboard .erm-sparkline-col,
+html[data-mode] #view-dashboard .variance-card {
+    background: rgba(255,255,255,0.035) !important;
+}
+html[data-mode] #view-dashboard .graph-display {
+    background: linear-gradient(180deg, rgba(11,14,19,0.74), rgba(16,19,25,0.54)) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.035) !important;
+}

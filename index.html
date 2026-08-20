@@ -124,8 +124,8 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                 <div class="dash-card dash-card-tracker">
                     <div class="dash-card-head">
                         <span class="kicker">// DAILY OUTPUT</span>
-                        <h2 class="box-title">Daily Grind Tracker</h2>
-                        <p class="box-desc">Track your daily damage output. Quotas load from Config.</p>
+                        <h2 class="box-title">Today’s Progress</h2>
+                        <p class="box-desc">Track solved questions against your configured targets.</p>
                     </div>
 
                     <div class="subject-card-group">
@@ -175,12 +175,31 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                     </div>
                 </div>
 
+                <!-- Daily variance contribution graph -->
+                <div class="dash-card dash-card-variance" data-bento-span="12">
+                    <div class="daily-variance-head">
+                        <span class="daily-variance-legend" aria-hidden="true">
+                            <span class="daily-variance-legend-label">Less</span>
+                            <i class="daily-variance-swatch" data-level="0"></i>
+                            <i class="daily-variance-swatch" data-level="1"></i>
+                            <i class="daily-variance-swatch" data-level="2"></i>
+                            <i class="daily-variance-swatch" data-level="3"></i>
+                            <i class="daily-variance-swatch" data-level="4"></i>
+                            <span class="daily-variance-legend-label">More</span>
+                        </span>
+                    </div>
+                    <div class="daily-variance-scroll">
+                        <div id="daily-variance-months" class="daily-variance-months" aria-hidden="true"></div>
+                        <div id="daily-variance-grid" class="daily-variance-grid" role="img" aria-label="Daily solved questions relative to your daily target, one cell per day. Denser green means more output."></div>
+                    </div>
+                </div>
+
                 <!-- Momentum Tracker (candlestick engine target) -->
                 <div class="dash-card dash-card-momentum">
                     <div class="dash-card-head">
                         <span class="kicker">// MOMENTUM</span>
-                        <h2 class="box-title">Momentum Tracker</h2>
-                        <p class="box-desc">Predictive yield momentum — OHLC candles, target lock, 5-day projection.</p>
+                        <h2 class="box-title">Momentum</h2>
+                        <p class="box-desc">Recent output and projected pace against your target.</p>
                     </div>
                     <div class="graph-display">
                         <svg id="dynamic-graph" preserveAspectRatio="none"></svg>
@@ -192,7 +211,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                     <div class="dash-card-head">
                         <span class="kicker">// CONQUEST</span>
                         <h2 class="box-title">Chapter Progress</h2>
-                        <p class="box-desc">Completion per chapter, weakest at top. Click a row to grind it.</p>
+                        <p class="box-desc">Completion by chapter, ordered from least complete.</p>
                     </div>
                     <div id="chapter-progress-list"></div>
                 </div>
@@ -201,8 +220,8 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                 <div class="dash-card dash-card-decay">
                     <div class="dash-card-head">
                         <span class="kicker">// MEMORY DECAY</span>
-                        <h2 class="box-title">Chapter Health Grid</h2>
-                        <p class="box-desc">Skill retention per chapter. Lower = you're literally forgetting everything. Fix it.</p>
+                        <h2 class="box-title">Retention Health</h2>
+                        <p class="box-desc">Retention by chapter, so you can prioritise at-risk topics.</p>
                         <div class="decay-legend">
                             <span class="legend-chip legend-green">Based &gt;75%</span>
                             <span class="legend-chip legend-yellow">Mid 45–75%</span>
@@ -1153,7 +1172,7 @@ window.setMatrixSearch = function (value) {
     const BP2 = 1101;                     // mirrors the themed 2-col ↔ 1-col breakpoint
     const V_MIN = 140, V_MAX = 1600;
     const COLS = 12;
-    const IDS = ['tracker', 'momentum', 'progress', 'decay'];
+    const IDS = ['tracker', 'variance', 'momentum', 'progress', 'decay'];
 
     const wide     = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
     const twoCol   = () => window.matchMedia(`(min-width: ${BP2}px)`).matches;
@@ -1169,8 +1188,8 @@ window.setMatrixSearch = function (value) {
 
     // The width a card SHOULD be right now: a user-set value wins, otherwise
     // the themed responsive default (2 columns above 1100px, 1 below).
-    function defaultW(){ return twoCol() ? 6 : 12; }
-    function widthOf(card){ const v = parseInt(card.dataset.bentoSpan, 10); return clamp(Number.isFinite(v) ? v : defaultW(), 3, 12); }
+    function defaultW(card){ return card && card.classList.contains('dash-card-variance') ? 12 : (twoCol() ? 6 : 12); }
+    function widthOf(card){ const v = parseInt(card.dataset.bentoSpan, 10); return clamp(Number.isFinite(v) ? v : defaultW(card), 3, 12); }
 
     // Vertical scroll layer (exists ONLY while a card has a fixed height).
     const isInjected = el => el.classList && (el.classList.contains('bento-handle') || el.classList.contains('bento-handle-v') || el.classList.contains('bento-card-ctrls'));
