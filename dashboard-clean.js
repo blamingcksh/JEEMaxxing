@@ -1,12 +1,10 @@
 /* ============================================================================
-   dashboard-clean.js v2 — Dashboard declutter + Time Bank card + layout FAB
+   dashboard-clean.js v2 — Dashboard declutter + layout FAB
    + momentum legend + persistent top-bar collapse. Append-only.
    - body.dc-active        → CSS hides cat banner + header badge row
    - body.dc-dash-active   → CSS hides "Grind Dashboard / Welcome back"
                              header ONLY while the dashboard tab is live
    - Reparents the Cloud Link cluster into the ☁ Cloud Storage settings card
-   - Injects a live "Time Bank" card (total + per-subject study time) that
-     mirrors the hidden header badge + pomodoro hour-stats (always in sync)
    - Adopts the bento .bento-toolbar as a floating panel behind a pencil FAB
    - Injects a legend into the Momentum Tracker
    - Persists sidebar collapsed/expanded state across refreshes
@@ -19,8 +17,6 @@
 
   var LS_SIDEBAR = 'jeemax_sidebar_collapsed';
   var fab = null, panel = null, dash = null, tries = 0;
-  var timeCard = null, timeTotal = null, timeEls = {};
-  var timeSrcTotal = null, timeSrcSubs = {};
 
   /* ── Top-bar collapse persistence ───────────────────────────────────── */
   function persistSidebar() {
@@ -62,89 +58,6 @@
     if (!card) return;
     cluster.classList.add('dc-cloud-row');
     card.appendChild(cluster);
-  }
-
-  /* ── Time Bank card ─────────────────────────────────────────────────── */
-  function chip(key, name) {
-    return '<div class="dc-time-chip dc-' + key + '"><i></i><span>' + name +
-           '</span><b id="dc-time-' + key + '">0m</b></div>';
-  }
-  function buildTimeCard() {
-    if (timeCard || !dash) return;
-    var grid = dash.querySelector('.dash-grid');
-    if (!grid) return;
-    timeCard = document.createElement('div');
-    timeCard.className = 'dc-time-card';
-    timeCard.innerHTML =
-      '<div class="dc-time-main">' +
-        '<div class="dc-time-icon" aria-hidden="true">' +
-          '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" ' +
-          'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-          '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' +
-        '</div>' +
-        '<div class="dc-time-txt">' +
-          '<span class="dc-time-kicker">TIME BANK · TODAY</span>' +
-          '<span class="dc-time-total" id="dc-time-total">0m</span>' +
-        '</div>' +
-      '</div>' +
-      '<div class="dc-time-subs">' +
-        chip('phys', 'Physics') + chip('chem', 'Chemistry') + chip('math', 'Maths') +
-      '</div>';
-    dash.insertBefore(timeCard, grid);           // sits above the bento grid
-    timeTotal = timeCard.querySelector('#dc-time-total');
-    timeEls.phys = timeCard.querySelector('#dc-time-phys');
-    timeEls.chem = timeCard.querySelector('#dc-time-chem');
-    timeEls.math = timeCard.querySelector('#dc-time-math');
-  }
-
-  /* Live sources: the (hidden) ⏱ header badge + the pomodoro hour-stats.
-     Both are kept fresh by pomodoro.js, so mirroring them is always right. */
-  function watchNode(node) {
-    if (!node || node.__dcWatched) return;
-    node.__dcWatched = true;
-    new MutationObserver(refreshTimes).observe(node,
-      { childList: true, subtree: true, characterData: true });
-  }
-  function findTimeSources() {
-    if (!timeSrcTotal) {
-      var el = null;
-      var ids = ['top-time', 'study-time', 'top-study', 'total-study-time'];
-      for (var i = 0; i < ids.length && !el; i++) el = document.getElementById(ids[i]);
-      if (!el) {
-        var badges = document.querySelectorAll('.header-badges .badge');
-        for (var j = 0; j < badges.length; j++) {
-          if (badges[j].textContent.indexOf('\u23f1') !== -1) {   // ⏱
-            el = badges[j].querySelector('.val') || badges[j];
-            break;
-          }
-        }
-      }
-      if (el) { timeSrcTotal = el; watchNode(el); }
-    }
-    var names = { phys: 'physics', chem: 'chemistry', math: 'maths' };
-    ['phys', 'chem', 'math'].forEach(function (k) {
-      if (timeSrcSubs[k]) return;
-      var stats = document.querySelectorAll('.hours-box .hour-stat');
-      for (var i = 0; i < stats.length; i++) {
-        var h = stats[i].querySelector('h4');
-        if (h && h.textContent.toLowerCase().indexOf(names[k]) !== -1) {
-          var v = stats[i].querySelector('.val');
-          if (v) { timeSrcSubs[k] = v; watchNode(v); }
-          break;
-        }
-      }
-    });
-  }
-  function setText(el, txt) { if (el && el.textContent !== txt) el.textContent = txt; }
-  function refreshTimes() {
-    if (timeSrcTotal && timeTotal) {
-      var t = (timeSrcTotal.textContent || '').trim();
-      if (t) setText(timeTotal, t);
-    }
-    ['phys', 'chem', 'math'].forEach(function (k) {
-      var src = timeSrcSubs[k], dst = timeEls[k];
-      if (src && dst) { var v = (src.textContent || '').trim(); if (v) setText(dst, v); }
-    });
   }
 
   /* ── Momentum legend ────────────────────────────────────────────────── */
@@ -215,10 +128,7 @@
     }
     syncDashFlag();
     if (dash && !fab) buildFab();
-    buildTimeCard();
     buildMomentumLegend();
-    findTimeSources();
-    refreshTimes();
     if (!panel) {
       var tb = (dash && dash.querySelector('.bento-toolbar')) ||
                document.querySelector('.bento-toolbar');
@@ -229,8 +139,6 @@
       else if (fab && fab.parentNode) { fab.parentNode.removeChild(fab); fab = null; }
     }
   }
-
-  setInterval(function () { findTimeSources(); refreshTimes(); }, 2000);
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick);
   else tick();
