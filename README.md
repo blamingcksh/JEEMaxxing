@@ -65,6 +65,27 @@ JEEMaxxing is a **vanilla ES6 module** application. There is no framework, no bu
 
 ---
 
+## 🎨 Design System v4
+
+The UI runs on a single token foundation declared at the top of `styles.css` (`:root` → *DESIGN TOKENS v4*), consumed by a coherent layer at the **end** of the stylesheet (*DESIGN SYSTEM v4 — PROFESSIONAL LAYER*). All seven accent themes × both appearance modes re-skin live because every component color derives from `var(--accent)` / `color-mix()` — no hardcoded hex in the chrome.
+
+| Token family | Values |
+|---|---|
+| Type scale | `--fs-2xs` 9.5 → `--fs-2xl` clamp(22–27px), display/body/numeric font roles |
+| Space scale | `--sp-1` 4px → `--sp-8` 40px (4px base) |
+| Radius scale | `--r-sm` 8 · `--r-md` 10 (controls) · `--r-lg` 14 (rows) · `--r-xl` 20 (cards/modals) · `--r-full` pills |
+| Elevation | `--e-1…3` tinted shadows + `--ring-focus` focus ring |
+| Motion | `--t-fast/med/slow` + `--ease`/`--ease-spring`, reduced-motion guard |
+| Controls | `--ctl-h` 38 · `--ctl-h-sm` 31 · `--ctl-h-lg` 44 |
+
+**Shell (command bar v5).** The sidebar renders as a horizontal glass command bar: brand mark → compact icon utilities (theme, living-world) → centered nav (inline SVG icons, accent-tinted active pill + underline marker) → profile chip → collapse. Auto margins (not `justify-content: center`) keep the nav safely centered without the legacy centered-flex overflow bug.
+
+**Header.** Page identity (dynamic `#view-title` + date) on the left; quiet stat chips (Streak · Focus time, label-over-value with tinted icon squircles) and the calendar/sync action cluster on the right.
+
+**Redesign QA.** `scripts/redesign-probe.mjs` (shell contracts), `redesign-layout-qa.mjs` (4 viewports × 6 views: panning, collisions, HUD overlap), `redesign-theme-qa.mjs` (7 themes × 2 modes accent sweep), `redesign-interaction-qa.mjs` (widget sprint, modals, vault, practice flow).
+
+---
+
 ## 🧩 Module Map
 
 | File | Lines | Role |

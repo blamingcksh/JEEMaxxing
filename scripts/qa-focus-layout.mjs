@@ -34,6 +34,9 @@ const overlap = (a, b) => a && b && !(a.x + a.width < b.x || b.x + b.width < a.x
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await page.addInitScript(() => {
     try { localStorage.setItem('jeemax_boot_seq_date', new Date().toLocaleDateString('en-CA')); } catch {}
+    // This is a GEOMETRY suite: suppress the time-gated nightguard overlay
+    // (03:00–08:00 tier window) so it can't intercept pointer actions.
+    try { localStorage.setItem('jeemax_nightguard_v1', JSON.stringify({ dismissed: true })); } catch {}
 });
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
@@ -45,6 +48,18 @@ for (let i = 0; i < 6; i++) {
     await page.waitForTimeout(300);
 }
 await page.waitForTimeout(500);
+
+// Blocker dismissal — the nightguard modal is time-gated (03:00–08:00 tier
+// window) and would otherwise intercept every pointer action in the suite.
+if (await page.locator('#nightguard-modal.active').count()) {
+    console.log('  (nightguard modal up — dismissing for the geometry run)');
+    await page.evaluate(() => {
+        const m = document.getElementById('nightguard-modal');
+        if (m) m.classList.remove('active');
+        document.body.classList.remove('nightguard-tint');
+    });
+    await page.waitForTimeout(250);
+}
 
 // ── A · Desktop idle: widget clear of the dashboard layout FAB ──────────
 const wbox = await page.locator('#pomo-mini-widget').boundingBox();

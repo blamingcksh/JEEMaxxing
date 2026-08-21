@@ -121,20 +121,37 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
 
 <div class="app-container">
 
-    <!-- ═══════════════ SIDEBAR ═══════════════ -->
+    <!-- ═══════════════ SIDEBAR ═══════════════
+         Icon system: inline SVG (18px · stroke 1.75 · currentColor), so nav
+         glyphs render identically on every platform and follow theme ink. -->
     <aside class="sidebar" id="sidebar">
         <div class="logo-container">
+            <span class="logo-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 4.5 13.5H11L10 21.5 19.5 10.5H12.5Z"/></svg>
+            </span>
             <span class="logo-text">JEEMaxxing</span>
-            <span class="logo-icon-alt">JM</span>
+            <span class="logo-icon-alt">JX</span>
         </div>
 
-        <ul class="nav-menu">
-            <li><a class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard', this)"><span class="icon">⌗</span><span class="text-label">Grind Hub</span></a></li>
-            <li><a class="nav-item" data-tab="pomodoro" onclick="switchTab('pomodoro', this)"><span class="icon">⚡</span><span class="text-label">Focus Mode</span></a></li>
-            <li><a class="nav-item" data-tab="errors" onclick="switchTab('errors', this)"><span class="icon">☣</span><span class="text-label">The Vault</span></a></li>
-            <li><a class="nav-item" data-tab="practice" onclick="switchTab('practice', this)"><span class="icon">📖</span><span class="text-label">Grind Station</span></a></li>
-            <li><a class="nav-item" data-tab="analysis" onclick="switchTab('analysis', this)"><span class="icon">📊</span><span class="text-label">Analysis</span></a></li>
-            <li><a class="nav-item" data-tab="settings" onclick="switchTab('settings', this)"><span class="icon">⚙</span><span class="text-label">Config</span></a></li>
+        <ul class="nav-menu" role="list">
+            <li><a class="nav-item active" data-tab="dashboard" href="#dashboard" onclick="switchTab('dashboard', this);return false;">
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.75" y="3.75" width="7" height="7" rx="1.8"/><rect x="13.25" y="3.75" width="7" height="7" rx="1.8"/><rect x="3.75" y="13.25" width="7" height="7" rx="1.8"/><rect x="13.25" y="13.25" width="7" height="7" rx="1.8"/></svg></span>
+                <span class="text-label">Grind Hub</span></a></li>
+            <li><a class="nav-item" data-tab="pomodoro" href="#focus" onclick="switchTab('pomodoro', this);return false;">
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 4.5 13.5H11L10 21.5 19.5 10.5H12.5Z"/></svg></span>
+                <span class="text-label">Focus Mode</span></a></li>
+            <li><a class="nav-item" data-tab="errors" href="#vault" onclick="switchTab('errors', this);return false;">
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 19 5.8V11c0 4.6-2.9 8.1-7 10-4.1-1.9-7-5.4-7-10V5.8Z"/></svg></span>
+                <span class="text-label">The Vault</span></a></li>
+            <li><a class="nav-item" data-tab="practice" href="#practice" onclick="switchTab('practice', this);return false;">
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.4C10.1 4.8 7.2 4.2 3.8 4.5V18c3.4-.3 6.3.3 8.2 1.9 1.9-1.6 4.8-2.2 8.2-1.9V4.5c-3.4-.3-6.3.3-8.2 1.9Z"/><path d="M12 6.4V19.9"/></svg></span>
+                <span class="text-label">Grind Station</span></a></li>
+            <li><a class="nav-item" data-tab="analysis" href="#analysis" onclick="switchTab('analysis', this);return false;">
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 20V12"/><path d="M12 20V4.5"/><path d="M18.5 20v-5.5"/></svg></span>
+                <span class="text-label">Analysis</span></a></li>
+            <li><a class="nav-item" data-tab="settings" href="#config" onclick="switchTab('settings', this);return false;">
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 5h-6.8"/><path d="M10.2 5H3"/><path d="M21 12h-8.8"/><path d="M8.2 12H3"/><path d="M21 19h-4.8"/><path d="M12.2 19H3"/><path d="M14.2 3v4"/><path d="M8.2 10v4"/><path d="M16.2 17v4"/></svg></span>
+                <span class="text-label">Config</span></a></li>
         </ul>
 
         <!-- app.js injects #global-mmr-row into .user-profile -->
@@ -143,26 +160,36 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
             <span class="username-txt" id="display-username">Grindset</span>
         </div>
 
-        <button class="collapse-btn" onclick="toggleSidebar()">Shrink</button>
+        <button class="collapse-btn" onclick="toggleSidebar()" aria-label="Collapse sidebar" title="Collapse sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6.5 9 12l5.5 5.5"/></svg><span class="collapse-txt">Shrink</span></button>
     </aside>
 
     <!-- ═══════════════ MAIN CONTENT ═══════════════ -->
     <main class="main-content">
 
-        <!-- ── Header + badge cluster ──
-             #top-study-time is written by pomodoro.js updateStudyTimeHeader(). -->
+        <!-- ── Header: page identity left · data chips + actions right ──
+             Contracts: #top-date (app.js), #top-streak (read by cns-load/deload),
+             #top-study-time (pomodoro.js), .sync-cluster/#manual-sync-btn/
+             #sync-sub-text (storage.js / dashboard-clean.js). -->
         <header class="header-section" id="main-header">
-            <div>
-                <h1>Grind Dashboard</h1>
-                <p>Welcome back. <span id="top-date">Today</span> · locked in and loaded. No cap.</p>
+            <div class="header-copy">
+                <h1 id="view-title">Grind Hub</h1>
+                <p class="header-sub">Welcome back · <span id="top-date">Today</span> · locked in and loaded.</p>
             </div>
             <div class="header-badges">
-                <div class="badge" title="Consistency streak">🔥 <span class="val" id="top-streak">0 Days</span></div>
-                <div class="badge" onclick="openModal('calendar-modal')" title="Open calendar">📅 <span class="val">Today</span></div>
-                <div class="badge" title="Total study time today">⏱️ <span class="val" id="top-study-time">0m</span></div>
-                <div class="badge sync-cluster" title="Cloud sync">
-                    <button class="manual-sync-btn" id="manual-sync-btn" onclick="executeUnifiedSync()" aria-label="Force cloud sync">↻</button>
-                    <span class="val" id="sync-sub-text">Cloud Link</span>
+                <div class="badge stat-chip" title="Consistency streak">
+                    <span class="chip-ic chip-streak" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c.9 2.6.4 5-.9 7.2-.8-.6-1.4-1.4-1.8-2.4-1.9 1.9-3.3 4-3.3 6.4A6.9 6.9 0 0 0 12 21a6.9 6.9 0 0 0 6-10.1C16.6 8.2 13.9 5.6 12 3Z"/></svg></span>
+                    <span class="chip-meta"><span class="chip-lbl">Streak</span><span class="val" id="top-streak">0 Days</span></span>
+                </div>
+                <div class="badge stat-chip" title="Total study time today">
+                    <span class="chip-ic chip-time" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.25"/><path d="M12 7.5V12l3 1.8"/></svg></span>
+                    <span class="chip-meta"><span class="chip-lbl">Focus</span><span class="val" id="top-study-time">0m</span></span>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" onclick="openModal('calendar-modal')" title="Open calendar" aria-label="Open calendar" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16"/><path d="M8.5 3.5v3.5"/><path d="M15.5 3.5v3.5"/></svg></button>
+                    <div class="badge sync-cluster" title="Cloud sync">
+                        <button class="manual-sync-btn" id="manual-sync-btn" onclick="executeUnifiedSync()" aria-label="Force cloud sync" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5A8.5 8.5 0 1 0 18 17.2"/><path d="M18.5 12.5 21 10l-3.4-.6"/></svg></button>
+                        <span class="val" id="sync-sub-text">Cloud Link</span>
+                    </div>
                 </div>
             </div>
         </header>
@@ -1628,6 +1655,39 @@ window.clearMatrixFilters = function () {
 
 <script src="forest-bg.js" defer></script>
 <script src="grove-islands.js" defer></script>
+
+<!-- ── View identity: the header H1, document.title and nav aria-current
+     follow the active view. Pure observation — no app.js contract touched. -->
+<script>
+(function () {
+    var TITLES = {
+        dashboard: 'Grind Hub',
+        pomodoro:  'Focus Mode',
+        errors:    'The Vault',
+        practice:  'Grind Station',
+        analysis:  'Analysis',
+        settings:  'Config'
+    };
+    function sync() {
+        var active = document.querySelector('.view-section.active');
+        if (!active) return;
+        var key = (active.id || '').replace(/^view-/, '');
+        var label = TITLES[key];
+        var h = document.getElementById('view-title');
+        if (label && h && h.textContent !== label) h.textContent = label;
+        if (label) document.title = label + ' · JEEMaxxing';
+        document.querySelectorAll('.nav-item').forEach(function (n) {
+            if (n.classList.contains('active')) n.setAttribute('aria-current', 'page');
+            else n.removeAttribute('aria-current');
+        });
+    }
+    document.addEventListener('DOMContentLoaded', sync);
+    window.addEventListener('load', sync);
+    if ('MutationObserver' in window) {
+        new MutationObserver(sync).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
+    }
+})();
+</script>
 
 <!-- Service worker — offline app shell + CDN cache for the installed (add-to-home-screen) build.
      Registered only on https/localhost so file:// and sandboxed pages stay untouched. -->
