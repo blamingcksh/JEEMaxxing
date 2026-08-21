@@ -10,7 +10,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v29'; // Soundscape production pass — seamless real-recording loops, longer regenerated beds, remapped knobs, widget v2 polish
+const VERSION = 'jeemax-v31'; // Vault command-deck — rail navigation, sticky toolbar, compact ERM strip, click-to-practice cards
 const SHELL = [
   './',
   './index.html',

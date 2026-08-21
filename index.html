@@ -444,106 +444,114 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
              VIEW · THE VAULT (ERROR MATRIX)
         ════════════════════════════════════════════ -->
         <section id="view-errors" class="view-section">
-            <!-- Error Resolution Dashboard (BUG HUNT) — moved here from the
-                 dashboard. #erm-today-total MUST keep its inner <div> —
-                 matrix.js does totalEl.querySelector('div').textContent = totalToday. -->
-            <div class="vault-erm">
-                <div class="vault-erm-head">
-                    <div>
-                        <span class="kicker">// BUG HUNT</span>
-                        <h2 class="box-title">Error Resolution Board</h2>
-                        <p class="box-desc">Mistakes crushed today vs your daily fix quota.</p>
-                    </div>
-                    <div class="erm-scoreline">
-                        <div class="erm-total" id="erm-today-total">
-                            <div>0</div>
-                            <span>Bugs Squashed Today</span>
-                        </div>
-                        <span class="erm-avg" id="erm-avg-label">avg 0.0/day</span>
-                    </div>
-                </div>
+            <!-- ══ COMMAND DECK ══ rail = mode + subjects + capture · stage = stats strip + sticky toolbar + board.
+                 Every erm-* id is a live contract with matrix.js renderErrorResolutionDashboard() — do not rename. -->
+            <div class="vault-shell">
 
-                <div class="erm-layout">
-                    <div class="erm-progress-col">
-                        <div class="erm-subject-row">
-                            <div class="erm-subj-header">
-                                <span class="erm-subj-icon">⚛️</span>
-                                <span class="erm-subj-name">Physics</span>
-                                <span class="erm-subj-count" id="erm-phys-val">0</span>
-                                <span class="erm-subj-target" id="erm-phys-tgt">/ 5</span>
-                            </div>
-                            <div class="erm-track"><div class="erm-fill" id="erm-phys-bar" style="width:0%"></div></div>
-                            <span class="erm-pct" id="erm-phys-pct">0%</span>
-                        </div>
-                        <div class="erm-subject-row">
-                            <div class="erm-subj-header">
-                                <span class="erm-subj-icon">🧪</span>
-                                <span class="erm-subj-name">Chemistry</span>
-                                <span class="erm-subj-count" id="erm-chem-val">0</span>
-                                <span class="erm-subj-target" id="erm-chem-tgt">/ 5</span>
-                            </div>
-
-                            <div class="erm-track"><div class="erm-fill" id="erm-chem-bar" style="width:0%"></div></div>
-                            <span class="erm-pct" id="erm-chem-pct">0%</span>
-                        </div>
-                        <div class="erm-subject-row">
-                            <div class="erm-subj-header">
-                                <span class="erm-subj-icon">📐</span>
-                                <span class="erm-subj-name">Maths</span>
-                                <span class="erm-subj-count" id="erm-math-val">0</span>
-                                <span class="erm-subj-target" id="erm-math-tgt">/ 5</span>
-                            </div>
-                            <div class="erm-track"><div class="erm-fill" id="erm-math-bar" style="width:0%"></div></div>
-                            <span class="erm-pct" id="erm-math-pct">0%</span>
-                        </div>
-                    </div>
-                    <div class="erm-sparkline-col">
-                        <span class="kicker">// 15-DAY FIX STREAK</span>
-                        <div class="erm-sparkline-box" id="error-momentum-svg-container"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="subject-folder-grid">
-                <div class="subject-folder active" onclick="openErrorMatrix('physics', this)">
-                    <span class="folder-icon">🌌</span><span>Physics</span>
-                </div>
-                <div class="subject-folder" onclick="openErrorMatrix('chemistry', this)">
-                    <span class="folder-icon">🧪</span><span>Chemistry</span>
-                </div>
-                <div class="subject-folder" onclick="openErrorMatrix('maths', this)">
-                    <span class="folder-icon">📐</span><span>Maths</span>
-                </div>
-            </div>
-
-            <div class="error-matrix-container active" id="error-matrix-container">
-                <div class="vault-head">
-                    <div>
-                        <span class="kicker">// SPACED REPETITION</span>
-                        <h2 class="box-title" id="error-matrix-title">Physics Matrix</h2>
-                    </div>
-                    <div class="error-actions">
-                        <button class="btn btn-primary" onclick="openModal('add-error-modal')">+ Log Mistake</button>
-                        <button class="btn btn-primary" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')" style="background:var(--glow-purple);">🧠 AI Dump</button>
+                <!-- ── RAIL ── -->
+                <aside class="vault-rail">
+                    <div class="rail-block rail-mode">
                         <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()">⚡ Daily Fix Queue</button>
                         <span class="daily-queue-badge" id="daily-queue-badge" style="display:none">20 problems · 5P + 5M + 10C</span>
                     </div>
-                </div>
 
-                <!-- Tactical filter stack — hidden carriers feed matrix.js filterErrors() -->
-                <div class="error-filters">
+                    <div class="rail-label">Subjects</div>
+                    <nav class="vault-subjects" aria-label="Error subjects">
+                        <div class="subject-folder active" data-subject="physics" onclick="openErrorMatrix('physics', this)">
+                            <span class="folder-icon">🌌</span>
+                            <span class="folder-name">Physics</span>
+                            <span class="folder-count" id="folder-count-physics" title="Mistakes tracked in this subject">0</span>
+                        </div>
+                        <div class="subject-folder" data-subject="chemistry" onclick="openErrorMatrix('chemistry', this)">
+                            <span class="folder-icon">🧪</span>
+                            <span class="folder-name">Chemistry</span>
+                            <span class="folder-count" id="folder-count-chemistry" title="Mistakes tracked in this subject">0</span>
+                        </div>
+                        <div class="subject-folder" data-subject="maths" onclick="openErrorMatrix('maths', this)">
+                            <span class="folder-icon">📐</span>
+                            <span class="folder-name">Maths</span>
+                            <span class="folder-count" id="folder-count-maths" title="Mistakes tracked in this subject">0</span>
+                        </div>
+                    </nav>
+
+                    <div class="rail-label">Capture</div>
+                    <div class="rail-actions">
+                        <button class="btn btn-primary rail-btn" onclick="openModal('add-error-modal')">+ Log Mistake</button>
+                        <button class="btn btn-dump rail-btn" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')">🧠 AI Dump</button>
+                    </div>
+                </aside>
+
+                <!-- ── STAGE ── -->
+                <div class="vault-stage">
+                    <!-- Bug Hunt strip — #erm-today-total MUST keep its inner <div> (matrix.js writes querySelector('div')) -->
+                    <div class="vault-erm">
+                        <div class="erm-total" id="erm-today-total">
+                            <div>0</div>
+                            <span>Bugs squashed today</span>
+                        </div>
+                        <div class="erm-bars">
+                            <div class="erm-subject-row">
+                                <span class="erm-subj-icon">⚛️</span>
+                                <span class="erm-subj-name">Phy</span>
+                                <div class="erm-track"><div class="erm-fill" id="erm-phys-bar" style="width:0%"></div></div>
+                                <span class="erm-subj-count" id="erm-phys-val">0</span>
+                                <span class="erm-subj-target" id="erm-phys-tgt">/ 5</span>
+                                <span class="erm-pct" id="erm-phys-pct">0%</span>
+                            </div>
+                            <div class="erm-subject-row">
+                                <span class="erm-subj-icon">🧪</span>
+                                <span class="erm-subj-name">Chem</span>
+                                <div class="erm-track"><div class="erm-fill" id="erm-chem-bar" style="width:0%"></div></div>
+                                <span class="erm-subj-count" id="erm-chem-val">0</span>
+                                <span class="erm-subj-target" id="erm-chem-tgt">/ 5</span>
+                                <span class="erm-pct" id="erm-chem-pct">0%</span>
+                            </div>
+                            <div class="erm-subject-row">
+                                <span class="erm-subj-icon">📐</span>
+                                <span class="erm-subj-name">Mat</span>
+                                <div class="erm-track"><div class="erm-fill" id="erm-math-bar" style="width:0%"></div></div>
+                                <span class="erm-subj-count" id="erm-math-val">0</span>
+                                <span class="erm-subj-target" id="erm-math-tgt">/ 5</span>
+                                <span class="erm-pct" id="erm-math-pct">0%</span>
+                            </div>
+                        </div>
+                        <div class="erm-sparkline-col">
+                            <div class="erm-sparkline-top">
+                                <span class="kicker">// 15-DAY FIX STREAK</span>
+                                <span class="erm-avg" id="erm-avg-label">avg 0.0/day</span>
+                            </div>
+                            <div class="erm-sparkline-box" id="error-momentum-svg-container"></div>
+                        </div>
+                    </div>
+
+                    <div class="stage-head">
+                        <span class="kicker">// SPACED REPETITION</span>
+                        <h2 class="box-title" id="error-matrix-title">Physics Matrix</h2>
+                    </div>
+
+                    <div class="error-matrix-container active" id="error-matrix-container">
+                    <!-- Tactical filter stack — hidden carriers feed matrix.js filterErrors() -->
+                    <div class="error-filters">
                     <input type="hidden" id="filter-status" value="all">
                     <input type="hidden" id="filter-type" value="all">
                     <input type="hidden" id="filter-tag" value="">
 
+                    <div class="emf-row emf-row-search">
+                        <div class="emf-search-wrap">
+                            <span class="emf-search-icon">⌕</span>
+                            <input class="matrix-search" id="matrix-search-input" type="text" placeholder="Hunt by chapter or tag…   (press / )" oninput="setMatrixSearch(this.value)" autocomplete="off">
+                            <button class="emf-search-clear" id="matrix-search-clear" type="button" onclick="clearMatrixSearch()" aria-label="Clear search" hidden>✕</button>
+                        </div>
+                    </div>
+
                     <div class="emf-row">
-                        <span class="emf-row-label">Status Filter</span>
+                        <span class="emf-row-label">Status</span>
                         <div class="emf-pill-group" data-emf-filter="status">
                             <button class="matrix-pill active" data-emf-value="all" onclick="setMatrixFilter('status','all',this)">All</button>
-                            <button class="matrix-pill" data-emf-value="ready" onclick="setMatrixFilter('status','ready',this)">🟢 Ready</button>
-                            <button class="matrix-pill" data-emf-value="due_soon" onclick="setMatrixFilter('status','due_soon',this)">⏳ Due Soon</button>
-                            <button class="matrix-pill" data-emf-value="scheduled" onclick="setMatrixFilter('status','scheduled',this)">🗓️ Scheduled</button>
-                            <button class="matrix-pill" data-emf-value="mastered" onclick="setMatrixFilter('status','mastered',this)">💤 Ghosted</button>
+                            <button class="matrix-pill" data-emf-value="ready" onclick="setMatrixFilter('status','ready',this)">🟢 Due now</button>
+                            <button class="matrix-pill" data-emf-value="due_soon" onclick="setMatrixFilter('status','due_soon',this)">⏳ Due soon</button>
+                            <button class="matrix-pill" data-emf-value="scheduled" onclick="setMatrixFilter('status','scheduled',this)">🗓️ Later</button>
+                            <button class="matrix-pill" data-emf-value="mastered" onclick="setMatrixFilter('status','mastered',this)">💤 Mastered</button>
                         </div>
                     </div>
 
@@ -557,17 +565,15 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                         </div>
                     </div>
 
-                    <div class="emf-row emf-row-search">
-                        <span class="emf-row-label">Search</span>
-                        <div class="emf-search-wrap">
-                            <span class="emf-search-icon">⌕</span>
-                            <input class="matrix-search" type="text" placeholder="Hunt by chapter or tag…" oninput="setMatrixSearch(this.value)" autocomplete="off">
-                        </div>
-                    </div>
                 </div>
 
+                <!-- Live result feedback — written by matrix.js _updateMatrixMeta() -->
+                <div class="matrix-meta" id="matrix-meta" role="status" aria-live="polite" hidden></div>
+
                 <div class="error-list" id="error-list-container"></div>
-            </div>
+                    </div><!-- /error-matrix-container -->
+                </div><!-- /vault-stage -->
+            </div><!-- /vault-shell -->
         </section>
 
         <!-- ═══════════════════════════════════════════
@@ -1206,6 +1212,8 @@ window.setMatrixFilter = function (group, value, el) {
 window.setMatrixSearch = function (value) {
     var carrier = document.getElementById('filter-tag');
     if (carrier) carrier.value = value;
+    var clearBtn = document.getElementById('matrix-search-clear');
+    if (clearBtn) clearBtn.hidden = !value;
     if (typeof window.filterErrors === 'function') {
         // Debounce the O(N) DOM filter pass — every keystroke used to
         // re-scan every rendered card synchronously (stutters on mobile
@@ -1216,6 +1224,29 @@ window.setMatrixSearch = function (value) {
             window.filterErrors();
         }, 150);
     }
+};
+window.clearMatrixSearch = function () {
+    var input = document.getElementById('matrix-search-input');
+    if (input) input.value = '';
+    var carrier = document.getElementById('filter-tag');
+    if (carrier) carrier.value = '';
+    var clearBtn = document.getElementById('matrix-search-clear');
+    if (clearBtn) clearBtn.hidden = true;
+    if (typeof window.filterErrors === 'function') window.filterErrors();
+};
+/* One-tap escape hatch: reset every filter to "show everything".
+   DMMT — a zero-result view must always offer the way back. */
+window.clearMatrixFilters = function () {
+    ['filter-status', 'filter-type'].forEach(function (id) {
+        var c = document.getElementById(id);
+        if (c) c.value = 'all';
+    });
+    var tag = document.getElementById('filter-tag');
+    if (tag) tag.value = '';
+    document.querySelectorAll('.error-filters .matrix-pill').forEach(function (p) {
+        p.classList.toggle('active', p.getAttribute('data-emf-value') === 'all');
+    });
+    window.clearMatrixSearch();
 };
 </script>
 

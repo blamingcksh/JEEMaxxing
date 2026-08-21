@@ -20,7 +20,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
-await register(path.join(HERE, 'loaders', 'esm-sh-stub.mjs'), import.meta.url);
+// register() requires a URL — a plain Windows path ("C:\…") parses as scheme
+// "c:" and dies with ERR_UNSUPPORTED_ESM_URL_SCHEME before any test runs.
+await register(pathToFileURL(path.join(HERE, 'loaders', 'esm-sh-stub.mjs')).href, import.meta.url);
 
 // ── Browser-global stubs (mirror the smoke-boot-sequence pattern) ───────────
 globalThis.window = globalThis;
