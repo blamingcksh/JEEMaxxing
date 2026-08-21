@@ -503,10 +503,10 @@ body {
     grid-template-columns: repeat(12, 1fr);
     gap: 18px;
 }
-.dash-card-tracker  { grid-column: span 7; }
-.dash-card-momentum { grid-column: span 5; }
-.dash-card-progress { grid-column: span 5; }
-.dash-card-decay    { grid-column: span 7; }
+.dash-card-tracker  { grid-column: span 6; }
+.dash-card-momentum { grid-column: span 6; }
+.dash-card-progress { grid-column: span 6; }
+.dash-card-decay    { grid-column: span 6; }
 
 .dash-card {
     position: relative;
@@ -538,76 +538,151 @@ body {
 
 .dash-card-head { margin-bottom: 16px; }
 
-/* ── Daily Grind Tracker ── */
+/* ── Daily Grind Tracker — ring + rows ── */
+.tp-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.tp-variance {
+    font-family: var(--font-num);
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    padding: 6px 11px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    white-space: nowrap;
+    transition: color 0.3s;
+}
+
+.tp-body {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 20px;
+    align-items: center;
+}
+
+/* Ring — three concentric arcs (physics / chemistry / maths), hub = total */
+.tp-ring { position: relative; width: 128px; height: 128px; }
+.tp-ring svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.tp-ring-track,
+.tp-ring-arc {
+    fill: none;
+    stroke-width: 7;
+    stroke-linecap: round;
+}
+.tp-ring-track { stroke: rgba(255, 255, 255, 0.07); }
+.tp-ring-arc {
+    transform: rotate(-90deg);
+    transform-origin: center;
+    transition: stroke-dashoffset 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tp-arc-physics   { stroke: #3ddcff; }
+.tp-arc-chemistry { stroke: #22c55e; }
+.tp-arc-maths     { stroke: #ffb224; }
+
+.tp-ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    text-align: center;
+}
+.tp-total {
+    font-family: var(--font-num);
+    font-size: 27px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+}
+.tp-total i { font-style: normal; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.tp-total-lbl {
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+/* Rows — one slim strip per subject */
 .subject-card-group {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    min-width: 0;
 }
-.compact-subject-card {
+.compact-subject-card.tp-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--line);
     border-radius: 12px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 11px;
     transition: border-color 0.15s, background 0.15s;
 }
-.compact-subject-card:hover { border-color: var(--line-strong); background: rgba(255, 255, 255, 0.05); }
-.compact-subject-card h4 {
-    font-family: var(--font-display);
-    font-size: 13px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    letter-spacing: 0.4px;
-}
+.compact-subject-card.tp-row:hover { border-color: var(--line-strong); background: rgba(255, 255, 255, 0.05); }
+
 .subj-glyph {
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-family: var(--font-num);
     font-size: 11px;
     font-weight: 700;
+    flex: none;
 }
 .compact-subject-card[data-subject="physics"]   .subj-glyph { background: rgba(61, 220, 255, 0.14); color: var(--telemetry); border: 1px solid rgba(61, 220, 255, 0.35); }
 .compact-subject-card[data-subject="chemistry"] .subj-glyph { background: rgba(34, 197, 94, 0.14);  color: var(--glow-green); border: 1px solid rgba(34, 197, 94, 0.35); }
 .compact-subject-card[data-subject="maths"]     .subj-glyph { background: rgba(255, 178, 36, 0.14); color: var(--furnace); border: 1px solid rgba(255, 178, 36, 0.35); }
 
-.compact-stats { display: flex; justify-content: space-between; align-items: baseline; }
-.compact-stats .counter {
-    font-family: var(--font-num);
-    font-size: 30px;
+.tp-row-main { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.tp-row-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+}
+.tp-row-top h4 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 12.5px;
     font-weight: 700;
-    line-height: 1;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+.tp-count {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-family: var(--font-num);
     font-variant-numeric: tabular-nums;
 }
-.compact-stats .target { font-family: var(--font-num); font-size: 12px; color: var(--text-secondary); }
-
-.counter-controls { display: flex; gap: 8px; }
-.counter-btn {
-    flex: 1;
-    height: 30px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--line-strong);
-    color: #fff;
-    cursor: pointer;
-    font-size: 16px;
-    font-family: var(--font-num);
-    transition: all 0.15s;
+.tp-count .counter {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
 }
-.counter-btn:hover { border-color: var(--furnace); background: rgba(255, 178, 36, 0.12); }
-.counter-btn:active { transform: scale(0.94); }
+.tp-count .target { font-size: 11.5px; color: var(--text-secondary); }
 
 .distribution-pill {
     width: 100%;
-    height: 6px;
+    height: 5px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.08);
     overflow: hidden;
@@ -622,31 +697,38 @@ body {
 .compact-subject-card[data-subject="chemistry"] { --start: #2dd4bf; --end: #22c55e; }
 .compact-subject-card[data-subject="maths"]     { --start: #ffb224; --end: #ff7a1a; }
 
-.variance-card {
-    grid-column: 1 / -1;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 12px;
-    padding: 14px 22px;
-    display: flex;
-    justify-content: space-between;
+.counter-controls { display: flex; gap: 6px; }
+.counter-btn {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    display: inline-flex;
     align-items: center;
-    border: 1px solid var(--line);
-    margin-top: 14px;
-}
-.variance-card span.lbl {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 11px;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 1.6px;
-}
-.variance-card span.val {
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--line-strong);
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
     font-family: var(--font-num);
-    font-size: 24px;
-    font-weight: 700;
-    transition: color 0.3s;
+    transition: all 0.15s;
 }
+.counter-btn:hover { border-color: var(--furnace); background: rgba(255, 178, 36, 0.12); }
+.counter-btn:active { transform: scale(0.94); }
+
+/* Elo monitor rides inside a row → compact inline chip on the header line */
+.tp-row .elo-monitor {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    padding: 2px 7px;
+    border-radius: 6px;
+}
+.tp-row .elo-monitor .elo-monitor-rating { font-size: 10.5px; }
+.tp-row .elo-monitor .elo-monitor-tier   { font-size: 8px; }
 
 /* ── Momentum Tracker ── */
 .graph-display {
@@ -3555,7 +3637,6 @@ button, .btn, .nav-item, .counter-btn, .cal-day, .mcq-option, .matrix-pill {
     .practice-header h2 { text-align: center; }
     .vault-head { flex-direction: column; align-items: stretch; }
     .error-actions { justify-content: center; }
-    .variance-card { flex-direction: column; gap: 6px; text-align: center; }
     .cp-selfreport-btns { flex-direction: column; }
     #cp-control-panel { left: 12px; right: 12px; width: auto; bottom: 76px; }
     #cp-ignite-float { left: auto; right: 16px; bottom: 76px; }
@@ -3758,20 +3839,15 @@ html.fx-effects-off .cp-grace-timer.critical { animation: none !important; }
 /* ── 4. De-box the nested tiles (outlined-in-outlined = the noise) ──────── */
 #view-dashboard .compact-subject-card,
 #view-dashboard .erm-subject-row,
-#view-dashboard .erm-sparkline-col,
-#view-dashboard .variance-card {
+#view-dashboard .erm-sparkline-col {
     border: none;
     background: rgba(255, 255, 255, 0.025);
 }
-#view-dashboard .compact-subject-card { padding: 14px 16px; gap: 9px; }
+#view-dashboard .compact-subject-card { padding: 10px 12px; }
 #view-dashboard .erm-subject-row      { padding: 10px 12px; }
-#view-dashboard .variance-card        { margin-top: 12px; padding: 12px 18px; border-radius: 12px; }
 
-/* ── 5. Compact the tracker: smaller counter, tighter +/− controls ──────── */
-#view-dashboard .subject-card-group     { gap: 12px; }
-#view-dashboard .compact-stats .counter { font-size: 25px; }
-#view-dashboard .counter-controls       { gap: 6px; }
-#view-dashboard .counter-btn            { height: 28px; }
+/* ── 5. Tracker rows breathe with the card ───────────────────────────────── */
+#view-dashboard .subject-card-group   { gap: 10px; }
 
 /* ── 6. Quiet the ERM + decay internals a notch ─────────────────────────── */
 #view-dashboard .erm-total div      { font-size: 36px; }
@@ -3796,11 +3872,9 @@ html.fx-effects-off .cp-grace-timer.critical { animation: none !important; }
     #view-dashboard .dash-card-momentum,
     #view-dashboard .dash-card-progress,
     #view-dashboard .dash-card-decay { grid-column: span 12; }
-    #view-dashboard .subject-card-group { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 560px) {
     #view-dashboard .dash-card          { padding: 18px 16px; }
-    #view-dashboard .subject-card-group { grid-template-columns: 1fr; }
     #view-dashboard .erm-layout         { grid-template-columns: 1fr; }
     .main-content .header-section h1    { font-size: 21px; }
 }
@@ -3855,7 +3929,7 @@ body::before {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(255,178,36,0.5), rgba(255,122,26,0.4)); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(255,178,36,0.8), rgba(255,122,26,0.6)); background-clip: padding-box; }
-.counter, .variance-card .val, .hour-stat .val, .erm-subj-count, .erm-total div,
+.counter, .tp-variance, .hour-stat .val, .erm-subj-count, .erm-total div,
 .erm-pct, .timer-display, .timer-display-sm, .mini-time, .badge .val,
 .mmr-score, .elo-monitor-rating, .cp-timer-value, .cp-grace-timer,
 .stat-value { font-family: var(--aes-num); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; letter-spacing: -0.01em; }
@@ -3967,23 +4041,24 @@ body::before {
     background: radial-gradient(120% 80% at 50% -10%, rgba(255,178,36,0.10), transparent 60%);
 }
 
-/* ── subject tiles — glassy, gradient numbers tied to subject ──────────── */
+/* ── subject rows — glassy strips, gradient numbers tied to subject ────── */
 #view-dashboard .compact-subject-card {
     background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015)) !important;
-    border: 1px solid var(--aes-line) !important; border-radius: 16px !important;
+    border: 1px solid var(--aes-line) !important; border-radius: 12px !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
-    transition: transform .2s, border-color .2s, box-shadow .2s;
+    transition: border-color .2s, box-shadow .2s;
 }
-#view-dashboard .compact-subject-card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.16) !important; box-shadow: 0 14px 30px -18px rgba(0,0,0,0.8); }
+#view-dashboard .compact-subject-card:hover { border-color: rgba(255,255,255,0.16) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px -18px rgba(0,0,0,0.8); }
 #view-dashboard .compact-subject-card h4 { font-family: var(--aes-display); letter-spacing: 0.4px; }
 #view-dashboard .compact-subject-card[data-subject="physics"]   .counter { background: linear-gradient(180deg,#bff3ff,#3ddcff); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
 #view-dashboard .compact-subject-card[data-subject="chemistry"] .counter { background: linear-gradient(180deg,#bbf7d0,#22c55e); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-#view-dashboard .compact-subject-card[data-subject="maths"]     .counter { background: linear-gradient(180deg,#ffe2b0,#ff7a1a); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-.counter-btn { border-radius: 10px !important; background: rgba(255,255,255,0.06) !important; border: 1px solid var(--aes-line) !important; transition: all .15s; }
+#view-dashboard .compact-subject-card[data-subject="maths"]     .counter { background: linear-gradient(180deg,#ffe2b0,#ff7a1a); background-clip:text; -webkit-text-fill-color:transparent; }
+.counter-btn { border-radius: 8px !important; background: rgba(255,255,255,0.06) !important; border: 1px solid var(--aes-line) !important; transition: all .15s; }
 .counter-btn:hover { background: rgba(255,178,36,0.18) !important; border-color: rgba(255,178,36,0.5) !important; color: #ffe2b0; box-shadow: 0 0 14px rgba(255,178,36,0.3); }
 .distribution-pill { background: rgba(0,0,0,0.35) !important; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); }
 .distribution-fill { box-shadow: 0 0 12px currentColor; }
-.variance-card { background: rgba(0,0,0,0.28) !important; border: 1px solid var(--aes-line) !important; border-radius: 14px !important; }
+.tp-ring-track { stroke: rgba(255,255,255,0.09); }
+.tp-ring-arc { filter: drop-shadow(0 0 4px rgba(0,0,0,0.5)); }
 
 /* ── chart frame — make even a red chart look like a trading terminal ───── */
 #view-dashboard .graph-display, .graph-display {
@@ -4104,12 +4179,12 @@ body:not(.scratchpad-active) #scratchpad-root:hover { opacity: 1; }
 #view-dashboard .dash-grid.bento-density-compact  { gap: 12px; }
 #view-dashboard .dash-grid.bento-density-compact  .dash-card { padding: 14px 16px; }
 #view-dashboard .dash-grid.bento-density-compact  .box-title { font-size: 16px; }
-#view-dashboard .dash-grid.bento-density-compact  .compact-stats .counter { font-size: 23px; }
+#view-dashboard .dash-grid.bento-density-compact  .tp-count .counter { font-size: 17px; }
 #view-dashboard .dash-grid.bento-density-compact  .erm-total div { font-size: 30px; }
 #view-dashboard .dash-grid.bento-density-spacious { gap: 26px; }
 #view-dashboard .dash-grid.bento-density-spacious .dash-card { padding: 30px 32px; }
 #view-dashboard .dash-grid.bento-density-spacious .box-title { font-size: 21px; }
-#view-dashboard .dash-grid.bento-density-spacious .compact-stats .counter { font-size: 34px; }
+#view-dashboard .dash-grid.bento-density-spacious .tp-count .counter { font-size: 25px; }
 #view-dashboard .dash-grid.bento-density-spacious .erm-total div { font-size: 46px; }
 
 /* ── DRAG PERFORMANCE LAYER (the chunkiness fix) ───────────────────────
@@ -4131,14 +4206,13 @@ body.bento-dragging #view-dashboard .dash-grid { transition: none !important; }
 }
 
 /* ── Container queries: card internals reflow to the card's OWN width ── */
-@container card (max-width: 540px) { .subject-card-group { grid-template-columns: 1fr 1fr; } .subject-card-group .compact-subject-card:nth-child(3) { grid-column: 1 / -1; } }
-@container card (max-width: 420px) { .compact-subject-card { padding: 12px 13px; gap: 8px; } .compact-stats .counter { font-size: 22px; } .compact-subject-card h4 { font-size: 12px; } }
-@container card (max-width: 340px) { .subject-card-group { grid-template-columns: 1fr; } .subject-card-group .compact-subject-card:nth-child(3) { grid-column: auto; } }
+@container card (max-width: 480px) { .tp-body { grid-template-columns: 1fr; } .tp-ring { margin: 0 auto; } }
+@container card (max-width: 420px) { .compact-subject-card.tp-row { padding: 9px 10px; gap: 9px; } .tp-count .counter { font-size: 18px; } .tp-row-top h4 { font-size: 11.5px; } }
 @container card (max-width: 520px) { .erm-layout { grid-template-columns: 1fr; } }
 @container card (min-width: 760px) { #dynamic-graph { height: 220px; } }
 @container card (max-width: 380px) { #dynamic-graph { height: 148px; } }
 @container card (max-width: 420px) { .decay-legend { gap: 6px; } .decay-legend .legend-chip { font-size: 9px; padding: 2px 7px; } }
-@container card (max-width: 360px) { .dash-card-head .box-title { font-size: 15px; } .dash-card-head .kicker { font-size: 9px; letter-spacing: 1.8px; } .variance-card { padding: 10px 14px; } .variance-card span.val { font-size: 20px; } }
+@container card (max-width: 360px) { .dash-card-head .box-title { font-size: 15px; } .dash-card-head .kicker { font-size: 9px; letter-spacing: 1.8px; } .tp-variance { font-size: 11px; padding: 5px 9px; } }
 
 /* ── Mobile: hand control back to the responsive stack ───────────────── */
 @media (max-width: 900px) {
@@ -4776,8 +4850,7 @@ html[data-mode="dusk"] #view-dashboard .compact-subject-card {
   background: linear-gradient(180deg, rgba(255,250,240,0.09), rgba(255,250,240,0.03)) !important;
 }
 html[data-mode="dusk"] #view-dashboard .erm-subject-row,
-html[data-mode="dusk"] #view-dashboard .erm-sparkline-col,
-html[data-mode="dusk"] .variance-card {
+html[data-mode="dusk"] #view-dashboard .erm-sparkline-col {
   background: rgba(255,250,240,0.05) !important;
 }
 html[data-mode="dusk"] .graph-display {
@@ -5661,8 +5734,7 @@ body.forest-bg-on #view-dashboard .dash-card-tracker {
 /* ── 3. Nested tiles: a touch lighter so they layer as glass-on-glass ─── */
 body.forest-bg-on #view-dashboard .compact-subject-card,
 body.forest-bg-on #view-dashboard .erm-subject-row,
-body.forest-bg-on #view-dashboard .erm-sparkline-col,
-body.forest-bg-on #view-dashboard .variance-card {
+body.forest-bg-on #view-dashboard .erm-sparkline-col {
   background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.016)) !important;
   -webkit-backdrop-filter: blur(10px) saturate(130%);
   backdrop-filter: blur(10px) saturate(130%);
@@ -7999,44 +8071,32 @@ body.gi-full-open { overflow: hidden; }
     max-width: 56ch;
 }
 
-/* ── 5. Subject tiles — halos, hairlines, hero numbers ─────────────────── */
+/* ── 5. Subject rows — halos, hairlines, hero numbers ──────────────────── */
 #view-dashboard .compact-subject-card {
     position: relative;
-    border-radius: 16px !important;
-    padding: 16px 16px 15px !important;
-    gap: 12px !important;
+    border-radius: 12px !important;
+    padding: 10px 12px !important;
     border: 1px solid var(--aes-line) !important;
     background:
-        radial-gradient(120% 100% at 50% -20%, var(--tile-halo, transparent), transparent 56%),
+        radial-gradient(140% 160% at 0% 50%, var(--tile-halo, transparent), transparent 55%),
         linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.015)) !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
-    transition: transform .22s cubic-bezier(.22,1,.36,1), border-color .22s ease, box-shadow .22s ease;
+    transition: border-color .22s ease, box-shadow .22s ease;
 }
 #view-dashboard .compact-subject-card[data-subject="physics"]   { --tile-accent: #3ddcff; --tile-halo: rgba(61,220,255,0.16); }
 #view-dashboard .compact-subject-card[data-subject="chemistry"] { --tile-accent: #22c55e; --tile-halo: rgba(34,197,94,0.16); }
 #view-dashboard .compact-subject-card[data-subject="maths"]     { --tile-accent: #ffb224; --tile-halo: rgba(255,178,36,0.16); }
 
-/* top hairline in the tile's hue */
-#view-dashboard .compact-subject-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 14px; right: 14px;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--tile-accent), transparent);
-    opacity: 0.75;
-    pointer-events: none;
-}
 #view-dashboard .compact-subject-card:hover {
-    transform: translateY(-4px);
     border-color: rgba(255,255,255,0.18) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,0.08),
-        0 16px 32px -20px rgba(0,0,0,0.85),
+        0 10px 24px -20px rgba(0,0,0,0.85),
         0 0 20px -8px var(--tile-halo);
 }
 #view-dashboard .compact-subject-card h4 {
     font-family: var(--aes-display, 'Chakra Petch', sans-serif);
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 700;
     letter-spacing: 0.4px;
     color: var(--text-primary);
@@ -8047,24 +8107,23 @@ body.gi-full-open { overflow: hidden; }
     font-size: 11px; font-weight: 700;
     box-shadow: 0 0 12px -3px var(--tile-accent);
 }
-#view-dashboard .compact-stats { display: flex; align-items: baseline; justify-content: space-between; }
-#view-dashboard .compact-stats .counter {
+#view-dashboard .tp-count .counter {
     font-family: var(--aes-num, 'Space Grotesk', monospace);
-    font-size: 34px;
+    font-size: 21px;
     font-weight: 800;
     line-height: 1;
     letter-spacing: -0.02em;
     filter: drop-shadow(0 0 12px var(--tile-halo));
 }
-#view-dashboard .compact-stats .target {
+#view-dashboard .tp-count .target {
     font-family: var(--aes-num, 'Space Grotesk', monospace);
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--text-secondary);
 }
 
-/* progress pill — inset track, glowing, shimmering fill */
+/* progress pill — inset track, glowing fill */
 #view-dashboard .distribution-pill {
-    height: 8px !important;
+    height: 5px !important;
     border-radius: 999px !important;
     background: rgba(0,0,0,0.42) !important;
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.04);
@@ -8076,16 +8135,17 @@ body.gi-full-open { overflow: hidden; }
     transition: width .5s cubic-bezier(.22,1,.36,1);
 }
 
-/* counter controls — tactile pills */
-#view-dashboard .counter-controls { display: flex; gap: 8px !important; }
+/* counter controls — tactile square pills */
+#view-dashboard .counter-controls { display: flex; gap: 6px !important; }
 #view-dashboard .counter-btn {
-    flex: 1;
-    height: 32px !important;
-    border-radius: 10px !important;
+    width: 26px !important;
+    height: 26px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
     background: rgba(255,255,255,0.05) !important;
     border: 1px solid var(--aes-line) !important;
     color: var(--text-secondary) !important;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 700;
     font-family: var(--aes-num, monospace);
     cursor: pointer;
@@ -8100,50 +8160,19 @@ body.gi-full-open { overflow: hidden; }
 }
 #view-dashboard .counter-btn:active { transform: scale(0.9); }
 
-/* ── 6. Variance strip — Δ chip + gradient readout ─────────────────────── */
-#view-dashboard .variance-card {
-    margin-top: 14px !important;
-    padding: 12px 18px !important;
-    border-radius: 14px !important;
-    background: rgba(0,0,0,0.28) !important;
-    border: 1px solid var(--aes-line) !important;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-}
-#view-dashboard .variance-card span.lbl {
+/* ── 6. Variance chip — Δ badge in the header, tinted by sign ──────────── */
+#view-dashboard .tp-variance {
     display: inline-flex;
     align-items: center;
-    gap: 9px;
-    font-family: var(--aes-display, 'Chakra Petch', sans-serif);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1.6px;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-}
-#view-dashboard .variance-card span.lbl::before {
-    content: 'Δ';
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 19px; height: 19px;
-    border-radius: 6px;
-    font-size: 11px;
-    color: var(--aes-amber);
-    background: rgba(255,178,36,0.12);
-    border: 1px solid rgba(255,178,36,0.30);
-}
-#view-dashboard .variance-card span.val {
+    gap: 6px;
     font-family: var(--aes-num, 'Space Grotesk', monospace);
-    font-size: 22px;
+    font-size: 13px;
     font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    background: linear-gradient(180deg, #ffffff, var(--aes-amber));
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    padding: 6px 11px;
+}
+#view-dashboard .tp-variance::before {
+    content: 'Δ';
+    font-size: 11px;
 }
 
 /* ── 7. Momentum legend chips ──────────────────────────────────────────── */
@@ -8378,7 +8407,6 @@ html[data-mode="dusk"] .dc-time-card {
 
 /* nested boxes → transparent */
 html[data-mode="dusk"] #view-dashboard .compact-subject-card,
-html[data-mode="dusk"] #view-dashboard .variance-card,
 html[data-mode="dusk"] .cp-row,
 html[data-mode="dusk"] #view-dashboard .dc-lg,
 html[data-mode="dusk"] .dc-time-chip,
@@ -9422,11 +9450,6 @@ html[data-mode="dusk"] #view-pomodoro .sc-hint { color: var(--text-secondary) !i
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.45) !important;
 }
 #view-dashboard .distribution-fill { box-shadow: none !important; }
-#view-dashboard .variance-card {
-    background: rgba(255,255,255,0.035) !important;
-    border: 1px solid rgba(255,255,255,0.075) !important;
-    box-shadow: none !important;
-}
 
 #view-dashboard .graph-display {
     background: linear-gradient(180deg, rgba(11,14,19,0.74), rgba(16,19,25,0.54)) !important;
@@ -9473,8 +9496,7 @@ html[data-mode] #view-dashboard .compact-subject-card {
     border-color: rgba(255,255,255,0.075) !important;
 }
 html[data-mode] #view-dashboard .erm-subject-row,
-html[data-mode] #view-dashboard .erm-sparkline-col,
-html[data-mode] #view-dashboard .variance-card {
+html[data-mode] #view-dashboard .erm-sparkline-col {
     background: rgba(255,255,255,0.035) !important;
 }
 html[data-mode] #view-dashboard .graph-display {

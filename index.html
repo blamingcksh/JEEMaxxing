@@ -122,56 +122,88 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
 
                 <!-- Daily Grind Tracker -->
                 <div class="dash-card dash-card-tracker">
+                    <div class="dash-card-head tp-head">
+                        <div class="tp-head-text">
+                            <span class="kicker">// DAILY OUTPUT</span>
+                            <h2 class="box-title">Today’s Progress</h2>
+                        </div>
+                        <span class="tp-variance" id="variance-val" title="Solved vs target today">0.0%</span>
+                    </div>
+
+                    <div class="tp-body">
+                        <div class="tp-ring" role="img" aria-label="Total questions solved today versus your combined target">
+                            <svg viewBox="0 0 120 120" aria-hidden="true">
+                                <circle class="tp-ring-track" cx="60" cy="60" r="50"></circle>
+                                <circle class="tp-ring-track" cx="60" cy="60" r="40"></circle>
+                                <circle class="tp-ring-track" cx="60" cy="60" r="30"></circle>
+                                <circle class="tp-ring-arc tp-arc-physics" id="tp-arc-physics" cx="60" cy="60" r="50"></circle>
+                                <circle class="tp-ring-arc tp-arc-chemistry" id="tp-arc-chemistry" cx="60" cy="60" r="40"></circle>
+                                <circle class="tp-ring-arc tp-arc-maths" id="tp-arc-maths" cx="60" cy="60" r="30"></circle>
+                            </svg>
+                            <div class="tp-ring-center">
+                                <span class="tp-total"><b id="tp-total">0</b><i id="tp-total-tgt">/ 30</i></span>
+                                <span class="tp-total-lbl">Solved</span>
+                            </div>
+                        </div>
+
+                        <div class="subject-card-group tp-rows">
+                            <div class="compact-subject-card tp-row" data-subject="physics">
+                                <span class="subj-glyph">P</span>
+                                <div class="tp-row-main">
+                                    <div class="tp-row-top">
+                                        <h4>Physics</h4>
+                                        <span class="tp-count"><span class="counter" id="physics-count">0</span><span class="target" id="tgt-phys-lbl">/ 10</span></span>
+                                    </div>
+                                    <div class="distribution-pill"><div class="distribution-fill" id="physics-bar" style="width:0%"></div></div>
+                                </div>
+                                <div class="counter-controls">
+                                    <button class="counter-btn" onclick="changeCount('physics', -1)" aria-label="Decrement physics">−</button>
+                                    <button class="counter-btn" onclick="changeCount('physics', 1)" aria-label="Increment physics">+</button>
+                                </div>
+                            </div>
+
+                            <div class="compact-subject-card tp-row" data-subject="chemistry">
+                                <span class="subj-glyph">C</span>
+                                <div class="tp-row-main">
+                                    <div class="tp-row-top">
+                                        <h4>Chemistry</h4>
+                                        <span class="tp-count"><span class="counter" id="chemistry-count">0</span><span class="target" id="tgt-chem-lbl">/ 10</span></span>
+                                    </div>
+                                    <div class="distribution-pill"><div class="distribution-fill" id="chemistry-bar" style="width:0%"></div></div>
+                                </div>
+                                <div class="counter-controls">
+                                    <button class="counter-btn" onclick="changeCount('chemistry', -1)" aria-label="Decrement chemistry">−</button>
+                                    <button class="counter-btn" onclick="changeCount('chemistry', 1)" aria-label="Increment chemistry">+</button>
+                                </div>
+                            </div>
+
+                            <div class="compact-subject-card tp-row" data-subject="maths">
+                                <span class="subj-glyph">M</span>
+                                <div class="tp-row-main">
+                                    <div class="tp-row-top">
+                                        <h4>Maths</h4>
+                                        <span class="tp-count"><span class="counter" id="maths-count">0</span><span class="target" id="tgt-math-lbl">/ 10</span></span>
+                                    </div>
+                                    <div class="distribution-pill"><div class="distribution-fill" id="maths-bar" style="width:0%"></div></div>
+                                </div>
+                                <div class="counter-controls">
+                                    <button class="counter-btn" onclick="changeCount('maths', -1)" aria-label="Decrement maths">−</button>
+                                    <button class="counter-btn" onclick="changeCount('maths', 1)" aria-label="Increment maths">+</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Momentum Tracker (candlestick engine target) -->
+                <div class="dash-card dash-card-momentum">
                     <div class="dash-card-head">
-                        <span class="kicker">// DAILY OUTPUT</span>
-                        <h2 class="box-title">Today’s Progress</h2>
-                        <p class="box-desc">Track solved questions against your configured targets.</p>
+                        <span class="kicker">// MOMENTUM</span>
+                        <h2 class="box-title">Momentum</h2>
+                        <p class="box-desc">Recent output and projected pace against your target.</p>
                     </div>
-
-                    <div class="subject-card-group">
-                        <div class="compact-subject-card" data-subject="physics">
-                            <h4>Physics <span class="subj-glyph">P</span></h4>
-                            <div class="compact-stats">
-                                <span class="counter" id="physics-count">0</span>
-                                <span class="target" id="tgt-phys-lbl">/ 10</span>
-                            </div>
-                            <div class="distribution-pill"><div class="distribution-fill" id="physics-bar" style="width:0%"></div></div>
-                            <div class="counter-controls">
-                                <button class="counter-btn" onclick="changeCount('physics', -1)" aria-label="Decrement physics">−</button>
-                                <button class="counter-btn" onclick="changeCount('physics', 1)" aria-label="Increment physics">+</button>
-                            </div>
-                        </div>
-
-                        <div class="compact-subject-card" data-subject="chemistry">
-                            <h4>Chemistry <span class="subj-glyph">C</span></h4>
-                            <div class="compact-stats">
-                                <span class="counter" id="chemistry-count">0</span>
-                                <span class="target" id="tgt-chem-lbl">/ 10</span>
-                            </div>
-                            <div class="distribution-pill"><div class="distribution-fill" id="chemistry-bar" style="width:0%"></div></div>
-                            <div class="counter-controls">
-                                <button class="counter-btn" onclick="changeCount('chemistry', -1)" aria-label="Decrement chemistry">−</button>
-                                <button class="counter-btn" onclick="changeCount('chemistry', 1)" aria-label="Increment chemistry">+</button>
-                            </div>
-                        </div>
-
-                        <div class="compact-subject-card" data-subject="maths">
-                            <h4>Maths <span class="subj-glyph">M</span></h4>
-                            <div class="compact-stats">
-                                <span class="counter" id="maths-count">0</span>
-                                <span class="target" id="tgt-math-lbl">/ 10</span>
-                            </div>
-                            <div class="distribution-pill"><div class="distribution-fill" id="maths-bar" style="width:0%"></div></div>
-                            <div class="counter-controls">
-                                <button class="counter-btn" onclick="changeCount('maths', -1)" aria-label="Decrement maths">−</button>
-                                <button class="counter-btn" onclick="changeCount('maths', 1)" aria-label="Increment maths">+</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="variance-card">
-                        <span class="lbl">Output Variance</span>
-                        <span class="val" id="variance-val">0.0%</span>
+                    <div class="graph-display">
+                        <svg id="dynamic-graph" preserveAspectRatio="none"></svg>
                     </div>
                 </div>
 
@@ -191,18 +223,6 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                     <div class="daily-variance-scroll">
                         <div id="daily-variance-months" class="daily-variance-months" aria-hidden="true"></div>
                         <div id="daily-variance-grid" class="daily-variance-grid" role="img" aria-label="Daily solved questions relative to your daily target, one cell per day. Denser green means more output."></div>
-                    </div>
-                </div>
-
-                <!-- Momentum Tracker (candlestick engine target) -->
-                <div class="dash-card dash-card-momentum">
-                    <div class="dash-card-head">
-                        <span class="kicker">// MOMENTUM</span>
-                        <h2 class="box-title">Momentum</h2>
-                        <p class="box-desc">Recent output and projected pace against your target.</p>
-                    </div>
-                    <div class="graph-display">
-                        <svg id="dynamic-graph" preserveAspectRatio="none"></svg>
                     </div>
                 </div>
 
