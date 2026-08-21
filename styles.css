@@ -11493,3 +11493,61 @@ html[data-mode="dusk"] #view-dashboard .kicker {
 html[data-mode="dusk"] #view-dashboard .dash-card-momentum .kicker {
     color: var(--telemetry) !important;
 }
+
+
+/* ════════════════════════════════════════════════════════════════════════
+   9 · FOCUS CHAMBER + PRACTICE MODAL — the two hero surfaces
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* The perpetual conic rotation reads as noise; motion here is earned by a
+   LIVE session only. Idle = calm glass card with an accent hairline. */
+.glow-wrapper {
+    border-radius: var(--r-xl);
+    padding: 1px;
+    background: linear-gradient(160deg, var(--accent-a18), transparent 38%, color-mix(in srgb, var(--telemetry) 16%, transparent) 82%, transparent);
+    overflow: hidden;
+}
+.glow-wrapper::before { display: none; }
+.glow-box-inner {
+    border-radius: calc(var(--r-xl) - 1px) !important;
+    background: linear-gradient(180deg, rgba(17, 20, 29, 0.92), rgba(10, 12, 18, 0.96)) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--e-2) !important;
+}
+/* A running session re-arms the ring (pomodoro.js toggles body.pomo-active) */
+body.pomo-active .glow-wrapper::before {
+    display: block;
+    background: conic-gradient(from 0deg, transparent 30%, var(--accent) 46%, var(--accent-2) 56%, transparent 72%);
+    animation: rotateGlow 4.5s linear infinite;
+    opacity: 0.85;
+}
+@media (prefers-reduced-motion: reduce) {
+    body.pomo-active .glow-wrapper::before { animation: none; opacity: 0.5; }
+}
+
+/* Timer hero — numerics carry the screen */
+#timer-display { font-weight: 700; }
+.timer-status { letter-spacing: 0.3px; }
+
+/* Setup strip — quiet, aligned */
+.pomodoro-controls { gap: var(--sp-3); }
+#view-pomodoro .pomo-header .kicker { margin-bottom: 0; }
+
+/* Practice modal chrome — same system */
+#practice-modal .practice-header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: var(--sp-3);
+}
+.hide-toggle {
+    min-height: var(--ctl-h-sm);
+    padding: 0 12px;
+    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: var(--r-sm) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid var(--line) !important;
+    color: var(--text-secondary) !important;
+    font-family: var(--font-display); font-size: var(--fs-xs); font-weight: 600;
+    transition: background var(--t-fast) ease, color var(--t-fast) ease, border-color var(--t-fast) ease;
+}
+.hide-toggle:hover { background: rgba(255, 255, 255, 0.09) !important; color: var(--text-primary) !important; }
+.pm-close:hover { background: color-mix(in srgb, #ef4444 20%, transparent) !important; border-color: rgba(248,113,113,0.35) !important; color: #fecaca !important; }
+.streak-visualizer { border-radius: var(--r-sm); }

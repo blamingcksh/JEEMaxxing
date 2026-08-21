@@ -46,6 +46,7 @@ try {
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await page.addInitScript(() => {
     try { localStorage.setItem('jeemax_boot_seq_date', new Date().toLocaleDateString('en-CA')); } catch {}
+    try { localStorage.setItem('jeemax_nightguard_v1', JSON.stringify({ dismissed: true })); } catch {}
 });
 const errors = [];
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
