@@ -136,6 +136,33 @@ function _staggeredChain(tasks) {
     next();
 }
 
+// ── Don't-make-me-think keyboard glue ──────────────────────────────────────
+// "/" focuses the vault search from anywhere in the Errors view (no hunting
+// for the input), Esc clears it / blurs. Wired once per page load; silently
+// skipped in non-DOM environments (Node smoke tests).
+function _emKeyHandler(e) {
+    try {
+        const t = e.target;
+        const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+        const errorsView = document.getElementById('view-errors');
+        const viewActive = !!(errorsView && errorsView.classList.contains('active'));
+        if (e.key === '/' && !typing && viewActive) {
+            const search = document.getElementById('matrix-search-input');
+            if (search) { e.preventDefault(); search.focus(); search.select(); }
+        } else if (e.key === 'Escape' && typing && t.id === 'matrix-search-input') {
+            if (t.value) { window.clearMatrixSearch(); }
+            else t.blur();
+        }
+    } catch (_) { /* never let a hotkey crash the page */ }
+}
+try {
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function'
+        && typeof window !== 'undefined' && !window.__emKeysWired) {
+        window.__emKeysWired = true;
+        document.addEventListener('keydown', _emKeyHandler);
+    }
+} catch (_) {}
+
 // ── Practice Log Drawer State ──────────────────────────────────────────────
 
 let _drawerState = {
@@ -1202,7 +1229,9 @@ export function filterErrors() {
     const statusFilter = document.getElementById('filter-status') ? document.getElementById('filter-status').value : 'all';
     const textFilter = document.getElementById('filter-tag') ? document.getElementById('filter-tag').value.toLowerCase().trim() : '';
 
-    document.querySelectorAll('#error-list-container .error-block').forEach(block => {
+    const blocks = document.querySelectorAll('#error-list-container .error-block');
+    let visible = 0;
+    blocks.forEach(block => {
         const bType = block.getAttribute('data-type');
         const bSrStatus = block.getAttribute('data-sr-status');
         const bSubj = block.getAttribute('data-subject');
@@ -1222,10 +1251,72 @@ export function filterErrors() {
 
         if (typeMatch && statusMatch && subjMatch && textMatch) {
             block.classList.remove('hidden');
+            visible++;
         } else {
             block.classList.add('hidden');
         }
     });
+
+    _updateMatrixMeta(visible, blocks.length, { typeFilter, statusFilter, textFilter });
+
+    // Section headers mirror their members: a group with no visible cards
+    // collapses (and its counter shows the filtered count, not the total).
+    document.querySelectorAll('#error-list-container .em-group-head').forEach(head => {
+        const st = head.getAttribute('data-group-status');
+        let shown = 0;
+        document.querySelectorAll('#error-list-container .error-block[data-sr-status="' + st + '"]').forEach(b => {
+            if (!b.classList.contains('hidden')) shown++;
+        });
+        head.hidden = shown === 0;
+        const cnt = head.querySelector('.emg-count');
+        if (cnt) cnt.textContent = String(shown);
+    });
+}
+
+// ── Live result feedback ("how many / what's due / how to reset") ──────────
+// DMMT: a filter change must always answer three questions at a glance —
+// how many cards matched, how many need action today, and how to undo.
+function _updateMatrixMeta(visible, total, f) {
+    const meta = document.getElementById('matrix-meta');
+    if (!meta) return;
+
+    if (total === 0) { meta.hidden = true; meta.innerHTML = ''; _toggleNoMatchNode(false); return; }
+
+    const filtersActive = (f.statusFilter !== 'all') || (f.typeFilter !== 'all') || !!f.textFilter;
+    meta.hidden = false;
+    let dueNow = 0;
+    document.querySelectorAll('#error-list-container .error-block:not(.hidden)').forEach(b => {
+        if (b.getAttribute('data-sr-status') === 'ready') dueNow++;
+    });
+
+    meta.innerHTML =
+        '<span class="matrix-meta-count"><b>' + visible + '</b>&nbsp;of ' + total + ' shown</span>' +
+        (dueNow ? '<span class="matrix-meta-due">·&nbsp;<b>' + dueNow + '</b>&nbsp;due now</span>' : '') +
+        (filtersActive ? '<button class="matrix-meta-clear" onclick="clearMatrixFilters()" type="button">✕ Clear filters</button>' : '');
+
+    _toggleNoMatchNode(visible === 0);
+}
+
+// Zero matches → inject a "way back" card instead of silent blank space.
+function _toggleNoMatchNode(show) {
+    const c = document.getElementById('error-list-container');
+    if (!c) return;
+    let node = document.getElementById('em-nomatch');
+    if (show) {
+        if (!node) {
+            node = document.createElement('div');
+            node.id = 'em-nomatch';
+            c.appendChild(node);
+        }
+        node.className = 'em-empty em-empty--filter';
+        node.innerHTML =
+            '<div class="em-empty-icon" aria-hidden="true">🔍</div>' +
+            '<div class="em-empty-title">Nothing matches those filters</div>' +
+            '<div class="em-empty-desc">Every card is hidden by the current status / type / search combo.</div>' +
+            '<div class="em-empty-actions"><button class="em-empty-secondary" onclick="clearMatrixFilters()" type="button">✕ Clear all filters</button></div>';
+    } else if (node) {
+        node.remove();
+    }
 }
 
 // ==================== DAILY CORE QUEUE ====================
@@ -1377,7 +1468,15 @@ function _renderDailyQueueCards() {
         .filter(Boolean);
 
     if (targets.length === 0) {
-        c.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:40px 16px; font-size:13px;">No friction entries found across any subject.</div>';
+        c.innerHTML = `
+            <div class="em-empty em-empty--queue">
+                <div class="em-empty-icon" aria-hidden="true">⚡</div>
+                <div class="em-empty-title">Queue's clear</div>
+                <div class="em-empty-desc">Nothing is due right now across any subject. Fresh fix slots unlock tomorrow — or log a new mistake to queue it up.</div>
+                <div class="em-empty-actions">
+                    <button class="btn btn-primary" onclick="toggleDailyQueue()">Back to Matrix</button>
+                </div>
+            </div>`;
         return;
     }
 
@@ -1409,13 +1508,16 @@ function _renderDailyQueueCards() {
                 qq.errorReason && (qq.status === 'error' || qq.status === 'solved' || qq.status === 'wrong') &&
                 _normSubj(qq.subject) === currentSubject
             ).length;
+            const pct = subjItems.length > 0 ? Math.round((doneCount / subjItems.length) * 100) : 0;
             const progressTxt = remaining > 0
                 ? `${doneCount}/${subjItems.length} done · ${remaining} to go`
                 : (subjItems.length > 0 ? `${doneCount}/${subjItems.length} done · ✓ complete` : '0/0');
             fragments.push(`
-                <div class="daily-queue-subject-divider">
-                    <span>${meta.icon} ${meta.label} · ${progressTxt}</span>
-                    <span class="daily-queue-subject-count">${allTracked} total tracked</span>
+                <div class="daily-queue-subject-divider" data-subject="${currentSubject}">
+                    <span class="dqs-label">${meta.icon} ${meta.label}</span>
+                    <span class="dqs-track" aria-hidden="true"><i style="width:${pct}%"></i></span>
+                    <span class="dqs-count">${progressTxt}</span>
+                    <span class="daily-queue-subject-count">${allTracked} tracked</span>
                 </div>
             `);
         }
@@ -1438,7 +1540,6 @@ function _buildErrorCardHTML(q) {
     const tagStyle = TAG_STYLES[q.errorReason] || TAG_STYLES.conceptual;
     const tagLabel = TAG_LABELS[q.errorReason] || q.errorReason;
     const dueInfo = getDueStatus(q);
-    const dueBadgeStyle = DUE_BADGE_STYLES[dueInfo.status] || DUE_BADGE_STYLES.scheduled;
 
     // ALWAYS render a lightweight placeholder — the real image (from the
     // in-memory bank or Drive) is swapped in by initErrorLazyLoaders() only
@@ -1453,7 +1554,7 @@ function _buildErrorCardHTML(q) {
         // lazy loader serves it from the bank's diagramImageUrl.
         imgHtml = `<img class="lazy-error-img" data-diagram="1" data-qid="${_esc(q.id)}" src="${LAZY_IMG_PLACEHOLDER}" title="Diagram" onclick="event.stopPropagation();">`;
     } else {
-        imgHtml = '<div style="font-size:10px;color:var(--text-muted);">No Image</div>';
+        imgHtml = '<div class="error-img-none">No image</div>';
     }
 
     const today = _todayKey();
@@ -1465,35 +1566,38 @@ function _buildErrorCardHTML(q) {
             <div class="error-block ${bountyClass}" id="err-block-${_esc(q.id)}"
                  data-type="${_esc(q.errorReason || 'conceptual')}"
                  data-sr-status="${_esc(dueInfo.status)}"
-                 data-subject="${_esc(q.subject)}">
-                <div class="error-img-box">${imgHtml}</div>
+                 data-subject="${_esc(q.subject)}"
+                 onclick="openPracticeDrawer('${_esc(q.id)}')" title="Open practice session">
+                <div class="error-img-box">
+                    ${imgHtml}
+                    <span class="sr-due-badge sr-due--${_esc(dueInfo.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(dueInfo))}</span>
+                </div>
                 <div class="error-details">
                     <div class="error-chapter">${_esc(q.chapter || 'Unknown')}</div>
                     <div class="error-tag-row">
-                        <span class="error-tag" style="color:${tagStyle.color};background:${tagStyle.bg};">${_esc(tagLabel)}</span>
-                        <span class="sr-due-badge" style="${dueBadgeStyle}">${_esc(dueInfo.label)}</span>
+                        <span class="error-tag error-tag--${_esc(q.errorReason || 'conceptual')}" style="color:${tagStyle.color};background:${tagStyle.bg};">${_esc(tagLabel)}</span>
                     </div>
                     <div class="sr-stats-row">
-                        <span class="sr-stat">⚡ ${_numOr(q.currentInterval, 0)}d</span>
-                        <span class="sr-stat">🔥 ${_numOr(q.easeFactor, 2.5).toFixed(2)}</span>
-                        <span class="sr-stat">📖 ${_numOr(q.targetTimeMins, 5)}m</span>
+                        <span class="sr-stat" title="Spaced-repetition interval — how long this memory currently survives"><b>${_numOr(q.currentInterval, 0)}d</b><i>interval</i></span>
+                        <span class="sr-stat" title="Ease factor — higher means recall is sticking"><b>${_numOr(q.easeFactor, 2.5).toFixed(2)}</b><i>ease</i></span>
+                        <span class="sr-stat" title="Target time per attempt"><b>${_numOr(q.targetTimeMins, 5)}m</b><i>target</i></span>
                     </div>
                     <div class="sr-attempt-dots-row">
-                        <span class="sr-dots-label">History:</span>
+                        <span class="sr-dots-label">History</span>
                         ${_buildAttemptDots(q.historyLogs)}
                     </div>
                 </div>
                 <div class="sr-card-actions">
-                    <button class="sr-practice-btn" onclick="openPracticeDrawer('${_esc(q.id)}')">
-                        Practice Now →
-                    </button>
-                    <button class="sr-history-toggle" onclick="toggleCardHistory('${_esc(q.id)}')">
-                        History
-                        <span class="sr-chevron" id="sr-chevron-${_esc(q.id)}">▾</span>
-                    </button>
-                    <button class="delete-btn" onclick="removeErrorLog('${_esc(q.id)}')" title="Delete">🗑</button>
+                    <button class="sr-practice-btn" onclick="openPracticeDrawer('${_esc(q.id)}')">Practice Now<span class="sr-btn-arrow">→</span></button>
+                    <div class="sr-card-actions-sub">
+                        <button class="sr-history-toggle" onclick="event.stopPropagation();toggleCardHistory('${_esc(q.id)}')" aria-label="Toggle attempt history">
+                            History
+                            <span class="sr-chevron" id="sr-chevron-${_esc(q.id)}">▾</span>
+                        </button>
+                        <button class="delete-btn" onclick="event.stopPropagation();removeErrorLog('${_esc(q.id)}')" title="Delete" aria-label="Delete this mistake">🗑</button>
+                    </div>
                 </div>
-                <div class="sr-expanded-history" id="sr-history-${_esc(q.id)}" style="display:none;">
+                <div class="sr-expanded-history" id="sr-history-${_esc(q.id)}" style="display:none;" onclick="event.stopPropagation();">
                     <div class="sr-history-header">Attempt History</div>
                     ${_buildHistoryLogs(q.historyLogs)}
                 </div>
@@ -1569,20 +1673,24 @@ const TAG_LABELS = {
     misread:     'Misread Constraint',
 };
 
-const DUE_BADGE_STYLES = {
-    ready:     'background:rgba(16,185,129,0.15);color:#10B981;border:1px solid rgba(16,185,129,0.3);',
-    due_soon:  'background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);',
-    scheduled: 'background:rgba(96,165,250,0.1);color:rgba(96,165,250,0.7);border:1px solid rgba(96,165,250,0.2);',
-    mastered:  'background:rgba(167,139,250,0.15);color:#a78bfa;border:1px solid rgba(167,139,250,0.3);',
-};
+// Plain-language due badge. One glance → "do I need to act on this?"
+// Vocabulary matches the filter pills exactly: Due now / Due soon / Later / Mastered.
+function _dueLabel(dueInfo) {
+    switch (dueInfo && dueInfo.status) {
+        case 'ready':     return 'Due now';
+        case 'due_soon':  return 'Due in ' + (dueInfo.daysUntil ?? '?') + 'd';
+        case 'scheduled': return 'In ' + (dueInfo.daysUntil ?? '?') + 'd';
+        case 'mastered':  return 'Mastered';
+        default:          return (dueInfo && dueInfo.label) || '';
+    }
+}
 
 function _buildAttemptDots(historyLogs) {
-    if (!historyLogs || historyLogs.length === 0) return '<span style="font-size:10px;color:var(--text-muted);font-style:italic;">No attempts yet</span>';
+    if (!historyLogs || historyLogs.length === 0) return '<span class="sr-dots-empty">No attempts yet</span>';
 
     const last5 = historyLogs.slice(-5).reverse();
     return last5.map(log => {
         const isCorrect = log.result === 'correct';
-        const bg = isCorrect ? '#10B981' : '#EF4444';
         const frictionTypes = _parseFrictionTypes(log.frictionTypes);
         const primaryFriction = frictionTypes[0] || 'N/A';
         const frictionLabel = SR_FRICTION_LABELS[primaryFriction] || primaryFriction;
@@ -1591,7 +1699,7 @@ function _buildAttemptDots(historyLogs) {
         const timeStr = log.timeSpentMins + 'm';
         const tooltip = `title="${_esc(dateStr + '\\nTime: ' + timeStr + '\\nFriction: ' + frictionLabel)}"`;
 
-        return `<div class="sr-attempt-dot" style="background:${bg};" ${tooltip}></div>`;
+        return `<div class="sr-attempt-dot ${isCorrect ? 'is-correct' : 'is-wrong'}" ${tooltip}></div>`;
     }).join('');
 }
 
@@ -1600,7 +1708,6 @@ function _buildHistoryLogs(historyLogs) {
 
     return historyLogs.slice().reverse().map(log => {
         const isCorrect = log.result === 'correct';
-        const dotColor = isCorrect ? '#10B981' : '#EF4444';
         const frictionTypes = _parseFrictionTypes(log.frictionTypes);
         const ts = new Date(log.timestamp);
         const dateStr = isNaN(ts.getTime())
@@ -1613,10 +1720,10 @@ function _buildHistoryLogs(historyLogs) {
 
         return `
             <div class="sr-history-row">
-                <div class="sr-history-dot" style="background:${dotColor};"></div>
+                <div class="sr-history-dot ${isCorrect ? 'is-correct' : 'is-wrong'}"></div>
                 <div class="sr-history-info">
                     <div class="sr-history-top">
-                        <span style="color:${isCorrect ? '#10B981' : '#EF4444'};">${isCorrect ? 'Correct' : 'Incorrect'}</span>
+                        <span class="${isCorrect ? 'is-correct' : 'is-wrong'}">${isCorrect ? 'Correct' : 'Incorrect'}</span>
                         <span class="sr-sep">·</span>
                         <span style="color:#888;">${_esc((log.autonomy || '').replace('_', ' '))}</span>
                     </div>
@@ -1639,17 +1746,97 @@ export function renderErrorMatrixFromBank() {
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') && _normSubj(q.subject) === _normSubj(AppState.currentErrorSubject)
     );
 
+    _updateFolderCounts();
+
     // ── Batch: build all card HTML up front, then apply in a single innerHTML
     //    assignment. This collapses N individual DOM parse+insert cycles into
     //    one, which is critical when the matrix has dozens of cards. ──
     if (errs.length === 0) {
-        c.innerHTML = '';
+        // DMMT: an empty subject never renders as blank confusion — it explains
+        // itself and offers the two ways forward (manual log / AI dump).
+        c.innerHTML = _buildEmptyStateHTML();
     } else {
-        const html = errs.map(q => _buildErrorCardHTML(q)).join('');
-        c.innerHTML = html;
+        c.innerHTML = _buildGroupedBoardHTML(errs);
     }
 
     if (typeof initErrorLazyLoaders === 'function') initErrorLazyLoaders();
+}
+
+// ── Status-grouped board ───────────────────────────────────────────────────
+// The matrix is a BOARD, not a flat dump: cards are sorted by urgency and
+// grouped under scannable section headers. One glance answers "what do I
+// work through, in what order, and how much of it is there?"
+const EM_STATUS_ORDER = { ready: 0, due_soon: 1, scheduled: 2, mastered: 3 };
+const EM_GROUP_META = {
+    ready:     { icon: '🟢', label: 'Due Now',  blurb: 'act on these today' },
+    due_soon:  { icon: '⏳', label: 'Due Soon', blurb: 'within 3 days' },
+    scheduled: { icon: '🗓️', label: 'Later',   blurb: 'parked in memory' },
+    mastered:  { icon: '💤', label: 'Mastered', blurb: 'resting — no action needed' },
+};
+
+function _buildGroupedBoardHTML(errs) {
+    const withStatus = errs.map(q => ({ q, st: getDueStatus(q).status }));
+    withStatus.sort((a, b) => {
+        const sa = EM_STATUS_ORDER[a.st] ?? 9;
+        const sb = EM_STATUS_ORDER[b.st] ?? 9;
+        if (sa !== sb) return sa - sb;
+        return _numOr(a.q.easeFactor, 2.5) - _numOr(b.q.easeFactor, 2.5);
+    });
+
+    const countByStatus = {};
+    withStatus.forEach(x => { countByStatus[x.st] = (countByStatus[x.st] || 0) + 1; });
+
+    const parts = [];
+    let lastStatus = null;
+    for (const { q, st } of withStatus) {
+        if (st !== lastStatus) {
+            lastStatus = st;
+            const meta = EM_GROUP_META[st] || { icon: '•', label: st, blurb: '' };
+            parts.push(
+                '<div class="em-group-head em-group--' + st + '" data-group-status="' + st + '">' +
+                    '<span class="emg-dot" aria-hidden="true"></span>' +
+                    '<span class="emg-label">' + meta.icon + ' ' + meta.label + '</span>' +
+                    '<span class="emg-count">' + (countByStatus[st] || 0) + '</span>' +
+                    '<span class="emg-rule" aria-hidden="true"></span>' +
+                    '<span class="emg-blurb">' + meta.blurb + '</span>' +
+                '</div>'
+            );
+        }
+        parts.push(_buildErrorCardHTML(q));
+    }
+    return parts.join('');
+}
+
+// ── Guided empty state (subject matrix) ────────────────────────────────────
+function _buildEmptyStateHTML() {
+    return `
+            <div class="em-empty">
+                <div class="em-empty-icon" aria-hidden="true">🗂️</div>
+                <div class="em-empty-title">No mistakes tracked here yet</div>
+                <div class="em-empty-desc">Every wrong answer is a lever. Log one and the spaced-repetition engine will resurface it until it's dead.</div>
+                <div class="em-empty-actions">
+                    <button class="btn btn-primary" onclick="openModal('add-error-modal')">+ Log First Mistake</button>
+                    <button class="em-empty-secondary" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')">🧠 AI Dump</button>
+                </div>
+            </div>`;
+}
+
+// ── Per-subject tracked counts on the folder cards ─────────────────────────
+// One glance answers "where does my error load live?" without opening each folder.
+function _updateFolderCounts() {
+    const counts = { physics: 0, chemistry: 0, maths: 0 };
+    for (const q of AppState.questionBank) {
+        if (!q.errorReason || !(q.status === 'error' || q.status === 'solved' || q.status === 'wrong')) continue;
+        const k = _normSubj(q.subject);
+        if (k in counts) counts[k]++;
+    }
+    const idBySubj = { physics: 'folder-count-physics', chemistry: 'folder-count-chemistry', maths: 'folder-count-maths' };
+    for (const subj of Object.keys(idBySubj)) {
+        const el = document.getElementById(idBySubj[subj]);
+        if (!el) continue;
+        el.textContent = String(counts[subj]);
+        el.classList.toggle('is-zero', counts[subj] === 0);
+    }
 }
 
 export function toggleCardHistory(qId) {
