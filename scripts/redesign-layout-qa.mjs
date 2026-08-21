@@ -94,6 +94,8 @@ await page.addInitScript(() => {
     try {
         localStorage.setItem('jeemax_boot_seq_date', new Date().toLocaleDateString('en-CA'));
         localStorage.setItem('jeemax_fx_prefs', JSON.stringify({ sound: false, effects: false, haptics: false }));
+        // geometry suite: suppress the time-gated nightguard overlay
+        try { localStorage.setItem('jeemax_nightguard_v1', JSON.stringify({ dismissed: true })); } catch {}
     } catch {}
 });
 const errors = [];
