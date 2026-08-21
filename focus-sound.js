@@ -26,13 +26,31 @@
   window.__focusSoundInit = true;
 
   var LS = 'jeemax_focus_sound_prefs';
-  var DEFAULTS = { sound: 'rain', volume: 60, depth: 50, brightness: 50, density: 50, playing: false };
+  var DEFAULTS = { v: 2, sound: 'rain', volume: 60, depth: 50, brightness: 50, density: 100, playing: false, autoSession: true };
+  // Per-knob reset targets (double-click a slider to snap back).
+  var KNOB_DEFAULTS = { volume: 60, depth: 50, brightness: 50, density: 100 };
+  var KNOB_LABELS = { volume: 'Volume', depth: 'Depth', brightness: 'Brightness', density: 'Tone' };
+
+  // Fade shaping — a bed should breathe in and out, never click on/off.
+  var FADE_IN_SECS = 1.4;       // linear attack when a bed starts
+  var FADE_OUT_SECS = 0.45;     // release when paused / toggled off
+  var DUCK_HOLD_MS = 1900;      // bell-duck hold before the bed swells back
 
   // ── prefs ────────────────────────────────────────────────────────────────
   var prefs = load();
   function load() {
     var d = Object.assign({}, DEFAULTS);
-    try { var r = localStorage.getItem(LS); if (r) d = Object.assign(d, JSON.parse(r)); } catch (e) {}
+    try {
+      var r = localStorage.getItem(LS);
+      if (r) {
+        var stored = JSON.parse(r);
+        // One-time migration: pre-v2 installs saved the old linear Tone knob's
+        // 50% default, which under the new mapping sits mid-muffle. Snap any
+        // untouched Tone to fully open; deliberately-set values survive.
+        if (stored && !stored.v && stored.density === 50) stored.density = 100;
+        if (stored) d = Object.assign(d, stored);
+      }
+    } catch (e) {}
     return d;
   }
   function save() { try { localStorage.setItem(LS, JSON.stringify(prefs)); } catch (e) {} }
@@ -78,10 +96,10 @@
         masterIn = actx.createGain();
         depthFilter = actx.createBiquadFilter();
         depthFilter.type = 'lowshelf';
-        depthFilter.frequency.value = 180;
+        depthFilter.frequency.value = 110;          // true low-end body
         brightFilter = actx.createBiquadFilter();
         brightFilter.type = 'highshelf';
-        brightFilter.frequency.value = 1000;
+        brightFilter.frequency.value = 3500;        // air & sparkle shelf, not honk
         masterGain = actx.createGain();
         // Gentle safety compressor — catches summed peaks without flattening
         // the swells (threshold high, ratio low).
@@ -108,11 +126,24 @@
 
   function applyMix() {
     if (!actx || !masterGain) return;
+    depthFilter.gain.setTargetAtTime((prefs.depth / 100 - 0.5) * 30, actx.currentTime, 0.05);        // ±15 dB lowshelf
+    brightFilter.gain.setTargetAtTime((prefs.brightness / 100 - 0.5) * 28, actx.currentTime, 0.05);  // ±14 dB highshelf
+    setMaster(targetGain(), 0.05);
+  }
+
+  function targetGain() {
+    return Math.max(0.0001, Math.pow(prefs.volume / 100, 1.5));
+  }
+
+  /** Move the master gain to `v` over `secs` (linear), cancelling ramps. */
+  function setMaster(v, secs) {
     var t = actx.currentTime;
-    var v = prefs.volume / 100;
-    masterGain.gain.setTargetAtTime(Math.max(0.0001, Math.pow(v, 1.5)), t, 0.05);
-    depthFilter.gain.setTargetAtTime((prefs.depth / 100 - 0.5) * 24, t, 0.05);        // ±12 dB lowshelf
-    brightFilter.gain.setTargetAtTime((prefs.brightness / 100 - 0.5) * 24, t, 0.05);  // ±12 dB highshelf
+    try {
+      masterGain.gain.cancelScheduledValues(t);
+      masterGain.gain.setValueAtTime(Math.max(0.0001, masterGain.gain.value), t);
+      if (secs <= 0.06) masterGain.gain.setTargetAtTime(v, t, 0.05);
+      else masterGain.gain.linearRampToValueAtTime(v, t + secs);
+    } catch (e) { try { masterGain.gain.value = v; } catch (e2) {} }
   }
 
   // ── buffer loading (lazy, memoized, cached by the SW) ─────────────────────
@@ -132,6 +163,21 @@
   }
 
   // ── playback builders ─────────────────────────────────────────────────────
+  // Mono beds get a subtle Haas widener (right ear delayed ~16ms) — decorrelated
+  // width is the difference between "lo-fi mono file" and "ambience". Stereo
+  // sources pass through untouched.
+  function widenTo(g, dest) {
+    var merge;
+    try { merge = actx.createChannelMerger(2); } catch (e) { g.connect(dest); return; }
+    var delay = actx.createDelay(0.05);
+    delay.delayTime.value = 0.016;
+    var wet = actx.createGain();
+    wet.gain.value = 0.85;
+    merge.connect(dest);
+    g.connect(merge, 0, 0);
+    g.connect(delay); delay.connect(wet); wet.connect(merge, 0, 1);
+  }
+
   // Seamless WAV loop: the seam is baked into the file, so plain looping is
   // perfectly clean.
   function startSeamlessLoop(buffer, out, stopFns) {
@@ -140,52 +186,154 @@
     src.loop = true;
     var g = track(actx.createGain());
     g.gain.value = 1;
-    src.connect(g); g.connect(out);
+    src.connect(g);
+    if (buffer.numberOfChannels === 1) widenTo(g, out); else g.connect(out);
     src.start();
     stopFns.push(function () { try { src.stop(); } catch (e) {} });
     return g;
   }
 
-  // Real-recording looper: constant-loudness crossfade at each loop boundary.
-  // The looping source dips 1→0.5→1 over the seam while a one-shot copy of
-  // the clip head rises 0→0.5→0 on top — amplitude stays 1.0, seam hidden.
-  function startRealLoop(buffer, out, stopFns) {
-    var dur = buffer.duration;
-    var fade = Math.min(1.2, dur * 0.22);
-    var srcA = track(actx.createBufferSource());
-    srcA.buffer = buffer;
-    srcA.loop = true;
-    var gA = track(actx.createGain());
-    gA.gain.value = 1;
-    srcA.connect(gA); gA.connect(out);
-    var t0 = actx.currentTime + 0.1;
-    srcA.start(t0);
+  // Equal-power fade curves — sin/cos pairs keep perceived loudness flat
+  // through a crossfade of UNCORRELATED content (linear halves do not).
+  function eqCurve(up) {
+    var N = 96, c = new Float32Array(N);
+    for (var i = 0; i < N; i++) {
+      var t = i / (N - 1);
+      c[i] = Math.max(0.0001, up ? Math.sin(Math.PI / 2 * t) : Math.cos(Math.PI / 2 * t));
+    }
+    return c;
+  }
+  var EQ_IN = null, EQ_OUT = null;
 
-    var timer = setInterval(schedule, 400);
-    var lastScheduled = 0;
-    function schedule() {
-      var horizon = actx.currentTime + 1.5;
-      for (var k = lastScheduled; t0 + k * dur < horizon; k++) {
-        lastScheduled = k + 1;
-        var tk = t0 + k * dur;
-        if (tk < actx.currentTime) continue;
-        gA.gain.setValueAtTime(1, tk - fade / 2);
-        gA.gain.linearRampToValueAtTime(0.5, tk);
-        gA.gain.linearRampToValueAtTime(1, tk + fade / 2);
-        var srcB = actx.createBufferSource();   // `let` below keeps each onended
-        srcB.buffer = buffer;                    // closure bound to ITS OWN nodes
-        let gB = actx.createGain();
-        srcB.connect(gB); gB.connect(out);
-        gB.gain.setValueAtTime(0.0001, tk - fade / 2);
-        gB.gain.linearRampToValueAtTime(0.5, tk);
-        gB.gain.linearRampToValueAtTime(0.0001, tk + fade / 2);
-        srcB.start(tk - fade / 2, 0, fade);
-        srcB.onended = function () { try { gB.disconnect(); } catch (e) {} };
+  // Real-recording looper v3: successive full-buffer playbacks whose tail
+  // crossfades (equal-power) into the next playback's head.
+  //
+  // The v2 trick — one looping source dipping to 0.5 while a copy of the clip
+  // head rose to 0.5 — summed two DIFFERENT parts of the recording at linear
+  // halves: a loudness dip plus comb phasing on every wrap. Rain/Café audibly
+  // "wobbled" each pass. Here every cycle plays the whole buffer once as its
+  // own source; cycle k+1 starts `fade` before cycle k ends and the two
+  // overlap tail→head through sin/cos curves. Constant power, aligned content,
+  // no shared gain automation → seamless.
+  var diagCycles = 0;        // test hook: total real-loop cycles scheduled
+  var diagComposites = 0;    // test hook: short clips expanded to long loops
+
+  // ── Short-clip expansion ────────────────────────────────────────────────
+  // rain.mp3 is a 9-second recording — looping it raw means an audible pulse
+  // every ~8s no matter how clean the seam. Build a ≥minSec composite once at
+  // decode time: overlapping copies of the source at RANDOM offsets joined by
+  // equal-power crossfades, then a baked wrap-seam. Successive passes become
+  // decorrelated, so nothing repeats on a fixed period.
+  var MIN_REAL_SEC = 45;
+  var compositeCache = new Map();
+
+  function makeCompositeLoop(srcBuf, minSec) {
+    var key = srcBuf.__compositeKey || (srcBuf.__compositeKey = 'b' + Math.random());
+    if (compositeCache.has(key)) return compositeCache.get(key);
+    var sr = srcBuf.sampleRate, chs = srcBuf.numberOfChannels;
+    var fadeS = Math.max(64, Math.floor(Math.min(1.2, srcBuf.duration * 0.22) * sr));
+    var total = Math.floor(minSec * sr);
+    var workLen = total + fadeS;
+    var N = 128;
+    var rise = new Float32Array(N), fall = new Float32Array(N);
+    for (var i = 0; i < N; i++) {
+      var t = i / (N - 1);
+      rise[i] = Math.sin(Math.PI / 2 * t);
+      fall[i] = Math.cos(Math.PI / 2 * t);
+    }
+    var chans = [];
+    for (var c = 0; c < chs; c++) chans.push(new Float32Array(workLen));
+    var pos = 0, guard = 0;
+    while (pos < total && guard++ < 600) {
+      var maxOff = Math.max(1, srcBuf.length - fadeS * 2);
+      var off = Math.floor(Math.random() * maxOff);
+      var segLen = srcBuf.length - off;
+      var fadeIn = pos === 0 ? 0 : fadeS;         // first segment starts clean
+      for (var c2 = 0; c2 < chs; c2++) {
+        var srcD = srcBuf.getChannelData(c2);
+        var dst = chans[c2];
+        var tailStart = segLen - fadeS;
+        for (var j = 0; j < segLen && pos + j < workLen; j++) {
+          var gain = 1;
+          if (j < fadeIn) gain = rise[(j / fadeIn * (N - 1)) | 0];
+          if (j >= tailStart) gain *= fall[((j - tailStart) / fadeS * (N - 1)) | 0];
+          dst[pos + j] += srcD[off + j] * gain;
+        }
+      }
+      pos += segLen - fadeS;
+    }
+    // Bake the wrap seam so plain loop=true is click-free. The two sides are
+    // UNCORRELATED (different random segments), so this must be an
+    // equal-power blend — linear halves would dip −3dB right on the seam.
+    var out;
+    try {
+      out = actx.createBuffer(chs, total, sr);
+      for (var c3 = 0; c3 < chs; c3++) {
+        var dst2 = out.getChannelData(c3), w = chans[c3];
+        for (var j2 = 0; j2 < fadeS; j2++) {
+          var ang = Math.PI / 2 * (j2 / fadeS);
+          dst2[j2] = w[total + j2] * Math.cos(ang) + w[j2] * Math.sin(ang);
+        }
+        for (var j3 = fadeS; j3 < total; j3++) dst2[j3] = w[j3];
+      }
+    } catch (e) { return srcBuf; }               // OOM etc. — better short than silent
+    compositeCache.set(key, out);
+    diagComposites++;
+    return out;
+  }
+
+  function ensureRealLength(buffer) {
+    if (!buffer || buffer.duration >= MIN_REAL_SEC) return buffer;
+    try { return makeCompositeLoop(buffer, MIN_REAL_SEC); } catch (e) { return buffer; }
+  }
+
+  function startRealLoop(buffer, out, stopFns) {
+    if (!EQ_IN) { EQ_IN = eqCurve(true); EQ_OUT = eqCurve(false); }
+    var dur = buffer.duration;
+    var fade = Math.max(0.8, Math.min(3.0, dur * 0.12));
+    if (dur < 2 * fade + 0.5) fade = dur / 4;
+
+    var busOut = track(actx.createGain());   // stable blend node for Rain's dual-layer
+    busOut.gain.value = 1;
+    if (buffer.numberOfChannels === 1) widenTo(busOut, out); else busOut.connect(out);
+
+    var stopped = false;
+    var liveSources = new Set();
+    var nextStart = actx.currentTime + 0.05;
+
+    function scheduleCycle() {
+      if (stopped) return;
+      var horizon = actx.currentTime + 2.5;
+      while (!stopped && nextStart < horizon) {
+        (function (startAt) {
+          var src = actx.createBufferSource();
+          src.buffer = buffer;
+          var g = actx.createGain();
+          src.connect(g); g.connect(busOut);
+          try {
+            g.gain.setValueAtTime(0.0001, startAt);
+            g.gain.setValueCurveAtTime(EQ_IN, startAt, fade);              // head rises
+            g.gain.setValueAtTime(1, startAt + fade);
+            g.gain.setValueCurveAtTime(EQ_OUT, startAt + dur - fade, fade); // tail falls under next head
+          } catch (e) { /* automation clash — play flat rather than skip */ }
+          src.start(startAt);
+          src.stop(startAt + dur + 0.03);
+          liveSources.add(src);
+          src.onended = function () { liveSources.delete(src); try { g.disconnect(); } catch (e) {} };
+        })(nextStart);
+        diagCycles++;
+        nextStart += dur - fade;   // overlap window == fade
       }
     }
-    schedule();
-    stopFns.push(function () { clearInterval(timer); try { srcA.stop(); } catch (e) {} });
-    return gA;
+    scheduleCycle();
+    var timer = setInterval(scheduleCycle, 500);
+    stopFns.push(function () {
+      stopped = true;
+      clearInterval(timer);
+      liveSources.forEach(function (s) { try { s.stop(); } catch (e) {} });
+      liveSources.clear();
+    });
+    return busOut;
   }
 
   // Build the graph for the current sound. `buffers` matches def.files/def.file.
@@ -210,7 +358,11 @@
     } else {
       var g = (def.real ? startRealLoop : startSeamlessLoop)(buffers[0], tone, stopFns);
       densityFn = function (d) {
-        tone.frequency.setTargetAtTime(700 + d * 12000, actx.currentTime, 0.1);   // dark ⇢ airy
+        // Exponential dark⇢airy that reaches FULLY OPEN by 85% travel — the
+        // old linear 700Hz..12.7kHz left every mid setting muffled, which is
+        // why the knob "never felt right". Top of range = transparent.
+        var f = 1500 * Math.pow(19 / 1.5, Math.min(1, d / 0.85));
+        tone.frequency.setTargetAtTime(Math.min(19000, f), actx.currentTime, 0.1);
       };
     }
 
@@ -239,11 +391,14 @@
     Promise.all(srcs.map(getBuffer))
       .then(function (buffers) {
         if (token !== loadToken || !prefs.playing) return;   // user moved on / paused
+        if (def.real) buffers = buffers.map(ensureRealLength); // expand short recordings
         stopNodes();
         var r = startCurrent(def, buffers);
         currentStop = r.stop;
         live = r.live;
         applyMix();
+        setMaster(0.0001, 0);          // breathe in from silence…
+        setMaster(targetGain(), FADE_IN_SECS);             // …to full over ~1.4s
         reflect();
       })
       .catch(function (err) {
@@ -256,21 +411,47 @@
 
   function start() {
     if (!supported()) { setStatus('⚠️ WebAudio unsupported in this browser.'); return; }
-    var c = ctx(); if (!c) return;
+    var c = ctx();
+    if (!c) { setStatus('⚠️ Audio engine refused to start — reload and try again.'); return; }
     if (prefs.playing) return;
     prefs.playing = true; save();
     loadAndPlay();
   }
 
   function pause() {
-    if (actx && masterGain) masterGain.gain.setTargetAtTime(0.0001, actx.currentTime, 0.04);
+    if (actx && masterGain) setMaster(0.0001, FADE_OUT_SECS);
     if (fadeTimer) clearTimeout(fadeTimer);
-    fadeTimer = setTimeout(function () { fadeTimer = null; stopNodes(); }, 70);
+    fadeTimer = setTimeout(function () { fadeTimer = null; stopNodes(); }, FADE_OUT_SECS * 1000 + 80);
     prefs.playing = false; save();
     reflect();
   }
 
   function toggle() { prefs.playing ? pause() : start(); }
+
+  // ── session bridge (called by pomodoro.js) ───────────────────────────────
+  /** Start the bed automatically when a focus block begins — if enabled. */
+  function autoStart() {
+    if (!prefs.autoSession || prefs.playing) return;
+    start();
+  }
+
+  function setAuto(v) {
+    prefs.autoSession = !!v;
+    save();
+  }
+
+  var duckToken = 0;
+  /** Dip the bed so the pomodoro bell cuts through, then swell back. */
+  function duck() {
+    if (!actx || !masterGain || !prefs.playing) return;
+    var token = ++duckToken;
+    var floor = Math.max(0.0001, targetGain() * 0.22);
+    setMaster(floor, 0.09);
+    setTimeout(function () {
+      if (token !== duckToken || !prefs.playing) return;   // superseded/paused
+      setMaster(targetGain(), 0.7);
+    }, DUCK_HOLD_MS);
+  }
 
   // Switch preset with a quick 120ms dip so the swap doesn't click.
   function selectSound(id, autoplay) {
@@ -340,9 +521,9 @@
   function wireSliders() {
     var SLIDER_INFO = {
       'sc-volume': 'Master loudness of the sound bed',
-      'sc-depth': 'Low-end body — how deep and grounded it feels',
-      'sc-brightness': 'High-frequency air and sparkle',
-      'sc-density': 'Tone — dark & muffled ⇢ bright & airy. On Rain: calm roof rain ⇢ heavy rain'
+      'sc-depth': 'Low-end body — how deep and grounded it feels (double-click to reset)',
+      'sc-brightness': 'High-frequency air and sparkle (double-click to reset)',
+      'sc-density': 'Tone — dark & muffled ⇢ fully open by 85%. On Rain: calm roof rain ⇢ heavy rain (double-click to reset)'
     };
     [['sc-volume', 'volume'], ['sc-depth', 'depth'], ['sc-brightness', 'brightness'], ['sc-density', 'density']]
       .forEach(function (pair) {
@@ -361,6 +542,19 @@
             try { live.density(density01()); } catch (e) {}
           }
         });
+        // Double-click snaps the knob back to its default — quick "undo my
+        // fiddling" without hunting for a neutral position.
+        el.addEventListener('dblclick', function () {
+          prefs[pair[1]] = KNOB_DEFAULTS[pair[1]];
+          el.value = prefs[pair[1]];
+          if (valEl) valEl.textContent = prefs[pair[1]] + '%';
+          save();
+          applyMix();
+          if (pair[1] === 'density' && live && live.density) {
+            try { live.density(density01()); } catch (e) {}
+          }
+          setStatus(KNOB_LABELS[pair[1]] + ' reset to default');
+        });
       });
   }
 
@@ -371,6 +565,8 @@
     prefs.playing = false;
     renderPresets();
     wireSliders();
+    var scAuto = document.getElementById('sc-auto');
+    if (scAuto) scAuto.checked = !!prefs.autoSession;
     reflect();
     // power button is wired inline via onclick="FocusSound.toggle()"
   }
@@ -384,6 +580,15 @@
     start: start,
     pause: pause,
     select: selectSound,
-    supported: supported
+    supported: supported,
+    autoStart: autoStart,
+    setAuto: setAuto,
+    duck: duck,
+    // Test hooks (QA scripts): diag counters + run a real asset through the
+    // exact expansion path used at playback time.
+    _diag: function () { return { cycles: diagCycles, composites: diagComposites }; },
+    _buildTestLoop: function (src) {
+      return getBuffer(src).then(function (b) { return ensureRealLength(b); });
+    }
   };
 })();

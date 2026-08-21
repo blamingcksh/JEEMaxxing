@@ -54,15 +54,68 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
 <div class="ambient-glow glow-secondary"></div>
 <div class="bg-grid-overlay"></div>
 
-<!-- ═══════════════ MINI POMO WIDGET (floats over everything) ═══════════════
-     IDs verified against pomodoro.js: #mini-status / #mini-time are written
-     every tick by executeTimerTick() and every phase transition. -->
-<div id="pomo-mini-widget" class="pomo-mini-widget hidden" onclick="switchTab('pomodoro', document.querySelector('[data-tab=pomodoro]'))">
+<!-- ═══════════════ AMBIENT SPRINT WIDGET (floats over everything) ═══════════════
+     The focus engine's ONLY surface. Three states via [data-state]:
+       idle      → one-tap pill: ▶ starts a sprint at the suggested length;
+                   ⚙ opens the config popover (subject / minutes / rounds)
+       study     → ring + countdown + live ×1.5 ELO badge + pause/end
+       break     → auto chill countdown, skippable inline
+     pomodoro.js writes: #mini-status / #mini-subject / #mini-time every tick,
+     #mini-ring-arc dashoffset, #mini-end, #mini-x2, #mini-tally, #mini-reason. -->
+<div id="pomo-mini-widget" class="pomo-mini-widget" data-state="idle">
     <button class="mini-collapse-btn" onclick="event.stopPropagation(); toggleMiniWidget()" aria-label="Collapse widget">❯</button>
-    <div class="mini-content">
-        <span class="mini-status study" id="mini-status">FOCUS</span>
-        <span class="mini-subject" id="mini-subject">PHYSICS</span>
-        <span class="mini-time" id="mini-time">00:00</span>
+
+    <svg class="mini-ring" viewBox="0 0 36 36" aria-hidden="true">
+        <circle class="mini-ring-track" cx="18" cy="18" r="15.5"></circle>
+        <circle class="mini-ring-arc" id="mini-ring-arc" cx="18" cy="18" r="15.5"></circle>
+    </svg>
+
+    <button class="mini-go" id="mini-go" onclick="event.stopPropagation(); startSprintFromWidget()" aria-label="Start sprint">▶</button>
+
+    <div class="mini-content" onclick="event.stopPropagation(); openPomoPop()">
+        <span class="mini-topline">
+            <span class="mini-status" id="mini-status">SPRINT</span>
+            <span class="mini-x2" id="mini-x2" title="Deep Work bonus live — solves earn 1.5× ELO right now">×1.5</span>
+        </span>
+        <span class="mini-subject" id="mini-subject"></span>
+        <span class="mini-time" id="mini-time">25:00</span>
+        <span class="mini-end" id="mini-end"></span>
+        <span class="mini-tally" id="mini-tally"></span>
+        <span class="mini-reason" id="mini-reason"></span>
+    </div>
+
+    <div class="mini-controls">
+        <button class="mini-ctl" id="mini-pause" onclick="event.stopPropagation(); widgetPauseToggle()" aria-label="Pause or resume sprint">▮▮</button>
+        <button class="mini-ctl mini-skip" id="mini-skip" onclick="event.stopPropagation(); skipBreak()" aria-label="Skip break">⏭</button>
+        <button class="mini-ctl mini-stop" id="mini-stop" onclick="event.stopPropagation(); quitTimer()" aria-label="End sprint">✕</button>
+    </div>
+
+    <!-- Config popover: replaces the old Focus Mode form. One tap anywhere
+         else starts instantly; this is the explicit-setup escape hatch. -->
+    <div class="pomo-pop" id="pomo-pop" role="dialog" aria-label="Sprint setup">
+        <div class="pop-row">
+            <span class="pop-lbl">Subject</span>
+            <div class="pop-seg" id="pop-subjects">
+                <button type="button" class="pop-sub" data-subject="physics" onclick="popSetSubject('physics')">P</button>
+                <button type="button" class="pop-sub" data-subject="chemistry" onclick="popSetSubject('chemistry')">C</button>
+                <button type="button" class="pop-sub" data-subject="maths" onclick="popSetSubject('maths')">M</button>
+            </div>
+            <button type="button" class="pop-dyn" id="pop-dynamic" onclick="toggleDynamicSubject()" title="Dynamic mode: switch subject mid-sprint — time tracked per subject">⚡</button>
+        </div>
+        <div class="pop-row">
+            <span class="pop-lbl">Minutes</span>
+            <button type="button" class="pop-step" onclick="popAdjustMinutes(-5)">−</button>
+            <span class="pop-val" id="pop-minutes">25</span>
+            <button type="button" class="pop-step" onclick="popAdjustMinutes(5)">+</button>
+            <span class="pop-reason" id="pop-reason"></span>
+        </div>
+        <div class="pop-row">
+            <span class="pop-lbl">Rounds</span>
+            <button type="button" class="pop-step" onclick="popAdjustRounds(-1)">−</button>
+            <span class="pop-val" id="pop-rounds">1</span>
+            <button type="button" class="pop-step" onclick="popAdjustRounds(1)">+</button>
+        </div>
+        <button type="button" class="pop-start" onclick="popStart()">Start Sprint ▶</button>
     </div>
 </div>
 
@@ -265,38 +318,8 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
             <div class="glow-wrapper">
                 <div class="glow-box-inner">
                     <div class="pomo-header">
-                        <div>
-                            <span class="kicker">// DEEP WORK PROTOCOL</span>
-                            <h2 class="box-title">Lock-In Mode</h2>
-                            <p class="box-desc">Timed grind blocks. The beaker fills as you cook.</p>
-                        </div>
+                        <h2 class="box-title">Lock-In</h2>
                         <button class="pomo-settings-btn" onclick="openModal('visualizer-modal')" aria-label="Timer display settings">⚙</button>
-                    </div>
-
-                    <div class="pomodoro-controls">
-                        <div class="input-group">
-                            <label for="pomo-subject">Pick Your Poison</label>
-                            <div class="subject-row">
-                                <select id="pomo-subject" class="pomo-select" onchange="changeStudySubject()">
-                                    <option value="physics">Physics</option>
-                                    <option value="chemistry">Chemistry</option>
-                                    <option value="maths">Maths</option>
-                                </select>
-                                <button id="dynamic-subject-btn" class="pomo-dynamic-btn" onclick="toggleDynamicSubject(this)" title="Dynamic mode: switch subject mid-session — time is tracked per subject">⚡</button>
-                            </div>
-                        </div>
-                        <div class="input-group">
-                            <label for="pomo-study">Grind (min)</label>
-                            <input id="pomo-study" class="pomo-input" type="number" value="50" min="1">
-                        </div>
-                        <div class="input-group">
-                            <label for="pomo-break">Chill (min)</label>
-                            <input id="pomo-break" class="pomo-input" type="number" value="10" min="1">
-                        </div>
-                        <div class="input-group">
-                            <label for="pomo-sessions">Rounds</label>
-                            <input id="pomo-sessions" class="pomo-input" type="number" value="1" min="1">
-                        </div>
                     </div>
 
                     <div class="timer-container">
@@ -319,7 +342,60 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                             <button class="btn-break-opt" onclick="addBreakTime(5)">+5 Min</button>
                         </div>
                     </div>
+
+                    <!-- Setup strip — one quiet row under the timer.
+                         Dims while a session runs (inputs are disabled anyway). -->
+                    <div class="pomodoro-controls">
+                        <div class="input-group subject-group">
+                            <label for="pomo-subject">Subject</label>
+                            <div class="subject-row">
+                                <select id="pomo-subject" class="pomo-select" onchange="changeStudySubject()">
+                                    <option value="physics">Physics</option>
+                                    <option value="chemistry">Chemistry</option>
+                                    <option value="maths">Maths</option>
+                                </select>
+                                <button id="dynamic-subject-btn" class="pomo-dynamic-btn" onclick="toggleDynamicSubject(this)" title="Dynamic mode: switch subject mid-session — time is tracked per subject">⚡</button>
+                            </div>
+                        </div>
+                        <span class="setup-divider" aria-hidden="true"></span>
+                        <div class="input-group">
+                            <label for="pomo-study">Grind</label>
+                            <input id="pomo-study" class="pomo-input" type="number" value="50" min="1">
+                        </div>
+                        <div class="input-group">
+                            <label for="pomo-break">Chill</label>
+                            <input id="pomo-break" class="pomo-input" type="number" value="10" min="1">
+                        </div>
+                        <div class="input-group">
+                            <label for="pomo-sessions">Rounds</label>
+                            <input id="pomo-sessions" class="pomo-input" type="number" value="1" min="1">
+                        </div>
+                    </div>
+
+                    <!-- The contract, stated in plain numbers before you commit
+                         (written live by pomodoro.js updateProjection()). -->
+                    <p class="pomo-projection" id="pomo-projection"></p>
+
+                    <!-- TODAY'S BURN — one quiet line (pomodoro.js hydrateFocusStats()).
+                         Completing a block grows the chain; quitting mid-block
+                         resets it to zero. This is the weight. -->
+                    <div class="focus-ledger" id="focus-ledger">
+                        <span class="fl-tag">Today</span>
+                        <span class="fl-item"><b id="fs-done">0</b> blocks</span>
+                        <span class="fl-item"><b id="fs-deep">0m</b> deep</span>
+                        <span class="fl-item fl-chain-item"><b id="fs-chain">0</b> chain <span class="chain-pips" id="chain-pips" aria-label="Deep work chain"></span></span>
+                        <span class="fl-item fl-sub">best <b id="fs-best">0</b></span>
+                        <span class="fl-item fl-sub">forfeits <b id="fs-forfeit">0</b></span>
+                    </div>
                 </div>
+            </div>
+
+            <!-- All-time grind totals — one line (pomodoro.js updateStudyTimeHeader()). -->
+            <div class="focus-stats-row" id="focus-stats-row">
+                <span class="fl-tag">All-Time</span>
+                <span class="fsr-item"><i class="fsr-dot" data-subject="physics"></i>Physics <b id="stat-hrs-physics">0m</b></span>
+                <span class="fsr-item"><i class="fsr-dot" data-subject="chemistry"></i>Chemistry <b id="stat-hrs-chemistry">0m</b></span>
+                <span class="fsr-item"><i class="fsr-dot" data-subject="maths"></i>Maths <b id="stat-hrs-maths">0m</b></span>
             </div>
 
             <!-- Focus Soundscape — procedural ambient engine (focus-sound.js)
@@ -328,10 +404,12 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                  are wired by focus-sound.js at boot. Power toggles via FocusSound. -->
             <div class="soundscape-panel" id="focus-sound-panel">
                 <div class="sc-head">
-                    <div>
-                        <span class="kicker">// FOCUS SOUNDSCAPE</span>
-                        <h2 class="box-title">Ambient Sound Engine</h2>
-                        <p class="box-desc">Real recordings &amp; pre-rendered loops — nothing synthesised live, so it stays smooth. Pick a bed, then dial depth, brightness &amp; tone until it hits just right.</p>
+                    <div class="sc-title-wrap">
+                        <h2 class="box-title">Ambient Sound</h2>
+                        <label class="sc-auto-toggle" for="sc-auto" title="Starts your sound bed automatically when a focus block begins">
+                            <input type="checkbox" id="sc-auto" onchange="FocusSound.setAuto(this.checked)">
+                            <span>Auto-play on lock-in</span>
+                        </label>
                     </div>
                     <button type="button" class="sc-power-btn" id="sc-power" onclick="FocusSound.toggle()" aria-label="Play soundscape">▶</button>
                 </div>
@@ -353,19 +431,12 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                         <span class="sc-slider-val" id="sc-brightness-val">50%</span>
                     </div>
                     <div class="sc-slider-row">
-                        <span class="sc-slider-label" title="Tone — dark &amp; muffled ⇢ bright &amp; airy. On Rain: calm roof rain ⇢ heavy rain">Tone</span>
-                        <input type="range" id="sc-density" class="sc-range" min="0" max="100" value="50" title="Tone — dark &amp; muffled ⇢ bright &amp; airy. On Rain: calm roof rain ⇢ heavy rain">
-                        <span class="sc-slider-val" id="sc-density-val">50%</span>
+                        <span class="sc-slider-label" title="Tone — dark &amp; muffled ⇢ fully open by 85%. On Rain: calm roof rain ⇢ heavy rain">Tone</span>
+                        <input type="range" id="sc-density" class="sc-range" min="0" max="100" value="100" title="Tone — dark &amp; muffled ⇢ fully open by 85%. On Rain: calm roof rain ⇢ heavy rain">
+                        <span class="sc-slider-val" id="sc-density-val">100%</span>
                     </div>
                 </div>
-                <div class="sc-hint">Depth = low-end rumble · Brightness = air &amp; sparkle · Tone = dark ⇢ airy (Rain: calm ⇢ heavy)</div>
                 <div class="sc-status" id="sc-status"></div>
-            </div>
-
-            <div class="hours-box">
-                <div class="hour-stat"><h4>Physics Grind Time</h4><span class="val" id="stat-hrs-physics">0m</span></div>
-                <div class="hour-stat"><h4>Chemistry Grind Time</h4><span class="val" id="stat-hrs-chemistry">0m</span></div>
-                <div class="hour-stat"><h4>Maths Grind Time</h4><span class="val" id="stat-hrs-maths">0m</span></div>
             </div>
         </section>
 
@@ -797,12 +868,16 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
 </div>
 
 <!-- Timer Notification (pomodoro.js phase transitions)
-     Class-controlled ONLY — pomodoro.js toggles .active, never inline display. -->
+     Class-controlled ONLY — pomodoro.js toggles .active, never inline display.
+     #notify-receipt carries the session receipt (block / chain / ELO payout);
+     #notify-secondary is the "Keep Going" escape hatch on the quit-confirm. -->
 <div id="timer-notify-modal" class="modal-overlay">
     <div class="modal-content timer-notify-card">
         <div class="notify-icon" id="notify-icon">🍅</div>
         <h2 id="notify-title">Focus Session Done!</h2>
         <p class="box-desc" id="notify-message">Take a break. You earned it.</p>
+        <div class="notify-receipt" id="notify-receipt" hidden></div>
+        <button id="notify-secondary" class="btn btn-quit" style="display:none;width:100%;margin-top:10px" onclick="notifyKeepGoing()">Keep Going</button>
         <button class="btn btn-primary" style="width:100%;margin-top:16px" onclick="confirmTimerNotification()">Let's Go</button>
     </div>
 </div>

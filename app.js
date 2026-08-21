@@ -50,6 +50,11 @@ import {
     updateStudyTimeHeader, initAudioContext, playBell,
     confirmTimerNotification,
     applyPomoConfig, readPomoConfig,
+    // ── Ambient Sprint Widget + focus ledger (index.html inline onclicks) ──
+    startSprintFromWidget, openPomoPop, closePomoPop,
+    popSetSubject, popAdjustMinutes, popAdjustRounds, popStart,
+    notifyKeepGoing, hydrateFocusStats, updateProjection,
+    getFocusLedger, widgetPauseToggle,
 } from './pomodoro.js';
 
 // Replace the existing matrix.js import block with:
@@ -868,6 +873,11 @@ export async function switchTab(viewId, element) {
     bootCumStudy();
     restoreDailyCountsIntoSolved();
     if (viewId === 'practice') showPracticeSubview('practice-subject-view');
+    if (viewId === 'pomodoro') {
+        // Refresh today's burn ledger + commitment projection on entry.
+        try { hydrateFocusStats(); } catch (_) {}
+        try { updateProjection(); } catch (_) {}
+    }
     if (viewId === 'errors') {
         assignDailyBountyIfNeeded();
         renderErrorMatrixFromBank();
@@ -8938,6 +8948,16 @@ window.initAudioContext = initAudioContext;
 window.toggleImmersive = toggleImmersive;
 window.confirmTimerNotification = confirmTimerNotification;
 window.toggleMiniWidget = toggleMiniWidget;
+// ── Ambient Sprint Widget + focus ledger (inline onclicks in index.html) ──
+window.startSprintFromWidget = startSprintFromWidget;
+window.openPomoPop = openPomoPop;
+window.closePomoPop = closePomoPop;
+window.popSetSubject = popSetSubject;
+window.popAdjustMinutes = popAdjustMinutes;
+window.popAdjustRounds = popAdjustRounds;
+window.popStart = popStart;
+window.notifyKeepGoing = notifyKeepGoing;
+window.widgetPauseToggle = widgetPauseToggle;
 
 // ── Gamification Suite · window-exposed helpers ───────────────────────────
 // These ten acoustic / visual / state-mutating helpers drive the dopamine

@@ -9503,3 +9503,719 @@ html[data-mode] #view-dashboard .graph-display {
     background: linear-gradient(180deg, rgba(11,14,19,0.74), rgba(16,19,25,0.54)) !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.035) !important;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   FOCUS ENGINE — ambient sprint widget, receipts, ledger  (appended block)
+   Docked bottom-right on every tab: the focus engine's permanent address.
+   Later-in-file overrides of the legacy top-dock rules above are intentional.
+   ════════════════════════════════════════════════════════════════════════ */
+.pomo-mini-widget {
+    top: auto !important;
+    right: 22px;
+    bottom: 84px;   /* clears #dc-layout-fab (46px @ bottom:22) on the dashboard */
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 12px;
+    gap: 12px;
+    border-radius: 18px;
+    background: rgba(10, 12, 18, 0.92);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid rgba(255, 178, 36, 0.28);
+    box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: transform 0.25s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.2s ease-out,
+        border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.pomo-mini-widget[data-state="study"] {
+    border-color: rgba(255, 178, 36, 0.5);
+    box-shadow: 0 18px 44px -16px rgba(0, 0, 0, 0.8), 0 0 26px -6px rgba(255, 178, 36, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.pomo-mini-widget[data-state="break"] {
+    border-color: rgba(45, 212, 191, 0.45);
+    box-shadow: 0 18px 44px -16px rgba(0, 0, 0, 0.8), 0 0 24px -8px rgba(45, 212, 191, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ── Progress ring (doubles as the idle ▶ socket) ── */
+.mini-ring {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    width: 46px;
+    height: 46px;
+    transform: translateY(-50%) rotate(-90deg);
+    pointer-events: none;
+}
+.mini-ring-track { fill: none; stroke: rgba(255, 255, 255, 0.09); stroke-width: 2.6; }
+.mini-ring-arc {
+    fill: none;
+    stroke: var(--furnace);
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-dasharray: 97.39;
+    stroke-dashoffset: 97.39;
+    transition: stroke-dashoffset 1s linear, stroke 0.3s ease;
+    filter: drop-shadow(0 0 4px rgba(255, 178, 36, 0.55));
+}
+.pomo-mini-widget[data-state="break"] .mini-ring-arc {
+    stroke: var(--teal);
+    filter: drop-shadow(0 0 4px rgba(45, 212, 191, 0.55));
+}
+.pomo-mini-widget[data-paused] .mini-ring-arc { opacity: 0.35; }
+
+/* ── Go button sits inside the ring ── */
+.mini-go {
+    position: relative;
+    width: 46px;
+    height: 46px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 178, 36, 0.14);
+    color: var(--furnace);
+    font-size: 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-left: 3px;   /* optical centering of ▶ */
+    transition: transform 0.13s ease-out, background 0.2s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    .mini-go:hover { background: rgba(255, 178, 36, 0.26); transform: scale(1.06); }
+}
+.mini-go:active { transform: scale(0.94); }
+.pomo-mini-widget[data-state="study"] .mini-go,
+.pomo-mini-widget[data-state="break"] .mini-go { display: none; }
+
+/* ── Content column ── */
+.pomo-mini-widget .mini-content {
+    min-width: 96px;
+    gap: 1px;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+}
+.mini-topline { display: flex; align-items: center; gap: 7px; }
+.pomo-mini-widget .mini-status { font-size: 9px; letter-spacing: 1.4px; }
+.mini-x2 {
+    font-family: var(--font-num);
+    font-size: 9px;
+    font-weight: 700;
+    color: #0c0e14;
+    background: var(--furnace);
+    border-radius: 5px;
+    padding: 1px 5px;
+    letter-spacing: 0.4px;
+    display: none;
+}
+.pomo-mini-widget[data-state="study"] .mini-x2 { display: inline-block; }
+.pomo-mini-widget[data-paused] .mini-x2 { opacity: 0.25; }
+.pomo-mini-widget .mini-subject { font-size: 8.5px; }
+.pomo-mini-widget .mini-time { font-size: 21px; line-height: 1.15; }
+.pomo-mini-widget[data-paused] .mini-time { color: var(--text-secondary); }
+.mini-end, .mini-tally, .mini-reason {
+    font-family: var(--font-num);
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    min-height: 11px;
+}
+.mini-end { color: var(--text-secondary); }
+
+/* ── Inline controls (running states only) ── */
+.mini-controls { display: none; gap: 6px; }
+.pomo-mini-widget[data-state="study"] .mini-controls,
+.pomo-mini-widget[data-state="break"] .mini-controls { display: flex; }
+.mini-ctl {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    border: 1px solid var(--line-strong);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.13s ease-out, color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    .mini-ctl:hover { color: #fff; border-color: rgba(255, 255, 255, 0.32); }
+}
+.mini-ctl:active { transform: scale(0.92); }
+.mini-ctl.mini-stop:hover { color: #f87171; border-color: rgba(248, 113, 113, 0.45); }
+.pomo-mini-widget[data-state="break"] .mini-stop { display: none; }   /* skip covers it */
+
+/* Idle pill is compact; running card grows to fit controls */
+.pomo-mini-widget[data-state="idle"] .mini-content { min-width: 88px; }
+
+/* ── Config popover ── */
+.pomo-pop {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    right: 0;
+    width: 228px;
+    padding: 14px;
+    border-radius: 16px;
+    background: rgba(12, 14, 20, 0.97);
+    border: 1px solid rgba(255, 178, 36, 0.3);
+    box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.85);
+    display: none;
+    z-index: 20;
+}
+.pomo-pop.open { display: block; }
+.pop-row { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+.pop-row:last-of-type { margin-bottom: 0; }
+.pop-lbl {
+    font-family: var(--font-display);
+    font-size: 8.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text-muted);
+    width: 52px;
+    flex: 0 0 auto;
+}
+.pop-seg { display: flex; gap: 4px; }
+.pop-sub {
+    width: 26px;
+    height: 24px;
+    border-radius: 7px;
+    border: 1px solid var(--line-strong);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease-out;
+}
+.pop-sub.active {
+    background: rgba(255, 178, 36, 0.18);
+    border-color: rgba(255, 178, 36, 0.55);
+    color: var(--furnace);
+}
+.pop-dyn {
+    margin-left: auto;
+    width: 26px;
+    height: 24px;
+    border-radius: 7px;
+    border: 1px solid var(--line-strong);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s ease-out;
+}
+.pop-dyn.on {
+    background: rgba(61, 220, 255, 0.14);
+    border-color: rgba(61, 220, 255, 0.5);
+    color: var(--telemetry, #3ddcff);
+}
+.pop-step {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    border: 1px solid var(--line-strong);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.13s ease-out;
+}
+@media (hover: hover) and (pointer: fine) {
+    .pop-step:hover, .pop-sub:hover, .pop-dyn:hover { border-color: rgba(255, 255, 255, 0.34); color: #fff; }
+}
+.pop-step:active { transform: scale(0.9); }
+.pop-val {
+    font-family: var(--font-num);
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    min-width: 30px;
+    text-align: center;
+}
+.pop-reason {
+    font-family: var(--font-num);
+    font-size: 8.5px;
+    letter-spacing: 0.5px;
+    color: var(--furnace);
+    margin-left: auto;
+}
+.pop-start {
+    width: 100%;
+    margin-top: 13px;
+    padding: 9px 0;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg, var(--furnace), var(--furnace-hot, #ff7a1a));
+    color: #14100a;
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.6px;
+    cursor: pointer;
+    transition: transform 0.13s ease-out, filter 0.2s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    .pop-start:hover { filter: brightness(1.1); }
+}
+.pop-start:active { transform: scale(0.97); }
+
+/* ── Session receipt (inside the notify modal) ── */
+.notify-receipt {
+    margin-top: 14px;
+    padding: 4px 2px;
+    border-top: 1px solid var(--line);
+    text-align: left;
+}
+.receipt-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--line);
+    font-size: 12px;
+}
+.receipt-row:last-child { border-bottom: none; }
+.receipt-row span {
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.3px;
+    color: var(--text-muted);
+}
+.receipt-row b { font-family: var(--font-num); font-size: 12.5px; color: #fff; text-align: right; }
+
+/* ── Commitment projection (Focus view, under the form) ── */
+.pomo-projection {
+    margin: 10px 2px 0;
+    font-family: var(--font-num);
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+    text-align: center;
+    min-height: 14px;
+}
+
+/* ── Today's Burn ledger strip (Focus view, under the timer) ── */
+.focus-ledger {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.02);
+}
+.fl-cell { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+.fl-k {
+    font-family: var(--font-display);
+    font-size: 8.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+}
+.fl-k .fl-sub { text-transform: none; letter-spacing: 0.4px; color: var(--text-muted); }
+.fl-k .fl-sub b { color: var(--text-secondary); font-family: var(--font-num); }
+.fl-v { font-family: var(--font-num); font-size: 22px; font-weight: 700; color: #fff; }
+.chain-pips { display: flex; align-items: center; gap: 5px; min-height: 22px; flex-wrap: wrap; }
+.chain-pip {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--line-strong);
+}
+.chain-pip.lit {
+    background: var(--furnace);
+    border-color: var(--furnace);
+    box-shadow: 0 0 8px rgba(255, 178, 36, 0.5);
+}
+.chain-pip.lit.tip { animation: chainTipPulse 2.2s ease-in-out infinite; }
+@keyframes chainTipPulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(255, 178, 36, 0.4); }
+    50% { box-shadow: 0 0 14px rgba(255, 178, 36, 0.85); }
+}
+
+/* ── Mobile: dock above the safe area (and above the layout FAB) ── */
+@media (max-width: 560px) {
+    .pomo-mini-widget {
+        right: 12px;
+        bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+        padding: 8px 10px;
+        gap: 10px;
+    }
+    .mini-ring, .mini-go { width: 40px; height: 40px; }
+    .pomo-mini-widget .mini-time { font-size: 18px; }
+    .focus-ledger { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Reduced motion: keep state legibility, drop movement ── */
+@media (prefers-reduced-motion: reduce) {
+    .pomo-mini-widget,
+    .mini-ring-arc,
+    .mini-go,
+    .mini-ctl,
+    .pop-sub, .pop-dyn, .pop-step, .pop-start { transition-duration: 0.01ms; }
+    .chain-pip.lit.tip { animation: none; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   FOCUS TAB v3 — minimal single-column rebuild (appended; wins cascade).
+   One column, one hero, quiet lines. The timer is the page.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Shell: one centered column ── */
+#view-pomodoro .glow-box-inner {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+        "header"
+        "timer"
+        "controls";
+    row-gap: 6px;
+    padding: clamp(20px, 3vw, 34px) clamp(18px, 4vw, 48px);
+}
+
+/* ── Slim header: title + ⚙, nothing else ── */
+#view-pomodoro .pomo-header {
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 14px;
+}
+#view-pomodoro .pomo-header .box-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 3.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* ── Hero timer ── */
+#view-pomodoro .timer-container { min-height: 300px; }
+#view-pomodoro .timer-display {
+    font-size: clamp(72px, 11vw, 138px);
+    letter-spacing: -4px;
+    margin-bottom: 10px;
+    text-shadow: none;
+}
+#view-pomodoro .timer-status {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin-bottom: 22px;
+    font-size: 10.5px;
+    letter-spacing: 2.8px;
+    color: var(--text-muted);
+}
+#view-pomodoro .timer-status::before { width: 5px; height: 5px; }
+
+/* Hairline progress — the only visualiser in the default flow */
+#view-pomodoro .progress-bar-container {
+    max-width: 430px;
+    height: 3px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.07);
+    margin-bottom: 30px;
+}
+#view-pomodoro .progress-bar-fill {
+    box-shadow: 0 0 10px -2px var(--pomo-accent);
+}
+
+/* Beaker: out of the default flow — opt-in via the ⚙ visualiser modal.
+   (toggleVisualizer() flips inline display, which beats this rule.) */
+#view-pomodoro .beaker-container { display: none; }
+
+/* Actions: tighter primary, quieter ghosts */
+#view-pomodoro .btn-start {
+    min-width: 190px;
+    padding: 15px 40px;
+    border-radius: 999px;
+}
+#view-pomodoro .btn-pause,
+#view-pomodoro .btn-quit {
+    min-width: 118px;
+    padding: 15px 26px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+}
+#view-pomodoro .btn-pause:hover { background: rgba(255,255,255,0.12); }
+
+/* Break chips stay as-is; pull them closer to the actions */
+#view-pomodoro .break-actions.active { margin-top: 16px; }
+
+/* ── Setup strip: one quiet horizontal row ── */
+#view-pomodoro .pomodoro-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 20px;
+    padding: 18px 0 0;
+    margin-top: 26px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    background: transparent;
+    border-left: none; border-right: none; border-bottom: none;
+    border-radius: 0;
+}
+#view-pomodoro .pomodoro-controls .input-group {
+    flex-direction: column;
+    gap: 7px;
+    align-items: center;
+}
+#view-pomodoro .pomodoro-controls label {
+    font-size: 9px;
+    letter-spacing: 1.8px;
+    color: var(--text-muted);
+}
+#view-pomodoro .pomo-input,
+#view-pomodoro .pomo-select {
+    height: 40px;
+    min-width: 74px;
+    text-align: center;
+    border-radius: 11px;
+    background: rgba(255,255,255,0.04);
+    font-size: 13.5px;
+}
+#view-pomodoro .pomo-input { width: 74px; }
+#view-pomodoro select.pomo-select { min-width: 128px; text-align: left; appearance: none; -webkit-appearance: none; padding-right: 26px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%), linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+    background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+}
+#view-pomodoro .subject-row { display: flex; gap: 8px; align-items: center; }
+#view-pomodoro .pomo-dynamic-btn { width: 40px; height: 40px; border-radius: 11px; font-size: 15px; }
+.setup-divider {
+    width: 1px;
+    height: 34px;
+    background: rgba(255,255,255,0.08);
+    align-self: center;
+}
+/* While a block runs the strip fades back — inputs are disabled anyway.
+   Dynamic mode keeps it fully live (subject switching mid-block is legal),
+   signalled via body.pomo-dynamic from pomodoro.js. */
+body.pomo-active:not(.pomo-dynamic) #view-pomodoro .pomodoro-controls,
+body.pomo-active #view-pomodoro .pomo-projection { opacity: 0.34; transition: opacity .45s ease; }
+
+#view-pomodoro .pomo-projection {
+    margin-top: 12px;
+    font-size: 10.5px;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    min-height: 13px;
+}
+
+/* ── Ledger + all-time stats: single quiet lines ── */
+#view-pomodoro .focus-ledger,
+.focus-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: baseline;
+    gap: 8px 22px;
+    margin-top: 24px;
+    padding: 13px 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+}
+.focus-stats-row { margin-top: 12px; }
+.fl-tag {
+    font-family: var(--font-display, 'Chakra Petch', sans-serif);
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--pomo-accent);
+    opacity: 0.85;
+}
+.fl-item, .fsr-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    font-family: var(--font-num, 'Space Grotesk', monospace);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.fl-item b, .fsr-item b {
+    font-weight: 700;
+    font-size: 13.5px;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+.fl-item.fl-sub { font-size: 10px; opacity: 0.75; }
+.fl-item.fl-sub b { font-size: 11.5px; }
+.fl-chain-item { align-items: center; }
+.fsr-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    align-self: center;
+    flex: 0 0 auto;
+}
+.fsr-dot[data-subject="physics"] { background: #3ddcff; box-shadow: 0 0 6px rgba(61,220,255,0.5); }
+.fsr-dot[data-subject="chemistry"] { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+.fsr-dot[data-subject="maths"] { background: #ffb224; box-shadow: 0 0 6px rgba(255,178,36,0.5); }
+html[data-mode="dusk"] .fsr-dot { background: var(--text-secondary) !important; box-shadow: none !important; }
+
+@media (max-width: 640px) {
+    #view-pomodoro .focus-ledger, .focus-stats-row { border-radius: 16px; gap: 6px 16px; justify-content: flex-start; }
+    #view-pomodoro .pomodoro-controls { gap: 14px; }
+}
+
+/* ── Soundscape: quieter head, denser grid ── */
+#view-pomodoro .soundscape-panel { gap: 16px; padding: clamp(18px, 2.5vw, 26px); }
+#view-pomodoro .sc-head {
+    align-items: center;
+    padding-bottom: 12px;
+}
+#view-pomodoro .sc-title-wrap { display: flex; flex-direction: column; gap: 7px; }
+#view-pomodoro .sc-head .box-title {
+    font-size: 15px;
+    letter-spacing: 3.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin: 0;
+}
+.sc-auto-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    cursor: pointer;
+    user-select: none;
+    font-family: var(--font-num, 'Space Grotesk', monospace);
+    font-size: 11px;
+    color: var(--text-muted);
+    transition: color .15s ease;
+}
+.sc-auto-toggle:hover { color: var(--text-secondary); }
+.sc-auto-toggle input {
+    appearance: none; -webkit-appearance: none;
+    width: 30px; height: 17px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.14);
+    position: relative;
+    cursor: pointer;
+    transition: background .18s ease, border-color .18s ease;
+    margin: 0;
+}
+.sc-auto-toggle input::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    transition: transform .18s cubic-bezier(0.23, 1, 0.32, 1), background .18s ease;
+}
+.sc-auto-toggle input:checked { background: var(--pomo-accent-soft); border-color: var(--pomo-accent); }
+.sc-auto-toggle input:checked::after { transform: translateX(13px); background: var(--pomo-accent); }
+html[data-mode="dusk"] .sc-auto-toggle input:checked { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.35); }
+html[data-mode="dusk"] .sc-auto-toggle input:checked::after { background: #fff; }
+
+#view-pomodoro .sc-presets { grid-template-columns: repeat(auto-fill, minmax(106px, 1fr)); gap: 8px; }
+#view-pomodoro .sc-preset { padding: 10px 12px; border-radius: 11px; font-size: 12px; justify-content: flex-start; }
+#view-pomodoro .sc-sliders { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; }
+@media (max-width: 760px) {
+    #view-pomodoro .sc-sliders { grid-template-columns: 1fr; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   SPRINT WIDGET v2 — production polish (appended; overrides v1 above).
+   Calmer at rest, tighter when live, quieter chrome.
+   ════════════════════════════════════════════════════════════════════════ */
+.pomo-mini-widget {
+    padding: 9px 11px;
+    gap: 11px;
+    border-radius: 16px;
+}
+/* Idle = neutral chrome; the furnace glow is EARNED by starting a sprint. */
+.pomo-mini-widget[data-state="idle"] {
+    border-color: rgba(255, 255, 255, 0.13);
+    box-shadow: 0 16px 40px -18px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.pomo-mini-widget[data-state="idle"][data-pop] {
+    border-color: rgba(255, 178, 36, 0.45);
+}
+
+/* Ring + go: slightly smaller, thinner strokes, less shout */
+.mini-ring, .mini-go { width: 42px; height: 42px; }
+.mini-go { font-size: 13px; background: rgba(255, 255, 255, 0.06); color: var(--text-secondary); }
+@media (hover: hover) and (pointer: fine) {
+    .mini-go:hover { background: rgba(255, 178, 36, 0.2); color: var(--furnace); transform: scale(1.05); }
+}
+.mini-ring-track { stroke-width: 2.2; }
+.mini-ring-arc { stroke-width: 2.4; }
+
+/* Content hierarchy: status whisper, time shouts */
+.pomo-mini-widget .mini-content { min-width: 94px; }
+.pomo-mini-widget .mini-status {
+    font-size: 8px;
+    letter-spacing: 1.7px;
+    color: var(--text-muted);
+}
+.pomo-mini-widget[data-state="study"] .mini-status { color: var(--furnace); }
+.pomo-mini-widget[data-state="break"] .mini-status { color: var(--teal); }
+.pomo-mini-widget .mini-time {
+    font-size: 22px;
+    letter-spacing: -0.5px;
+    line-height: 1.12;
+}
+.mini-end, .mini-tally { line-height: 1.25; }
+.mini-reason { display: none; }   /* the ▶ button is self-explanatory */
+
+/* Controls: smaller, tighter, out of the way until needed */
+.mini-controls { gap: 5px; margin-left: 2px; }
+.mini-ctl {
+    width: 27px;
+    height: 27px;
+    border-radius: 8px;
+    font-size: 10px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* Popover: crisper card, roomier rows */
+.pomo-pop {
+    width: 238px;
+    padding: 15px;
+    border-radius: 14px;
+    background: rgba(14, 16, 23, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 22px 54px -16px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.pomo-pop.open { animation: popRise 0.18s cubic-bezier(0.23, 1, 0.32, 1); }
+@keyframes popRise {
+    from { opacity: 0; transform: translateY(5px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.pop-row + .pop-row { margin-top: 12px; }
+.pop-lbl { width: 52px; letter-spacing: 1.7px; font-size: 8.5px; }
+.pop-sub { width: 28px; height: 26px; font-size: 10.5px; }
+.pop-dyn { width: 28px; height: 26px; }
+.pop-step { width: 26px; height: 26px; border-radius: 8px; }
+.pop-val { font-size: 14.5px; }
+.pop-start {
+    margin-top: 14px;
+    padding: 10px 0;
+    border-radius: 11px;
+    letter-spacing: 1.8px;
+    font-size: 10.5px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .pomo-pop.open { animation: none; }
+}
