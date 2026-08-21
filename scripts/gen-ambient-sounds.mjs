@@ -1,14 +1,18 @@
 /* ============================================================================
- * scripts/gen-ambient-sounds.mjs
+ * scripts/gen-ambient-sounds.mjs  —  v2 (production-pass)
  * Pre-renders the Focus Soundscape WAV loops for JEEMaxxing into
- * assets/sounds/. These replace the v2 real-time WebAudio synthesis, which
- * sounded rough (per-event scheduling clicks / jitter). Offline rendering
- * with smooth envelopes + baked seamless seams produces clean, loopable,
- * recording-like ambience with zero runtime CPU.
+ * assets/sounds/. v2 changes vs v1:
+ *   • Much longer beds (24–52s) — a 10s noise loop repeats too obviously.
+ *   • Every slow modulation (swells, gusts, breathing) is a SUM of sines at
+ *     non-integer rate ratios against the loop length, so nothing audibly
+ *     pulses on a fixed period. bakeSeam() still guarantees a click-free wrap.
+ *   • Richer renderers: dual-layer ocean surf, clustered stream bubbles,
+ *     intensity-modulated fire crackle roars, three-layer wind sweeps.
  *
  *   Output (16-bit mono PCM @ 22050 Hz):  white/pink/brown, drone, ocean,
  *   stream, fire, wind.  Rain + cafe use real CC0 recordings (see README in
- *   assets/sounds), so they're not generated here.
+ *   assets/sounds), so they're not generated here. Stereo width for mono
+ *   beds is added at playback (Haas widener in focus-sound.js).
  *
  * Re-run with:  node scripts/gen-ambient-sounds.mjs
  * ========================================================================== */
@@ -68,6 +72,14 @@ function makeBP() {                                  // Chamberlin SVF bandpass 
   };
 }
 
+function makeHP() {                                  // one-pole highpass (y tracks the DC side)
+  let y = 0;
+  return (x, cutoff) => {
+    y += (1 - Math.exp(-2 * Math.PI * cutoff / SR)) * (x - y);
+    return x - y;
+  };
+}
+
 function noiseGen(kind) {                            // one sample per call
   let last = 0, b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
   return function () {
@@ -90,6 +102,15 @@ function noiseGen(kind) {                            // one sample per call
 }
 
 function tri(x) { return (2 / Math.PI) * Math.asin(Math.sin(x)); }
+
+// Layered LFO: sines at rates that are NON-integer fractions of the loop, so
+// the combined contour never repeats within one loop revolution.
+//   layers: [{ r: cycles-per-loop, g: weight, p: phase }]
+function lfo(t, sec, layers) {
+  let v = 0;
+  for (const l of layers) v += l.g * Math.sin(2 * Math.PI * l.r * t / sec + (l.p || 0));
+  return v;
+}
 
 // Bake a seamless loop: render `orig` with `f` extra samples beyond the loop
 // point, then crossfade the continuation (orig[L..L+f)) into the head so the
@@ -131,16 +152,19 @@ function renderDrone(sec, fade) {
     { f: 165,  g: 0.12, t: 'tri' },
     { f: 220,  g: 0.06, t: 'tri' }
   ];
+  const pink = noiseGen('pink');
+  const body = makeLP();
   for (let i = 0; i < L + f; i++) {
     const t = i / SR;
-    const breath = 0.8 + 0.2 * Math.sin(2 * Math.PI * 0.08 * t);   // slow breathing
+    // Two incommensurate breathing rates — never a fixed inhale/exhale period.
+    const breath = 0.82 + 0.13 * Math.sin(2 * Math.PI * 5.3 * t / sec) + 0.05 * Math.sin(2 * Math.PI * 11.7 * t / sec + 1.1);
     let s = 0;
     for (const p of partials) {
-      const det = 1 + 0.0015 * Math.sin(2 * Math.PI * 0.07 * t + p.f); // slow beating
+      const det = 1 + 0.0015 * Math.sin(2 * Math.PI * 0.07 * t + p.f) + 0.0009 * Math.sin(2 * Math.PI * 0.113 * t + p.f * 2.1);
       const ph = 2 * Math.PI * p.f * det * t;
       s += p.g * (p.t === 'sine' ? Math.sin(ph) : tri(Math.sin(ph)));
     }
-    orig[i] = s * breath;
+    orig[i] = s * breath + body(pink(), 380) * 0.02;   // faint air body under the drone
   }
   return normalize(bakeSeam(orig, f), 0.55);
 }
@@ -149,14 +173,21 @@ function renderOcean(sec, fade) {
   const L = Math.floor(sec * SR), f = Math.floor(fade * SR);
   const orig = new Float32Array(L + f);
   const bed = makeLP();
-  const surf = makeBP(); surf.set(700, 0.5);
-  const swellFreq = 2 / sec;                          // exactly 2 swells per loop
+  const surfA = makeBP(); surfA.set(700, 0.5);
+  const surfB = makeBP(); surfB.set(1150, 0.7);
   const brown = noiseGen('brown');
   const white = noiseGen('white');
+  const hiss = noiseGen('white');
   for (let i = 0; i < L + f; i++) {
     const t = i / SR;
-    const swell = 0.35 + 0.3 * Math.sin(2 * Math.PI * swellFreq * t);
-    orig[i] = bed(brown(), 320) * swell + surf.run(white()) * (0.08 + 0.12 * swell);
+    // Primary swell (5 per loop) + slower drag + secondary chop — irregular sea.
+    const swell = 0.42 + 0.26 * Math.sin(2 * Math.PI * 5 * t / sec + 1.3)
+                      + 0.10 * Math.sin(2 * Math.PI * 2.3 * t / sec)
+                      + 0.08 * Math.sin(2 * Math.PI * 8.7 * t / sec + 2.6);
+    const s = Math.max(0.05, swell);
+    const shore = surfA.run(white()) * (0.05 + 0.15 * s * s)          // breakers ride the swell²
+                + surfB.run(hiss()) * (0.03 + 0.09 * s);
+    orig[i] = bed(brown(), 320) * s * 1.15 + shore;
   }
   return normalize(bakeSeam(orig, f), 0.65);
 }
@@ -164,23 +195,28 @@ function renderOcean(sec, fade) {
 function renderStream(sec, fade) {
   const L = Math.floor(sec * SR), f = Math.floor(fade * SR);
   const orig = new Float32Array(L + f);
-  const bp = makeBP();
-  const gurgleFreq = 3 / sec;                         // 3 gurgle cycles per loop
-  const pink = noiseGen('pink');
+  const bpA = makeBP(), bpB = makeBP();
+  const pink = noiseGen('pink'), pink2 = noiseGen('pink');
   for (let i = 0; i < L + f; i++) {
     const t = i / SR;
-    bp.set(900 + 250 * Math.sin(2 * Math.PI * gurgleFreq * t), 2);
-    orig[i] = bp.run(pink());
+    // Two wandering channels (incommensurate wobbles) = lively brook, no pulse.
+    bpA.set(950 + 230 * Math.sin(2 * Math.PI * 5 * t / sec), 1.7);
+    bpB.set(1420 + 340 * Math.sin(2 * Math.PI * 8.3 * t / sec + Math.PI / 3), 2.1);
+    orig[i] = bpA.run(pink()) * 0.62 + bpB.run(pink2()) * 0.38;
   }
-  // bright bubble blips
-  for (let k = 0; k < 8; k++) {
-    const bt = Math.random() * sec * 0.8;
-    const bf = 1500 + Math.random() * 2000;
-    const ba = 0.04 + Math.random() * 0.03;
-    const start = Math.floor(bt * SR), n = Math.floor(0.05 * SR), att = Math.floor(0.012 * SR);
-    for (let j = 0; j < n && start + j < orig.length; j++) {
-      const env = j < att ? j / att : Math.exp(-(j - att) / (n - att) * 3);
-      orig[start + j] += Math.sin(2 * Math.PI * bf * (j / SR)) * ba * env;
+  // Bubble blips, clustered like real riffles (5 clusters, not uniform spray)
+  for (let c = 0; c < 5; c++) {
+    const clusterAt = fade + Math.random() * (sec - 2 * fade);
+    for (let k = 0; k < 6; k++) {
+      const bt = clusterAt + (Math.random() - 0.5) * 1.6;
+      if (bt < 0.2 || bt > sec - 0.2) continue;
+      const bf = 1500 + Math.random() * 2400;
+      const ba = 0.035 + Math.random() * 0.03;
+      const start = Math.floor(bt * SR), n = Math.floor(0.05 * SR), att = Math.floor(0.012 * SR);
+      for (let j = 0; j < n && start + j < orig.length; j++) {
+        const env = j < att ? j / att : Math.exp(-(j - att) / (n - att) * 3);
+        orig[start + j] += Math.sin(2 * Math.PI * bf * (j / SR)) * ba * env;
+      }
     }
   }
   return normalize(bakeSeam(orig, f), 0.6);
@@ -190,24 +226,29 @@ function renderFire(sec, fade) {
   const L = Math.floor(sec * SR), f = Math.floor(fade * SR);
   const orig = new Float32Array(L + f);
   const bed = makeLP();
+  const hp = makeHP();
   const brown = noiseGen('brown');
   for (let i = 0; i < L + f; i++) {
     const t = i / SR;
-    const flutter = 0.85 + 0.15 * Math.sin(2 * Math.PI * 0.5 * t);   // fire glow
+    // Glow flutter at two incommensurate rates.
+    const flutter = 0.84 + 0.13 * Math.sin(2 * Math.PI * 3 * t / sec) + 0.06 * Math.sin(2 * Math.PI * 7.7 * t / sec + 2);
     orig[i] = bed(brown(), 300) * flutter;
   }
-  // crackles — short, soft-attack pops so they don't click
-  const nCrack = Math.floor(sec * 1.4);
-  for (let k = 0; k < nCrack; k++) {
-    const ct = Math.random() * sec * 0.85;
-    const cf = 1500 + Math.random() * 2500;
-    const ca = 0.1 + Math.random() * 0.18;
+  // Crackles roar and settle: placement probability follows a slow contour,
+  // so you get busy patches and quiet patches instead of machine-gun evenness.
+  const crackleLfo = (t) => 0.5 + 0.34 * Math.sin(2 * Math.PI * 2.6 * t / sec + 0.7) + 0.16 * Math.sin(2 * Math.PI * 6.1 * t / sec + 2.2);
+  const nTry = Math.floor(sec * 3.2);
+  for (let k = 0; k < nTry; k++) {
+    const ct = fade + Math.random() * (sec - 2 * fade);
+    if (Math.random() > crackleLfo(ct)) continue;
+    const cf = 1500 + Math.random() * 2600;
+    const ca = (0.07 + Math.random() * 0.16) * (0.7 + crackleLfo(ct));
     const cq = 5 + Math.random() * 3;
     const start = Math.floor(ct * SR), n = Math.floor((0.03 + Math.random() * 0.02) * SR), att = Math.floor(0.005 * SR);
     const bp = makeBP(); bp.set(cf, cq);
     for (let j = 0; j < n && start + j < orig.length; j++) {
       const env = j < att ? j / att : Math.exp(-(j - att) / (n - att) * 4);
-      orig[start + j] += bp.run(Math.random() * 2 - 1) * ca * env;
+      orig[start + j] += bp.run(hp(Math.random() * 2 - 1, 400)) * ca * env;
     }
   }
   return normalize(bakeSeam(orig, f), 0.6);
@@ -216,26 +257,34 @@ function renderFire(sec, fade) {
 function renderWind(sec, fade) {
   const L = Math.floor(sec * SR), f = Math.floor(fade * SR);
   const orig = new Float32Array(L + f);
-  const bp = makeBP();
-  const sweepFreq = 2 / sec, gustFreq = 4 / sec;
-  const pink = noiseGen('pink');
+  const layers = [
+    { bp: makeBP(), nz: noiseGen('pink'), c: 480,  amp: 0.5, r: 3,   q: 1.3, p: 0 },
+    { bp: makeBP(), nz: noiseGen('pink'), c: 760,  amp: 0.32, r: 5.3, q: 1.5, p: 1.4 },
+    { bp: makeBP(), nz: noiseGen('pink'), c: 1080, amp: 0.2, r: 9.1, q: 1.7, p: 2.6 }
+  ];
   for (let i = 0; i < L + f; i++) {
     const t = i / SR;
-    bp.set(700 + 350 * Math.sin(2 * Math.PI * sweepFreq * t), 1.4);  // howling sweep
-    const gust = 0.6 + 0.35 * Math.sin(2 * Math.PI * gustFreq * t + 1.2);
-    orig[i] = bp.run(pink()) * gust;
+    // Gusts blow through at two incommensurate rates.
+    const gust = 0.62 + 0.26 * Math.sin(2 * Math.PI * 2.4 * t / sec + 1) + 0.14 * Math.sin(2 * Math.PI * 6.3 * t / sec + 0.3);
+    let s = 0;
+    for (const l of layers) {
+      const wob = l.c + 0.42 * l.c * Math.sin(2 * Math.PI * l.r * t / sec + l.p);   // howl sweeps around its centre
+      l.bp.set(wob, l.q);
+      s += l.bp.run(l.nz()) * l.amp;
+    }
+    orig[i] = s * gust;
   }
   return normalize(bakeSeam(orig, f), 0.55);
 }
 
 // ── build ───────────────────────────────────────────────────────────────────
 console.log('Rendering ambient loops →', OUT);
-writeWav('white.wav', renderNoise('white', 10, 1.0));
-writeWav('pink.wav', renderNoise('pink', 10, 1.0));
-writeWav('brown.wav', renderNoise('brown', 10, 1.0));
-writeWav('drone.wav', renderDrone(14, 1.5));
-writeWav('ocean.wav', renderOcean(26, 3));
-writeWav('stream.wav', renderStream(22, 2));
-writeWav('fire.wav', renderFire(20, 2));
-writeWav('wind.wav', renderWind(20, 2.5));
+writeWav('white.wav', renderNoise('white', 30, 1.5));
+writeWav('pink.wav', renderNoise('pink', 30, 1.5));
+writeWav('brown.wav', renderNoise('brown', 30, 1.5));
+writeWav('drone.wav', renderDrone(36, 2.5));
+writeWav('ocean.wav', renderOcean(52, 3.5));
+writeWav('stream.wav', renderStream(40, 2.5));
+writeWav('fire.wav', renderFire(44, 2.5));
+writeWav('wind.wav', renderWind(44, 3));
 console.log('Done.');

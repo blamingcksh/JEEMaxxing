@@ -152,6 +152,14 @@ Writes go through `saveAllAsync()` → `flushSaves()` which coalesces and persis
 - **Dynamic subject switching** (`toggleDynamicSubject`, `changeStudySubject`) — time accrues to the selected subject HUD.
 - **Audio**: `initAudioContext()` unlocks audio on first gesture; `playBell()` rings at session end; `confirmTimerNotification()` sends a notification.
 - **Visualizer + mini widget** (`toggleVisualizer`, `toggleMiniWidget`) — an always-on-top floating widget with a beacon on the sidebar nav.
+- **Ambient Sprint Widget** — the focus engine's permanent surface, docked bottom-right on *every* tab: idle pill with one-tap ▶ (starts a sprint at the suggested length) and a config popover (subject P/C/M, minutes ±5, rounds ±1, dynamic ⚡); running state shows a progress ring, countdown, live ×1.5 badge, "ends HH:MM", and inline pause/skip/end controls. Clicking a running pill jumps to Focus Mode.
+- **Focus tab v3 (minimal)** — single-column rebuild: slim "LOCK-IN" header, huge centered countdown over a hairline progress bar (the beaker is now opt-in via the ⚙ visualiser modal), one quiet setup strip that dims to 34% while a block runs (stays fully live in dynamic mode via `body.pomo-dynamic`), and the ledger + all-time totals as single-line pills instead of card grids.
+- **Soundscape session bridge** — "Auto-play on lock-in" toggle (persisted, default on): `transitionToStudy`/`transitionToStopwatch` call `FocusSound.autoStart()`. `FocusSound.duck()` dips the bed to 22% when the session bell rings so the chime cuts through. Beds breathe: 1.4s linear fade-in on start, ~0.5s release on pause; engine failures surface in the status line instead of failing silently.
+- **Real ×1.5 Deep Work bonus** — while a study/stopwatch block runs, `body.pomo-active` + `window._pomoRunning` are set, which `_getDeepWorkBlockMultiplier()` reads to pay 1.5× ELO on every solve. Pausing, breaks, quitting and resets close the window (the badge never lies).
+- **Focus ledger** (`jeemax_focus_ledger`, per-day) — blocks done, forfeits, current chain, best chain, deep seconds. Completing a block grows the chain; abandoning one resets it to zero and logs a forfeit (abandoned seconds still count toward deep time). Surfaced in the widget tally and the Focus view's "Today's Burn" strip with chain pips.
+- **Quit friction** — ending a live study block opens a "Break the chain?" confirm that names the price (kept seconds vs. chain reset) with a "Keep Going" escape hatch; stopwatch stops ≥5 min count as completed blocks.
+- **Session receipts** — every completed block's modal carries a receipt: block length + subject, chain state, deep time today, and ELO earned during the block (snapshotted at block start).
+- **Commitment projection** — the Focus form states the contract live ("50m × 2 rounds ≈ 1h 50m committed · every solve banks ×1.5 ELO while you're locked in").
 
 #### Dashboard (`app.js` + `dashboard-clean.js`)
 

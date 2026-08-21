@@ -10,6 +10,7 @@
     "qa": "node scripts/qa-boot-sequence.mjs",
     "qa-analysis": "node scripts/qa-analysis-tab.mjs",
     "qa-stale": "node scripts/qa-analysis-stale.mjs",
-    "qa-progress": "node scripts/qa-today-progress.mjs"
+    "qa-progress": "node scripts/qa-today-progress.mjs",
+    "qa-focus": "node scripts/qa-focus-mode.mjs && node scripts/qa-focus-layout.mjs && node scripts/qa-focus-sound.mjs"
   }
 }

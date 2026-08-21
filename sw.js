@@ -10,7 +10,7 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v26'; // Arena (P2P leaderboard) tab removed — social fluff isn't prep
+const VERSION = 'jeemax-v29'; // Soundscape production pass — seamless real-recording loops, longer regenerated beds, remapped knobs, widget v2 polish
 const SHELL = [
   './',
   './index.html',
