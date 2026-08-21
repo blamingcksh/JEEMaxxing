@@ -1010,6 +1010,23 @@ export async function updateUI() {
         varEl.style.color = variance >= 0 ? 'var(--glow-green)' : 'var(--glow-red)';
     }
 
+    // ── Today's Progress ring: three concentric arcs, one per subject.
+    // Each arc sweeps its own subject's completion; the hub shows the
+    // combined solved/total. Circumference is derived from each arc's r
+    // so geometry lives in exactly one place. ──
+    [['tp-arc-physics', pctP], ['tp-arc-chemistry', pctC], ['tp-arc-maths', pctM]].forEach(([arcId, pct]) => {
+        const arc = document.getElementById(arcId);
+        if (!arc) return;
+        const c = 2 * Math.PI * arc.r.baseVal.value;
+        const clamped = Math.max(0, Math.min(100, pct));
+        arc.style.strokeDasharray = `${c}`;
+        arc.style.strokeDashoffset = `${c * (1 - clamped / 100)}`;
+    });
+    const tpTotalEl = document.getElementById('tp-total');
+    if (tpTotalEl) tpTotalEl.textContent = totalSolved;
+    const tpTgtEl = document.getElementById('tp-total-tgt');
+    if (tpTgtEl) tpTgtEl.textContent = `/ ${totalTgt}`;
+
     // ── Contribution graph: use the same daily variance definition as the
     // live strip above, but keep the historical grid on the dashboard ledger.
     try {
@@ -6778,13 +6795,17 @@ function _renderSubjectEloMonitor(subject, elo) {
         else if (safeSubject === 'maths' && (txt.includes('maths') || txt.includes('math'))) cardEl = c;
     });
     if (!cardEl) return;
+    // Row layout: ride inline in the row header (name + rating on one line).
+    // Legacy tile layout fallback: below the progress pill.
+    const rowTop = cardEl.querySelector('.tp-row-top');
     const pill = cardEl.querySelector('.distribution-pill');
-    if (!pill) return;
+    if (!rowTop && !pill) return;
     let monitor = cardEl.querySelector('.elo-monitor');
     if (!monitor) {
         monitor = document.createElement('div');
         monitor.className = 'elo-monitor';
-        pill.insertAdjacentElement('afterend', monitor);
+        if (rowTop) rowTop.insertBefore(monitor, rowTop.querySelector('.tp-count'));
+        else pill.insertAdjacentElement('afterend', monitor);
     }
     const tier = getRankTierDetails(elo);
     const nextThreshold = _getNextTierThreshold(elo);

@@ -192,7 +192,8 @@
     sound(p.s);
     haptic(p.h);
     if (p.bump) {
-      var cnt = host.parentElement && host.parentElement.querySelector('.counter');
+      var row = host.closest('.tp-row') || host.parentElement;
+      var cnt = row && row.querySelector('.counter');
       if (cnt) { cnt.classList.remove('fx-bump'); void cnt.offsetWidth; cnt.classList.add('fx-bump'); }
     }
     if (host.matches(RIPPLE_HOSTS)) ripple(host, e.clientX, e.clientY);
