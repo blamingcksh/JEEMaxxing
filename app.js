@@ -847,7 +847,16 @@ export function triggerStreakShield() {
 export function toggleSidebar() {
     const sb = document.getElementById('sidebar');
     sb.classList.toggle('collapsed');
-    document.querySelector('.collapse-btn').textContent = sb.classList.contains('collapsed') ? '→' : 'Shrink';
+    // v4 shell: the button carries an SVG chevron + a text span — write the
+    // label into the span (and flip aria-label) instead of nuking innerHTML.
+    const btn = document.querySelector('.collapse-btn');
+    const collapsed = sb.classList.contains('collapsed');
+    const txt = btn && btn.querySelector('.collapse-txt');
+    if (txt) txt.textContent = 'Shrink'; else if (btn) btn.textContent = 'Shrink';
+    if (btn) {
+        btn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+        btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    }
 }
 
 export async function switchTab(viewId, element) {

@@ -74,7 +74,8 @@ assert(await widget.isVisible(), 'idle widget visible on dashboard');
 assert(await widget.evaluate(el => el.getAttribute('data-state')) === 'idle', 'widget data-state=idle');
 const wbox = await widget.boundingBox();
 assert(wbox && wbox.y > 500, `widget docked bottom-right (y=${Math.round(wbox?.y || 0)})`);
-assert(await widget.evaluate(el => getComputedStyle(el).borderRadius === '16px'), 'new widget skin applied');
+// v4: floating capsule = full pill (design-system radius token)
+assert(['999px', '9999px', '32767px'].includes(await widget.evaluate(el => getComputedStyle(el).borderRadius)), 'new widget skin applied');
 assert(!(await widget.evaluate(el => el.classList.contains('hidden'))), 'idle pill NOT hidden (entry point always live)');
 await page.screenshot({ path: path.join(SHOTS, '01-idle-dashboard.png') });
 

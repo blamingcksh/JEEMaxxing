@@ -28,7 +28,12 @@
     if (saved === '1') {
       sb.classList.add('collapsed');
       var cb = sb.querySelector('.collapse-btn');
-      if (cb) cb.textContent = '\u2192';           // keep app.js's label in sync
+      // v4 shell: keep the chevron SVG — only sync the aria/title state
+      // (app.js toggleSidebar owns the label; never nuke innerHTML here).
+      if (cb) {
+        cb.setAttribute('aria-label', 'Expand sidebar');
+        cb.title = 'Expand sidebar';
+      }
     }
     // toggleSidebar() flips this class → we persist every change.
     new MutationObserver(function () {

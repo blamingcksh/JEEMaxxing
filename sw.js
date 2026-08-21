@@ -10,7 +10,9 @@
  * ============================================================================ */
 'use strict';
 
-const VERSION = 'jeemax-v31'; // Vault command-deck — rail navigation, sticky toolbar, compact ERM strip, click-to-practice cards
+// v32 — Design System v4: token foundation, command-bar v5 (SVG nav, stat
+// chips), unified components/views polish, overflow-x clip guard.
+const VERSION = 'jeemax-v32';
 const SHELL = [
   './',
   './index.html',

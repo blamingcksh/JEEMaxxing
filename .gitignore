@@ -4,3 +4,6 @@ forest-island.js
 # Dev-only test browser (playwright-core is a devDependency for QA scripts)
 node_modules/playwright-core/
 node_modules/.bin/playwright-core
+
+# Redesign QA artifacts (screenshots + captured output)
+.redesign-shots/
