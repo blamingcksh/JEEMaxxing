@@ -10,9 +10,10 @@
  * ============================================================================ */
 'use strict';
 
-// v32 — Design System v4: token foundation, command-bar v5 (SVG nav, stat
-// chips), unified components/views polish, overflow-x clip guard.
-const VERSION = 'jeemax-v32';
+// v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
+// preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
+// regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
+const VERSION = 'jeemax-v33';
 const SHELL = [
   './',
   './index.html',

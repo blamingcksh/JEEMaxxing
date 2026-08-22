@@ -9697,9 +9697,15 @@ html[data-mode="dusk"] #view-pomodoro .hour-stat {
     -webkit-appearance: none; appearance: none;
     width: 100%; height: 6px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.12);
+    /* Live value fill — focus-sound.js paints --sc-fill on every input event */
+    background: linear-gradient(90deg,
+        var(--pomo-accent) 0 var(--sc-fill, 50%),
+        rgba(255,255,255,0.12) var(--sc-fill, 50%) 100%);
     outline: none;
     cursor: pointer;
+}
+#view-pomodoro .sc-range:focus-visible {
+    box-shadow: 0 0 0 3px var(--pomo-accent-soft), 0 0 0 1px var(--pomo-accent);
 }
 #view-pomodoro .sc-range::-webkit-slider-thumb {
     -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
