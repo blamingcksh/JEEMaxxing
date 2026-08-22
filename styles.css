@@ -11560,3 +11560,15 @@ body.pomo-active .glow-wrapper::before {
 .hide-toggle:hover { background: rgba(255, 255, 255, 0.09) !important; color: var(--text-primary) !important; }
 .pm-close:hover { background: color-mix(in srgb, #ef4444 20%, transparent) !important; border-color: rgba(248,113,113,0.35) !important; color: #fecaca !important; }
 .streak-visualizer { border-radius: var(--r-sm); }
+
+/* ==========================================================================
+   GROVE V2 ("Skyborne Groves") additions - fallback poster + motion safety.
+   The live gi-* contract block owns all layout/ids; this block only adds the
+   static-fallback poster shown when WebGL/the 3D engine is unavailable.
+   ========================================================================== */
+.gi-fallback{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;z-index:2;pointer-events:none}
+.gi-fallback-art{font-size:46px;line-height:1;filter:drop-shadow(0 6px 14px rgba(0,0,0,.35))}
+.gi-fallback-txt{text-align:center;color:#fff;font-size:13px;font-weight:700;letter-spacing:.4px;line-height:1.5;text-shadow:0 1px 4px rgba(0,0,0,.45)}
+.gi-fallback-txt span{display:block;font-weight:500;font-size:11px;opacity:.85;margin-top:4px}
+html.fx-effects-off .gi-fallback{animation:none!important}
+html.fx-effects-off #gi-fade{transition:none!important}
