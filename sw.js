@@ -10,11 +10,20 @@
  * ============================================================================ */
 'use strict';
 
+// v37 — Soundscape v5.2: calm grain canvases — global smoothed loudness
+// envelope baked into recordings before granulation + drifting grain walk
+// + safety-only compressor curve (no more ~1s level churn or fade-in/
+// fade-out feel on Rain; no compressor pumping).
+// v35 — Soundscape v5 iPad fixes: real-loop scheduler never starts in the
+// past (no catch-up blasts after interruptions/app switches), grain canvas
+// hop-aligned (perfect wrap seam), statechange/focus resume for iOS audio-
+// session interruptions. Rain + café MP3s now precached so the default bed
+// works offline on first launch of the installed app.
 // v34 — Analysis tab removed (analysis.js gone from shell + precache).
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v34';
+const VERSION = 'jeemax-v37';
 const SHELL = [
   './',
   './index.html',
@@ -42,6 +51,12 @@ const SHELL = [
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',
   './icons/apple-touch-icon-180.png',
+  // Real-recording beds are tiny MP3s — precache them so Rain (the default)
+  // and Café sound right on the very first OFFLINE launch of the installed
+  // iPad/iPhone app. The big generated WAVs stay runtime-cached on first use.
+  './assets/sounds/rain.mp3',
+  './assets/sounds/rain-roof.mp3',
+  './assets/sounds/cafe.mp3',
   // KaTeX engine + CSS + fonts — vendored locally so math rendering works
   // offline and never depends on a CDN being reachable.
   './vendor/katex/katex.min.js',
