@@ -10,7 +10,6 @@ import {
     fetchMediaFromDrive,
     formatTime,
     waitForDriveToken,
-    baseErrorTargets,
     escapeHtml,
     // ── Daily/subjective study-time tracker (shared with Pomodoro + app.js) ──
     studySecs,
@@ -2281,6 +2280,27 @@ export function refreshErrorDashboardIfStale() {
     }
 }
 
+// -- Filter dock ----------------------------------------------------------------
+// While reading a long board, the sticky toolbar used to follow with ALL rows
+// (search + status + mistake type), eating vertical screen space. A zero-height
+// sentinel directly above the toolbar watches the scroll: once it leaves the
+// viewport top, the toolbar docks to search-only (.emf-docked); scrolling back
+// up undocks and restores the full filter stack.
+let _filterDockReady = false;
+function _initFilterDock() {
+    if (_filterDockReady) return;   // one observer for the page's lifetime
+    const filters = document.querySelector('.error-filters');
+    const sentinel = document.getElementById('emf-scroll-sentinel');
+    if (!filters || !sentinel || typeof IntersectionObserver === 'undefined') return;
+    _filterDockReady = true;
+    const io = new IntersectionObserver(([entry]) => {
+        filters.classList.toggle('emf-docked', !entry.isIntersecting);
+    }, { rootMargin: '-1px 0px 0px 0px', threshold: 0 });
+    io.observe(sentinel);
+}
+// Static markup — safe to wire at module eval (module scripts run after parse).
+_initFilterDock();
+
 function _startRolloverWatcher() {
     if (_rolloverWatchStarted) return;
     _rolloverWatchStarted = true;
@@ -2292,23 +2312,15 @@ function _startRolloverWatcher() {
     window.addEventListener('focus', refreshErrorDashboardIfStale);
 }
 
+// The stage-top stat strip (per-subject bars + 15-day sparkline) was removed;
+// this function now maintains ONLY the rail's squashed-today readout.
+// app.js renderMomentumCandles() still no-ops safely without its container.
 export function renderErrorResolutionDashboard() {
     _startRolloverWatcher();
     const todayStr = _todayKey();
     const subjects = ['physics', 'chemistry', 'maths'];
-    const subjectGradients = {
-        physics:   'linear-gradient(90deg, #3b82f6, #8b5cf6)',
-        chemistry: 'linear-gradient(90deg, #14b8a6, #06b6d4)',
-        maths:     'linear-gradient(90deg, #f97316, #fb7185)',
-    };
-    const subjectIds = {
-        physics:   { val: 'erm-phys-val', bar: 'erm-phys-bar', pct: 'erm-phys-pct', tgt: 'erm-phys-tgt' },
-        chemistry: { val: 'erm-chem-val', bar: 'erm-chem-bar', pct: 'erm-chem-pct', tgt: 'erm-chem-tgt' },
-        maths:     { val: 'erm-math-val', bar: 'erm-math-bar', pct: 'erm-math-pct', tgt: 'erm-math-tgt' },
-    };
 
     const todayCounts = { physics: 0, chemistry: 0, maths: 0 };
-
     AppState.questionBank.forEach(q => {
         if (!q.historyLogs || !Array.isArray(q.historyLogs)) return;
         q.historyLogs.forEach(log => {
@@ -2322,193 +2334,19 @@ export function renderErrorResolutionDashboard() {
     });
 
     let totalToday = 0;
+    subjects.forEach(subj => { totalToday += todayCounts[subj]; });
+
+    // Squashed-today readouts live in the vault rail (#rail-today-*).
+    const railTotalEl = document.getElementById('rail-today-total');
+    if (railTotalEl) {
+        railTotalEl.textContent = String(totalToday);
+        railTotalEl.classList.toggle('is-zero', !totalToday);   // a zero day must not glow
+    }
+    const railSubIds = { physics: 'rail-today-physics', chemistry: 'rail-today-chemistry', maths: 'rail-today-maths' };
     subjects.forEach(subj => {
-        const count = todayCounts[subj];
-        const target = baseErrorTargets[subj] || 5;
-        const pct = target > 0 ? Math.min(100, (count / target) * 100) : 0;
-        totalToday += count;
-
-        const ids = subjectIds[subj];
-        const valEl = document.getElementById(ids.val);
-        const barEl = document.getElementById(ids.bar);
-        const pctEl = document.getElementById(ids.pct);
-        const tgtEl = document.getElementById(ids.tgt);
-
-        if (valEl) valEl.textContent = count;
-        if (tgtEl) tgtEl.textContent = `/ ${target}`;
-        if (pctEl) pctEl.textContent = `${pct.toFixed(0)}%`;
-        if (barEl) {
-            barEl.style.width = `${pct}%`;
-            barEl.style.background = subjectGradients[subj];
-            barEl.style.boxShadow = pct >= 100
-                ? '0 0 12px rgba(139, 92, 246, 0.5), 0 0 24px rgba(139, 92, 246, 0.2)'
-                : 'none';
-        }
+        const el = document.getElementById(railSubIds[subj]);
+        if (!el) return;
+        el.textContent = String(todayCounts[subj]);
+        el.classList.toggle('is-zero', !todayCounts[subj]);
     });
-
-    const totalEl = document.getElementById('erm-today-total');
-    if (totalEl) {
-        totalEl.querySelector('div').textContent = totalToday;
-    }
-
-    // ── 15-Day Historical Momentum ──
-    const momentumData = [];
-    for (let d = 14; d >= 0; d--) {
-        const date = new Date();
-        date.setDate(date.getDate() - d);
-        const dateStr = _todayKey(date);
-        momentumData.push({ date: dateStr, dayLabel: date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), count: 0 });
-    }
-
-    AppState.questionBank.forEach(q => {
-        if (!q.historyLogs || !Array.isArray(q.historyLogs)) return;
-        q.historyLogs.forEach(log => {
-            if (log.result !== 'correct' || !log.timestamp) return;
-            const logDate = _todayKey(new Date(log.timestamp));
-            const entry = momentumData.find(m => m.date === logDate);
-            if (entry) entry.count++;
-        });
-    });
-
-    // ── Protocol Zero overlay (Pillar 4) ──
-    // Any date in the jeemax_protocol_zero record forces a HARD ZERO on that
-    // day's count, overriding real activity. This is the "irreversible metric
-    // scarring" — even if you solved 50 questions that day, the graph shows 0.
-    try {
-        const penaltyDates = JSON.parse(localStorage.getItem('checkpoint:protocolZero') || '[]');
-        penaltyDates.forEach(pDate => {
-            const entry = momentumData.find(m => m.date === pDate);
-            if (entry) { entry.count = 0; entry.penalty = true; }
-        });
-    } catch (_) { /* ignore */ }
-
-    const totalMomentum = momentumData.reduce((s, m) => s + m.count, 0);
-    const avgMomentum = (totalMomentum / 15).toFixed(1);
-    const avgLabel = document.getElementById('erm-avg-label');
-    if (avgLabel) avgLabel.textContent = `avg ${avgMomentum}/day`;
-
-    _renderMomentumSparkline(momentumData);
-}
-
-function _renderMomentumSparkline(data) {
-    const container = document.getElementById('error-momentum-svg-container');
-    if (!container) return;
-
-    // Publish the TRUE series on the container for renderMomentumCandles().
-    // Its SVG-scraping fallback used to read raw circle cy PIXELS out of this
-    // sparkline (no polyline/rect exists here) and plot them as "error" values
-    // — vertically mirrored, unit-less junk. The dataset survives the
-    // innerHTML swap below because it belongs to the container itself.
-    try { container.dataset.momentumCounts = JSON.stringify(data.map(d => Math.max(0, Number(d.count) || 0))); } catch (_) {}
-
-    const W = 320;
-    const H = 88;
-    const PAD_X = 4;
-    const PAD_Y = 8;
-    const plotW = W - PAD_X * 2;
-    const plotH = H - PAD_Y * 2;
-    const maxVal = Math.max(1, ...data.map(d => d.count));
-
-    const points = data.map((d, i) => {
-        const x = PAD_X + (i / (data.length - 1)) * plotW;
-        const y = PAD_Y + plotH - (d.count / maxVal) * plotH;
-        return { x, y, count: d.count, dayLabel: d.dayLabel, penalty: d.penalty };
-    });
-
-    const pathD = _smoothPath(points);
-    const areaD = pathD +
-        ` L ${points[points.length - 1].x},${PAD_Y + plotH}` +
-        ` L ${points[0].x},${PAD_Y + plotH} Z`;
-
-    // Dots with penalty (P0) markers
-    const dots = points.map((p, i) => {
-        const isToday = i === points.length - 1;
-        if (p.penalty) {
-            // Protocol Zero red valley marker
-            return `<line x1="${p.x}" y1="${p.y}" x2="${p.x}" y2="${PAD_Y + plotH}" stroke="#f87171" stroke-width="2.5" opacity="0.6" stroke-dasharray="3 2"/>` +
-                   `<circle cx="${p.x}" cy="${p.y}" r="5" fill="#f87171" stroke="#fff" stroke-width="1.5" filter="url(#p0-glow)"/>` +
-                   `<text x="${p.x}" y="${p.y - 12}" fill="#f87171" font-size="9" font-family="'Space Grotesk', monospace" text-anchor="middle" font-weight="700">P0</text>`;
-        }
-        const r = isToday ? 4 : 2.5;
-        const fill = isToday ? '#ec4899' : '#8b5cf6';
-        const stroke = isToday ? '#ec4899' : 'none';
-        const sw = isToday ? 2 : 0;
-        const glowFilter = isToday ? 'filter="url(#erm-dot-glow)"' : '';
-        return `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" ${glowFilter}/>`;
-    }).join('');
-
-    const labelIndices = [0, Math.floor(data.length / 2), data.length - 1];
-    const labels = labelIndices.map(i => {
-        const p = points[i];
-        return `<text x="${p.x}" y="${H - 1}" fill="var(--text-muted)" font-size="8" font-family="'IBM Plex Sans', sans-serif" text-anchor="${i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}" font-weight="500">${data[i].dayLabel}</text>`;
-    }).join('');
-
-    const peakIdx = points.reduce((mi, p, i, arr) => p.count > arr[mi].count ? i : mi, 0);
-    const peak = points[peakIdx];
-    const peakLabel = peak.count > 0
-        ? `<text x="${peak.x}" y="${peak.y - 10}" fill="var(--text-secondary)" font-size="9" font-family="'Space Grotesk', monospace" text-anchor="middle" font-weight="700">${peak.count}</text>`
-        : '';
-
-    container.innerHTML = `
-        <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="xMidYMid meet" style="overflow: visible; display: block;">
-            <defs>
-                <linearGradient id="error-momentum-gradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.35"/>
-                    <stop offset="60%" stop-color="#8b5cf6" stop-opacity="0.08"/>
-                    <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
-                </linearGradient>
-                <filter id="erm-dot-glow" x="-100%" y="-100%" width="300%" height="300%">
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
-                    <feFlood flood-color="#ec4899" flood-opacity="0.6" result="color"/>
-                    <feComposite in="color" in2="blur" operator="in" result="glow"/>
-                    <feMerge>
-                        <feMergeNode in="glow"/>
-                        <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                </filter>
-                <!-- Protocol Zero glow filter -->
-                <filter id="p0-glow" x="-100%" y="-100%" width="300%" height="300%">
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
-                    <feFlood flood-color="#f87171" flood-opacity="0.7" result="color"/>
-                    <feComposite in="color" in2="blur" operator="in" result="glow"/>
-                    <feMerge>
-                        <feMergeNode in="glow"/>
-                        <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                </filter>
-            </defs>
-            <line x1="${PAD_X}" y1="${PAD_Y + plotH}" x2="${W - PAD_X}" y2="${PAD_Y + plotH}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-            <line x1="${PAD_X}" y1="${PAD_Y + plotH * 0.5}" x2="${W - PAD_X}" y2="${PAD_Y + plotH * 0.5}" stroke="rgba(255,255,255,0.025)" stroke-width="1" stroke-dasharray="4 4"/>
-            <path d="${areaD}" fill="url(#error-momentum-gradient)"/>
-            <path d="${pathD}" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            ${dots}
-            ${peakLabel}
-            ${labels}
-        </svg>`;
-}
-
-function _smoothPath(points) {
-    if (points.length < 2) return '';
-    if (points.length === 2) {
-        return `M ${points[0].x},${points[0].y} L ${points[1].x},${points[1].y}`;
-    }
-
-    let d = `M ${points[0].x},${points[0].y}`;
-
-    for (let i = 0; i < points.length - 1; i++) {
-        const p0 = points[Math.max(0, i - 1)];
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        const p3 = points[Math.min(points.length - 1, i + 2)];
-
-        const tension = 0.35;
-        const cp1x = p1.x + (p2.x - p0.x) * tension;
-        const cp1y = p1.y + (p2.y - p0.y) * tension;
-        const cp2x = p2.x - (p3.x - p1.x) * tension;
-        const cp2y = p2.y - (p3.y - p1.y) * tension;
-
-        d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
-    }
-
-    return d;
 }

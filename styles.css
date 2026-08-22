@@ -547,8 +547,7 @@ body {
     color: var(--furnace);
     margin-bottom: 6px;
 }
-.dash-card-momentum .kicker,
-.erm-sparkline-col .kicker { color: var(--telemetry); }
+.dash-card-momentum .kicker { color: var(--telemetry); }
 
 .box-title {
     font-family: var(--font-display);
@@ -819,78 +818,9 @@ body {
 #view-dashboard.trend-under-liquidation { box-shadow: inset 0 0 90px rgba(248, 113, 113, 0.07); }
 #dynamic-graph.graph-bull-run { filter: drop-shadow(0 0 14px rgba(34, 197, 94, 0.18)); }
 
-/* ── Error Bounty Board (ERM) — one compact strip across the stage top ── */
-.vault-erm {
-    display: grid;
-    grid-template-columns: auto 1fr 340px;
-    gap: 28px;
-    align-items: center;
-    padding: 20px 24px;
-    border-radius: 18px;
-    background: linear-gradient(180deg, rgba(13, 16, 23, 0.85), rgba(9, 11, 17, 0.78));
-    border: 1px solid var(--line);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-.erm-total { display: flex; flex-direction: column; padding-right: 26px; border-right: 1px solid var(--line); }
-.erm-total div {
-    font-family: var(--font-num);
-    font-size: 46px;
-    font-weight: 800;
-    line-height: 1;
-    color: #fff;
-    text-shadow: 0 0 26px rgba(34, 197, 94, 0.35);
-}
-.erm-total span {
-    font-size: 9.5px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--text-secondary);
-    font-weight: 700;
-    margin-top: 8px;
-    white-space: nowrap;
-}
-.erm-bars { display: flex; flex-direction: column; gap: 11px; min-width: 0; }
-.erm-subject-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transition: opacity 0.2s;
-}
-.erm-subject-row:hover { opacity: 0.85; }
-.erm-subj-icon { font-size: 14px; line-height: 1; width: 18px; text-align: center; }
-.erm-subj-name { font-size: 11.5px; font-weight: 700; width: 38px; letter-spacing: 0.5px; color: var(--text-secondary); text-transform: uppercase; }
-.erm-track {
-    flex: 1;
-    height: 7px;
-    background: rgba(255, 255, 255, 0.06);
-    border-radius: 999px;
-    overflow: hidden;
-    min-width: 60px;
-}
-.erm-fill {
-    height: 100%;
-    border-radius: inherit;
-    min-width: 0;
-    transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s;
-}
-.erm-subj-count {
-    font-family: var(--font-num);
-    font-size: 15px;
-    font-weight: 800;
-    line-height: 1;
-    min-width: 22px;
-    text-align: right;
-    color: #fff;
-}
-.erm-subj-target { font-family: var(--font-num); font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
-/* pct readout is noise next to count/target — keep the node for the renderer, hide the ink */
-.erm-pct { display: none; }
-
-.erm-sparkline-col { min-width: 0; }
-.erm-sparkline-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
-.erm-avg { font-family: var(--font-num); font-size: 11px; color: var(--text-muted); white-space: nowrap; }
-.erm-sparkline-box { border-radius: 6px; overflow: visible; min-height: 64px; }
-.erm-sparkline-box svg { display: block; cursor: crosshair; overflow: visible; width: 100%; height: auto; }
+/* The stage-top stat strip (.vault-erm: per-subject bars + sparkline) was
+   removed — its markup is gone and renderErrorResolutionDashboard() only
+   feeds the rail's Today block now. */
 
 /* ── Chapter Health Grid ── */
 .decay-legend { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
@@ -1176,17 +1106,17 @@ body {
    ════════════════════════════════════════════════════════════════════════ */
 .vault-shell {
     display: grid;
-    grid-template-columns: 284px minmax(0, 1fr);
-    gap: 22px;
+    grid-template-columns: 238px minmax(0, 1fr);
+    gap: 18px;
     align-items: start;
 }
 .vault-rail {
     position: sticky;
-    top: 14px;
+    top: 12px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 20px 16px 18px;
+    gap: 12px;
+    padding: 14px 12px 12px;
     background: linear-gradient(180deg, rgba(13, 16, 23, 0.92), rgba(9, 11, 17, 0.88));
     border: 1px solid var(--line);
     border-radius: 20px;
@@ -1200,15 +1130,65 @@ body {
     text-transform: uppercase;
     letter-spacing: 2.2px;
     color: var(--text-muted);
-    padding: 6px 6px 0;
+    padding: 4px 2px 0;
     display: flex;
     align-items: center;
     gap: 10px;
 }
 .rail-label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .vault-subjects { display: flex; flex-direction: column; gap: 8px; }
-.rail-actions { display: flex; flex-direction: column; gap: 9px; }
-.rail-btn { width: 100%; padding: 12px 16px; }
+.rail-actions { display: flex; flex-direction: column; gap: 7px; }
+.rail-btn { width: 100%; padding: 9px 12px; }
+
+/* squashed-today readout — headline number + per-subject split.
+   Green comes from --glow-green (token contract), NOT a second hardcoded
+   green sitting beside Chemistry's lane. */
+.rail-today {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 12px 11px;
+    border-radius: 13px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--glow-green) 8%, transparent), color-mix(in srgb, var(--glow-green) 2%, transparent));
+    border: 1px solid color-mix(in srgb, var(--glow-green) 22%, transparent);
+}
+.rail-today-headline { display: flex; align-items: baseline; gap: 9px; }
+.rail-today-num {
+    font-family: var(--font-num);
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 0.9;
+    color: #fff;
+    text-shadow: 0 0 18px color-mix(in srgb, var(--glow-green) 35%, transparent);
+}
+.rail-today-num.is-zero { color: var(--text-muted); text-shadow: none; }
+.rail-today-cap {
+    font-size: var(--fs-2xs);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-secondary);
+    font-weight: 700;
+    line-height: 1.5;
+}
+.rail-today-split { display: flex; gap: 6px; }
+/* pill language matches the sibling .folder-count chips */
+.rail-today-subj {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 4px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line-strong);
+    min-width: 0;
+}
+.rail-today-subj i { font-style: normal; font-size: 10.5px; line-height: 1; }
+.rail-today-subj b { font-family: var(--font-num); font-size: 11px; font-weight: 700; line-height: 1; color: #fff; }
+.rail-today-subj b.is-zero { color: var(--text-muted); opacity: 0.55; }
+/* a zero day should read quiet — grey the glyph too, where :has() exists */
+.rail-today-subj:has(b.is-zero) i { filter: grayscale(1); opacity: 0.45; }
 
 /* subject rows — rail navigation with per-subject color lanes */
 .subject-folder {
@@ -1216,16 +1196,16 @@ body {
     --folder-glow: rgba(255, 178, 36, 0.30);
     display: flex;
     align-items: center;
-    gap: 13px;
-    padding: 12px 14px;
-    border-radius: 14px;
+    gap: 9px;
+    padding: 8px 9px;
+    border-radius: 12px;
     border: 1px solid transparent;
     background: rgba(255, 255, 255, 0.025);
     cursor: pointer;
     font-family: var(--font-display);
     font-weight: 700;
-    font-size: 13.5px;
-    letter-spacing: 0.4px;
+    font-size: 12.5px;
+    letter-spacing: 0.3px;
     color: var(--text-secondary);
     position: relative;
     overflow: hidden;
@@ -1262,15 +1242,15 @@ body {
 .subject-folder.active::before { opacity: 1; transform: scaleY(1); }
 .subject-folder.active { cursor: default; }
 .folder-icon {
-    font-size: 21px;
+    font-size: 16px;
     line-height: 1;
-    width: 42px;
-    height: 42px;
+    width: 30px;
+    height: 30px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px;
+    border-radius: 9px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--line-strong);
     transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s, background 0.2s;
@@ -1283,10 +1263,10 @@ body {
 .folder-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .folder-count {
     font-family: var(--font-num);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     line-height: 1;
-    padding: 5px 11px;
+    padding: 4px 8px;
     border-radius: 999px;
     color: var(--text-secondary);
     background: rgba(255, 255, 255, 0.06);
@@ -1332,9 +1312,9 @@ body {
 .btn-dump:active { transform: scale(0.97); }
 
 .daily-queue-master-btn {
-    padding: 10px 18px;
+    padding: 9px 10px;
     font-family: var(--font-display);
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.5px;
     border-radius: 10px;
@@ -1361,17 +1341,21 @@ body {
     font-family: var(--font-num);
     font-size: 10px;
     color: var(--text-muted);
-    letter-spacing: 0.6px;
+    letter-spacing: 0.4px;
     text-transform: uppercase;
     padding: 4px 9px;
     border: 1px dashed var(--line-strong);
     border-radius: 999px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 /* ── Tactical filter stack — sticky working toolbar ── */
 .error-filters {
     position: sticky;
-    top: 10px;
+    top: 12px;
     z-index: 6;
     display: flex;
     flex-direction: column;
@@ -1385,6 +1369,65 @@ body {
     -webkit-backdrop-filter: blur(6px);
 }
 .error-filters input[type="hidden"] { display: none; }
+/* Scroll dock — past the board's top the sticky toolbar collapses to the
+   chapter search only (#emf-scroll-sentinel + _initFilterDock toggle
+   .emf-docked). Scrolling back up restores status + mistake-type pills.
+   The sentinel is a zero-height flex child of the gap-16px container, so it
+   donates its gap slot back (-margin) to keep the toolbar's resting spot
+   pixel-identical to the pre-sentinel layout. */
+#emf-scroll-sentinel { height: 0; margin-top: -16px; }
+.error-filters { transition: padding 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.2s ease, box-shadow 0.25s ease; }
+/* lifted border + deeper shadow so the collapsed state reads as
+   "the toolbar, docked" — not a rendering glitch. */
+.error-filters.emf-docked {
+    padding: 8px 10px;
+    gap: 0;
+    border-radius: 13px;
+    border-color: var(--line-strong);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 16px 32px -14px rgba(0, 0, 0, 0.95);
+}
+.error-filters.emf-docked .emf-row:not(.emf-row-search) { display: none; }
+.error-filters.emf-docked .matrix-search { padding: 8px 40px 8px 40px; font-size: 13px; }
+/* passive pointer to the full stack above (scroll up to restore) */
+.error-filters.emf-docked .emf-search-wrap::after {
+    content: 'Filters ↑';
+    position: absolute;
+    right: 42px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 8px;
+    pointer-events: none;
+}
+/* active-filter echo — a filtered list must stay explainable while scrolled */
+.error-filters.emf-docked[data-active] .emf-row-search { flex-wrap: nowrap; gap: 8px; }
+.error-filters.emf-docked[data-active] .emf-search-wrap { flex: 1 1 auto; min-width: 120px; }
+.error-filters.emf-docked[data-active] .emf-row-search::before {
+    content: attr(data-active);
+    flex-shrink: 0;
+    align-self: center;
+    max-width: 44%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-display);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #4ade80;
+    background: color-mix(in srgb, var(--glow-green) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--glow-green) 45%, transparent);
+    border-radius: 999px;
+    padding: 3px 9px;
+}
+@media (prefers-reduced-motion: reduce) { .error-filters { transition: none; } }
 .emf-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .emf-row-search { justify-content: space-between; }
 .emf-row-label {
@@ -2025,10 +2068,7 @@ body {
     .vault-subjects { flex-direction: row; flex-wrap: wrap; flex: 1; }
     .rail-actions { flex-direction: row; margin-left: auto; }
     .rail-btn { width: auto; }
-    .vault-erm { grid-template-columns: 1fr; gap: 12px; }
-    .erm-total { flex-direction: row; align-items: baseline; gap: 12px; padding-right: 0; padding-bottom: 10px; border-right: none; border-bottom: 1px solid var(--line); }
-    .erm-sparkline-col { min-width: 0; }
-    .vault-erm { grid-template-columns: 1fr; gap: 16px; padding: 18px 20px; }
+    .rail-today { flex: 1 1 200px; flex-direction: row; align-items: center; justify-content: space-between; padding: 8px 12px; }
 }
 @media (max-width: 900px) {
     .error-block { grid-template-columns: 96px 1fr; gap: 14px; }
@@ -4244,7 +4284,7 @@ button, .btn, .nav-item, .counter-btn, .cal-day, .mcq-option, .matrix-pill {
 
 /* Staggered cascade when a view becomes active */
 .dash-card, .compact-subject-card, .subject-folder, .subject-card,
-.settings-card, .hour-stat, .erm-subject-row, .erm-sparkline-col {
+.settings-card, .hour-stat {
     animation: fxRise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .view-section.active .dash-card:nth-child(1),
@@ -4319,9 +4359,7 @@ html.fx-effects-off .compact-subject-card,
 html.fx-effects-off .subject-folder,
 html.fx-effects-off .subject-card,
 html.fx-effects-off .settings-card,
-html.fx-effects-off .hour-stat,
-html.fx-effects-off .erm-subject-row,
-html.fx-effects-off .erm-sparkline-col { animation: none !important; }
+html.fx-effects-off .hour-stat { animation: none !important; }
 html.fx-effects-off .fx-ripple { display: none !important; }
 html.fx-effects-off .fx-bump { animation: none !important; }
 html.fx-effects-off body.overheat-active::after,
@@ -4386,20 +4424,17 @@ html.fx-effects-off .cp-grace-timer.critical { animation: none !important; }
 #view-dashboard .dash-card-head .box-desc  { display: none; }   /* fluff gone */
 
 /* ── 4. De-box the nested tiles (outlined-in-outlined = the noise) ──────── */
-#view-dashboard .compact-subject-card,
-#view-dashboard .erm-subject-row,
-#view-dashboard .erm-sparkline-col {
+#view-dashboard .compact-subject-card {
     border: none;
     background: rgba(255, 255, 255, 0.025);
 }
 #view-dashboard .compact-subject-card { padding: 10px 12px; }
-#view-dashboard .erm-subject-row      { padding: 10px 12px; }
 
 /* ── 5. Tracker rows breathe with the card ───────────────────────────────── */
 #view-dashboard .subject-card-group   { gap: 10px; }
 
 /* ── 6. Quiet the ERM + decay internals a notch ─────────────────────────── */
-#view-dashboard .erm-total div      { font-size: 36px; }
+
 #view-dashboard .erm-layout         { gap: 14px; }
 #view-dashboard #chapter-decay-grid { padding: 2px 0; }
 
@@ -4478,8 +4513,8 @@ body::before {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(255,178,36,0.5), rgba(255,122,26,0.4)); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(255,178,36,0.8), rgba(255,122,26,0.6)); background-clip: padding-box; }
-.counter, .tp-variance, .hour-stat .val, .erm-subj-count, .erm-total div,
-.erm-pct, .timer-display, .timer-display-sm, .mini-time, .badge .val,
+.counter, .tp-variance, .hour-stat .val, .rail-today-num, .rail-today-subj b,
+.timer-display, .timer-display-sm, .mini-time, .badge .val,
 .mmr-score, .elo-monitor-rating, .cp-timer-value, .cp-grace-timer,
 .stat-value { font-family: var(--aes-num); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; letter-spacing: -0.01em; }
 
@@ -4620,12 +4655,8 @@ body::before {
     padding: 16px 14px 12px !important;
 }
 
-/* ── ERM + decay internals — quiet glass rows ──────────────────────────── */
-#view-dashboard .erm-total div { background: linear-gradient(180deg,#fff,#cfd6ea); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-#view-dashboard .erm-subject-row { background: rgba(255,255,255,0.03) !important; border: 1px solid var(--aes-line) !important; border-radius: 12px !important; }
-#view-dashboard .erm-track { background: rgba(0,0,0,0.4) !important; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); }
-#view-dashboard .erm-fill { box-shadow: 0 0 12px rgba(139,92,246,0.5); }
-#view-dashboard .erm-sparkline-col { background: rgba(255,255,255,0.025) !important; border: 1px solid var(--aes-line) !important; border-radius: 14px !important; }
+/* ── Decay internals — quiet glass rows ──────────────────────────────── */
+
 #view-dashboard .decay-legend .legend-chip { background: rgba(255,255,255,0.03); border: 1px solid var(--aes-line); }
 
 /* ── 6. COHESIVE APP-WIDE ACCENT (buttons · bars · lock-in ring) ────────── */
@@ -4729,12 +4760,12 @@ body:not(.scratchpad-active) #scratchpad-root:hover { opacity: 1; }
 #view-dashboard .dash-grid.bento-density-compact  .dash-card { padding: 14px 16px; }
 #view-dashboard .dash-grid.bento-density-compact  .box-title { font-size: 16px; }
 #view-dashboard .dash-grid.bento-density-compact  .tp-count .counter { font-size: 17px; }
-#view-dashboard .dash-grid.bento-density-compact  .erm-total div { font-size: 30px; }
+
 #view-dashboard .dash-grid.bento-density-spacious { gap: 26px; }
 #view-dashboard .dash-grid.bento-density-spacious .dash-card { padding: 30px 32px; }
 #view-dashboard .dash-grid.bento-density-spacious .box-title { font-size: 21px; }
 #view-dashboard .dash-grid.bento-density-spacious .tp-count .counter { font-size: 25px; }
-#view-dashboard .dash-grid.bento-density-spacious .erm-total div { font-size: 46px; }
+
 
 /* ── DRAG PERFORMANCE LAYER (the chunkiness fix) ───────────────────────
    While dragging, swap the expensive frosted glass for an opaque fill and
@@ -5405,10 +5436,6 @@ html[data-mode="dusk"] #view-dashboard .dash-card-tracker {
 html[data-mode="dusk"] #view-dashboard .compact-subject-card {
   background: linear-gradient(180deg, rgba(255,250,240,0.09), rgba(255,250,240,0.03)) !important;
 }
-html[data-mode="dusk"] #view-dashboard .erm-subject-row,
-html[data-mode="dusk"] #view-dashboard .erm-sparkline-col {
-  background: rgba(255,250,240,0.05) !important;
-}
 html[data-mode="dusk"] .graph-display {
   background:
     radial-gradient(120% 90% at 50% 0%, rgba(255,240,210,0.06), transparent 60%),
@@ -5702,23 +5729,6 @@ body.dc-dash-active #main-header { display: flex !important; }
 .cp-pct-void { color: var(--text-muted); }
 .cp-more { text-align: center; font-size: 11px; color: var(--text-muted); padding-top: 6px; }
 
-/* ── Vault: Error Resolution Board (BUG HUNT) ──────────────────────────── */
-.vault-erm {
-    background: var(--bg-surface);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    padding: 20px 22px;
-    margin-bottom: 22px;
-}
-.vault-erm-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px 24px;
-    margin-bottom: 14px;
-}
-.vault-erm-head .box-desc { margin-bottom: 0; }
 @media (max-width: 560px) {
     .cp-row { grid-template-columns: 24px minmax(0, 1fr) 46px 38px; }
     .cp-bar { display: none; }
@@ -6292,9 +6302,7 @@ body.forest-bg-on #view-dashboard .dash-card-tracker {
   backdrop-filter: blur(16px) saturate(135%);
 }
 /* ── 3. Nested tiles: a touch lighter so they layer as glass-on-glass ─── */
-body.forest-bg-on #view-dashboard .compact-subject-card,
-body.forest-bg-on #view-dashboard .erm-subject-row,
-body.forest-bg-on #view-dashboard .erm-sparkline-col {
+body.forest-bg-on #view-dashboard .compact-subject-card {
   background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.016)) !important;
   -webkit-backdrop-filter: blur(10px) saturate(130%);
   backdrop-filter: blur(10px) saturate(130%);
@@ -6302,7 +6310,6 @@ body.forest-bg-on #view-dashboard .erm-sparkline-col {
 }
 /* ── 4. The dark inner wells (chart frame / tracks / pills) → clear glass */
 body.forest-bg-on #view-dashboard .graph-display,
-body.forest-bg-on #view-dashboard .erm-track,
 body.forest-bg-on #view-dashboard .distribution-pill {
   background: rgba(8,10,16,.28) !important;
   -webkit-backdrop-filter: blur(8px);
@@ -8053,318 +8060,6 @@ body.gi-full-open { overflow: hidden; }
 }
 
 /* ════════════════════════════════════════════════════════════════════════
-   ANALYSIS TAB — analytics cockpit (#view-analysis, analysis.js)
-   ════════════════════════════════════════════════════════════════════════ */
-#view-analysis .analysis-hero { grid-column: 1 / -1; }
-
-.analysis-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.analysis-controls {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.analysis-pill-group {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--line);
-}
-.analysis-pill-group .matrix-pill { padding: 6px 12px; font-size: 11px; }
-
-.analysis-graph-display {
-  margin-top: 16px;
-  position: relative;
-  min-height: 280px;
-}
-#analysis-progress-graph {
-  display: block;
-  width: 100%;
-  height: 280px;
-  overflow: visible;
-}
-
-.analysis-hero-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 22px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-.analysis-hero-stat {
-  font-family: var(--font-num), monospace;
-  font-size: 11px;
-  color: var(--text-secondary);
-  letter-spacing: 0.4px;
-}
-.analysis-hero-stat b { color: var(--text-primary); }
-.analysis-hero-stat.trend-up b   { color: var(--glow-green); }
-.analysis-hero-stat.trend-down b { color: var(--glow-red); }
-.analysis-hero-stat.trend-flat b { color: var(--glow-yellow); }
-
-/* ── KPI tiles ── */
-.analysis-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 12px;
-}
-.analysis-kpi {
-  position: relative;
-  background: var(--bg-surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  overflow: hidden;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-}
-.analysis-kpi::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 3px;
-  background: var(--kpi-accent, var(--telemetry));
-  box-shadow: 0 0 14px var(--kpi-accent, var(--telemetry));
-  opacity: 0.8;
-}
-.analysis-kpi:hover {
-  transform: translateY(-2px);
-  border-color: var(--line-strong);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
-}
-.analysis-kpi-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-.analysis-kpi-val {
-  font-family: var(--font-num), monospace;
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-.analysis-kpi-sub {
-  font-size: 10.5px;
-  color: var(--text-muted);
-}
-
-/* ── Shared horizontal-bar rows ── */
-.analysis-bar-row { margin-bottom: 14px; }
-.analysis-bar-row:last-child { margin-bottom: 0; }
-.analysis-bar-row.analysis-sm { margin-bottom: 11px; }
-.analysis-bar-row.analysis-sm:last-child { margin-bottom: 0; }
-.analysis-bar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-.analysis-bar-name {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--text-primary);
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.analysis-glyph { font-size: 14px; }
-.analysis-bar-chips { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.analysis-chip {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-.analysis-chip.chip-green { background: rgba(34, 197, 94, 0.12); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.25); }
-.analysis-chip.chip-red   { background: rgba(248, 113, 113, 0.12); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.25); }
-.analysis-chip.chip-mute  { background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); border: 1px solid var(--line); }
-.analysis-chip.chip-elo   { background: rgba(255, 178, 36, 0.12); color: #ffcf6e; border: 1px solid rgba(255, 178, 36, 0.3); }
-.analysis-bar-track {
-  width: 100%;
-  height: 7px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.055);
-  overflow: hidden;
-}
-.analysis-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.12);
-}
-.analysis-bar-meta {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-top: 5px;
-  font-family: var(--font-num), monospace;
-  font-size: 10.5px;
-  color: var(--text-secondary);
-}
-
-/* ── Chapter ranking rows (clickable → vault) ── */
-.analysis-chapter-row {
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-}
-.analysis-chapter-row:hover {
-  background: rgba(255, 255, 255, 0.035);
-  border-color: var(--line-strong);
-  transform: translateX(3px);
-}
-.analysis-chapter-row:active { transform: translateX(1px) scale(0.995); }
-.analysis-chapter-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-.analysis-chapter-name {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--text-primary);
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.analysis-chapter-nums {
-  font-family: var(--font-num), monospace;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.analysis-more {
-  margin-top: 10px;
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-/* ── Two-column forensic + SR + ELO layouts ── */
-.analysis-err-cols,
-.analysis-sr-cols,
-.analysis-elo-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 28px;
-}
-.analysis-col-title {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  margin-bottom: 12px;
-}
-.analysis-col-sub { color: var(--text-muted); letter-spacing: 0.4px; }
-
-.analysis-sr-stats {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 12px;
-}
-.analysis-stat-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px dashed var(--line);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.analysis-stat-line:last-child { border-bottom: none; padding-bottom: 0; }
-.analysis-stat-line b {
-  font-family: var(--font-num), monospace;
-  font-size: 15px;
-  color: var(--text-primary);
-}
-
-.analysis-elo-global {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-align: center;
-  border-right: 1px solid var(--line);
-  padding-right: 28px;
-}
-.analysis-elo-big {
-  font-family: var(--font-num), monospace;
-  font-size: 52px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--text-primary);
-  text-shadow: 0 0 24px rgba(255, 178, 36, 0.35);
-}
-
-/* ── Empty states ── */
-.analysis-empty {
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 12.5px;
-  font-style: italic;
-  padding: 26px 12px;
-}
-
-/* ── Analysis grid spans (12-col .dash-grid) ── */
-.analysis-span-12 { grid-column: span 12; }
-.analysis-span-7  { grid-column: span 7; }
-.analysis-span-5  { grid-column: span 5; }
-
-/* ── Responsive ── */
-@media (max-width: 1280px) {
-  .analysis-kpi-grid { grid-template-columns: repeat(4, 1fr); }
-  .analysis-span-7, .analysis-span-5 { grid-column: span 6; }
-}
-@media (max-width: 900px) {
-  .analysis-kpi-grid { grid-template-columns: repeat(2, 1fr); }
-  .analysis-span-12, .analysis-span-7, .analysis-span-5 { grid-column: 1 / -1; }
-  .analysis-err-cols, .analysis-sr-cols, .analysis-elo-cols { grid-template-columns: 1fr; gap: 20px; }
-  .analysis-elo-global { border-right: none; border-bottom: 1px solid var(--line); padding-right: 0; padding-bottom: 20px; }
-  .analysis-head { flex-direction: column; }
-}
-@media (max-width: 480px) {
-  .analysis-kpi-grid { grid-template-columns: 1fr 1fr; }
-  .analysis-graph-display { min-height: 220px; }
-  #analysis-progress-graph { height: 220px; }
-}
-
-/* ════════════════════════════════════════════════════════════════════════
    GEM DIAGRAM AUTO-CROP MAP (🗺 Gem Diagram Map)
    Upload one image per tagged source screenshot; cropBox coordinates baked
    into the dump auto-crop every referenced diagram. See app.js
@@ -10061,10 +9756,6 @@ html[data-mode] #view-dashboard .compact-subject-card {
     background: rgba(255,255,255,0.035) !important;
     border-color: rgba(255,255,255,0.075) !important;
 }
-html[data-mode] #view-dashboard .erm-subject-row,
-html[data-mode] #view-dashboard .erm-sparkline-col {
-    background: rgba(255,255,255,0.035) !important;
-}
 html[data-mode] #view-dashboard .graph-display {
     background: linear-gradient(180deg, rgba(11,14,19,0.74), rgba(16,19,25,0.54)) !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.035) !important;
@@ -11108,7 +10799,7 @@ select.pomo-select { cursor: pointer; }
 }
 
 /* ── Cards — unified surface: radius, elevation, hairline ── */
-#view-dashboard .dash-card, .settings-card, .analysis-hero {
+#view-dashboard .dash-card, .settings-card {
     border-radius: var(--r-xl) !important;
     padding: var(--card-pad) !important;
     background: linear-gradient(180deg, rgba(20, 23, 33, 0.72), rgba(12, 14, 21, 0.78)) !important;
@@ -11166,7 +10857,7 @@ select.pomo-select { cursor: pointer; }
 .close-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
 
 /* ════════════════════════════════════════════════════════════════════════
-   4 · VIEWS — vault · practice · focus · analysis
+   4 · VIEWS — vault · practice · focus
    ════════════════════════════════════════════════════════════════════════ */
 
 /* ── Vault rail — quiet navigation column ── */
@@ -11212,8 +10903,6 @@ select.pomo-select { cursor: pointer; }
 .break-actions .btn-break-opt:hover { background: rgba(255, 255, 255, 0.09); color: #fff; border-color: var(--line-strong); }
 
 /* ── Analysis pills row + hero meta ── */
-.analysis-controls { gap: var(--sp-2); flex-wrap: wrap; }
-.analysis-pill-group { gap: var(--sp-1); }
 
 /* ── Upload / file affordances ── */
 .file-upload-label {
@@ -11397,7 +11086,7 @@ html[data-mode="dusk"] .loading-overlay { background: rgba(28, 30, 48, 0.62) !im
 
 
 /* ════════════════════════════════════════════════════════════════════════
-   8 · VIEW DEEP-POLISH — vault · practice · analysis · focus · widget
+   8 · VIEW DEEP-POLISH — vault · practice · focus · widget
    ════════════════════════════════════════════════════════════════════════ */
 
 /* ── Vault: error cards on the token scale ── */
@@ -11428,20 +11117,6 @@ html[data-mode="dusk"] .loading-overlay { background: rgba(28, 30, 48, 0.62) !im
     transition: transform var(--t-med) var(--ease), border-color var(--t-fast) ease, box-shadow var(--t-med) ease !important;
 }
 .chapter-item:hover, .question-card:hover { transform: translateY(-2px); box-shadow: var(--e-2); }
-
-/* ── Analysis: KPI tiles + rows ── */
-.analysis-kpi {
-    border-radius: var(--r-lg) !important;
-    background: linear-gradient(180deg, rgba(20, 23, 33, 0.66), rgba(12, 14, 21, 0.74)) !important;
-    border: 1px solid var(--line) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
-    transition: transform var(--t-med) var(--ease), border-color var(--t-fast) ease;
-}
-.analysis-kpi:hover { transform: translateY(-2px); border-color: var(--line-strong); }
-.analysis-kpi-val { font-size: 22px !important; font-weight: 700 !important; letter-spacing: -0.01em; }
-.analysis-kpi-label { font-size: var(--fs-2xs) !important; letter-spacing: 1.6px !important; text-transform: uppercase; color: var(--text-muted) !important; }
-.analysis-bar-row, .analysis-chapter-row, .analysis-sr-cols, .analysis-err-cols { border-radius: var(--r-sm); }
-.analysis-bar-fill, .analysis-bar-track { border-radius: var(--r-full); }
 
 /* ── Focus chamber: timer hero + ledger strip ── */
 #timer-display { letter-spacing: 0; font-variant-numeric: tabular-nums; }
@@ -11478,16 +11153,15 @@ html[data-mode="dusk"] .loading-overlay { background: rgba(28, 30, 48, 0.62) !im
 .bento-seg button { border-radius: var(--r-sm) !important; }
 .bento-edit-btn, .bento-reset-btn, .bento-ctrl-btn { border-radius: var(--r-sm) !important; }
 
-/* ── Empty states get real composition (matrix meta / analysis empty) ── */
-.analysis-empty, .matrix-meta:empty { display: none; }
+/* ── Empty states get real composition (matrix meta) ── */
+.matrix-meta:empty { display: none; }
 
 
 /* Kicker unification — one accent voice across every view (the legacy
    dash-token layer muted the dashboard ones; the design system says the
    micro-label IS the accent channel). */
 #view-dashboard .dash-card-head .kicker,
-#view-dashboard .kicker,
-.erm-sparkline-col .kicker {
+#view-dashboard .kicker {
     color: var(--accent) !important;
 }
 #view-dashboard .dash-card-momentum .kicker {

@@ -102,6 +102,7 @@ const seeded = await page.evaluate(async () => {
         mk({ id: 'qa-em-1b', chapter: 'Electrostatics', errorReason: 'calculation', nextReviewAt: iso(-2), historyLogs: [
             { id: 'l1', timestamp: iso(-9), result: 'incorrect', autonomy: 'independent', frictionTypes: '["CONCEPT"]', timeSpentMins: 4, newEaseFactor: 2.3 },
             { id: 'l2', timestamp: iso(-4), result: 'correct', autonomy: 'independent', frictionTypes: '["PERFECT"]', timeSpentMins: 3, newEaseFactor: 2.4 },
+            { id: 'l3', timestamp: iso(0), result: 'correct', autonomy: 'independent', frictionTypes: '["PERFECT"]', timeSpentMins: 3, newEaseFactor: 2.5 },
         ] }),
         mk({ chapter: 'SHM', errorReason: 'misread', nextReviewAt: iso(1) }),
         mk({ chapter: 'Thermo', errorReason: 'calculation', nextReviewAt: iso(2) }),
@@ -119,6 +120,9 @@ await page.evaluate(() => {
     const el = document.querySelector('.subject-folder[data-subject="physics"]');
     window.openErrorMatrix('physics', el);
 });
+// The squashed-today rail re-renders on tab switch / resolve actions; mirror
+// that path here so the readout reflects the freshly seeded bank.
+await page.evaluate(() => { if (typeof window.renderErrorResolutionDashboard === 'function') window.renderErrorResolutionDashboard(); });
 await page.waitForTimeout(500);
 
 const folder = page.locator('.subject-folder[data-subject="physics"]');
@@ -133,11 +137,21 @@ const deck = await page.evaluate(() => {
     const shell = document.querySelector('.vault-shell');
     const cols = getComputedStyle(shell).gridTemplateColumns.split(' ').length;
     const toolbar = document.querySelector('.error-filters');
-    return { cols, sticky: getComputedStyle(toolbar).position === 'sticky', erm: !!document.querySelector('.vault-erm .erm-total') };
+    return {
+        cols,
+        sticky: getComputedStyle(toolbar).position === 'sticky',
+        stripBoxGone: !document.getElementById('erm-today-total'),
+        railToday: document.getElementById('rail-today-total')?.textContent,
+        railPhys: document.getElementById('rail-today-physics')?.textContent,
+        railChemZero: document.getElementById('rail-today-chemistry')?.classList.contains('is-zero'),
+    };
 });
 assert(deck.cols === 2, 'desktop deck is rail + stage (' + deck.cols + ' cols)');
 assert(deck.sticky, 'filter toolbar is sticky');
-assert(deck.erm, 'ERM stat strip inside stage');
+assert(deck.stripBoxGone, 'top bugs-squashed-today box removed from stage strip');
+assert(deck.railToday === '1', 'rail shows total squashed today = 1 (got ' + deck.railToday + ')');
+assert(deck.railPhys === '1', 'rail physics squashed today = 1');
+assert(deck.railChemZero, 'zero-count chemistry today dimmed via is-zero');
 assert(await page.locator('.folder-count#folder-count-physics').textContent() === '6', 'physics folder count badge = 6');
 assert(await page.locator('.folder-count#folder-count-maths').evaluate(el => el.classList.contains('is-zero')), 'zero-count maths badge dimmed');
 
@@ -164,7 +178,7 @@ const firstCard = cards.first();
 assert(await firstCard.locator('.sr-due-badge.sr-due--ready').count() === 1, 'ready card has Due-now badge');
 assert((await firstCard.locator('.sr-due-badge').textContent()).trim() === 'Due now', 'badge reads plain-language Due now');
 assert(await firstCard.locator('.sr-stat i').first().textContent() === 'interval', 'stats have labels');
-assert(await page.locator('#error-list-container .sr-attempt-dot').count() === 2, 'attempt dots rendered (history card)');
+assert(await page.locator('#error-list-container .sr-attempt-dot').count() === 3, 'attempt dots rendered (3 history logs)');
 assert(await firstCard.locator('.sr-practice-btn .sr-btn-arrow').count() === 1, 'hero CTA with arrow');
 const railColor = await firstCard.evaluate(el => getComputedStyle(el, '::before').backgroundColor);
 assert(railColor.includes('248') || railColor.includes('239') || railColor.includes('rgb'), 'type rail painted: ' + railColor);
@@ -173,6 +187,7 @@ assert(railColor.includes('248') || railColor.includes('239') || railColor.inclu
 await page.click('.matrix-pill[data-emf-value="ready"]');
 await page.waitForTimeout(250);
 assert(await page.locator('#error-list-container .error-block:not(.hidden)').count() === 2, 'Due-now pill filters to 2 cards');
+assert(await page.evaluate(() => document.querySelector('.error-filters').getAttribute('data-active')) === '🟢 Due now', 'docked echo carries active filter label');
 assert(await page.locator('#error-list-container .em-group-head:not([hidden])').count() === 1, 'only the Due Now section remains visible');
 assert((await page.locator('#error-list-container .em-group-head[data-group-status="mastered"] .emg-count').textContent()) === '0', 'hidden sections count to 0');
 assert(await meta.locator('.matrix-meta-clear').isVisible(), 'Clear-filters escape appears');
@@ -181,6 +196,7 @@ await page.screenshot({ path: path.join(SHOTS, '02-filtered-due-now.png') });
 await page.click('.matrix-meta-clear');
 await page.waitForTimeout(250);
 assert(await page.locator('#error-list-container .error-block:not(.hidden)').count() === 6, 'clear resets to 6 visible');
+assert(await page.evaluate(() => !document.querySelector('.error-filters').hasAttribute('data-active')), 'echo cleared with filters');
 assert(await page.locator('.matrix-pill[data-emf-value="all"][data-emf-filter], .emf-pill-group[data-emf-filter="status"] .matrix-pill[data-emf-value="all"]').first().evaluate(el => el.classList.contains('active')), 'All pill re-activated');
 
 // ── 4 · Search + no-match state ──────────────────────────────────────────
@@ -202,6 +218,31 @@ await page.click('#matrix-search-clear');
 await page.waitForTimeout(250);
 
 // ── 5 · "/" hotkey focuses search ─────────────────────────────────────────
+// -- 4b - Scroll dock: toolbar collapses to search-only ----------------------
+await page.evaluate(() => { const m = document.querySelector('.main-content'); if (m) m.scrollTop = 0; });
+await page.waitForTimeout(300);
+assert(await page.evaluate(() => !document.querySelector('.error-filters').classList.contains('emf-docked')), 'toolbar undocked at board top');
+await page.evaluate(() => { const m = document.querySelector('.main-content'); m.scrollTop = m.scrollHeight; });
+await page.waitForTimeout(450);
+const dock = await page.evaluate(() => {
+    const f = document.querySelector('.error-filters');
+    const searchRow = f.querySelector('.emf-row-search');
+    const pillRows = Array.from(f.querySelectorAll('.emf-row:not(.emf-row-search)'));
+    return {
+        moved: document.querySelector('.main-content').scrollTop > 0,
+        cls: f.classList.contains('emf-docked'),
+        searchShown: !!(searchRow && searchRow.offsetParent),
+        pillsGone: pillRows.every(r => !r.offsetParent || getComputedStyle(r).display === 'none')
+    };
+});
+assert(dock.moved, 'board scrolls inside .main-content');
+assert(dock.cls, 'toolbar docks (.emf-docked) once scrolled');
+assert(dock.searchShown && dock.pillsGone, 'docked toolbar shows chapter search only');
+await page.screenshot({ path: path.join(SHOTS, '07-docked-search.png') });
+await page.evaluate(() => { const m = document.querySelector('.main-content'); m.scrollTop = 0; });
+await page.waitForTimeout(450);
+assert(await page.evaluate(() => !document.querySelector('.error-filters').classList.contains('emf-docked')), 'scrolling back up undocks the full stack');
+
 await page.keyboard.press('/');
 await page.waitForTimeout(150);
 assert(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'matrix-search-input', '/ focuses vault search');

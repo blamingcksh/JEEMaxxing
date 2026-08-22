@@ -10,10 +10,11 @@
  * ============================================================================ */
 'use strict';
 
+// v34 — Analysis tab removed (analysis.js gone from shell + precache).
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v33';
+const VERSION = 'jeemax-v34';
 const SHELL = [
   './',
   './index.html',
@@ -37,7 +38,6 @@ const SHELL = [
   './lifeline.js',
   './nightguard.js',
   './boot-sequence.js',
-  './analysis.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',

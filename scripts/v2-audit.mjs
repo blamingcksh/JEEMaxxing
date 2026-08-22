@@ -92,18 +92,16 @@ const v = await page.evaluate(() => {
     const btn = document.querySelector('.sr-practice-btn');
     out.ctaPill = cs(btn).borderRadius === '999px';
     out.ctaUppercase = cs(btn).textTransform === 'uppercase';
-    // ERM id contract: renderer writes land in the compact strip
-    out.ermTotalText = document.querySelector('#erm-today-total div').textContent;
-    out.ermPhysVal = document.getElementById('erm-phys-val').textContent;
-    out.ermPhysBarW = document.getElementById('erm-phys-bar').style.width;
-    out.ermSparklineSvg = !!document.querySelector('#error-momentum-svg-container svg');
-    out.stripIsGrid = getComputedStyle(document.querySelector('.vault-erm')).display === 'grid';
+    // Rail Today readout: renderer writes land in the side panel
+    out.railTodayText = document.getElementById('rail-today-total')?.textContent;
+    out.railPhysVal = document.getElementById('rail-today-physics')?.textContent;
+    out.stripGone = !document.getElementById('erm-today-total') && !document.querySelector('.vault-erm');
     // breathing-room probes: nothing should feel cramped
     const row = document.querySelector('.subject-folder');
-    out.rowPadding = parseFloat(cs(row).paddingTop) >= 12 && parseFloat(cs(row).paddingLeft) >= 13;
+    out.rowPadding = parseFloat(cs(row).paddingTop) >= 8 && parseFloat(cs(row).paddingLeft) >= 9;
     const card = document.querySelector('.error-block');
     out.cardPadding = parseFloat(cs(card).paddingTop) >= 17 && parseFloat(cs(card).borderRadius) >= 17;
-    out.railWide = document.querySelector('.vault-rail').getBoundingClientRect().width >= 270;
+    out.railCompact = document.querySelector('.vault-rail').getBoundingClientRect().width <= 260;
     return out;
 });
 console.log(JSON.stringify(v, null, 1));
