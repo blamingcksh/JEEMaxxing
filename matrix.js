@@ -22,6 +22,8 @@ import {
     SR_FRICTION_WEIGHTS,
     formatSRDate,
     recordCloudTombstone,
+    // Canonical subject-key mapper (physics/chemistry/maths) for counter writes.
+    normSubjKey,
 } from './storage.js';
 
 // ---------------------------------------------------------------------------
@@ -227,8 +229,11 @@ function _pauseStopwatch() {
 // reveals the autonomy / friction / time tagging stage.
 
 export function openPracticeDrawer(qId) {
-    const q = AppState.questionBank.find(item => item.id.toString() === qId.toString());
+    // Handler args arrive percent-encoded (_jsId); older callers may pass the
+    // raw id — _findQByHandlerId tries both.
+    const q = _findQByHandlerId(qId);
     if (!q) return;
+    qId = String(q.id);
 
     // Close any existing drawer
     closePracticeDrawer();
@@ -249,7 +254,7 @@ export function openPracticeDrawer(qId) {
     });
 
     overlay.innerHTML = `
-        <div class="sr-practice-drawer sr-practice-modal" id="sr-drawer-${qId}" role="dialog" aria-modal="true">
+        <div class="sr-practice-drawer sr-practice-modal" id="sr-drawer-${_esc(qId)}" role="dialog" aria-modal="true">
             <!-- ── Flow Lifeline ribbon: thin banner along top when CNS_LOAD fires ── -->
             <div class="sr-lifeline-ribbon" id="sr-lifeline-ribbon" style="display:none">
                 <span style="margin-right:8px">🌊 Lifeline active for 1× solve. Aim 80%+ first.</span>
@@ -334,6 +339,28 @@ function _esc(str) {
     return String(str == null ? '' : str)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/**
+ * Encode an id for embedding in a single-quoted inline-JS handler argument.
+ * Entity-escaping alone is NOT safe here: the browser HTML-decodes attribute
+ * values BEFORE compiling the handler, so a raw ' in an id would terminate
+ * the JS string and inject code. Percent-encoding keeps every quote literal;
+ * receiving functions decode defensively (raw match first, then decoded).
+ */
+function _jsId(id) { return encodeURIComponent(String(id == null ? '' : id)); }
+
+/** Resolve a possibly-percent-encoded handler arg back to a bank question. */
+function _findQByHandlerId(rawId) {
+    const s = String(rawId == null ? '' : rawId);
+    let q = AppState.questionBank.find(item => item.id != null && String(item.id) === s);
+    if (!q) {
+        try {
+            const dec = decodeURIComponent(s);
+            if (dec !== s) q = AppState.questionBank.find(item => item.id != null && String(item.id) === dec);
+        } catch (_) { /* malformed % sequence — keep raw */ }
+    }
+    return q || null;
 }
 
 function _currentDrawerQuestion() {
@@ -687,7 +714,10 @@ function _applyResult(result, source, q) {
             window._justWonBounty = false;
             if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
         } else if (document.body.classList.contains('overheat-active')) {
-            changeCount(q.subject, 2);
+            // changeCount indexes solved[physics|chemistry|maths] — a raw
+            // "Physics"/custom subject used to compute undefined+2 = NaN and
+            // poison the daily tally. Canonicalize before writing.
+            changeCount(normSubjKey(q.subject), 2);
             if (typeof window.showSupercharged === 'function') window.showSupercharged();
             if (typeof window.deactivateOverheat === 'function') window.deactivateOverheat();
         } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
@@ -849,7 +879,11 @@ function _postRenderDrawer(q) {
         if (token) {
             doFetch(token);
         } else if (typeof waitForDriveToken === 'function') {
-            try { Promise.resolve(waitForDriveToken()).then(doFetch).catch(() => {}); } catch (e) {}
+            // waitForDriveToken is CALLBACK-style (returns undefined) — the old
+            // Promise.resolve(waitForDriveToken()).then(doFetch) never invoked
+            // doFetch and the internal retry interval called undefined() every
+            // 500ms. Pass the callback it expects.
+            try { waitForDriveToken(() => doFetch((typeof AppState.driveAccessToken !== 'undefined') ? AppState.driveAccessToken : null)); } catch (e) {}
         }
     }
 }
@@ -1113,7 +1147,7 @@ export function submitPracticeLog() {
     // ✅ FIXED: Restored legacy status fields & balanced structural brackets
     if (_drawerState.result === 'correct' && q.status !== 'solved') {
         q.status = 'solved';
-        changeCount(q.subject, 1);
+        changeCount(normSubjKey(q.subject), 1);   // canonical key — NaN guard
     } else if (_drawerState.result === 'incorrect') {
         q.status = 'error';
     }
@@ -1174,9 +1208,15 @@ export function submitPracticeLog() {
         requestAnimationFrame(() => {
             _staggeredChain([
                 () => renderErrorMatrixFromBank(),
-                () => { filterErrors(); renderErrorResolutionDashboard(); },
-                () => { if (typeof window.updateUI === 'function')   window.updateUI(); },
-                () => { if (typeof window.renderGraph === 'function') window.renderGraph(); },
+                () => {
+                    filterErrors();
+                    renderErrorResolutionDashboard();
+                    // The dashboard just re-drew its PLAIN sparkline into the
+                    // momentum container — without this re-chain the card
+                    // regressed from candles to sparkline until the next tab
+                    // switch / focus / rollover (same fix as app.js's chains).
+                    if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles();
+                },
                 () => {
                     // updateUI() already calls renderEloMatrix() internally, but
                     // we re-run it explicitly so the subject monitors + deficit
@@ -1197,7 +1237,12 @@ export function submitPracticeLog() {
 
 export function removeErrorLog(id) {
     if (confirm("Confirm deletion of this friction point and all its attempt history?")) {
-        AppState.questionBank = AppState.questionBank.filter(q => q.id.toString() !== id.toString());
+        // Accept percent-encoded (_jsId) or raw ids — see _findQByHandlerId.
+        let target = _findQByHandlerId(id);
+        if (!target) return;
+        const targetId = String(target.id);
+        AppState.questionBank = AppState.questionBank.filter(q => q.id == null || String(q.id) !== targetId);
+        id = targetId;
         // Tombstone the id so a stale cloud snapshot can never resurrect it.
         recordCloudTombstone(id).catch(console.error);
         saveAllAsync().catch(console.error);
@@ -1209,7 +1254,11 @@ export function removeErrorLog(id) {
             requestAnimationFrame(() => {
                 _staggeredChain([
                     () => renderErrorMatrixFromBank(),
-                    () => { filterErrors(); renderErrorResolutionDashboard(); },
+                    () => {
+                        filterErrors();
+                        renderErrorResolutionDashboard();
+                        if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles();
+                    },
                     () => { try { renderChapterDecayGrid(); } catch (_) {} },
                 ]);
             });
@@ -1419,7 +1468,9 @@ function _getDailyQueueSnapshot() {
 
     const bySubject = { physics: [], maths: [], chemistry: [] };
     readyErrors.forEach(q => {
-        const subj = (q.subject || '').toLowerCase();
+        // Canonical key (trim + alias map): a " Maths " question used to miss
+        // the bucket here while matching everywhere else in the matrix.
+        const subj = normSubjKey(q.subject);
         if (bySubject[subj]) bySubject[subj].push(q);
     });
     Object.keys(bySubject).forEach(subj => {
@@ -1562,12 +1613,15 @@ function _buildErrorCardHTML(q) {
         String(q.id) === String(AppState.bounty.questionId);
     let bountyClass = isCurrentBounty ? 'bounty-active-error' : '';
 
+    // Inline-handler args use _jsId (percent-encoded): _esc alone survives the
+    // attribute boundary but is HTML-decoded before the handler compiles, so a
+    // quote in q.id could still break out into the JS string.
     return `
-            <div class="error-block ${bountyClass}" id="err-block-${_esc(q.id)}"
+            <div class="error-block ${bountyClass}" id="err-block-${_jsId(q.id)}"
                  data-type="${_esc(q.errorReason || 'conceptual')}"
                  data-sr-status="${_esc(dueInfo.status)}"
                  data-subject="${_esc(q.subject)}"
-                 onclick="openPracticeDrawer('${_esc(q.id)}')" title="Open practice session">
+                 onclick="openPracticeDrawer('${_jsId(q.id)}')" title="Open practice session">
                 <div class="error-img-box">
                     ${imgHtml}
                     <span class="sr-due-badge sr-due--${_esc(dueInfo.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(dueInfo))}</span>
@@ -1588,16 +1642,16 @@ function _buildErrorCardHTML(q) {
                     </div>
                 </div>
                 <div class="sr-card-actions">
-                    <button class="sr-practice-btn" onclick="openPracticeDrawer('${_esc(q.id)}')">Practice Now<span class="sr-btn-arrow">→</span></button>
+                    <button class="sr-practice-btn" onclick="openPracticeDrawer('${_jsId(q.id)}')">Practice Now<span class="sr-btn-arrow">→</span></button>
                     <div class="sr-card-actions-sub">
-                        <button class="sr-history-toggle" onclick="event.stopPropagation();toggleCardHistory('${_esc(q.id)}')" aria-label="Toggle attempt history">
+                        <button class="sr-history-toggle" onclick="event.stopPropagation();toggleCardHistory('${_jsId(q.id)}')" aria-label="Toggle attempt history">
                             History
-                            <span class="sr-chevron" id="sr-chevron-${_esc(q.id)}">▾</span>
+                            <span class="sr-chevron" id="sr-chevron-${_jsId(q.id)}">▾</span>
                         </button>
-                        <button class="delete-btn" onclick="event.stopPropagation();removeErrorLog('${_esc(q.id)}')" title="Delete" aria-label="Delete this mistake">🗑</button>
+                        <button class="delete-btn" onclick="event.stopPropagation();removeErrorLog('${_jsId(q.id)}')" title="Delete" aria-label="Delete this mistake">🗑</button>
                     </div>
                 </div>
-                <div class="sr-expanded-history" id="sr-history-${_esc(q.id)}" style="display:none;" onclick="event.stopPropagation();">
+                <div class="sr-expanded-history" id="sr-history-${_jsId(q.id)}" style="display:none;" onclick="event.stopPropagation();">
                     <div class="sr-history-header">Attempt History</div>
                     ${_buildHistoryLogs(q.historyLogs)}
                 </div>
@@ -2090,8 +2144,11 @@ export function renderChapterProgressList() {
     const totals = {};
     const solvedCounts = {};
 
+    // Keys are <canonicalSubject>::<encodeURIComponent(chapter)> — the old
+    // subject+'||'+chapter join corrupted pairing whenever a chapter name
+    // contained '||', and left raw subjects free to hit inline handlers.
     AppState.questionBank.forEach(q => {
-        const key = (q.subject || '') + '||' + (q.chapter || '');
+        const key = normSubjKey(q.subject) + '::' + encodeURIComponent(q.chapter || '');
         totals[key] = (totals[key] || 0) + 1;
         if (q.status === 'solved') solvedCounts[key] = (solvedCounts[key] || 0) + 1;
     });
@@ -2099,14 +2156,17 @@ export function renderChapterProgressList() {
     const rows = [];
     ['physics', 'chemistry', 'maths'].forEach(subj => {
         (AppState.chapters[subj] || []).forEach(name => {
-            const key = subj + '||' + name;
+            const key = subj + '::' + encodeURIComponent(name);
             rows.push({ subj, name, total: totals[key] || 0, solved: solvedCounts[key] || 0 });
         });
     });
 
     // Self-heal: bank questions orphaned from the chapter list still get a row.
     Object.keys(totals).forEach(key => {
-        const [subj, name] = key.split('||');
+        const sep = key.indexOf('::');
+        const subj = key.slice(0, sep);
+        let name = '';
+        try { name = decodeURIComponent(key.slice(sep + 2)); } catch (_) { name = key.slice(sep + 2); }
         if (!rows.some(r => r.subj === subj && match(r.name, name))) {
             rows.push({ subj, name, total: totals[key], solved: solvedCounts[key] || 0 });
         }
@@ -2255,7 +2315,7 @@ export function renderErrorResolutionDashboard() {
             if (log.result !== 'correct' || !log.timestamp) return;
             const logDate = _todayKey(new Date(log.timestamp));
             if (logDate === todayStr) {
-                const subj = (q.subject || '').toLowerCase();
+                const subj = normSubjKey(q.subject);   // canonical — whitespace-safe
                 if (todayCounts[subj] !== undefined) todayCounts[subj]++;
             }
         });
@@ -2333,6 +2393,13 @@ export function renderErrorResolutionDashboard() {
 function _renderMomentumSparkline(data) {
     const container = document.getElementById('error-momentum-svg-container');
     if (!container) return;
+
+    // Publish the TRUE series on the container for renderMomentumCandles().
+    // Its SVG-scraping fallback used to read raw circle cy PIXELS out of this
+    // sparkline (no polyline/rect exists here) and plot them as "error" values
+    // — vertically mirrored, unit-less junk. The dataset survives the
+    // innerHTML swap below because it belongs to the container itself.
+    try { container.dataset.momentumCounts = JSON.stringify(data.map(d => Math.max(0, Number(d.count) || 0))); } catch (_) {}
 
     const W = 320;
     const H = 88;

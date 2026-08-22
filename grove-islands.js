@@ -259,7 +259,10 @@ function ensureThree() {
       importWithTimeout(urls[i]).then(function (m) { THREE = m; res(m); }).catch(function () { t(i + 1).then(res, rej); });
     });
   }
-  threePromise = t(0);
+  // A REJECTED attempt used to stay cached for the whole session — one offline
+  // first load left the Grove dead until a full reload. Clear the memo on
+  // failure so the next user gesture / visibility tick retries all CDNs.
+  threePromise = t(0).catch(function (e) { threePromise = null; throw e; });
   return threePromise;
 }
 
@@ -951,6 +954,10 @@ function addProps(w, biome, rng, gh, topY, R) {
     var cfg = biome.props[pi];
     var geo = cfg.type === 'mushroom' ? propGeo.mushroomCap() : propGeo[cfg.type]();
     var mat = new THREE.MeshLambertMaterial({ flatShading: true });
+    // Fresh material per prop group per buildWorld — without registering it,
+    // disposeWorld (which only walks uniqueGeos + InstancedMesh.dispose)
+    // leaked one GL program per group on every island-expansion rebuild.
+    w.uniqueGeos.push(mat);
     var inst = new THREE.InstancedMesh(geo, mat, cfg.count);
     inst.castShadow = cfg.type !== 'grass' && cfg.type !== 'flower';
     inst.receiveShadow = true;
@@ -1430,7 +1437,13 @@ function maybeExpand() {
 function openFull() {
   ensureFull();
   var ov = document.getElementById('gi-full-overlay');
-  if (!ov || !built) return;
+  if (!ov) return;
+  // The 3D engine may still be loading (or failed) — a silent no-op read as
+  // broken buttons. Say so via the module's own toast.
+  if (!built) {
+    try { toast('🌊 Waking the islands — one moment…'); } catch (_) {}
+    return;
+  }
   ov.classList.add('open');
   document.body.classList.add('gi-full-open');
   fullOpen = true;
@@ -1444,7 +1457,8 @@ function closeFull() {
   ov.classList.remove('open');
   document.body.classList.remove('gi-full-open');
   fullOpen = false;
-  setViewPeriod('today');
+  // Keep viewPeriod as-is: forcing 'today' here rebuilt the mini card with a
+  // fade flash right after the user had been browsing 'All'.
 }
 
 function openStore() {
@@ -1864,6 +1878,13 @@ function boot() {
     renderMapIfOpen();
     if (firstRun) setTimeout(function () { toast('🌱 Welcome to the Grove Islands! Answer questions to grow trees. Unlock islands & species in the 🛒 store by raising your ELO.'); }, 900);
   }).catch(function (e) {
+    // initScene() no-ops when #gi-card is absent and applyEnvironment then
+    // throws on the null sky material — that DOM condition used to surface as
+    // the misleading "Could not load the 3D engine". Report it accurately.
+    if (!document.getElementById('gi-host')) {
+      warn('Grove host element (#gi-host/#gi-card) not present — mini island skipped.');
+      return;
+    }
     warn('Could not load the 3D engine: ' + (e && e.message ? e.message : e));
   });
   window.addEventListener('resize', sizeCanvases);

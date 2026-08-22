@@ -272,6 +272,11 @@
     function _next(stepName) {
         const idx = STEPS.indexOf(stepName);
         if (idx < 0) return;
+        // Leaving a step kills its timers FIRST — back()/finish() already did
+        // this, but the boot-skip key path didn't: the orphaned typing chain
+        // kept running and its queued setTimeout(onDone) re-fired
+        // _next('subject') seconds later, yanking the user back a screen.
+        _clearTimers();
         _stepIdx = idx;
         _renderStep();
     }
@@ -924,9 +929,16 @@
         try {
             _buildOverlay();
         } catch (e) {
-            // Never leave the app half-blacked-out: reset and fall back to the
+            // Never leave the app half-blacked-out: tear down whatever mounted
+            // (the key listener AND any partial overlay — finish() can't do it
+            // because it early-returns on !_active) and fall back to the
             // classic Vibe Check so mood calibration is never lost.
+            try { document.removeEventListener('keydown', _onKey); } catch (_) {}
+            try { if (_overlay && _overlay.parentNode) _overlay.parentNode.removeChild(_overlay); } catch (_) {}
+            _overlay = null; _backBtn = null; _hintEl = null; _progressEl = null; _bodyEl = null;
+            _currentOptions = [];
             _active = false;
+            _armActive = false;
             _clearTimers();
             if (typeof window.openModal === 'function') {
                 try { window.openModal('mood-modal'); } catch (_) {}

@@ -514,7 +514,13 @@ export function resetDaily() {
     for (const s of SUBJECTS) {
         if (_state[s]) {
             _state[s].sessionStart = null;
-            _state[s]._sessionBaselineSecs = 0; // fresh day, fresh baseline
+            // SNAPSHOT, don't zero: studySecs keep accruing across midnight,
+            // so a zeroed baseline made every post-midnight solve compute its
+            // "session length" from the WHOLE day's seconds — a spurious CNS
+            // spike for anyone grinding past 00:00.
+            _state[s]._sessionBaselineSecs = Math.max(0, Math.floor(
+                Number((window._studySecsForCns && window._studySecsForCns[s]) || 0)
+            ));
         }
     }
     _save();

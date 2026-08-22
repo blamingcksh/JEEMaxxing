@@ -4822,7 +4822,10 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
   display: grid; place-items: center;
   background: conic-gradient(var(--ring-c) calc(var(--p) * 1%), rgba(255,255,255,.07) 0);
   box-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 0 14px -5px var(--ring-c); transition: background .35s ease; }
-.ck-ring-hole { width: 42px; height: 42px; border-radius: 50%; background: var(--ck-surface);
+/* --ck-surface is defined NOWHERE (styles + inline builders) — without a
+   fallback the hole rendered transparent and checkpoint arcs showed as solid
+   discs instead of rings. Fallback matches the loop-rail surface tone. */
+.ck-ring-hole { width: 42px; height: 42px; border-radius: 50%; background: var(--ck-surface, #0b0b12);
   display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
 
 /* ---- Navigation loop rail ---- */
@@ -7371,7 +7374,7 @@ body.fi-full-open { overflow: hidden; }
   z-index: 1000600;
   pointer-events: none;   /* graduated — JS flips to auto past 30% burn */
 }
-#gb-canvas { display: block; width: 100vw; height: 100vh; }
+#gb-canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; }
 
 .gb-quote-box {
   position: absolute; left: 50%; bottom: 12vh;

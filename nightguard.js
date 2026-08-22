@@ -514,9 +514,28 @@ function _computeSleepDebt() {
  * Check if the last N consecutive days are all flagged as sleep-debt.
  * Used to trigger moodMultiplier penalty.
  */
+/** Local YYYY-MM-DD key for N days ago (DST-safe via setDate). */
+function _daysAgoKey(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return _todayKey(d);
+}
+
+/** Debt flags older than this stop counting toward the mood penalty. */
+const SLEEP_DEBT_WINDOW_DAYS = 7;
+
 export function getConsecutiveSleepDebtDays() {
+    // Prune stale flags first: without this the array only ever grew, so ONE
+    // bad 3-day stretch in the past held the ×0.85 mood penalty forever.
+    const cutoff = _daysAgoKey(SLEEP_DEBT_WINDOW_DAYS);
+    _state.sleepDebtDates = _state.sleepDebtDates.filter(d => typeof d === 'string' && d >= cutoff);
+
     const dates = [..._state.sleepDebtDates].sort();
-    if (dates.length === 0) return 0;
+    if (dates.length === 0) { _save(); return 0; }
+
+    // The streak must also be LIVE — it has to include today or yesterday.
+    // A run that ended days ago is history, not ongoing sleep debt.
+    if (!dates.includes(_todayKey()) && !dates.includes(_daysAgoKey(1))) { _save(); return 0; }
 
     let consecutive = 1;
     for (let i = dates.length - 1; i > 0; i--) {
@@ -589,6 +608,11 @@ export function resetDaily() {
     _state.forcedCnsActive = false;
     _state._cachedTier = null;
     _state._cachedTierTs = 0;
+    // Sleep-debt flags outside the penalty window are dead weight — drop them.
+    try {
+        const cutoff = _daysAgoKey(SLEEP_DEBT_WINDOW_DAYS);
+        _state.sleepDebtDates = _state.sleepDebtDates.filter(d => typeof d === 'string' && d >= cutoff);
+    } catch (_) {}
     _save();
 }
 

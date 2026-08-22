@@ -851,7 +851,10 @@ function showLockdown(q) {
     //   • q.driveImageId  — Google Drive file ID (lazy-loaded async)
     let imageHTML = '';
     if (q.imageDataUrl && typeof q.imageDataUrl === 'string' && q.imageDataUrl.length > 100) {
-        imageHTML = '<img class="cp-question-image" src="' + q.imageDataUrl + '" alt="Question image" />';
+        // Attribute-safe: a crafted data URL containing a double-quote could
+        // otherwise break out of src and inject attributes (self-XSS class).
+        const _safeSrc = String(q.imageDataUrl).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        imageHTML = '<img class="cp-question-image" src="' + _safeSrc + '" alt="Question image" />';
     } else if (q.driveImageId) {
         // Placeholder SVG; the actual image is fetched from Drive after the
         // overlay is mounted (see lazy-load block below).
@@ -909,7 +912,7 @@ function showLockdown(q) {
             <div class="cp-timer-paused" id="cp-timer-paused" style="display:none;">⏸ PAUSED — DRAW ON SCRATCHPAD</div> \
         </div> \
         <div class="cp-lockdown-body"> \
-            <div class="cp-question-meta">⚠ ' + escapeForHtml(q.chapter || 'Unknown') + ' · EF ' + (q.easeFactor || 2.5) + ' · ' + escapeForHtml(q.subject || '') + '</div> \
+            <div class="cp-question-meta">⚠ ' + escapeForHtml(q.chapter || 'Unknown') + ' · EF ' + escapeForHtml(String(Number(q.easeFactor) || 2.5)) + ' · ' + escapeForHtml(q.subject || '') + '</div> \
             ' + (imageHTML ? '<div class="cp-question-image-zone">' + imageHTML + '</div>' : '') + ' \
             <div class="cp-question-text">' + escapeForHtml(q.extractedText || 'No question text on file. Use the image above if present, then self-evaluate.') + '</div> \
             ' + (showOptions ? '<div class="cp-options" id="cp-options">' + optionsHTML + '</div>' : '') + ' \

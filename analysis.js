@@ -349,7 +349,11 @@ function _fixesToday() {
     for (const q of _bank()) {
         if (!q || !Array.isArray(q.historyLogs)) continue;
         for (const log of q.historyLogs) {
-            if (log && log.result === 'correct' && log.timestamp && String(log.timestamp).slice(0, 10) === today) n++;
+            // historyLogs store ISO/UTC strings — slicing the string buckets by
+            // UTC day while every comparison key here is LOCAL. A fix logged
+            // 00:00–05:29 IST landed on "yesterday" and vanished from the KPI.
+            const d = log && log.result === 'correct' && log.timestamp ? _todayKey(new Date(log.timestamp)) : null;
+            if (d && d === today) n++;
         }
     }
     return n;
@@ -368,13 +372,16 @@ function _penaltySet() {
 }
 
 // One-pass map of { date: fixCount } from every SR attempt log.
+// Keys are LOCAL day strings — same bucketing as getDailyHistory — derived
+// from the parsed timestamp rather than the UTC prefix of the ISO string.
 function _fixesByDate() {
     const map = {};
     for (const q of _bank()) {
         if (!q || !Array.isArray(q.historyLogs)) continue;
         for (const log of q.historyLogs) {
             if (log && log.result === 'correct' && log.timestamp) {
-                const d = String(log.timestamp).slice(0, 10);
+                const d = _todayKey(new Date(log.timestamp));
+                if (!d) continue;                       // corrupt timestamp — skip, never NaN a candle
                 map[d] = (map[d] || 0) + 1;
             }
         }

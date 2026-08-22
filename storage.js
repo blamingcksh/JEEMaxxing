@@ -66,6 +66,10 @@ function _listenTabSync() {
             if (!msg || msg.type !== 'jmax-saved') return;
             // Never process our own echo — the data is already in our state.
             if (msg.tabId === _tabId) return;
+            // A sibling committed — its bank write may carry per-question
+            // updates we don't have. _doSaveAll adopts them before its own
+            // full-bank rewrite so an idle tab can never clobber a sibling.
+            _foreignCommitPending = true;
             try {
                 // Daily counters are monotonic within a day — merge upward.
                 let changed = false;
@@ -102,6 +106,62 @@ function _listenTabSync() {
     } catch (_) { /* ignore */ }
 }
 _listenTabSync();
+
+// ── Multi-tab question-bank guard (audit residual of item [11]) ─────────────
+// A sibling tab's save used to be invisible to our full-bank rewrite: each tab
+// holds its own AppState copy, so an idle tab running a pomodoro tick could
+// commit a STALE bank over a sibling's fresh solve (per-question
+// status/qElo/history are merged neither by the counter ping nor by the
+// new-id pull). Before every commit we therefore re-read the committed bank
+// and adopt remote copies of questions THIS tab has not touched since its own
+// last load/commit.
+let _foreignCommitPending = false;
+const _bankSigs = new Map(); // String(q.id) -> signature of the copy we last loaded/committed
+
+function _bankSig(q) {
+    try {
+        return JSON.stringify(q, (k, v) =>
+            (k === 'imageDataUrl' || k === 'diagramImageUrl' || k === 'optionImageUrls' || k === 'solutionImageUrl') ? undefined : v);
+    } catch (_) { return null; }
+}
+
+function _captureBankSigs() {
+    _bankSigs.clear();
+    for (const q of AppState.questionBank) {
+        if (!q || q.id == null) continue;
+        const sig = _bankSig(q);
+        if (sig !== null) _bankSigs.set(String(q.id), sig);
+    }
+}
+
+async function _adoptForeignBankUpdates() {
+    try {
+        const remote = await idbGet('jeemax_question_bank').catch(() => null);
+        if (!Array.isArray(remote)) return;
+        const localById = new Map(AppState.questionBank.map(q => [String(q && q.id), q]));
+        let adopted = 0;
+        for (const rq of remote) {
+            if (!rq || rq.id == null) continue;
+            const key = String(rq.id);
+            const lq = localById.get(key);
+            if (!lq) continue;                       // brand-new ids come via the ping path
+            const rSig = _bankSig(rq);
+            if (rSig === null) continue;
+            const ourLastSig = _bankSigs.get(key);
+            // Remote moved since we last saw it AND ours is untouched since our
+            // last load/commit → take their fields (never clobbering local edits).
+            if (rSig !== ourLastSig && _bankSig(lq) === ourLastSig) {
+                for (const k of Object.keys(rq)) {
+                    if (k === 'imageDataUrl' || k === 'diagramImageUrl' || k === 'optionImageUrls' || k === 'solutionImageUrl') continue;
+                    lq[k] = rq[k];
+                }
+                _bankSigs.set(key, rSig);
+                adopted++;
+            }
+        }
+        if (adopted) console.info('[tab-sync] adopted ' + adopted + ' remotely-updated question(s) before commit');
+    } catch (_) { /* never block the save path */ }
+}
 
 // ==================== INDEXEDDB STORAGE LAYER ====================
 export const DB_NAME = 'jeemaxxing_db';
@@ -239,18 +299,6 @@ export async function idbRemove(key) {
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
         tx.onabort = () => reject(tx.error || new Error('idbRemove aborted'));
-    });
-}
-
-export async function idbClear() {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction('storage', 'readwrite');
-        const store = tx.objectStore('storage');
-        store.clear();
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error || new Error('idbClear aborted'));
     });
 }
 
@@ -502,7 +550,11 @@ export const monthNamesCal = [
 // Core data mutation: increment/decrement solved counter for a subject
 // Core data mutation: increment/decrement solved counter for a subject
 export function changeCount(subject, delta) {
-    solved[subject] = Math.max(0, solved[subject] + delta);
+    // Canonicalize: solved only ever has the three core keys. A raw "Physics"
+    // or custom subject would read undefined here and turn +delta into a NaN
+    // that then persists through every save.
+    const key = normSubjKey(subject);
+    solved[key] = Math.max(0, (Number(solved[key]) || 0) + (Number(delta) || 0));
     saveAllAsync().catch(console.error);
     
     // ⚡ INSTANT DASHBOARD HOT-RELOAD: Push data updates live to the UI without forcing a page refresh
@@ -1128,7 +1180,10 @@ export function readFileAsBase64(file) {
         r.readAsDataURL(file); });
 }
 
-export function escapeHtml(str) { return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[m]); }
+// Quotes are escaped too: this helper also builds double-quoted HTML attribute
+// values (e.g. value="${escapeHtml(answerDisplay)}"), where a raw " in
+// ingested Gemini/user text would terminate the attribute and inject markup.
+export function escapeHtml(str) { return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]); }
 
 export function escapeAttribute(str) {
   return str.replace(/&/g, '&amp;')
@@ -1211,6 +1266,13 @@ async function _doSaveAll() {
     // so every save is a small text-only payload — this was the intent of
     // `lightweightBank`; the previous code saved the image-laden bank instead,
     // which serialized megabytes of base64 on every solve / pomodoro tick.
+    // Multi-tab guard: pull in sibling-tab question updates for questions we
+    // did NOT touch ourselves, so our full-bank write can't erase them.
+    if (_foreignCommitPending) {
+        _foreignCommitPending = false;
+        await _adoptForeignBankUpdates();
+    }
+
     const lightweightBank = AppState.questionBank.map(q => ({
         ...q,
         imageDataUrl: null,
@@ -1255,8 +1317,18 @@ async function _doSaveAll() {
 
     await idbSetMany(entries);
 
-    // Only touch the image vault when its signature actually changed.
-    await persistImageCacheIfChanged();
+    // Baseline for the next multi-tab adoption pass: this commit is now the
+    // newest known state of every question this tab holds.
+    _captureBankSigs();
+
+    // Only touch the image vault when its signature actually changed. A vault
+    // failure (quota) must NOT stall the ledger, cloud sync or the multi-tab
+    // broadcast — the stale signature makes the next save retry the vault.
+    try {
+        await persistImageCacheIfChanged();
+    } catch (e) {
+        console.error('image vault persist failed:', e);
+    }
     await updateDailyHistory();
 
     // ── Bump the app-wide "data changed" counter so memoized derivations
@@ -1370,6 +1442,9 @@ export async function loadDataAsync() {
     // Re-attach cached images (bounded LRU cache) onto the live bank.
     await hydrateImageCache();
 
+    // Baseline for multi-tab adoption: what we just loaded is "ours".
+    _captureBankSigs();
+
     if (ch) AppState.chapters = ch;
 
     if (savedBounty) {
@@ -1419,7 +1494,10 @@ export async function loadDataAsync() {
     // Hydrate active practice mode + hardcore daily counter (resets daily)
     if (savedMode && PRACTICE_MODES.includes(savedMode)) AppState.practiceFlowMode = savedMode;
     if (hcDaily && typeof hcDaily === 'object') {
-        const today = new Date().toISOString().slice(0, 10);
+        // Local day key — every writer/gate (app.js todayLocalKey, boot-sequence)
+        // buckets by local date; a UTC key here reset the cap at 05:30 IST and
+        // granted a phantom extra quota before local midnight in UTC− zones.
+        const today = todayLocalKey();
         AppState.hardcoreDailyDate   = hcDaily.date || null;
         AppState.hardcoreDailyCount  = (hcDaily.date === today) ? (hcDaily.count || 0) : 0;
     }
@@ -1528,6 +1606,11 @@ export async function fetchMediaFromDrive(fileId, token) {
     })();
 
     AppState.imageFetchCache[fileId] = fetchPromise;
+    // A failed fetch (offline / expired token / transient 4xx-5xx) must not be
+    // memoized for the whole session — drop the entry so the next lazy-load
+    // retries once connectivity or the token recovers.
+    fetchPromise.then(url => { if (!url) delete AppState.imageFetchCache[fileId]; },
+                     () => { delete AppState.imageFetchCache[fileId]; });
     return fetchPromise;
 }
 
@@ -1538,10 +1621,10 @@ export async function cacheAllDriveImages() {
   try {
     for (const q of AppState.questionBank) {
       if (q.driveImageId && !q.imageDataUrl) {
-        try { q.imageDataUrl = await fetchMediaFromDrive(q.driveImageId, AppState.driveAccessToken); fixed++; } catch (e) {}
+        try { const url = await fetchMediaFromDrive(q.driveImageId, AppState.driveAccessToken); if (url) { q.imageDataUrl = url; fixed++; } } catch (e) {}
       }
       if (q.driveDiagramId && !q.diagramImageUrl) {
-        try { q.diagramImageUrl = await fetchMediaFromDrive(q.driveDiagramId, AppState.driveAccessToken); fixed++; } catch (e) {}
+        try { const url = await fetchMediaFromDrive(q.driveDiagramId, AppState.driveAccessToken); if (url) { q.diagramImageUrl = url; fixed++; } } catch (e) {}
       }
     }
     await saveAllAsync();
@@ -1628,7 +1711,7 @@ export async function isDriveTokenValid() {
         document.getElementById('btn-drive-auth').style.display = 'inline-block';
         document.getElementById('drive-status').style.display = 'none';
         const syncSubText = document.getElementById('sync-sub-text');
-        if (syncSubText) { syncSubText.textContent = "Drive disconnected – reconnect in Settings"; syncSubText.color = "var(--glow-red)"; }
+        if (syncSubText) { syncSubText.textContent = "Drive disconnected – reconnect in Settings"; syncSubText.style.color = "var(--glow-red)"; }
         return false;
     } catch (err) { console.error("Token validation error:", err); return false; }
 }

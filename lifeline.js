@@ -60,10 +60,14 @@ let _state = {
  */
 export function evaluateLifeline(subject, chapter, mode, userElo, questionBank) {
     // ── Step 1: CNS_LOAD check ──
+    // Cross-subject MAX, same source the dismiss re-fire check and getStatus
+    // use. The per-subject last reading here disagreed with them: the banner
+    // could claim a lifeline was active for a subject whose own evaluation
+    // said otherwise (and vice versa).
     let cnsLoad = 0;
     try {
         if (window.__cnsLoad) {
-            cnsLoad = window.__cnsLoad.getLastCnsReading(subject);
+            cnsLoad = window.__cnsLoad.getMaxCnsReading();
         }
     } catch (_) {}
 

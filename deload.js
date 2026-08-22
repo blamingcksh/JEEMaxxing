@@ -96,9 +96,12 @@ function _daysBetween(a, b) {
     const da = new Date(a + 'T12:00:00');
     const db = new Date(b + 'T12:00:00');
     if (isNaN(da.getTime()) || isNaN(db.getTime())) {
-        // Corrupt stored date — fail CLOSED (block scheduling) rather than
-        // producing NaN, which previously bypassed the cooldown entirely.
-        return DELOAD_COOLDOWN_DAYS;
+        // Corrupt stored date — report an IMPOSSIBLE state (-1). Returning the
+        // threshold itself was NOT fail-closed: the gate reads
+        // daysSince < DELOAD_COOLDOWN_DAYS, and 14 < 14 is false, so a
+        // corrupt date still bypassed the cooldown exactly like NaN did.
+        // The call site turns -1 into an explicit refusal with its own message.
+        return -1;
     }
     return Math.round((db - da) / 86400000);
 }
@@ -165,6 +168,11 @@ export function canScheduleManualDeload() {
     // 14-day cooldown
     if (_state.lastManualDeloadDate) {
         const daysSince = _daysBetween(_state.lastManualDeloadDate, today);
+        if (daysSince === -1) {
+            // Corrupt stored date — refuse to schedule rather than silently
+            // passing the gate (fail-closed; see _daysBetween).
+            return { ok: false, reason: 'Cooldown check unavailable — stored deload date is corrupt.' };
+        }
         if (daysSince < DELOAD_COOLDOWN_DAYS) {
             const remaining = DELOAD_COOLDOWN_DAYS - daysSince;
             return { ok: false, reason: `Cooldown: ${remaining} day${remaining > 1 ? 's' : ''} until next manual deload.` };
