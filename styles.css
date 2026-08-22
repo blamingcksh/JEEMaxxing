@@ -9491,17 +9491,19 @@ html[data-mode="dusk"] #view-pomodoro .sc-hint { color: var(--text-secondary) !i
    DAILY VARIANCE CONTRIBUTION GRAPH
    GitHub-style calendar-year grid; green intensity is relative to the daily
    target. Super-minimal surface: fill-only cells on a quiet track, a single
-   green ramp (no borders, no glow), a right-aligned Less/More legend, and a
-   month-label row that lines up with the week columns below. The level ramp
+   bright green ramp (alpha steps rising to a solid luminous peak; only the
+   peak cells carry a whisper of halo), a right-aligned Less/More legend, and
+   a month-label row that lines up with the week columns below. The level ramp
    lives as tokens on the card so dots and legend swatches always agree.
    ════════════════════════════════════════════════════════════════════════ */
 #view-dashboard .dash-card-variance {
     grid-column: span 12;
     --dv-track: rgba(255,255,255,0.05);
-    --dv-1: rgba(74,222,128,0.14);
-    --dv-2: rgba(74,222,128,0.30);
-    --dv-3: rgba(74,222,128,0.48);
-    --dv-4: rgba(74,222,128,0.72);
+    --dv-1: rgba(74,222,128,0.30);
+    --dv-2: rgba(74,222,128,0.54);
+    --dv-3: rgba(74,222,128,0.80);
+    --dv-4: #6bf29e;
+    --dv-glow: rgba(107,242,158,0.42);
 }
 .daily-variance-head {
     display: flex;
@@ -9586,21 +9588,26 @@ html[data-mode="dusk"] #view-pomodoro .sc-hint { color: var(--text-secondary) !i
 .daily-variance-dot[data-level="1"] { background: var(--dv-1); }
 .daily-variance-dot[data-level="2"] { background: var(--dv-2); }
 .daily-variance-dot[data-level="3"] { background: var(--dv-3); }
-.daily-variance-dot[data-level="4"] { background: var(--dv-4); }
+/* Peak days read as lit, not just filled: solid mint fill + soft halo. */
+.daily-variance-dot[data-level="4"] {
+    background: var(--dv-4);
+    box-shadow: 0 0 9px -2px var(--dv-glow);
+}
 .daily-variance-dot[data-outside="true"] {
     opacity: 0;
     pointer-events: none;
 }
-/* Today gets a quiet ring; hover swaps in a slightly brighter inner one.
-   No scaling, no glow — the restraint IS the aesthetic. */
+/* Today gets a quiet but clearly visible ring; hover adds a bright inner one
+   on top of whatever halo the cell already carries. No scaling — the restraint
+   IS the aesthetic. */
 .daily-variance-dot[data-today="true"] {
-    outline: 1px solid rgba(255,255,255,0.32);
+    outline: 1px solid rgba(255,255,255,0.48);
     outline-offset: 1px;
 }
 .daily-variance-dot:hover {
     position: relative;
     z-index: 1;
-    box-shadow: inset 0 0 0 1px rgba(187,247,208,0.55);
+    box-shadow: inset 0 0 0 1px rgba(199,255,220,0.8), 0 0 9px -2px var(--dv-glow);
 }
 @media (max-width: 560px) {
     /* On narrow screens the columns shrink below what a label can hold;
