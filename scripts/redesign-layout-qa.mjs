@@ -26,7 +26,7 @@ catch { browser = await chromium.launch({ channel: 'chrome', headless: true, tim
 
 let pass = 0, fail = 0;
 const assert = (c, n) => { if (c) { pass++; console.log('  ok', n); } else { fail++; console.error('  FAIL', n); } };
-const TABS = ['dashboard', 'pomodoro', 'errors', 'practice', 'analysis', 'settings'];
+const TABS = ['dashboard', 'pomodoro', 'errors', 'practice', 'settings'];
 
 async function auditViewport(page, w, h) {
     await page.setViewportSize({ width: w, height: h });
@@ -54,7 +54,7 @@ async function auditViewport(page, w, h) {
         assert(clickable, `[${w}x${h}] ${tab}: nav item clickable`);
         // 4. zero page errors accumulated
     }
-    // header only exists on dashboard/analysis/settings — check overlap there
+    // header only exists on dashboard/settings — check overlap there
     await page.locator('.nav-item[data-tab="dashboard"]').click({ timeout: 5000 });
     await page.waitForTimeout(500);
     const hdrVisible = await page.evaluate(() => {

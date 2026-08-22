@@ -42,7 +42,7 @@ for (let i = 0; i < 6; i++) {
 }
 await page.waitForTimeout(800);
 
-const tabs = ['dashboard', 'pomodoro', 'errors', 'practice', 'analysis', 'settings'];
+const tabs = ['dashboard', 'pomodoro', 'errors', 'practice', 'settings'];
 for (const t of tabs) {
     try {
         await page.evaluate(tab => { const el = document.querySelector('.nav-item[data-tab="' + tab + '"]'); if (el) el.click(); }, t);
