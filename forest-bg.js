@@ -40,15 +40,18 @@ function solvedBank(){
   // Cache until the data-dirty flag moves (saves bump it), with a 60s TTL as
   // a fallback for changes that bypass saveAllAsync — keeps the 30s bgSig
   // poll O(1) instead of O(bank) on every tick.
-  if(_sbCache&&(dirty===_sbSig||now-_sbAt<60000))return _sbCache;
+  // Fresh cache requires BOTH the same dirty-sig AND a live TTL — an OR
+  // served stale trees for up to 60s after __jmaxDataDirty moved.
+  if(_sbCache&&dirty===_sbSig&&now-_sbAt<60000)return _sbCache;
   var qb=window.questionBank||[],o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(q&&q.status==='solved')o.push(q);}
   _sbCache=o;_sbAt=now;_sbSig=dirty;return o;
 }
 function historical(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(dayOf(q.lastReviewedAt)!==tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined,oak:(q.oak!=null)?!!q.oak:undefined});}return o;}
 function todayReal(){var tk=todayStr(),qb=solvedBank(),o=[];for(var i=0;i<qb.length;i++){var q=qb[i];if(dayOf(q.lastReviewedAt)===tk)o.push({subject:normSub(q.subject),qElo:qEloOf(q),difficulty:(typeof q.difficulty==='number')?q.difficulty:undefined,oak:(q.oak!=null)?!!q.oak:undefined});}return o;}
 function computeBgTrees(){
-  var trees=historical().concat(todayReal());
-  var extra=Math.max(0,liveTotal()-todayReal().length);
+  var today=todayReal();
+  var trees=historical().concat(today);
+  var extra=Math.max(0,liveTotal()-today.length);   // was a second todayReal() O(bank) sweep
   for(var i=0;i<extra;i++)trees.push({subject:SUBJ[(Math.random()*3)|0],qElo:1100+Math.random()*700,difficulty:0.5});
   if(trees.length>CAP){var step=trees.length/CAP,o=[];for(var j=0;j<CAP;j++)o.push(trees[Math.floor(j*step)]);trees=o;}
   return trees;

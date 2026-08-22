@@ -100,20 +100,20 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                 <button type="button" class="pop-sub" data-subject="chemistry" onclick="popSetSubject('chemistry')">C</button>
                 <button type="button" class="pop-sub" data-subject="maths" onclick="popSetSubject('maths')">M</button>
             </div>
-            <button type="button" class="pop-dyn" id="pop-dynamic" onclick="toggleDynamicSubject()" title="Dynamic mode: switch subject mid-sprint — time tracked per subject">⚡</button>
+            <button type="button" class="pop-dyn" id="pop-dynamic" onclick="toggleDynamicSubject()" title="Dynamic mode: switch subject mid-sprint — time tracked per subject" aria-label="Toggle dynamic subject mode">⚡</button>
         </div>
         <div class="pop-row">
             <span class="pop-lbl">Minutes</span>
-            <button type="button" class="pop-step" onclick="popAdjustMinutes(-5)">−</button>
+            <button type="button" class="pop-step" onclick="popAdjustMinutes(-5)" aria-label="Decrease minutes by 5">−</button>
             <span class="pop-val" id="pop-minutes">25</span>
-            <button type="button" class="pop-step" onclick="popAdjustMinutes(5)">+</button>
+            <button type="button" class="pop-step" onclick="popAdjustMinutes(5)" aria-label="Increase minutes by 5">+</button>
             <span class="pop-reason" id="pop-reason"></span>
         </div>
         <div class="pop-row">
             <span class="pop-lbl">Rounds</span>
-            <button type="button" class="pop-step" onclick="popAdjustRounds(-1)">−</button>
+            <button type="button" class="pop-step" onclick="popAdjustRounds(-1)" aria-label="Decrease rounds">−</button>
             <span class="pop-val" id="pop-rounds">1</span>
-            <button type="button" class="pop-step" onclick="popAdjustRounds(1)">+</button>
+            <button type="button" class="pop-step" onclick="popAdjustRounds(1)" aria-label="Increase rounds">+</button>
         </div>
         <button type="button" class="pop-start" onclick="popStart()">Start Sprint ▶</button>
     </div>
@@ -444,22 +444,22 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                 <div class="sc-sliders">
                     <div class="sc-slider-row">
                         <span class="sc-slider-label" title="Master loudness of the sound bed">Volume</span>
-                        <input type="range" id="sc-volume" class="sc-range" min="0" max="100" value="60" title="Master loudness of the sound bed">
+                        <input type="range" id="sc-volume" class="sc-range" min="0" max="100" value="60" title="Master loudness of the sound bed" aria-label="Soundscape volume">
                         <span class="sc-slider-val" id="sc-volume-val">60%</span>
                     </div>
                     <div class="sc-slider-row">
                         <span class="sc-slider-label" title="Low-end body — how deep and grounded it feels">Depth</span>
-                        <input type="range" id="sc-depth" class="sc-range" min="0" max="100" value="50" title="Low-end body — how deep and grounded it feels">
+                        <input type="range" id="sc-depth" class="sc-range" min="0" max="100" value="50" title="Low-end body — how deep and grounded it feels" aria-label="Soundscape depth">
                         <span class="sc-slider-val" id="sc-depth-val">50%</span>
                     </div>
                     <div class="sc-slider-row">
                         <span class="sc-slider-label" title="High-frequency air and sparkle">Brightness</span>
-                        <input type="range" id="sc-brightness" class="sc-range" min="0" max="100" value="50" title="High-frequency air and sparkle">
+                        <input type="range" id="sc-brightness" class="sc-range" min="0" max="100" value="50" title="High-frequency air and sparkle" aria-label="Soundscape brightness">
                         <span class="sc-slider-val" id="sc-brightness-val">50%</span>
                     </div>
                     <div class="sc-slider-row">
                         <span class="sc-slider-label" title="Tone — dark &amp; muffled ⇢ fully open by 85%. On Rain: calm roof rain ⇢ heavy rain">Tone</span>
-                        <input type="range" id="sc-density" class="sc-range" min="0" max="100" value="100" title="Tone — dark &amp; muffled ⇢ fully open by 85%. On Rain: calm roof rain ⇢ heavy rain">
+                        <input type="range" id="sc-density" class="sc-range" min="0" max="100" value="100" title="Tone — dark &amp; muffled ⇢ fully open by 85%. On Rain: calm roof rain ⇢ heavy rain" aria-label="Soundscape tone">
                         <span class="sc-slider-val" id="sc-density-val">100%</span>
                     </div>
                 </div>
@@ -480,6 +480,9 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                     <div class="rail-block rail-mode">
                         <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()">⚡ Daily Fix Queue</button>
                         <span class="daily-queue-badge" id="daily-queue-badge" style="display:none">20 problems · 5P + 5M + 10C</span>
+                        <!-- Daily Bounty: shown only while an assigned bounty is live
+                             (refreshBountyRail toggles it); opens the boss-fight modal. -->
+                        <button class="daily-queue-master-btn" id="bounty-rail-btn" onclick="openDailyBounty()" style="display:none">⚔️ Daily Bounty</button>
                     </div>
 
                     <div class="rail-label">Subjects</div>
@@ -566,7 +569,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                     <div class="emf-row emf-row-search">
                         <div class="emf-search-wrap">
                             <span class="emf-search-icon">⌕</span>
-                            <input class="matrix-search" id="matrix-search-input" type="text" placeholder="Hunt by chapter or tag…   (press / )" oninput="setMatrixSearch(this.value)" autocomplete="off">
+                            <input class="matrix-search" id="matrix-search-input" type="text" placeholder="Hunt by chapter or tag…   (press / )" oninput="setMatrixSearch(this.value)" autocomplete="off" aria-label="Search the error matrix by chapter or tag">
                             <button class="emf-search-clear" id="matrix-search-clear" type="button" onclick="clearMatrixSearch()" aria-label="Clear search" hidden>✕</button>
                         </div>
                     </div>
@@ -878,10 +881,10 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
         <div class="nightguard-actions">
             <button id="nightguard-override-btn" class="btn btn-ghost"
                     onmousedown="window._nightguardOverrideStart=Date.now()"
-                    onmouseup="window._nightguardOverrideEnd=Date.now();if(Date.now()-window._nightguardOverrideStart>=3000){window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').classList.remove('active');document.body.classList.remove('nightguard-tint');}else{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}"
+                    onmouseup="window._nightguardOverrideEnd=Date.now();if(window._nightguardOverrideStart&&Date.now()-window._nightguardOverrideStart>=3000){window._nightguardOverrideStart=null;window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').classList.remove('active');document.body.classList.remove('nightguard-tint');}else{window._nightguardOverrideStart=null;document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}"
                     onmouseleave="window._nightguardOverrideStart=null"
                     ontouchstart="window._nightguardOverrideStart=Date.now()"
-                    ontouchend="window._nightguardOverrideEnd=Date.now();if(Date.now()-window._nightguardOverrideStart>=3000){window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').classList.remove('active');document.body.classList.remove('nightguard-tint');}else{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}">
+                    ontouchend="window._nightguardOverrideEnd=Date.now();if(window._nightguardOverrideStart&&Date.now()-window._nightguardOverrideStart>=3000){window._nightguardOverrideStart=null;window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').classList.remove('active');document.body.classList.remove('nightguard-tint');}else{window._nightguardOverrideStart=null;document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}">
                 Hold for 3s to override
             </button>
             <button class="btn btn-primary" onclick="window.location.reload()">End Session</button>
@@ -1030,7 +1033,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                         <input type="file" id="json-dump-file" accept=".json,application/json,.txt" style="display:none" onchange="loadJsonDumpFile(this)">
                     </label>
                 </div>
-                <textarea id="text-add-terminal" class="pomo-input text-track-terminal-input" rows="8" placeholder='[{"extractedText":"...","options":["A) ..."],"correctAnswer":"C","type":"mcq","solution":"..."}] — or upload a .json file above'></textarea>
+                <textarea id="text-add-terminal" class="pomo-input text-track-terminal-input" rows="8" placeholder='[{"extractedText":"...","options":["A) ..."],"correctAnswer":"C","type":"mcq","solution":"..."}] — or upload a .json file above' aria-label="Gem text dump JSON input"></textarea>
             </div>
             <div style="display:flex;gap:12px;margin-top:16px">
                 <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Nvm</button>
@@ -1195,7 +1198,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
     <div class="modal-content">
         <button class="close-btn" onclick="closeModalStr('add-chapter-modal')" aria-label="Close">✕</button>
         <h2>New Chapter</h2>
-        <input id="new-chapter-input" class="pomo-input" type="text" placeholder="e.g. Thermodynamics" style="margin-top:16px">
+        <input id="new-chapter-input" class="pomo-input" type="text" placeholder="e.g. Thermodynamics" style="margin-top:16px" aria-label="New chapter name">
         <div style="display:flex;gap:12px;margin-top:16px">
             <button class="btn btn-secondary" onclick="closeModalStr('add-chapter-modal')">Nvm</button>
             <button class="btn btn-primary" onclick="addChapter()">Create</button>

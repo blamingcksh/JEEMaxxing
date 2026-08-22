@@ -124,8 +124,11 @@ function getDailyHistorySync() {
         }
         return merged; // full ledger — unbounded, do NOT truncate to 15
     } catch (e) {
-        console.warn('[app] getDailyHistorySync failed — streak/deload inputs fall back to empty:', e);
-        return [];
+        // Never zero the streak/deload inputs wholesale — degrade to the
+        // last-known cache instead of an empty ledger.
+        console.warn('[app] getDailyHistorySync failed — falling back to last-known cache:', e);
+        const cached = window._dailyHistoryCache;
+        return Array.isArray(cached) ? cached : [];
     }
 }
 window._deloadDailyHistoryFn = getDailyHistorySync;
@@ -770,9 +773,13 @@ export function closeModal(e, id, force) {
         _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
         m.classList.remove('active');
         setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
-        if (id === 'practice-modal' && AppState.practiceTimer) {
-            clearInterval(AppState.practiceTimer);
-            AppState.practiceTimer = null;
+        if (id === 'practice-modal') {
+            if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+            // Parity with closePracticeModal(): a backdrop dismiss used to
+            // leak the run's Flow/Hardcore navigation stacks into the next
+            // session and keep a lifeline pick armed for an unrelated solve.
+            try { _clearModeHistory(); } catch (_) {}
+            window.__lastQuestionPickedWithLifeline = false;
         }
     }
 }
@@ -824,10 +831,16 @@ export function triggerStreakShield() {
         visualizer.appendChild(shield);
         shield.addEventListener('animationend', () => shield.remove());
     }
-    // Audio burst → gated by Sound
+    // Audio burst → gated by Sound. One shared context: a fresh
+    // AudioContext per pop used to accumulate toward the browser's
+    // concurrency cap until ALL app audio silently died.
     if (!window.FX || window.FX.wantSound()) {
         try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            if (!window.__jmaxSharedAudio) {
+                window.__jmaxSharedAudio = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            const ctx = window.__jmaxSharedAudio;
+            if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); }
             const now = ctx.currentTime;
             const bufferSize = ctx.sampleRate * 0.15;
             const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -889,6 +902,7 @@ export async function switchTab(viewId, element) {
     }
     if (viewId === 'errors') {
         assignDailyBountyIfNeeded();
+        try { refreshBountyRail(); } catch (_) {}
         renderErrorMatrixFromBank();
         filterErrors();
         renderErrorResolutionDashboard(); // NEW: refresh error dashboard when viewing errors
@@ -916,9 +930,15 @@ export async function calibrateMood(mood) {
     else if (mood === 'happy') AppState.moodMultiplier = 1.20;
     else AppState.moodMultiplier = 1.0;
 
-    AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
-    AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
-    AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
+    // ── Sleep-debt mood penalty: apply the ceiling BEFORE deriving tonight's
+    // active targets, or the targets silently ignore the penalty even though
+    // the stored multiplier shows it (the old order computed targets first).
+    try {
+        if (typeof NightGuard !== 'undefined') {
+            const _sdPenalty = NightGuard.getSleepDebtMoodPenalty();
+            if (_sdPenalty < 1.0) AppState.moodMultiplier = Math.min(AppState.moodMultiplier, _sdPenalty);
+        }
+    } catch (_) {}
 
     // ── Deload Days: mood calibration to 1.0 overrides forced deload ──
     try {
@@ -927,14 +947,9 @@ export async function calibrateMood(mood) {
         }
     } catch (_) {}
 
-    // ── Sleep-debt mood penalty: also apply ceiling in calibrateMood
-    // so the user doesn't see a flicker when updateUI runs next.
-    try {
-        if (typeof NightGuard !== 'undefined') {
-            const _sdPenalty = NightGuard.getSleepDebtMoodPenalty();
-            if (_sdPenalty < 1.0) AppState.moodMultiplier = Math.min(AppState.moodMultiplier, _sdPenalty);
-        }
-    } catch (_) {}
+    AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
+    AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
+    AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
 
     await idbSet('jeemax_mood_multiplier', AppState.moodMultiplier);
     // NOTE: jeemax_last_calibrated_date is intentionally NO LONGER the daily
@@ -1290,10 +1305,17 @@ export async function updateStreakDisplay() {
         checkDate.setDate(checkDate.getDate() - 1);
     }
 
-    for (let i = 0; i < 30; i++) {
+    // Walk back as far as the ledger actually reaches — the old hard cap of
+    // 30 iterations froze any real streak at "30 Days" forever. The loop now
+    // ends at the first gap, or at the oldest active date, whichever first.
+    const oldestActive = activeDates.size
+        ? [...activeDates].reduce((min, d) => d < min ? d : min)
+        : null;
+    for (let i = 0; i < 3650; i++) {   // 10-year hard ceiling — pure runaway guard
         let dStr = ymd(checkDate);
         if (activeDates.has(dStr)) {
             streak++;
+            if (oldestActive && dStr <= oldestActive) break;   // nothing older exists
             checkDate.setDate(checkDate.getDate() - 1);
         } else {
             break;
@@ -1627,13 +1649,18 @@ export function renderCalendar() {
     let d = new Date(currentLiveDate.getFullYear(), currentLiveDate.getMonth() + AppState.calMonthOffset, 1);
     document.getElementById('cal-month-lbl').textContent =
         `${monthNamesCal[d.getMonth()]} ${d.getFullYear()}`;
-    for (let i = 0; i < d.getDay(); i++) grid.innerHTML += `<div class="cal-day"></div>`;
+    // Build the whole month as ONE string — grid.innerHTML += inside the
+    // loops reparsed the entire (growing) grid on every cell, an O(n²)
+    // reparse on each calendar open.
+    let html = '';
+    for (let i = 0; i < d.getDay(); i++) html += `<div class="cal-day"></div>`;
     let days = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
     for (let i = 1; i <= days; i++) {
         let sClass = 'active-month';
         if (AppState.calMonthOffset === 0 && i === currentLiveDate.getDate()) sClass += ' today';
-        grid.innerHTML += `<div class="cal-day ${sClass}">${i}</div>`;
+        html += `<div class="cal-day ${sClass}">${i}</div>`;
     }
+    grid.innerHTML = html;
 }
 
 export function shiftMonth(dir) {
@@ -1699,7 +1726,10 @@ export function renderChaptersList() {
 
 export function deleteChapter(ch) {
     if (confirm(`Nuke "${ch}"? This wipes everything inside.`)) {
-        AppState.chapters[AppState.currentSubject] = AppState.chapters[AppState.currentSubject].filter(c => c !== ch);
+        // Remove EVERY case-variant tile — the question wipe below matches via
+        // _chaptersMatch (case-insensitive), so leaving a "modern physics"
+        // twin behind produced an empty surviving tile.
+        AppState.chapters[AppState.currentSubject] = AppState.chapters[AppState.currentSubject].filter(c => !_chaptersMatch(c, ch));
         // Use splice to avoid reassigning the exported let binding
         for (let i = AppState.questionBank.length - 1; i >= 0; i--) {
             if (AppState.questionBank[i].subject === AppState.currentSubject && _chaptersMatch(AppState.questionBank[i].chapter, ch)) {
@@ -1776,9 +1806,15 @@ export async function saveTargets() {
  * Reads from #set-err-phys, #set-err-chem, #set-err-math.
  */
 window.saveErrTargets = async function saveErrTargets() {
-    const phys = parseInt(document.getElementById('set-err-phys').value) || 5;
-    const chem = parseInt(document.getElementById('set-err-chem').value) || 5;
-    const math = parseInt(document.getElementById('set-err-math').value) || 5;
+    // Same parse discipline as saveTargets' parseTarget: radix 10, reject
+    // <=0/NaN — parseInt||5 accepted negatives verbatim and turned 0 into 5.
+    const parseErrTarget = (v) => {
+        const n = parseInt(v, 10);
+        return (Number.isFinite(n) && n > 0) ? n : 5;
+    };
+    const phys = parseErrTarget(document.getElementById('set-err-phys').value);
+    const chem = parseErrTarget(document.getElementById('set-err-chem').value);
+    const math = parseErrTarget(document.getElementById('set-err-math').value);
 
     baseErrorTargets.physics = phys;
     baseErrorTargets.chemistry = chem;
@@ -2327,6 +2363,7 @@ export function nextQuestionInSession() {
 
 export function finishAllQuestions() {
     const items = [];
+    let _skippedLocked = 0;
     cropSession.allQuestions.forEach(q => {
         if (q.stitchedImage) {
             items.push({
@@ -2346,8 +2383,13 @@ export function finishAllQuestions() {
                 qElo: _computeDefaultQEloForCurrentChapter(),
                 isAnomaly: false,
             });
+        } else {
+            _skippedLocked++;   // stitch failed (null) — counted, not silently vanished
         }
     });
+    if (_skippedLocked > 0) {
+        alert(`${_skippedLocked} locked question${_skippedLocked > 1 ? 's' : ''} could not be stitched (image processing failed) and will not be imported.`);
+    }
     AppState.extractedItems = items;
     closeCropModal();
     showPreviewModal();
@@ -2588,7 +2630,10 @@ Return a flat single JSON array containing exactly ${pendingItems.length} object
             const q = pendingItems[i];
             const options = Array.isArray(obj.options) ? obj.options : [];
             q.extractedText = repairLatex(typeof obj.extractedText === 'string' ? obj.extractedText : '');
-            q.options = options.map(o => repairLatex(typeof o === 'string' ? o : o));
+            // Gemini sometimes returns option OBJECTS ({text: ...}) — the old
+            // no-op ternary let them through and they rendered as
+            // "[object Object]". Coerce to the text payload.
+            q.options = options.map(o => repairLatex(typeof o === 'string' ? o : String((o && (o.text ?? o.label ?? o.value)) ?? '')));
             q.type = options.length > 0 ? 'mcq' : 'text';
             // Belt-and-suspenders: flag (never block) rows whose math still
             // fails to render after the deterministic repair.
@@ -4396,7 +4441,9 @@ function prefetchPracticeDriveImages() {
     if (token) {
         doPrefetch(token);
     } else if (typeof waitForDriveToken === 'function') {
-        try { Promise.resolve(waitForDriveToken()).then(doPrefetch).catch(() => {}); } catch (e) {}
+        // Callback-style API (returns undefined) — the promise chain here never
+        // ran doPrefetch; hand it the callback it expects.
+        try { waitForDriveToken(() => doPrefetch(AppState.driveAccessToken)); } catch (e) {}
     }
 }
 
@@ -4477,8 +4524,30 @@ export function getHistoricalBountyTimeLimit(q) {
     return 180;
 }
 
+/**
+ * Rail/boot visibility for the Daily Bounty entry point. The assignment ran at
+ * boot but NOTHING ever opened the modal (dead wiring — audit CRITICAL), so
+ * the daily bounty silently never started. The rail button is the reachable
+ * trigger; it shows only while a bounty is live.
+ */
+export function refreshBountyRail() {
+    const btn = document.getElementById('bounty-rail-btn');
+    if (!btn) return;
+    const pending = !AppState.bounty.done && AppState.bounty.active && !!AppState.bounty.questionId;
+    btn.style.display = pending ? 'inline-block' : 'none';
+}
+
+/** User-facing opener — explains itself when nothing is live instead of dying quietly. */
+export function openDailyBounty() {
+    if (AppState.bounty.done || !AppState.bounty.active || !AppState.bounty.questionId) {
+        alert('No live bounty right now.\n\nMiss a marked-wrong review and tomorrow\'s Bounty Boss picks itself.');
+        return;
+    }
+    openBountyModal(AppState.bounty.questionId);
+}
+
 export function openBountyModal(questionId) {
-    const q = AppState.questionBank.find(item => item.id.toString() === questionId.toString());
+    const q = AppState.questionBank.find(item => item.id != null && String(item.id) === String(questionId));
     if (!q) return;
     const today = todayLocalKey();
     AppState.bounty.date = today;
@@ -4501,7 +4570,7 @@ export function tryAssignDailyBounty(questionId) {
         (!q.bountyLockUntil || new Date(q.bountyLockUntil).getTime() <= Date.now())
     );
     const q = questionId
-        ? candidates.find(item => item.id.toString() === questionId.toString())
+        ? candidates.find(item => item.id != null && String(item.id) === String(questionId))
         : candidates[0];
     if (!q) return;
 
@@ -4581,7 +4650,7 @@ export function evaluateBountyOutcome(wasCorrect) {
     if (!q) return;
     window._bountyQuestion = null;
     AppState.bountyMode = false;
-    if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+    if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
 
     if (wasCorrect) {
         window._justWonBounty = true;
@@ -4611,6 +4680,7 @@ export function evaluateBountyOutcome(wasCorrect) {
     AppState.bounty.done = true;
     AppState.bounty.active = false;
     saveAllAsync().catch(console.error);
+    try { refreshBountyRail(); } catch (_) {}
     renderErrorMatrixFromBank();
     closePracticeModal();
 }
@@ -4619,7 +4689,7 @@ export function startBountySessionFromModal() {
     const qId = window._pendingBountyId || AppState.bounty.questionId;
     if (!qId) return;
 
-    const q = AppState.questionBank.find(item => item.id.toString() === qId.toString());
+    const q = AppState.questionBank.find(item => item.id != null && String(item.id) === String(qId));
     if (!q) return;
 
     const today = todayLocalKey();
@@ -4712,12 +4782,16 @@ export function renderPracticeQuestionModal() {
             questionImageHtml = `<img id="practice-modal-img" src="${_safeImgSrc(AppState.currentQ.imageDataUrl)}" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; transition: opacity 0.3s; cursor: pointer;">`;
         } else if (AppState.currentQ.driveImageId && typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {
             questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading asset...</text></svg>" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; cursor: pointer;">`;
-            fetchMediaFromDrive(AppState.currentQ.driveImageId, AppState.driveAccessToken).then(b64 => {
-                if (b64) {
-                    AppState.currentQ.imageDataUrl = b64;
-                    let modalImg = document.getElementById('practice-modal-img');
-                    if (modalImg) modalImg.src = b64;
-                }
+            // Capture the question this fetch belongs to — the user can hit
+            // Next/skip before it resolves, and the old code then attached the
+            // image to the NEW current question (and persisted the mixup).
+            const _imgQ = AppState.currentQ;
+            fetchMediaFromDrive(_imgQ.driveImageId, AppState.driveAccessToken).then(b64 => {
+                if (!b64) return;
+                if (AppState.currentQ !== _imgQ) return;   // navigated away — drop the stale fetch
+                if (!_imgQ.imageDataUrl) _imgQ.imageDataUrl = b64;
+                let modalImg = document.getElementById('practice-modal-img');
+                if (modalImg && AppState.currentQ === _imgQ) modalImg.src = b64;
             });
         }
     }
@@ -5874,19 +5948,24 @@ function _setPracticeMode(mode) {
         AppState.photoHidden = false;
         const hideBtn = document.getElementById('hide-photo-toggle');
         if (hideBtn) hideBtn.textContent = '📷 Hide Image';
+        // ── Start the practice-question timer ──
+        // Lives INSIDE the non-empty-queue branch: a failed mode refill used
+        // to leave this 1s interval running with no modal — and a non-null
+        // practiceTimer made _getDeepWorkBlockMultiplier hand out a phantom
+        // ×1.5 ELO bonus on unrelated solves until some other path nulled it.
+        if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+        AppState.practiceTimer = setInterval(() => {
+            AppState.practiceSeconds++;
+            if (typeof updatePracticeTimerDisplay === 'function') {
+                updatePracticeTimerDisplay();
+            }
+        }, 1000);
+    } else if (AppState.practiceTimer) {
+        // Refill produced nothing (mode exited + queue emptied): make sure no
+        // stale timer from an earlier session survives the bail-out.
+        clearInterval(AppState.practiceTimer);
+        AppState.practiceTimer = null;
     }
-    // ── Start the practice-question timer ──
-    // Mirror startPracticeWithQuestion's timing setup so practiceSeconds actually
-    // ticks from 0. Without this setInterval the modal opens but no timer fires,
-    // leaving practiceSeconds stuck at 0 and the FAST/SLOW time-bonus pill hidden
-    // on the result chip (because _modeTimeMultiplier reads a stale τ=1).
-    if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
-    AppState.practiceTimer = setInterval(() => {
-        AppState.practiceSeconds++;
-        if (typeof updatePracticeTimerDisplay === 'function') {
-            updatePracticeTimerDisplay();
-        }
-    }, 1000);
 }
 
 /** Exit practice mode back to standard filter-by-status. */
@@ -6136,8 +6215,10 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         newSubjectElo: AppState.elo[safeSubject] || 1200,
         oldGlobalElo: AppState.elo.global || 1200,
         newGlobalElo: AppState.elo.global || 1200,
-        oldQElo: (questionObj && typeof questionObj.qElo === 'number') ? questionObj.qElo : 1200,
-        newQElo: (questionObj && typeof questionObj.qElo === 'number') ? questionObj.qElo : 1200,
+        // isFinite guard — a bare typeof check lets corrupt-storage NaN
+        // straight into Math.max(0, NaN + …) = NaN, which then persists.
+        oldQElo: (questionObj && typeof questionObj.qElo === 'number' && isFinite(questionObj.qElo)) ? questionObj.qElo : 1200,
+        newQElo: (questionObj && typeof questionObj.qElo === 'number' && isFinite(questionObj.qElo)) ? questionObj.qElo : 1200,
         tierChanged: false,
         oldTier: '',
         newTier: '',
@@ -6164,7 +6245,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     }
 
     const E_s = AppState.elo[safeSubject] || 1200;
-    const Q_Elo = (questionObj && typeof questionObj.qElo === 'number') ? questionObj.qElo : 1200;
+    const Q_Elo = (questionObj && typeof questionObj.qElo === 'number' && isFinite(questionObj.qElo)) ? questionObj.qElo : 1200;
 
     // === INSERTED: Delta-Based Reward Fast Path (pre-ELO schema) ===
     if (_isQuestionEloCalibrated(questionObj)) {
@@ -6275,7 +6356,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         questionObj.qEloSource = (questionObj.qEloSource === 'gem-stamped') ? 'gem-stamped' : 'learned';
         questionObj.solveCount = (questionObj.solveCount || 0) + 1;
         questionObj.lastSolvedAt = new Date().toISOString();
-        questionObj.qElo = newQ;
+        questionObj.qElo = (typeof newQ === 'number' && isFinite(newQ)) ? Math.max(0, newQ) : 1200;   // never persist NaN
         if (isAnomaly) questionObj.isAnomaly = true;
         if (Sefc === 1) {
             questionObj.easeFactor = Math.min(3.0, (questionObj.easeFactor || 2.5) + 0.15);
@@ -6464,7 +6545,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         isAnomaly = true;
     }
     if (questionObj) {
-        questionObj.qElo = newQ;
+        questionObj.qElo = (typeof newQ === 'number' && isFinite(newQ)) ? Math.max(0, newQ) : 1200;   // never persist NaN
         if (isAnomaly) questionObj.isAnomaly = true;
 
         // ── NEW (pre-ELO schema): solve-count + learned-source transition ──
@@ -6532,7 +6613,10 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
 
     // ── CNS Load: log this solve into rolling accuracy/τ windows ──
     try {
-        CNSLoad.logSolve(safeSubject, scoreOutcome === 'correct', actualTime || 0, T_avg);
+        // scoreOutcome arrives as 1/0 from every caller — comparing it to the string
+// 'correct' was ALWAYS false, so CNS telemetry logged every solve as incorrect
+// (accuracy-collapse component dead, anti-cheat veto trivially satisfied).
+CNSLoad.logSolve(safeSubject, Number(scoreOutcome) === 1, actualTime || 0, T_avg);
     } catch (_) { /* never block ELO migration */ }
 
     return result;
@@ -7024,6 +7108,9 @@ function injectEloShiftChip(eloResult) {
     const headerSlot = document.getElementById('elo-header-slot')
                    || document.getElementById('sr-elo-header-slot');
     if (headerSlot) {
+        // Clear any PENDING wipe first — two solves within 4.2s otherwise
+        // race: the previous chip's timer erases the new chip early.
+        if (headerSlot._chipWipeTimer) clearTimeout(headerSlot._chipWipeTimer);
         headerSlot.innerHTML = '';
         const headerChip = document.createElement('div');
         headerChip.className = 'elo-header-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
@@ -7032,7 +7119,7 @@ function injectEloShiftChip(eloResult) {
             `<span class="elo-shift-tier">[${tier.name}]</span>`;
         headerSlot.appendChild(headerChip);
         // Auto-remove after the animation completes.
-        setTimeout(() => { headerSlot.innerHTML = ''; }, 4200);
+        headerSlot._chipWipeTimer = setTimeout(() => { headerSlot.innerHTML = ''; headerSlot._chipWipeTimer = null; }, 4200);
     }
 
     // Tier transition celebration — cascading emoji burst + synth fanfare.
@@ -7080,6 +7167,43 @@ window.calculateEloMigration = calculateEloMigration;
 window.renderEloMatrix = renderEloMatrix;
 window.injectEloShiftChip = injectEloShiftChip;
 window._getChapterHealth = _getChapterHealth;
+
+/**
+ * Reveal + self-report flow shared by text/subjective questions and any
+ * numeric question whose stored answer can't be parsed (ungradeable).
+ */
+function _enterSelfReportFlow() {
+    // ── Freeze the timer NOW — the time spent deciding correct/wrong after
+    //    seeing the answer should NOT inflate the ELO temporal divergence calc.
+    AppState._frozenTextQSeconds = AppState.practiceSeconds;
+    if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+    AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
+    AppState.currentQ.timeTaken = AppState._frozenTextQSeconds;
+    // A reveal alone never marks the question — only the self-report does.
+    // Reset 'wrong'/'error' to 'unsolved' so the re-render shows the neutral
+    // "Answer revealed — were you right?" banner instead of "❌ Fumbled".
+    // Preserve 'solved' ("✅ Clutched" banner is harmless on re-reveal).
+    if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') {
+        AppState.currentQ.status = 'unsolved';
+    }
+    // ── Biological Memory Construct: stamp the processing instant so the
+    //    continuous Δt is well-defined even if the user closes the modal
+    //    without self-reporting. The easeFactor is hydrated (not nudged)
+    //    here because the success/failure outcome is not yet known — the
+    //    nudge is applied later by calculateEloMigration once the user
+    //    clicks "Clean Lock" / "Skill Issue" in addTextQuestionFollowUp().
+    AppState.currentQ.lastReviewedAt = new Date().toISOString();
+    if (typeof AppState.currentQ.easeFactor !== 'number' || !isFinite(AppState.currentQ.easeFactor)) {
+        AppState.currentQ.easeFactor = 2.5;
+    }
+    // ⏱ Converge practice time into the daily/subjective study counters.
+    // Runs exactly once — the flag above is already true, so the guard at
+    // the top of practiceSubmit() blocks any re-entry from double-counting.
+    _injectPracticeTimeIntoStudySecs();
+    saveAllAsync().catch(console.error);
+    renderPracticeQuestionModal();
+    addTextQuestionFollowUp();
+}
 
 export function practiceSubmit() {
     if (AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return;
@@ -7146,45 +7270,31 @@ export function practiceSubmit() {
             alert("Type a number. This ain't multiple choice.");
             return;
         }
-        userAns = parseFloat(numVal).toString();
-        const userNum = parseFloat(userAns);
+        const userNum = parseFloat(numVal);
         const correctNum = parseFloat(AppState.currentQ.correctAnswer);
+        // Garbage input ("12..", "abc") parsed to NaN and compared FALSE —
+        // graded as a wrong answer with a full Elo/streak penalty. Non-numeric
+        // input is a formatting mistake, not a wrong answer: refuse to grade.
+        if (!isFinite(userNum)) {
+            alert("That's not a number I can read — check the format and try again.");
+            return;
+        }
+        // A non-numeric stored correctAnswer makes every honest answer wrong:
+        // treat the question as ungradeable and route into the self-report flow
+        // (the old code fell through to the graded path and marked it WRONG).
+        if (!isFinite(correctNum)) {
+            alert("This question's stored answer isn't numeric — grade yourself below.");
+            _enterSelfReportFlow();
+            return;
+        }
+        userAns = userNum.toString();
         isCorrect = Math.abs(userNum - correctNum) < 1e-6;
 
     } else {
         // ── Self-report flow: any non-MCQ, non-numeric question (text, subjective,
         //    or untyped) gets the reveal + self-report buttons instead of being
         //    auto-marked as incorrect.
-        // ── Freeze the timer NOW — the time spent deciding correct/wrong after
-        //    seeing the answer should NOT inflate the ELO temporal divergence calc.
-        AppState._frozenTextQSeconds = AppState.practiceSeconds;
-        if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
-        AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
-        AppState.currentQ.timeTaken = AppState._frozenTextQSeconds;
-        // A reveal alone never marks the question — only the self-report does.
-        // Reset 'wrong'/'error' to 'unsolved' so the re-render shows the neutral
-        // "Answer revealed — were you right?" banner instead of "❌ Fumbled".
-        // Preserve 'solved' ("✅ Clutched" banner is harmless on re-reveal).
-        if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') {
-            AppState.currentQ.status = 'unsolved';
-        }
-        // ── Biological Memory Construct: stamp the processing instant so the
-        //    continuous Δt is well-defined even if the user closes the modal
-        //    without self-reporting. The easeFactor is hydrated (not nudged)
-        //    here because the success/failure outcome is not yet known — the
-        //    nudge is applied later by calculateEloMigration once the user
-        //    clicks "Clean Lock" / "Skill Issue" in addTextQuestionFollowUp().
-        AppState.currentQ.lastReviewedAt = new Date().toISOString();
-        if (typeof AppState.currentQ.easeFactor !== 'number' || !isFinite(AppState.currentQ.easeFactor)) {
-            AppState.currentQ.easeFactor = 2.5;
-        }
-        // ⏱ Converge practice time into the daily/subjective study counters.
-        // Runs exactly once — the flag above is already true, so the guard at
-        // the top of practiceSubmit() blocks any re-entry from double-counting.
-        _injectPracticeTimeIntoStudySecs();
-        saveAllAsync().catch(console.error);
-        renderPracticeQuestionModal();
-        addTextQuestionFollowUp();
+        _enterSelfReportFlow();
         return;
     }
 
@@ -7498,7 +7608,11 @@ export function practicePrev() {
 
 export function closePracticeModal() {
     closeModalStr('practice-modal');
-    if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+    if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+    // A lifeline pick that never reached a graded solve must not penalize the
+    // next unrelated solve with its ×0.65 flag (leaked until the NEXT
+    // lifeline/calibrated solve cleared it).
+    window.__lastQuestionPickedWithLifeline = false;
     // A closed modal must not leak its run's navigation history into the next
     // session — without this, a standard session started right after closing a
     // Flow/Hardcore run could inherit stale back/forward stacks.
@@ -7634,10 +7748,28 @@ export function burstEmojis(originX, originY, count, emojis, scale) {
     animationId = requestAnimationFrame(step);
 }
 
+/**
+ * One shared AudioContext for all one-shot UI SFX. A fresh context per call
+ * used to accumulate toward the browser's concurrency cap until ALL sounds
+ * silently died mid-session.
+ */
+function _sharedSfxCtx() {
+    try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        if (!window.__jmaxSharedAudio) window.__jmaxSharedAudio = new AC();
+        if (window.__jmaxSharedAudio.state === 'suspended') {
+            window.__jmaxSharedAudio.resume().catch(() => {});
+        }
+        return window.__jmaxSharedAudio;
+    } catch (_) { return null; }
+}
+
 function playSuperSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = _sharedSfxCtx();
+        if (!ctx) return;
         const now = ctx.currentTime;
         const freqs = [523.25, 659.25, 783.99, 1046.5];
         freqs.forEach((f, i) => {
@@ -7698,7 +7830,7 @@ function showSupercharged() {
     if (_fxOn) {
         try {
             if (typeof burstEmojis === 'function') {
-                burstEmojis(originX, originY, 40, ['🎉','😄','🔥','✨','🥳','','💯','','😎',''], 1.6);
+                burstEmojis(originX, originY, 40, ['🎉','😄','🔥','✨','🥳','🎊','💯','🌟','😎','🏆'], 1.6);
             } else {
                 const fallback = document.createElement('div');
                 fallback.textContent = '✨ CRITICAL HIT ✨';
@@ -7715,7 +7847,8 @@ function showSupercharged() {
 function playCorrectSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = _sharedSfxCtx();
+        if (!ctx) return;
         const now = ctx.currentTime;
         [523.25, 659.25, 783.99].forEach((freq, i) => {
             const osc = ctx.createOscillator();
@@ -7734,7 +7867,8 @@ function playCorrectSound() {
 function playWrongSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = _sharedSfxCtx();
+        if (!ctx) return;
         const now = ctx.currentTime;
         [600, 300].forEach((freq, i) => {
             const osc = ctx.createOscillator();
@@ -8362,6 +8496,11 @@ async function initApp() {
     await renderGraph();
     updateUI();
 
+    // ── Daily Bounty: assign today's (if due) and surface the rail trigger.
+    // Boot used to assign silently with zero reachable opener — dead feature.
+    try { assignDailyBountyIfNeeded(); } catch (_) {}
+    try { refreshBountyRail(); } catch (_) {}
+
     // Restore the last-used pomodoro setup (subject / study / break / rounds /
     // stopwatch / dynamic) onto the Focus Mode inputs BEFORE resetPomoUI paints
     // the idle timer display, so the shown duration matches the restored config.
@@ -8401,6 +8540,17 @@ async function initApp() {
         // non-essential chrome.
         console.warn('[initApp] Drive init skipped:', err);
     }
+
+    // ── Daily Briefing: self-gated launch on EVERY boot ──
+    // maybeShow() checks jeemax_boot_seq_date internally, so this no-ops on
+    // same-day reopens. It used to be reachable ONLY from runNewDayCycle —
+    // meaning a briefing whose settle-marker landed before the overlay mounted
+    // (or whose guard key was cleared) could never appear on a settled day.
+    try {
+        if (window.BootSequence && typeof window.BootSequence.maybeShow === 'function') {
+            window.BootSequence.maybeShow();
+        }
+    } catch (_) { /* never block initApp */ }
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
@@ -8661,6 +8811,8 @@ window.openModal = openModal;
 window.closeModal = closeModal;
 window.closeModalStr = closeModalStr;
 window.openBountyModal = openBountyModal;
+window.openDailyBounty = openDailyBounty;
+window.refreshBountyRail = refreshBountyRail;
 window.tryAssignDailyBounty = tryAssignDailyBounty;
 window.evaluateBountyOutcome = evaluateBountyOutcome;
 window.startBountySessionFromModal = startBountySessionFromModal;
@@ -9225,22 +9377,37 @@ function processElementMath(element) {
             // Auto-wrap delimiter-less \command fragments ($\frac{1}{2}$ etc.)
             // so Gem output that skips the dollar signs still hydrates.
             const wrapped = _wrapBareLatex(raw);
+            // Rebuild the hydrated string segment-by-segment: the plain-text
+            // gaps BETWEEN math fragments are HTML-escaped, and only KaTeX's
+            // own output is spliced in as markup. The old single .replace()
+            // fed the untouched source text to innerHTML, so any bank content
+            // combining HTML with $…$ materialized live markup (stored XSS).
             MATH_REGEX.lastIndex = 0;
-            const hydrated = wrapped.replace(MATH_REGEX, function (match, dbl, brk, inl, paren) {
-                if (!dbl && !brk && !inl && !paren) return match;
-                const block = dbl || brk;
-                const inline = inl || paren;
-                try {
-                    return window.katex.renderToString(block || inline, {
-                        throwOnError: false,
-                        displayMode: !!block
-                    });
-                } catch (e) {
-                    // Malformed LaTeX — preserve the original source so the
-                    // rest of the document renders normally.
-                    return match;
+            let hydrated = '';
+            let lastIdx = 0;
+            let mm;
+            while ((mm = MATH_REGEX.exec(wrapped)) !== null) {
+                hydrated += escapeHtml(wrapped.slice(lastIdx, mm.index));
+                const dbl = mm[1], brk = mm[2], inl = mm[3], paren = mm[4];
+                if (!dbl && !brk && !inl && !paren) {
+                    hydrated += escapeHtml(mm[0]);
+                } else {
+                    const block = dbl || brk;
+                    const inline = inl || paren;
+                    try {
+                        hydrated += window.katex.renderToString(block || inline, {
+                            throwOnError: false,
+                            displayMode: !!block
+                        });
+                    } catch (e) {
+                        // Malformed LaTeX — preserve the original source (escaped)
+                        // so the rest of the document renders normally.
+                        hydrated += escapeHtml(mm[0]);
+                    }
                 }
-            });
+                lastIdx = mm.index + mm[0].length;
+            }
+            hydrated += escapeHtml(wrapped.slice(lastIdx));
 
             if (hydrated !== raw) {
                 // Wrap the rendered HTML in a sealed span so the observer

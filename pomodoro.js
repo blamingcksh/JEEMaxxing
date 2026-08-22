@@ -157,6 +157,7 @@ let pausedElapsed = 0;           // countdown seconds elapsed at pause (preserve
 let lastTickAt = null;           // wall-clock anchor for per-second study credit
 let lastSavedStudyMinute = 0;    // save watermark for whole-minute study credit
 let _resetPomoTimer = null;      // pending quitTimer UI reset
+let _blockCreditedSecs = 0;      // study seconds actually credited this block (pauses excluded) — feeds the deep-work ledger
 
 let bellAudioCtx = null;
 let _pomoPendingAction = null;   // replaces window._pomoPendingAction
@@ -277,7 +278,9 @@ document.addEventListener('visibilitychange', async () => {
     if (remaining <= 0 && !timerEndTriggered) {
         timerEndTriggered = true; // set synchronously — no duplicate end UI
         clearInterval(timerInterval);
-        await saveAllAsync().catch(console.error);
+        // Fire-and-forget save, exactly like the tick-path end below — an
+        // await here used to delay the end modal by the storage write.
+        saveAllAsync().catch(console.error);
         handleTimerEnd();
     }
 });
@@ -305,8 +308,12 @@ let popOpen = false;
 function _seedPopConfig() {
     if (popMinutes != null && popRounds != null) return;
     const cfg = readPomoConfig();
-    popMinutes = cfg ? cfg.study : (parseInt(document.getElementById('pomo-study')?.value, 10) || 25);
-    popRounds = cfg ? cfg.sessions : 1;
+    // Live form values win — the user may have just edited them without
+    // starting; the persisted config is only a fallback for empty inputs.
+    // (Seeding from the stale config first used to make ▶ run the OLD length
+    // and silently rewrite the input the user had just changed.)
+    popMinutes = parseInt(document.getElementById('pomo-study')?.value, 10) || (cfg ? cfg.study : 25);
+    popRounds = parseInt(document.getElementById('pomo-sessions')?.value, 10) || (cfg ? cfg.sessions : 1);
     popMinutes = Math.min(120, Math.max(5, popMinutes));
     popRounds = Math.min(8, Math.max(1, popRounds));
 }
@@ -751,9 +758,11 @@ function _finalizeQuit(countForfeit) {
         _ledgerForfeit(elapsed);
     } else if (pomoState === 'STOPWATCH') {
         // Stopping a stopwatch is finishing it — real minutes were logged.
-        focusLedger.deep += stopwatchAccumulated;
+        // _ledgerCompleteBlock owns the deep tally for qualifying runs; adding
+        // stopwatchAccumulated here as well used to DOUBLE-count every
+        // stopwatch stop (audit: "Deep today" inflated 2×).
         if (stopwatchAccumulated >= 300) _ledgerCompleteBlock(stopwatchAccumulated);
-        else _saveFocusLedger();
+        else { focusLedger.deep += Math.max(0, stopwatchAccumulated | 0); _saveFocusLedger(); }
     }
 
     timerEndTriggered = true; // prevent handleTimerEnd from firing later
@@ -822,7 +831,9 @@ export function executeTimerTick() {
 
         // Study time tracking (counts real seconds passed since last tick)
         if (pomoState === 'STUDY') {
-            creditStudySeconds(studySubject, Math.min(deltaSecs, secondsLeft));
+            const credited = Math.min(deltaSecs, secondsLeft);
+            creditStudySeconds(studySubject, credited);
+            _blockCreditedSecs += credited;
         }
 
         // End condition
@@ -841,8 +852,15 @@ function handleTimerEnd() {
     _setDeepWorkActive(false);   // block over — the ×1.5 window closes with it
 
     if (pomoState === 'STUDY') {
+        // ── Night Guard: a naturally-completed focus block is a session end
+        // for the sleep-debt ledger (quit already logs its own).
+        try { NightGuard.logSessionEnd(); } catch (_) {}
         // ── Ledger: a block that ran to its planned end is a completed block.
-        _ledgerCompleteBlock(timerTotalSeconds);
+        // Deep-time counts seconds actually credited (pause froze the clock);
+        // billing the planned total used to log phantom deep minutes whenever
+        // the block was paused along the way.
+        const deepSecs = Math.max(0, Math.min(_blockCreditedSecs | 0, timerTotalSeconds | 0));
+        _ledgerCompleteBlock(deepSecs);
         const receipt = _blockCompletionReceipt(timerTotalSeconds);
         _blockEloSnap = null;
         hydrateFocusStats();
@@ -941,7 +959,10 @@ function _syncDynamicSubjectUI() {
 export function toggleStopwatchMode(btn) {
     isStopwatchMode = !isStopwatchMode;
 
-    if (pomoState !== 'IDLE') quitTimer(true);   // mode switch: no chain-break drama
+    // Mode switch: no chain-break drama — tear down WITHOUT the forfeit
+    // bookkeeping a manual STUDY quit triggers (quitTimer(true) used to burn
+    // the chain and log a forfeit for an ordinary settings toggle).
+    if (pomoState !== 'IDLE') _finalizeQuit(false);
     _syncStopwatchUI();
     resetPomoUI();
 }
@@ -1047,6 +1068,8 @@ export function transitionToStudy() {
     document.getElementById('btn-pause').onclick = pauseTimer;
     document.getElementById('btn-quit').style.display = 'inline-block';
     document.getElementById('btn-quit').textContent = "Quit";
+    // Back to quit semantics (a BREAK phase rebinds this to skipBreak).
+    document.getElementById('btn-quit').onclick = () => quitTimer();
     document.getElementById('break-actions').classList.remove('active');
 
     document.getElementById('pomo-progress').style.background = 'var(--gradient-glow)';
@@ -1056,6 +1079,7 @@ export function transitionToStudy() {
     isPaused = false;
     timerStartTime = Date.now();
     timerEndTriggered = false; // a fresh study session must be able to end
+    _blockCreditedSecs = 0;    // fresh block → fresh deep-time tally
     lastTickAt = Date.now();
     timerInterval = setInterval(executeTimerTick, 1000);
 }
@@ -1083,6 +1107,10 @@ export function transitionToBreak() {
     document.getElementById('btn-pause').onclick = pauseTimer;
     document.getElementById('btn-quit').style.display = 'inline-block';
     document.getElementById('btn-quit').textContent = "Skip Break";
+    // The markup wires this button to quitTimer(); left alone it would tear
+    // the whole run down ("Tracking Stopped.") instead of advancing to the
+    // next study block. Rebind it to skipBreak for the break phase.
+    document.getElementById('btn-quit').onclick = skipBreak;
     document.getElementById('break-actions').classList.remove('active');
 
     document.getElementById('pomo-progress').style.background = 'var(--gradient-glow)';

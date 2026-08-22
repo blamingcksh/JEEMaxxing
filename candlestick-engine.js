@@ -298,6 +298,18 @@ export function drawCandlesticks(svg, counts, opts = {}) {
   // If we have < 2 points, draw a flat placeholder.
   if (!counts.length) return;
 
+  // ── Sanitize the series ONCE, before both consumers ──
+  // countsToOHLC already guards its own OHLC math, but predictNext received
+  // the RAW array: one NaN made the least-squares slope/intercept NaN, every
+  // Math.max(0, NaN) prediction NaN, then rawMax NaN — and the whole chart
+  // silently rendered nothing. Carry the last finite value across gaps.
+  counts = counts.map((v) => (typeof v === "number" && isFinite(v) ? v : null));
+  let lastFinite = null;
+  for (let i = 0; i < counts.length; i++) {
+    if (counts[i] == null) counts[i] = lastFinite != null ? lastFinite : 0;
+    else lastFinite = counts[i];
+  }
+
   // ── Build OHLC + predictions ──
   const candles = countsToOHLC(counts, { penaltyFlags });
   // Pad a single-point series so regression + candles can render. The pad
@@ -584,6 +596,16 @@ export function drawCandlesticks(svg, counts, opts = {}) {
 // ──────────────────────────────────────────────────────────────────────────
 export function extractCountsFromSvg(container) {
   if (!container) return [];
+  // Preferred source: the renderer's own published count series (matrix.js
+  // stamps data-momentum-counts). Scraping geometry below returns PIXEL
+  // coordinates — for dot sparklines those are inverted screen positions,
+  // not values.
+  try {
+    if (container.dataset && container.dataset.momentumCounts) {
+      const pub = JSON.parse(container.dataset.momentumCounts);
+      if (Array.isArray(pub) && pub.length && pub.every(v => typeof v === 'number' && isFinite(v))) return pub;
+    }
+  } catch (_) { /* fall through to scraping */ }
   // Try <polyline points="x,y x,y ..."> first.
   const poly = container.querySelector("polyline");
   if (poly) {
