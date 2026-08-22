@@ -27,6 +27,35 @@
        while playing, we resume it on visibility/page return instead of
        leaving dead silence.
 
+   v5 fixes the iPad home-screen (installed PWA) audio reports — "weird
+   ambience, random blow sounds in Rain":
+
+     • NO MORE CATCH-UP BLASTS — the real-loop scheduler scheduled buffer
+       starts at stale timestamps after an iOS interruption / app-switch /
+       main-thread freeze: several copies of the bed started at once, in
+       phase (a loud "blow"), and some got stop-times already in the past
+       (instant cuts → clicks). Starts are now clamped to the future; a
+       resume is one gentle swell instead of a stacked blast.
+     • PERFECT GRAIN-CANVAS SEAM — the expansion canvas is now a whole
+       number of grain hops long, so the circular wrap lands window-exact
+       (rise+fall ≡ 1 at every sample). The old unaligned length put a
+       partial window at the wrap → one level bump/dip per canvas cycle
+       (a periodic "wobble" in Rain's two stacked layers).
+     • INTERRUPTION-PROOF RESUME — iOS flips the AudioContext to
+       'interrupted' for calls/alarms/Siri and often won't self-resume an
+       installed PWA's context. statechange + window focus now also wake a
+       playing bed, alongside visibility/pageshow/pointerdown.
+
+   v5.2 — CALM GRAINS: rain recordings breathe (heavy bursts ⇢ light patter),
+   so grains drawn from random phases re-randomised the bed every ~1s hop —
+   heard as fade-in/fade-out churn. Fixed structurally, before granulation:
+   a global loudness envelope (0.5s frame RMS → clamped inverse → ~5.5s
+   smoothing) is baked into the recording once, making every grain location
+   level-equal BY CONSTRUCTION; grain positions then DRIFT along the take
+   (reflected random walk) so character evolves smoothly instead of hard-
+   switching. The master compressor also became a true safety curve (−10dB)
+   that can no longer breathe on ambience. Micro-dynamics survive.
+
    Knobs (all live while playing):
      • Volume    → master gain (v^1.6 curve)
      • Depth     → lowshelf @110Hz  ±8 dB  (soft taper)
@@ -120,11 +149,14 @@
         // Gentle safety compressor — catches summed peaks without flattening
         // the swells (threshold high, ratio low).
         var comp = actx.createDynamicsCompressor();
-        comp.threshold.value = -18;
-        comp.knee.value = 22;
-        comp.ratio.value = 2.5;
+        // Safety-only curve: sits ABOVE program level so ambience never
+        // pumps. The old −18 dB threshold grabbed rain's peak clusters and
+        // breathed on them (fade-in/fade-out feel every few seconds).
+        comp.threshold.value = -10;
+        comp.knee.value = 10;
+        comp.ratio.value = 3;
         comp.attack.value = 0.004;
-        comp.release.value = 0.28;
+        comp.release.value = 0.2;
         masterIn.connect(depthFilter);
         depthFilter.connect(brightFilter);
         brightFilter.connect(masterGain);
@@ -141,8 +173,16 @@
       };
       document.addEventListener('visibilitychange', resumeIfPlaying);
       window.addEventListener('pageshow', resumeIfPlaying);
+      window.addEventListener('focus', resumeIfPlaying);
       window.addEventListener('pointerdown', function () {
-        if (actx && actx.state === 'suspended') { try { actx.resume(); } catch (e) {} }
+        if (actx && actx.state !== 'running') { try { actx.resume(); } catch (e) {} }
+      });
+      // iOS audio-session interruptions (phone call, alarm, Siri) flip the
+      // context to 'interrupted'; WebKit often won't self-resume an
+      // installed PWA's context. Watch every state flip while playing.
+      actx.addEventListener('statechange', function () {
+        if (!prefs.playing || !actx || actx.state === 'running') return;
+        try { actx.resume(); } catch (e) {}
       });
     }
     if (actx.state === 'suspended') { try { actx.resume(); } catch (e) {} }
@@ -265,7 +305,12 @@
     if (srcLen <= grain + 64) return srcBuf;               // too short to slice safely
     var hop = Math.floor(grain * 0.62);
     var fadeN = grain - hop;                               // overlap window
-    var total = Math.floor(minSec * sr);
+    // Round the canvas UP to a whole number of hops: grain boundaries then
+    // fall every 'hop' samples INCLUDING across the circular wrap, so the
+    // last grain's fall window lands exactly on the first grain's rise
+    // window (rise+fall ≡ 1). An unaligned length put a partial window at
+    // the wrap — one amplitude bump/dip per canvas cycle on every layer.
+    var total = Math.ceil((minSec * sr) / hop) * hop;
     var N = 128, rise = new Float32Array(N), fall = new Float32Array(N);
     for (var i = 0; i < N; i++) {
       var tt = i / (N - 1);
@@ -274,11 +319,84 @@
     }
     var chans = [];
     for (var c = 0; c < chs; c++) chans.push(new Float32Array(total));
+
+    // ── Calm grains (v5.2): global pre-normalisation + drifting placement ──
+    // A rain recording breathes — heavy bursts ⇢ light patter — and grains
+    // drawn from random phases used to re-randomise the bed's level on every
+    // ~1 s hop: heard as fade-in/fade-out churn. Per-grain trims and walks
+    // with escape hatches proved fragile (clamps saturating = slow dips), so
+    // the fix is structural, done ONCE before granulation:
+    //
+    //   1. GLOBAL LOUDNESS ENVELOPE — measure RMS in 0.5 s frames, invert it
+    //      (clamped ±5 dB), smooth over ~5.5 s, and bake it into a private
+    //      copy of the recording. Weather-scale dynamics stay; local bursts
+    //      are evened out. Every grain location then carries near-identical
+    //      loudness BY CONSTRUCTION — no per-grain trims anywhere.
+    //   2. DRIFTING PLACEMENT — grain positions random-walk along the
+    //      recording (±0.35–0.9 s steps, reflected at the edges) so the
+    //      character evolves continuously — patter melts into gusts —
+    //      instead of hard-switching between distant phases every hop.
+    //   Within-grain micro-dynamics (plops, gust attacks) are untouched.
+    var srcChans = [];
+    for (var gc = 0; gc < chs; gc++) srcChans.push(srcBuf.getChannelData(gc));
+    var sum2 = 0;
+    for (var sc = 0; sc < chs; sc++) {
+      var sd = srcChans[sc];
+      for (var sj = 0; sj < srcLen; sj++) { var sv = sd[sj]; sum2 += sv * sv; }
+    }
+    var targetRms = Math.max(1e-7, Math.sqrt(sum2 / (srcLen * chs)));
+
+    var FRAME = Math.max(1, Math.floor(sr * 0.5));
+    var nFrames = Math.max(1, Math.ceil(srcLen / FRAME));
+    var frms = new Float32Array(nFrames);
+    for (var fi = 0; fi < nFrames; fi++) {
+      var fst = fi * FRAME, fen = Math.min(srcLen, fst + FRAME), facc = 0;
+      for (var fc = 0; fc < chs; fc++) {
+        var fd = srcChans[fc];
+        for (var fj = fst; fj < fen; fj++) { var fv = fd[fj]; facc += fv * fv; }
+      }
+      frms[fi] = Math.sqrt(facc / Math.max(1, (fen - fst) * chs));
+    }
+    var env = new Float32Array(nFrames);
+    for (var gi = 0; gi < nFrames; gi++) {
+      var gv = targetRms / Math.max(1e-7, frms[gi]);
+      env[gi] = Math.max(0.55, Math.min(1.8, gv));       // ±5 dB hard cap
+    }
+    var RAD = 5;                                          // ±2.5 s box blur
+    var sm = new Float32Array(nFrames);
+    for (var si = 0; si < nFrames; si++) {
+      var a0 = Math.max(0, si - RAD), a1 = Math.min(nFrames - 1, si + RAD), sacc = 0;
+      for (var aj = a0; aj <= a1; aj++) sacc += env[aj];
+      sm[si] = sacc / (a1 - a0 + 1);
+    }
+    var normChans = [];
+    for (var nc = 0; nc < chs; nc++) {
+      var od = srcChans[nc], nd = new Float32Array(srcLen);
+      for (var nj = 0; nj < srcLen; nj++) {
+        var fp = nj / FRAME, i0 = fp | 0;
+        var i1 = Math.min(nFrames - 1, i0 + 1), ft = fp - i0;
+        nd[nj] = od[nj] * (sm[i0] * (1 - ft) + sm[i1] * ft);
+      }
+      normChans.push(nd);
+    }
+
+    var walkOff = Math.floor(Math.random() * (srcLen - grain));
+    function nextOffset() {
+      var step = Math.floor((0.35 + Math.random() * 0.55) * sr) * (Math.random() < 0.5 ? -1 : 1);
+      var o = walkOff + step;
+      if (o < 0 || o > srcLen - grain) {                  // reflect, don't wrap
+        o = walkOff - step;
+        if (o < 0) o = 0;
+        if (o > srcLen - grain) o = srcLen - grain;
+      }
+      walkOff = o;
+      return o;
+    }
     var pos = 0, guard = 0;
     while (pos < total && guard++ < 4000) {
-      var off = Math.floor(Math.random() * (srcLen - grain));
+      var off = nextOffset();
       for (var c2 = 0; c2 < chs; c2++) {
-        var srcD = srcBuf.getChannelData(c2), dst = chans[c2];
+        var srcD = normChans[c2], dst = chans[c2];
         for (var j = 0; j < grain; j++) {
           var idx = (pos + j) % total;                     // circular → wrap-safe
           var w = 1;
@@ -320,7 +438,15 @@
 
     function scheduleCycle() {
       if (stopped) return;
-      var horizon = actx.currentTime + 2.5;
+      var now = actx.currentTime;
+      // NEVER schedule a start in the past. After an iOS interruption /
+      // app switch / frozen main thread the context clock outruns
+      // nextStart; the old catch-up stacked several copies of the buffer
+      // starting at once (in-phase → loud blast) and handed some of them
+      // stop-times in the past (instant cut → click). Re-anchor instead:
+      // the EQ_IN rise turns the resume into one gentle swell.
+      if (nextStart < now + 0.06) nextStart = now + 0.06;
+      var horizon = now + 2.5;
       while (!stopped && nextStart < horizon) {
         (function (startAt) {
           var src = actx.createBufferSource();

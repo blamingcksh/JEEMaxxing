@@ -78,6 +78,10 @@ for (const id of ['ocean', 'fire', 'wind']) {
     await page.waitForTimeout(120);
 }
 await page.waitForTimeout(2500);
+// The final bed loads async — wait for its graph to exist before asserting
+// exclusivity (a fixed delay raced the decode on slower machines and saw
+// legitimately-empty graphs mid-load).
+await page.waitForFunction(() => window.FocusSound._state().alive >= 1, null, { timeout: 8000 }).catch(() => {});
 const st1 = await page.evaluate(() => window.FocusSound._state());
 assert(await page.evaluate(() => window.FocusSound.prefs.playing), 'still playing after rapid preset storm');
 assert(st1.sound === 'wind', `last preset wins (${st1.sound})`);
@@ -142,6 +146,30 @@ for (const r of audit) {
     if (r.f.endsWith('.wav')) assert(r.seamX < 40, `${r.f} ${r.dur}s/${r.chs}ch wraps clean (seam ${r.seamX}× mean step)`);
     else assert(true, `${r.f} decodes (${r.dur}s/${r.chs}ch)`);
 }
+
+// ── 7 · Grain-canvas loudness evenness (the “fades every few sec” fix) ──
+// Builds the runtime-expanded rain canvases via the exact playback path and
+// measures p95/p05 of 1s-window RMS. Random-teleport grains swung the roof
+// layer past 3×; matched + drifting grains must stay well under that.
+const even = await page.evaluate(async () => {
+    function churn(buf) {
+        const d = buf.getChannelData(0), sr = buf.sampleRate;
+        const win = Math.floor(sr * 1.0), hopN = Math.floor(sr * 0.5);
+        const rs = [];
+        for (let st = win; st + win < d.length; st += hopN) {
+            let acc = 0;
+            for (let i = st; i < st + win; i++) acc += d[i] * d[i];
+            rs.push(Math.sqrt(acc / win));
+        }
+        rs.sort((a, b) => a - b);
+        return rs[Math.floor(rs.length * 0.95)] / Math.max(rs[Math.floor(rs.length * 0.05)], 1e-9);
+    }
+    const heavy = await window.FocusSound._buildTestLoop('rain.mp3');
+    const roof = await window.FocusSound._buildTestLoop('rain-roof.mp3');
+    return { heavy: +churn(heavy).toFixed(2), roof: +churn(roof).toFixed(2) };
+});
+assert(even.heavy < 2.5, `heavy rain canvas level-even (${even.heavy}× p95/p05)`);
+assert(even.roof < 2.5, `roof rain canvas level-even (${even.roof}× p95/p05)`);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (errors.length) console.log('CONSOLE ERRORS:\n' + errors.slice(0, 10).join('\n'));
