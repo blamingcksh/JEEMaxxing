@@ -4,3 +4,4 @@ node_modules/.bin/
 
 # Redesign QA artifacts (screenshots + captured output)
 .redesign-shots/
+.qa-shots/
