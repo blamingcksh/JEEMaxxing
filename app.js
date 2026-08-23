@@ -1065,22 +1065,15 @@ export async function updateUI() {
         varEl.style.color = variance >= 0 ? 'var(--glow-green)' : 'var(--glow-red)';
     }
 
-    // ── Today's Progress ring: three concentric arcs, one per subject.
-    // Each arc sweeps its own subject's completion; the hub shows the
-    // combined solved/total. Circumference is derived from each arc's r
-    // so geometry lives in exactly one place. ──
-    [['tp-arc-physics', pctP], ['tp-arc-chemistry', pctC], ['tp-arc-maths', pctM]].forEach(([arcId, pct]) => {
-        const arc = document.getElementById(arcId);
-        if (!arc) return;
-        const c = 2 * Math.PI * arc.r.baseVal.value;
-        const clamped = Math.max(0, Math.min(100, pct));
-        arc.style.strokeDasharray = `${c}`;
-        arc.style.strokeDashoffset = `${c * (1 - clamped / 100)}`;
-    });
+    // ── Today's Progress ledger: each subject renders through its own
+    // hairline stroke ({sub}-bar, written above); the hub drives ONE
+    // unified whisper-thin stroke — combined solved ÷ combined target. ──
     const tpTotalEl = document.getElementById('tp-total');
     if (tpTotalEl) tpTotalEl.textContent = totalSolved;
     const tpTgtEl = document.getElementById('tp-total-tgt');
     if (tpTgtEl) tpTgtEl.textContent = `/ ${totalTgt}`;
+    const tpStrokeEl = document.getElementById('tp-total-bar');
+    if (tpStrokeEl && totalTgt > 0) tpStrokeEl.style.width = `${Math.min(100, (totalSolved / totalTgt) * 100)}%`;
 
     // ── Contribution graph: use the same daily variance definition as the
     // live strip above, but keep the historical grid on the dashboard ledger.
@@ -1104,8 +1097,10 @@ export async function updateUI() {
             renderEloMatrix();
             renderChapterDecayGrid();
             renderChapterProgressList();
-            try { _renderCalibrationReport(); } catch (_) {}
         }
+        // The calibration readout is header chrome now (visible on every tab),
+        // so refresh it on EVERY updateUI regardless of where the solve happened.
+        try { _renderCalibrationReport(); } catch (_) {}
     } catch (_) { /* never block updateUI */ }
 
     // ── Debounced streak refresh ──
@@ -5382,6 +5377,9 @@ function _consumeConfidence(S) {
         if (AppState.calibrationLog.length > CALIBRATION_LOG_CAP) {
             AppState.calibrationLog = AppState.calibrationLog.slice(-CALIBRATION_LOG_CAP);
         }
+        // Persist immediately (coalesced) — the log is durable IndexedDB state
+        // now, not session scratchpad, so it must ride every commit path.
+        saveAllAsync().catch(() => {});
     } catch (_) { /* telemetry never blocks scoring */ }
     return p;
 }
@@ -6964,18 +6962,21 @@ CNSLoad.logSolve(safeSubject, S_in >= 0.999, actualTime || 0, T_avg);
     return result;
 }
 
-// ── Calibration Report (dashboard card) ───────────────────────────────────
+// ── Calibration Report (slim header strip) ────────────────────────────────
 // Rolling metacognitive honesty readout over the last 60 confidence-tagged
-// solves: stated certainty vs actual accuracy, Brier score, and a verdict.
-// Calibration — saying "sure" ONLY when you are actually right — is the
-// highest-leverage exam-day skill this app can train.
+// solves: stated certainty vs actual accuracy, Brier score, and a verdict —
+// rendered as ONE compact always-visible line in the header (the old full
+// dashboard card was removed). Calibration — saying "sure" ONLY when you are
+// actually right — is the highest-leverage exam-day skill this app can train.
 function _renderCalibrationReport() {
     const el = document.getElementById('calibration-report');
     if (!el) return;
     try { _ensureEloV2State(); } catch (_) {}
     const log = Array.isArray(AppState.calibrationLog) ? AppState.calibrationLog : [];
     if (log.length < 5) {
-        el.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:18px 12px; font-size:12px;">Tap your confidence before locking in an answer. After ~5 graded solves this card shows whether your certainty is honest.</div>';
+        el.innerHTML =
+            '<span class="calib-kicker">CALIBRATION</span>' +
+            '<span class="calib-warmup">Tap your confidence before locking in an answer — honesty readout unlocks after ~5 graded solves.</span>';
         return;
     }
     const recent = log.slice(-60);
@@ -6983,39 +6984,25 @@ function _renderCalibrationReport() {
     const acc = recent.reduce((a, c) => a + c.s, 0) / n;
     const avgP = recent.reduce((a, c) => a + c.p, 0) / n;
     const brier = recent.reduce((a, c) => a + Math.pow(c.p - c.s, 2), 0) / n;
-    // Per-anchor realized accuracy ("when you said sure, how often were you right?")
-    function anchorRow(key, label) {
-        const grp = recent.filter(c => Math.abs(c.p - CONFIDENCE_ANCHORS[key]) < 0.001);
-        if (grp.length < 2) return '';
-        const gAcc = grp.reduce((a, c) => a + c.s, 0) / grp.length;
-        return '<span style="font-size:10px; color:#8aa0c8;">' + label + ' ' + Math.round(gAcc * 100) + '%</span>';
-    }
     const gap = avgP - acc;   // >0 overconfident · <0 underconfident
     const verdict = (gap > 0.08)
-        ? { txt: 'OVERCONFIDENT', color: '#fda4af', note: 'You say sure when you are not. Discount first instincts.' }
+        ? { txt: 'OVERCONFIDENT', color: '#fda4af', note: 'You say sure when you are not — discount first instincts.' }
         : (gap < -0.08)
             ? { txt: 'UNDERCONFIDENT', color: '#fde047', note: 'You know more than you admit — commit faster.' }
-            : { txt: 'CALIBRATED', color: '#4ade80', note: 'Your certainty matches your reality. Exam-ready trait.' };
+            : { txt: 'CALIBRATED', color: '#4ade80', note: 'Certainty matches reality — exam-ready trait.' };
     const brierColor = brier <= 0.15 ? '#4ade80' : (brier <= 0.25 ? '#fde047' : '#fda4af');
     const meterW = Math.min(50, Math.abs(gap) * 250);
+    el.title = 'Calibration Report · rolling last ' + n + ' graded solves · ' + verdict.note;
     el.innerHTML =
-        '<div style="display:flex; align-items:baseline; gap:14px; justify-content:center; margin:6px 0 10px;">' +
-        '<div style="text-align:center;"><div style="font-family:\'Space Grotesk\',monospace; font-weight:700; font-size:22px; color:' + brierColor + '">' + brier.toFixed(3) + '</div><div style="font-size:9.5px; color:var(--text-muted); letter-spacing:.5px;">BRIER · ' + n + ' SOLVES</div></div>' +
-        '<div style="text-align:center;"><div style="font-family:\'Space Grotesk\',monospace; font-weight:700; font-size:22px;">' + Math.round(acc * 100) + '%</div><div style="font-size:9.5px; color:var(--text-muted); letter-spacing:.5px;">ACTUAL</div></div>' +
-        '<div style="text-align:center;"><div style="font-family:\'Space Grotesk\',monospace; font-weight:700; font-size:22px; color:#c4b5fd;">' + Math.round(avgP * 100) + '%</div><div style="font-size:9.5px; color:var(--text-muted); letter-spacing:.5px;">CLAIMED</div></div>' +
-        '</div>' +
-        '<div style="height:6px; border-radius:999px; background:rgba(255,255,255,0.06); overflow:hidden; position:relative;">' +
-        '<div style="position:absolute; top:0; bottom:0; width:' + meterW + '%; background:' + verdict.color + '; opacity:.75;' + (gap >= 0 ? ' left:50%;' : ' right:50%;') + '"></div>' +
-        '<div style="position:absolute; left:calc(50% - 1px); top:-1px; bottom:-1px; width:2px; background:rgba(255,255,255,0.35);"></div>' +
-        '</div>' +
-        '<div style="display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); margin-top:4px;"><span>underconfident</span><span>honest</span><span>overconfident</span></div>' +
-        '<div style="display:flex; gap:12px; justify-content:center; margin-top:8px;">' +
-        anchorRow('sure', 'sure→') + anchorRow('likely', 'likely→') + anchorRow('guess', 'guess→') +
-        '</div>' +
-        '<div style="margin-top:10px; text-align:center;">' +
-        '<span style="font-size:10px; letter-spacing:1px; font-family:\'Space Grotesk\',monospace; font-weight:700; color:' + verdict.color + '; border:1px solid ' + verdict.color + '55; padding:3px 10px; border-radius:999px;">' + verdict.txt + '</span>' +
-        '<div style="font-size:10.5px; color:var(--text-muted); margin-top:6px;">' + verdict.note + '</div>' +
-        '</div>';
+        '<span class="calib-kicker">CALIBRATION</span>' +
+        '<span class="calib-metric"><b style="color:' + brierColor + '">' + brier.toFixed(3) + '</b><i>BRIER·' + n + '</i></span>' +
+        '<span class="calib-sep"></span>' +
+        '<span class="calib-metric"><b>' + Math.round(acc * 100) + '%</b><i>ACTUAL</i></span>' +
+        '<span class="calib-meter" aria-hidden="true">' +
+        '<span class="calib-meter-fill" style="width:' + meterW + '%; background:' + verdict.color + '; ' + (gap >= 0 ? 'left:50%;' : 'right:50%;') + '"></span>' +
+        '</span>' +
+        '<span class="calib-metric"><b style="color:#c4b5fd">' + Math.round(avgP * 100) + '%</b><i>CLAIMED</i></span>' +
+        '<span class="calib-verdict" style="color:' + verdict.color + '; border-color:' + verdict.color + '55;">' + verdict.txt + '</span>';
 }
 window.renderCalibrationReport = _renderCalibrationReport;
 

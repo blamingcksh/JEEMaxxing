@@ -1,0 +1,284 @@
+/* ═══════════════════════════════════════════════════════════════
+   styles-daily.css
+   Scope: .dash-card-tracker (Today's Progress) — Agent DAILY redesign.
+   Loaded AFTER styles.css. Everything is namespaced under the card's
+   ancestry (#view-dashboard .dash-card-tracker …); never global.
+
+   Composition — "the ledger":
+     header (kicker · title · variance readout)
+     hero figure (one big numeral, its target, one unified stroke)
+     three ledger entries (caps name · count pair · bare steppers),
+     each closed by a 2px hairline that IS the subject's progress bar.
+
+   Rules of the redesign: no glows, no gradients, no chips-in-boxes,
+   no emoji, no icon soup. Hairlines carry structure; whitespace
+   carries rhythm; type carries hierarchy. One accent (--accent) is
+   reserved for the single key signal: today's combined progress.
+   Theme tokens only — all seven themes × midnight/dusk must hold.
+   ═══════════════════════════════════════════════════════════════ */
+
+#view-dashboard .dash-card.dash-card-tracker {
+    --tp-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --tp-ink-fill: color-mix(in srgb, var(--text-primary) 58%, transparent);
+    padding: 32px 36px;
+}
+#view-dashboard .dash-grid.bento-density-compact .dash-card.dash-card-tracker { padding: 24px 26px; }
+#view-dashboard .dash-grid.bento-density-spacious .dash-card.dash-card-tracker { padding: 38px 42px; }
+
+/* ── Header: kicker + title left, variance readout right ───────────── */
+#view-dashboard .dash-card.dash-card-tracker .tp-head {
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 0;
+}
+#view-dashboard .dash-card-tracker .kicker {
+    margin-bottom: 7px;
+    color: var(--text-muted) !important;          /* beats furnace/amber kickers */
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.16em !important;
+}
+#view-dashboard .dash-card-tracker .box-title {
+    margin-bottom: 0;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+#view-dashboard .dash-card-tracker .tp-variance {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    font-family: var(--font-num);
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+#view-dashboard .dash-card-tracker .tp-variance::before { content: none; }
+
+/* ── Hero figure: the day, stated once ──────────────────────────────── */
+#view-dashboard .dash-card-tracker .tp-hero { margin-top: 30px; }
+#view-dashboard .dash-card-tracker .tp-hero-figure {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+}
+#view-dashboard .dash-card-tracker .tp-hero-count {
+    font-family: var(--font-num);
+    font-size: 46px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+#view-dashboard .dash-card-tracker .tp-hero-target {
+    font-family: var(--font-num);
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+#view-dashboard .dash-card-tracker .tp-hero-caption {
+    display: block;
+    margin-top: 12px;
+    font-family: var(--font-display);
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* The one accent moment: combined progress as a whisper-thin stroke. */
+#view-dashboard .dash-card-tracker .tp-hero-stroke,
+#view-dashboard .dash-card-tracker .tp-entry-stroke {
+    height: 2px;
+    border-radius: 1px;
+    overflow: hidden;
+}
+#view-dashboard .dash-card-tracker .tp-hero-stroke {
+    margin-top: 14px;
+    background: var(--line-strong);
+}
+#view-dashboard .dash-card-tracker .tp-hero-fill,
+#view-dashboard .dash-card-tracker .tp-entry-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    transition: width 0.45s var(--tp-ease);
+}
+#view-dashboard .dash-card-tracker .tp-hero-fill { background: var(--accent); }
+
+/* ── Ledger: three entries, hairlines instead of boxes ─────────────── */
+#view-dashboard .dash-card-tracker .tp-ledger {
+    margin-top: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    min-width: 0;
+}
+#view-dashboard .dash-card-tracker .compact-subject-card {
+    background: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    transition: none !important;
+    animation: none !important;
+    min-width: 0;
+}
+#view-dashboard .dash-card-tracker .compact-subject-card:hover {
+    transform: none !important;
+    background: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+#view-dashboard .dash-card-tracker .tp-row-top {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+}
+#view-dashboard .dash-card-tracker .tp-row-top h4 {
+    flex: 1 1 auto;
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#view-dashboard .dash-card-tracker .tp-count {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    flex: 0 0 auto;
+}
+#view-dashboard .dash-card-tracker .tp-num {
+    font-family: var(--font-num);
+    font-size: 19px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    filter: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+}
+#view-dashboard .dash-card-tracker .tp-tgt {
+    font-family: var(--font-num);
+    font-size: 12px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+
+/* Steppers — bare glyphs. No boxes; emphasis lives in the type. */
+#view-dashboard .dash-card-tracker .tp-steppers {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+}
+#view-dashboard .dash-card-tracker .tp-step-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    background: none;
+    border: none;
+    border-radius: 7px;
+    font-family: var(--font-num);
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.3s var(--tp-ease), transform 0.3s var(--tp-ease);
+}
+#view-dashboard .dash-card-tracker .tp-step-btn:hover {
+    color: var(--text-primary);
+}
+#view-dashboard .dash-card-tracker .tp-step-btn:active { transform: scale(0.88); }
+#view-dashboard .dash-card-tracker .tp-step-btn:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Entry strokes sit under each entry — the hairline doubles as data. */
+#view-dashboard .dash-card-tracker .tp-entry-stroke {
+    margin-top: 12px;
+    background: var(--line);
+}
+#view-dashboard .dash-card-tracker .tp-entry-fill { background: var(--tp-ink-fill); }
+
+/* ── Elo monitor rides inline in the row header — quiet meta, no chip ── */
+#view-dashboard .dash-card-tracker .elo-monitor {
+    margin-top: 0;
+    padding: 1px 8px 2px;
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    gap: 5px;
+    flex: 0 0 auto;
+    transition: border-color 0.3s var(--tp-ease);
+}
+#view-dashboard .dash-card-tracker .elo-monitor:hover {
+    border-color: var(--line-strong);
+    box-shadow: none;
+}
+#view-dashboard .dash-card-tracker .elo-monitor .elo-monitor-rating {
+    font-family: var(--font-num);
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+#view-dashboard .dash-card-tracker .elo-monitor .elo-monitor-tier {
+    font-size: 8px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+#view-dashboard .dash-card-tracker .elo-monitor::after {
+    border-color: var(--line-strong);
+    font-family: var(--font-body);
+}
+
+/* ── Narrow cards (container queries — the bento cell, not viewport) ── */
+@container card (max-width: 480px) {
+    #view-dashboard .dash-card.dash-card-tracker { padding: 26px 24px; }
+    #view-dashboard .dash-card-tracker .tp-hero { margin-top: 24px; }
+    #view-dashboard .dash-card-tracker .tp-hero-count { font-size: 40px; }
+    #view-dashboard .dash-card-tracker .tp-ledger { margin-top: 24px; gap: 19px; }
+}
+@container card (max-width: 400px) {
+    #view-dashboard .dash-card.dash-card-tracker { padding: 22px 20px; }
+    #view-dashboard .dash-card-tracker .tp-hero-count { font-size: 38px; }
+    #view-dashboard .dash-card-tracker .tp-ledger { gap: 17px; }
+    #view-dashboard .dash-card-tracker .tp-row-top { gap: 9px; }
+    #view-dashboard .dash-card-tracker .tp-step-btn { width: 28px; height: 28px; font-size: 15px; }
+}
+
+/* ── Calm mode: honour both reduced-motion escape hatches ──────────── */
+@media (prefers-reduced-motion: reduce) {
+    #view-dashboard .dash-card-tracker *,
+    #view-dashboard .dash-card-tracker *::before,
+    #view-dashboard .dash-card-tracker *::after { transition: none !important; animation: none !important; }
+}
+html.fx-effects-off .dash-card-tracker *,
+html.fx-effects-off .dash-card-tracker *::before,
+html.fx-effects-off .dash-card-tracker *::after { transition: none !important; animation: none !important; }

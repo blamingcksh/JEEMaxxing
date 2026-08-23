@@ -479,7 +479,8 @@ export function updateStudyTimeHeader() {
     const total = studySecs.physics + studySecs.chemistry + studySecs.maths;
     const th = Math.floor(total / 3600);
     const tm = Math.floor((total % 3600) / 60);
-    document.getElementById('top-study-time').textContent = th > 0 ? `${th}h ${tm}m` : `${tm}m`;
+    const headTime = document.getElementById('top-study-time'); // header chip removed — stay null-safe
+    if (headTime) headTime.textContent = th > 0 ? `${th}h ${tm}m` : `${tm}m`;
     document.getElementById('stat-hrs-physics').textContent = formatStudyDuration(studySecs.physics);
     document.getElementById('stat-hrs-chemistry').textContent = formatStudyDuration(studySecs.chemistry);
     document.getElementById('stat-hrs-maths').textContent = formatStudyDuration(studySecs.maths);

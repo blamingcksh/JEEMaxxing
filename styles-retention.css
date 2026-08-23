@@ -1,0 +1,285 @@
+/* ═══════════════════════════════════════════════════════════════
+   styles-retention.css — Retention Health v3 · the ledger
+   Scope: .dash-card-decay / #chapter-decay-grid ONLY.
+   Owner: Agent RETENTION. Loaded AFTER styles.css.
+   Design: delete-first minimalism — hairlines, one accent channel
+   (--accent = exam-day tick), semantic color reduced to a single
+   quiet dot per row. Every value consumes styles.css tokens so all
+   7 themes × midnight/dusk re-skin with zero local colors.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Card shell: more air inside the shared frosted glass ─────────── */
+#view-dashboard .dash-card-decay { padding: 28px 30px 24px; }
+#view-dashboard #chapter-decay-grid { padding: 0; overflow: visible; }
+
+/* ── Legend chips → bare dot + micro-caps text (chip soup deleted) ── */
+#view-dashboard .dash-card-decay .decay-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin-top: 13px;
+}
+#view-dashboard .dash-card-decay .legend-chip,
+#view-dashboard .dash-card-decay .decay-legend .legend-chip:hover {
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    border-radius: 0;
+    transform: none;
+    transition: none;
+    cursor: default;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-body);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    line-height: 1;
+    color: var(--text-muted);
+}
+#view-dashboard .dash-card-decay .legend-chip::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex: none;
+}
+#view-dashboard .dash-card-decay .legend-chip.legend-green::before  { background: var(--glow-green); }
+#view-dashboard .dash-card-decay .legend-chip.legend-yellow::before { background: var(--glow-yellow); }
+#view-dashboard .dash-card-decay .legend-chip.legend-red::before    { background: var(--glow-red); }
+
+/* ── Ledger grid — one template shared by header + rows ───────────── */
+.rh-ledger { min-width: 0; }
+.rh-head,
+.rh-row {
+    display: grid;
+    grid-template-columns:
+        minmax(110px, 1fr)
+        minmax(140px, clamp(160px, 36%, 320px))
+        56px
+        64px;
+    column-gap: 22px;
+    align-items: center;
+}
+
+/* Micro header — uppercase, letterspaced, muted */
+.rh-head {
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--line);
+}
+.rh-head span {
+    font-family: var(--font-body);
+    font-size: var(--fs-2xs);
+    font-weight: 500;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.rh-head-g i {
+    font-style: normal;
+    letter-spacing: .02em;
+    text-transform: none;
+    opacity: .7;
+    margin-left: 8px;
+}
+.rh-head-r { text-align: right; }
+
+/* ── Rows: generous rhythm on a single hairline spine ─────────────── */
+.rh-row {
+    position: relative;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    outline: none;
+}
+.rh-ledger .rh-row:last-child { border-bottom: none; }
+.rh-row:focus-visible {
+    outline: 1px solid var(--accent-a30);
+    outline-offset: 3px;
+}
+
+.rh-name {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding-right: 6px;
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    font-weight: 400;
+    line-height: 1.3;
+    color: var(--text-secondary);
+    transition: color var(--t-fast) var(--ease);
+}
+.rh-row:hover .rh-name { color: var(--text-primary); }
+
+/* Whisper gauge: hairline rail → coverage slab → retention stroke → dot */
+.rh-gauge {
+    position: relative;
+    height: 15px;
+    min-width: 0;
+}
+.rh-gauge::before {
+    content: '';
+    position: absolute;
+    inset: auto 0 50% 0;
+    height: 1px;
+    background: var(--line-strong);
+}
+.rh-cov, .rh-line, .rh-fc, .rh-dot {
+    position: absolute;
+    top: 50%;
+    pointer-events: none;
+}
+.rh-cov {
+    left: 0;
+    margin-top: -2.5px;
+    height: 5px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+}
+.rh-line {
+    left: 0;
+    margin-top: -1px;
+    height: 2px;
+    background: color-mix(in srgb, var(--text-primary) 62%, transparent);
+}
+.rh-fc {
+    width: 2px;
+    height: 11px;
+    margin-top: -5.5px;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: var(--accent); /* the ONE accent — exam-day you */
+}
+.rh-dot {
+    width: 7px;
+    height: 7px;
+    margin-top: -3.5px;
+    margin-left: -3.5px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform var(--t-med) var(--ease);
+}
+.rh-row:hover .rh-dot { transform: scale(1.3); }
+.rh-ready .rh-dot    { background: var(--glow-green); }
+.rh-fading .rh-dot   { background: var(--glow-yellow); }
+.rh-critical .rh-dot { background: var(--glow-red); }
+
+/* Numerals — Space Grotesk, large & quiet; trend as a whisper glyph */
+.rh-val {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 1px;
+    white-space: nowrap;
+    font-family: var(--font-num);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: .01em;
+    color: var(--text-primary);
+}
+.rh-val em {
+    font-style: normal;
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-left: 2px;
+}
+.rh-trend {
+    font-style: normal;
+    font-size: 9px;
+    line-height: 1;
+    margin-left: 4px;
+    align-self: center;
+}
+.rh-up { color: var(--glow-green); opacity: .85; }
+.rh-dn { color: var(--glow-red);   opacity: .85; }
+
+/* Critical-in horizon — quiet numerals; tint only when it matters */
+.rh-hz {
+    text-align: right;
+    white-space: nowrap;
+    font-family: var(--font-num);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .04em;
+    color: var(--text-muted);
+}
+.rh-hz.is-soon { color: var(--glow-yellow); }
+.rh-hz.is-now  { color: var(--glow-red); }
+
+/* Expander — a sentence, not a button */
+.rh-more {
+    margin-top: 10px;
+    padding: 4px 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    transition: color var(--t-fast) var(--ease);
+}
+.rh-more:hover { color: var(--accent); }
+
+/* Empty state */
+.rh-empty {
+    padding: 46px 12px;
+    text-align: center;
+    font-family: var(--font-body);
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+/* ── Motion: one soft entrance, gated by calm-mode ────────────────── */
+html:not(.fx-effects-off) #view-dashboard .dash-card-decay .rh-row {
+    animation: rhIn .42s var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 24ms);
+}
+html:not(.fx-effects-off) #view-dashboard .dash-card-decay .rh-cov,
+html:not(.fx-effects-off) #view-dashboard .dash-card-decay .rh-line {
+    transform-origin: left center;
+    animation: rhGrow .55s var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 24ms + 70ms);
+}
+@keyframes rhIn   { from { opacity: 0; transform: translateY(5px); } }
+@keyframes rhGrow { from { transform: scaleX(0); } }
+html.fx-effects-off #view-dashboard .dash-card-decay .rh-row,
+html.fx-effects-off #view-dashboard .dash-card-decay .rh-cov,
+html.fx-effects-off #view-dashboard .dash-card-decay .rh-line,
+html.fx-effects-off #view-dashboard .dash-card-decay .rh-dot {
+    animation: none !important;
+    transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+    #view-dashboard .dash-card-decay .rh-row,
+    #view-dashboard .dash-card-decay .rh-cov,
+    #view-dashboard .dash-card-decay .rh-line,
+    #view-dashboard .dash-card-decay .rh-dot {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+/* ── Container breakpoints — the card owns its own responsiveness ─── */
+@container card (max-width: 600px) {
+    .rh-head, .rh-row { grid-template-columns: minmax(88px, 1fr) minmax(110px, 44%) 48px; column-gap: 14px; }
+    #view-dashboard .dash-card-decay .rh-hz,
+    #view-dashboard .dash-card-decay .rh-head-hz,
+    #view-dashboard .dash-card-decay .rh-head-g i { display: none; }
+    #view-dashboard .dash-card-decay .rh-val { font-size: 15px; }
+    #view-dashboard .dash-card-decay .rh-row { padding: 11px 0; }
+}
+@container card (max-width: 400px) {
+    .rh-head, .rh-row { grid-template-columns: minmax(76px, 1fr) minmax(86px, 42%) 42px; column-gap: 10px; }
+    #view-dashboard .dash-card-decay .rh-name { font-size: 11.5px; }
+    #view-dashboard .dash-card-decay .rh-val { font-size: 14px; }
+    #view-dashboard .dash-card-decay .rh-head-g { letter-spacing: .1em; }
+}

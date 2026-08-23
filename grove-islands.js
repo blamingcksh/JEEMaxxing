@@ -67,6 +67,7 @@ function todayKey() { return _giYmd(new Date()); }
 function dayOffsetKey(n) { var d = new Date(); d.setDate(d.getDate() - n); return _giYmd(d); }
 function normSub(s) { s = (s || '').toString().toLowerCase().trim(); return (s === 'math' || s === 'mathematics') ? 'maths' : s; }
 function easeOutBack(x) { var c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
+function easeOutCubic(x) { return 1 - Math.pow(1 - x, 3); }
 function hex(n) { return '#' + n.toString(16).padStart(6, '0'); }
 function motionOK() {
   try {

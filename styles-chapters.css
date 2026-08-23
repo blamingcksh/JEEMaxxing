@@ -1,0 +1,250 @@
+/* ═══════════════════════════════════════════════════════════════
+   styles-chapters.css
+   Scope: .dash-card-progress / #chapter-progress-list (Chapter Progress)
+   Owner: Agent CHAPTERS redesign agent. Loaded AFTER styles.css.
+   Everything here is namespaced under the card root — never add
+   global selectors. Neutralize legacy styles.css rules here.
+
+   DESIGN — "the ledger":
+   A finely set index, not an admin table. Rows are pure typography on
+   hairlines; progress is a 2px whisper-track; ink is near-monochrome and
+   var(--accent) appears exactly twice — the kicker (card identity) and the
+   flagged weakest chapter (the one signal that matters). Space Grotesk owns
+   the numerals, IBM Plex Sans the names, Chakra Petch only micro-labels.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ID-scoped to out-specify the dashboard-v2 pass in styles.css
+   (#view-dashboard .dash-card { padding … }). Air IS the layout. */
+/* The premium pass in styles.css forces `padding: var(--card-pad) !important`
+   on every bento card. We don't fight the !important — we feed the variable
+   our own spacing so the ledger's air survives the pipeline untouched. */
+#view-dashboard .dash-card-progress,
+.dash-card-progress {
+    --card-pad: 34px 38px 30px;
+}
+
+/* ── Header: the v2 pass collapses kicker+title onto one line and hides
+   box-desc — keep that, just quiet the kicker's accent presence ───── */
+.dash-card-progress .kicker {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 2.8px;
+    color: var(--accent);
+}
+
+/* ── Container: kill legacy scroll-chrome (styles.css #chapter-progress-list,
+      incl. its `gap … !important`) — this file loads later, same importance. */
+.dash-card-progress #chapter-progress-list {
+    --cpx-grid: 22px minmax(0, 1fr) clamp(76px, 30%, 190px) 54px;
+    display: block;
+    gap: 0 !important;            /* out-specifies legacy gap !important */
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+}
+
+/* ── Running head: one micro-label carrying the ordering semantics
+   (the dashboard hides box-desc, so this is where "weakest first" lives) ── */
+.cpx-cols {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line-strong, var(--line));
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 2.2px;
+    color: var(--text-muted);
+}
+
+/* ── Row: type on a hairline. No boxes, no fills, no radius. ──────── */
+.cpx-row {
+    display: grid;
+    grid-template-columns: var(--cpx-grid);
+    column-gap: 18px;
+    align-items: center;
+    padding: 16px 2px 15px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    outline: none;
+}
+.cpx-row:last-child { border-bottom: 0; }
+.cpx-row:focus-visible {
+    outline: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+    outline-offset: -1px;
+}
+
+.cpx-subj {
+    font-family: var(--font-num);
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-align: center;
+    color: var(--text-muted);
+    transition: color 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpx-name {
+    font-family: var(--font-body);
+    font-size: 13.5px;
+    font-weight: 400;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Whisper-track: 2px hairline rail, quiet ink fill. */
+.cpx-track {
+    position: relative;
+    height: 2px;
+    background: var(--line); /* fallback where color-mix is unavailable */
+    overflow: hidden;
+}
+@supports (background: color-mix(in srgb, red 10%, transparent)) {
+    .cpx-track {
+        background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+    }
+}
+.cpx-track i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    display: block;
+    background: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+    transition: background 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Numerals: Space Grotesk, tabular, right-set — the ledger's figures. */
+.cpx-pct {
+    font-family: var(--font-num);
+    font-size: 15.5px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    text-align: right;
+    color: var(--text-secondary);
+    transition: color 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cpx-pct i {
+    font-style: normal;
+    font-size: 9.5px;
+    opacity: 0.55;
+    margin-left: 1px;
+}
+
+/* ── States ───────────────────────────────────────────────────────── */
+.cpx-row:hover .cpx-name,
+.cpx-row:focus-visible .cpx-name {
+    color: var(--text-primary);
+    transform: translateX(2px);
+}
+.cpx-row:hover .cpx-pct,
+.cpx-row:focus-visible .cpx-pct {
+    color: var(--text-primary);
+}
+.cpx-row:hover .cpx-track i {
+    background: var(--text-secondary);
+}
+
+.is-void .cpx-pct { color: var(--text-muted); }
+.is-done .cpx-pct { color: var(--text-primary); }
+.is-done .cpx-track i { background: var(--text-primary); }
+
+/* THE signal: the weakest chapter wears the single accent. */
+.is-flag .cpx-subj,
+.is-flag .cpx-pct { color: var(--accent); }
+.is-flag .cpx-track i { background: var(--accent); }
+
+/* ── Tail affordance ──────────────────────────────────────────────── */
+.cpx-more {
+    appearance: none;
+    background: none;
+    border: 0;
+    margin: 0;
+    padding: 15px 2px 2px;
+    font-family: var(--font-display);
+    font-size: 9.5px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 2.2px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cpx-more:hover,
+.cpx-more:focus-visible { color: var(--text-primary); outline: none; }
+
+/* Truncation mechanics: render everything, show a capped window. The
+   expanded tail scrolls inside a slim, quiet scrollbar. */
+.cpx-rows .cpx-row:nth-child(n + 8) { display: none; }
+#chapter-progress-list.is-expanded .cpx-row { display: grid; }
+#chapter-progress-list.is-expanded .cpx-rows {
+    max-height: 356px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong, var(--line)) transparent;
+    padding-right: 8px;
+}
+#chapter-progress-list.is-expanded .cpx-rows::-webkit-scrollbar { width: 3px; }
+#chapter-progress-list.is-expanded .cpx-rows::-webkit-scrollbar-thumb {
+    background: var(--line-strong, var(--line));
+}
+#chapter-progress-list.is-expanded .cpx-rows::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Empty state: composed, unhurried ─────────────────────────────── */
+.cpx-empty { padding: 40px 2px 24px; }
+.cpx-empty-title {
+    display: block;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+.cpx-empty-sub {
+    display: block;
+    margin-top: 8px;
+    max-width: 46ch;
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: var(--text-muted);
+}
+
+/* ── Micro-motion: one width-in sweep on first paint only ─────────── */
+@keyframes cpx-grow {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+}
+.cpx-animate .cpx-track i {
+    transform-origin: left center;
+    animation: cpx-grow 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.cpx-animate .cpx-row:nth-child(1) .cpx-track i { animation-delay: 0.03s; }
+.cpx-animate .cpx-row:nth-child(2) .cpx-track i { animation-delay: 0.07s; }
+.cpx-animate .cpx-row:nth-child(3) .cpx-track i { animation-delay: 0.11s; }
+.cpx-animate .cpx-row:nth-child(4) .cpx-track i { animation-delay: 0.15s; }
+.cpx-animate .cpx-row:nth-child(5) .cpx-track i { animation-delay: 0.19s; }
+.cpx-animate .cpx-row:nth-child(6) .cpx-track i { animation-delay: 0.23s; }
+.cpx-animate .cpx-row:nth-child(7) .cpx-track i { animation-delay: 0.27s; }
+.cpx-animate .cpx-row:nth-child(8) .cpx-track i { animation-delay: 0.31s; }
+
+/* Calm mode + user preference: no motion at all. */
+html.fx-effects-off .cpx-animate .cpx-track i { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+    .cpx-animate .cpx-track i { animation: none !important; }
+    .cpx-name, .cpx-pct, .cpx-subj, .cpx-track i, .cpx-more { transition: none !important; }
+}
+
+/* ── Narrow bento cell (~420px viewports): tighten, keep the air ──── */
+@media (max-width: 560px) {
+    /* Same variable trick, tightened for the narrow bento cell */
+    #view-dashboard .dash-card-progress,
+    .dash-card-progress { --card-pad: 24px 22px 22px; }
+    .dash-card-progress #chapter-progress-list {
+        --cpx-grid: 16px minmax(0, 1fr) clamp(56px, 26%, 120px) 48px;
+    }
+    .cpx-cols { column-gap: 12px; }
+    .cpx-row { column-gap: 12px; padding: 14px 2px 13px; }
+    .cpx-name { font-size: 13px; }
+    .cpx-pct { font-size: 14.5px; }
+}
