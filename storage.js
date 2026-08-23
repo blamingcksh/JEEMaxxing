@@ -719,6 +719,7 @@ export function setAiChapterWeight(name, w) {
     if (!key) return false;
     if (!AppState.chapterWeights || typeof AppState.chapterWeights !== 'object') AppState.chapterWeights = {};
     AppState.chapterWeights[key] = Math.max(0.05, Math.min(1.5, n));
+    saveAllAsync().catch(() => {});
     return true;
 }
 
@@ -727,10 +728,11 @@ export function setChapterWeightOverride(name, w) {
     const key = _cwKey(name);
     if (!key) return false;
     if (!AppState.userChapterWeights || typeof AppState.userChapterWeights !== 'object') AppState.userChapterWeights = {};
-    if (w === null || w === undefined) { delete AppState.userChapterWeights[key]; return true; }
+    if (w === null || w === undefined) { delete AppState.userChapterWeights[key]; saveAllAsync().catch(() => {}); return true; }
     const n = Number(w);
     if (!isFinite(n) || n <= 0) return false;
     AppState.userChapterWeights[key] = Math.max(0.05, Math.min(1.5, n));
+    saveAllAsync().catch(() => {});
     return true;
 }
 
@@ -1437,11 +1439,14 @@ async function _doSaveAll() {
     entries.push(['jeemax_bounty', AppState.bounty]);
     entries.push(['jeemax_mood_multiplier', AppState.moodMultiplier]);
     // ── Hydrate Cognitive MMR / Elo Matrix (subject + global meta-MMR) ──
+    // rd: Glicko-lite rating deviation per subject (Elo v2) rides along so
+    // uncertainty survives reloads instead of resetting to "young rating".
     entries.push(['jeemax_elo', {
         physics:   AppState.elo.physics   ?? 1200,
         chemistry: AppState.elo.chemistry ?? 1200,
         maths:     AppState.elo.maths     ?? 1200,
         global:    AppState.elo.global    ?? 1200,
+        rd: (AppState.elo.rd && typeof AppState.elo.rd === 'object') ? AppState.elo.rd : {},
     }]);
     entries.push(['jeemax_elo_updated_at', Number(AppState.eloUpdatedAt) || 0]);
     // Practice mode + hardcore daily counter persistence
@@ -1450,6 +1455,17 @@ async function _doSaveAll() {
         date: AppState.hardcoreDailyDate,
         count: AppState.hardcoreDailyCount || 0,
     }]);
+    // ── Long-lived stat state that used to be MEMORY-ONLY (every reload wiped
+    //    it back to zero, so these stats only ever reflected the current
+    //    session): Brier calibration history · chapter ability θ_c · chapter
+    //    weights (AI-stamped + user overrides) · mock papers + focus mass. ──
+    const _isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+    entries.push(['jeemax_calibration_log', Array.isArray(AppState.calibrationLog) ? AppState.calibrationLog : []]);
+    entries.push(['jeemax_chapter_theta', _isObj(AppState.chapterTheta) ? AppState.chapterTheta : {}]);
+    entries.push(['jeemax_chapter_weights_ai', _isObj(AppState.chapterWeights) ? AppState.chapterWeights : {}]);
+    entries.push(['jeemax_chapter_weights_user', _isObj(AppState.userChapterWeights) ? AppState.userChapterWeights : {}]);
+    entries.push(['jeemax_mocks', Array.isArray(AppState.mocks) ? AppState.mocks : []]);
+    entries.push(['jeemax_mock_focus', _isObj(AppState.mockFocus) ? AppState.mockFocus : {}]);
     entries.push(['jeemax_username', document.getElementById('display-username').textContent]);
     entries.push(['bounty_data', AppState.bounty]);
 
@@ -1551,6 +1567,9 @@ export async function loadDataAsync() {
             'jeemax_question_bank', 'jeemax_chapters', 'bounty_data',
             'jeemax_solved', 'jeemax_study_secs', 'jeemax_mood_multiplier',
             'jeemax_elo', 'jeemax_elo_updated_at', 'jeemax_practice_mode', 'jeemax_hardcore_daily',
+            'jeemax_calibration_log', 'jeemax_chapter_theta',
+            'jeemax_chapter_weights_ai', 'jeemax_chapter_weights_user',
+            'jeemax_mocks', 'jeemax_mock_focus',
             'jeemax_username', 'jeemax_profile_pic', 'gemini_api_key',
             'jeeTargetLockDate', 'basePhys', 'baseChem', 'baseMath',
             'baseErrPhys', 'baseErrChem', 'baseErrMath',
@@ -1637,6 +1656,56 @@ export async function loadDataAsync() {
         AppState.elo.global    = 1200;
     }
     AppState.eloUpdatedAt = (typeof savedEloUpdatedAt === 'number' && isFinite(savedEloUpdatedAt)) ? savedEloUpdatedAt : 0;
+
+    // ── Elo v2 + metacognition hydration (these were session-only before —
+    //    every reload used to reset them, so stats never accumulated). Every
+    //    field is defensively validated; corrupt/missing entries fall back to
+    //    the same clean-slate defaults _ensureEloV2State() would create. ──
+    const calLog = g['jeemax_calibration_log'];
+    if (Array.isArray(calLog)) {
+        AppState.calibrationLog = calLog
+            .filter(e => e && typeof e === 'object')
+            .map(e => ({
+                t: Number(e.t) || 0,
+                p: Math.min(1, Math.max(0, Number(e.p) || 0)),
+                s: Math.min(1, Math.max(0, Number(e.s) || 0)),
+            }))
+            .filter(e => e.t > 0)
+            .slice(-CALIBRATION_LOG_CAP);
+    }
+    if (savedElo && typeof savedElo === 'object' && savedElo.rd && typeof savedElo.rd === 'object') {
+        const rd = {};
+        for (const k of Object.keys(savedElo.rd)) {
+            const n = Number(savedElo.rd[k]);
+            if (isFinite(n) && n > 0) rd[k] = n;
+        }
+        AppState.elo.rd = rd;
+    }
+    const savedTheta = g['jeemax_chapter_theta'];
+    if (savedTheta && typeof savedTheta === 'object' && !Array.isArray(savedTheta)) {
+        const theta = {};
+        for (const k of Object.keys(savedTheta)) {
+            const node = savedTheta[k];
+            if (node && typeof node === 'object' && isFinite(Number(node.e))) {
+                theta[k] = { e: Number(node.e), n: Math.max(0, Math.round(Number(node.n) || 0)) };
+            }
+        }
+        AppState.chapterTheta = theta;
+    }
+    const savedAiWeights = g['jeemax_chapter_weights_ai'];
+    if (savedAiWeights && typeof savedAiWeights === 'object' && !Array.isArray(savedAiWeights)) {
+        AppState.chapterWeights = savedAiWeights;
+    }
+    const savedUserWeights = g['jeemax_chapter_weights_user'];
+    if (savedUserWeights && typeof savedUserWeights === 'object' && !Array.isArray(savedUserWeights)) {
+        AppState.userChapterWeights = savedUserWeights;
+    }
+    const savedMocks = g['jeemax_mocks'];
+    if (Array.isArray(savedMocks)) AppState.mocks = savedMocks;
+    const savedMockFocus = g['jeemax_mock_focus'];
+    if (savedMockFocus && typeof savedMockFocus === 'object' && !Array.isArray(savedMockFocus)) {
+        AppState.mockFocus = savedMockFocus;
+    }
 
     // Hydrate active practice mode + hardcore daily counter (resets daily)
     if (savedMode && PRACTICE_MODES.includes(savedMode)) AppState.practiceFlowMode = savedMode;

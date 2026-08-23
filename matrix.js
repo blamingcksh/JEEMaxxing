@@ -2169,114 +2169,81 @@ export function renderChapterDecayGrid() {
     // Most exam-dangerous chapter first.
     chapters.sort((a, b) => b.risk - a.risk);
     if (chapters.length === 0) {
-        container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:32px 16px; font-size:13px;">No chapter data available yet. Log errors to see decay analysis.</div>';
+        container.innerHTML = '<div class="rh-empty">No retention data yet — log errors and they will surface here.</div>';
         return;
     }
 
-    // ── Responsive layout: derive every column from the card's live width ──
-    // viewBox width == container pixel width ⇒ 1 user-unit == 1px ⇒ crisp
-    // text at every size (no uniform down-scale blur). The track simply
-    // grows/shrinks; the meta column is dropped when there's no room.
-    const cw = Math.max(220, container.clientWidth || 600);
-    const compact = cw < 440;
-    const tight = cw < 560;
-    const SHOW_META = cw > 520;
+    // ── Render: “the ledger” — one whisper-thin gauge per chapter ─────────
+    // Minimal rebuild: hairline rail, 2px retention stroke ending in ONE
+    // quiet status dot, an --accent tick marking the exam-day projection,
+    // large light numerals, generous rhythm. All color/theming flows through
+    // CSS custom properties consumed in styles-retention.css; container
+    // queries handle every width (no JS measuring).
+    const COLLAPSED_ROWS = 8;
+    const expanded = container.dataset.expanded === '1';
+    const shown = expanded ? chapters : chapters.slice(0, COLLAPSED_ROWS);
+    const hiddenCount = Math.max(0, chapters.length - shown.length);
 
-    const ROW_H = 40, PAD = 4;
-    const LEFT = 10, G = 12, PCT_W = 52, CRIT_W = 58, META_W = 128, RIGHT = 8;
-    const LABEL_W = compact ? 84 : (tight ? 120 : 168);
-    const SHOW_CRIT = cw > 400;
-    const trackX = LEFT + LABEL_W + G;
-    const trackW = Math.max(40, cw - LEFT - LABEL_W - G - PCT_W - (SHOW_CRIT ? G + CRIT_W : 0) - (SHOW_META ? G + META_W : 0) - RIGHT);
-    const pctX = trackX + trackW + G;
-    const critX = pctX + PCT_W + (SHOW_CRIT ? G : 0);
-    const metaX = critX + (SHOW_CRIT ? CRIT_W : 0) + G;
-    const maxName = compact ? 10 : (tight ? 16 : 24);
-    const TRACK_H = 18, TRACK_R = 5;
-    const svgH = chapters.length * ROW_H + PAD * 2;
-
-    // Exam-ready color bands: ≥90 green (recall-ready under pressure),
-    // 80–90 amber (fading), <80 red (cooked). Aligned to the kernel's
-    // RETENTION_CRITICAL so the grid and the risk model agree on "critical".
-    function _band(h) {
-        if (h >= 90) return { fill: 'var(--glow-green)', glow: true };
-        if (h >= 80) return { fill: 'var(--glow-yellow)', glow: false };
-        return { fill: 'var(--glow-red)', glow: false };
-    }
-
-    let svgRows = chapters.map((ch, i) => {
-        const y = i * ROW_H + PAD;
-        const trackY = y + (ROW_H - TRACK_H) / 2;
-        const band = _band(ch.health);
-        const fillW = Math.max(3, (ch.health / 100) * trackW);
-        const covW = Math.max(0, Math.min(trackW, ch.coverage * trackW));
-        const glowAttr = band.glow ? 'filter: url(#decay-glow-green);' : '';
-        const opacityAttr = ch.health < 80 ? 'opacity: 0.9;' : '';
-        const displayName = (ch.name || '').length > maxName ? ch.name.substring(0, maxName - 1) + '…' : (ch.name || '');
-
-        // Trend arrow vs the previous render this session.
-        const trendGlyph = ch.trend > 0 ? '↗' : (ch.trend < 0 ? '↘' : '·');
-        const trendColor = ch.trend > 0 ? 'var(--glow-green)' : (ch.trend < 0 ? 'var(--glow-red)' : 'var(--text-muted)');
-
-        // Critical-in-Nd chip — days until weighted retention crosses 80%.
-        let critText = 'stable', critColor = 'var(--text-muted)';
+    const rowsHtml = shown.map((ch, i) => {
+        const h = Math.max(0, Math.min(100, ch.health));
+        const band = h >= 90 ? 'ready' : (h >= 80 ? 'fading' : 'critical');
+        const covPct = Math.round(Math.max(0, Math.min(1, ch.coverage)) * 100);
+        const fc = (examMs != null && ch.forecast != null)
+            ? Math.max(0, Math.min(100, ch.forecast)) : null;
+        // Horizon: days until weighted retention crosses the critical line.
+        let horizonTxt = '—', horizonCls = '';
         if (ch.stats && isFinite(ch.stats.criticalDays)) {
             const d = ch.stats.criticalDays;
-            if (d <= 0) { critText = 'crit NOW'; critColor = 'var(--glow-red)'; }
-            else if (d <= 45) { critText = 'crit ' + Math.ceil(d) + 'd'; critColor = 'var(--glow-yellow)'; }
-            else { critText = Math.ceil(d) + 'd'; }
+            if (d <= 0) { horizonTxt = 'now'; horizonCls = 'is-now'; }
+            else if (d <= 45) { horizonTxt = Math.ceil(d) + 'd'; horizonCls = 'is-soon'; }
+            else horizonTxt = Math.ceil(d) + 'd';
         }
-
-        // Fluency readout (τ = mean actual time ÷ target time).
-        const tauText = (ch.fluency != null && SHOW_META)
-            ? ' τ ' + ch.fluency.toFixed(2) + '×'
-            : '';
-        const forecastText = (examMs != null && ch.forecast != null && SHOW_META)
-            ? ' · exam ' + ch.forecast.toFixed(0) + '%'
-            : '';
-        const metaCell = SHOW_META
-            ? `<text x="${metaX}" y="${y + ROW_H / 2}" style="fill: var(--text-muted); font-size: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500;" dominant-baseline="middle" text-anchor="start">${_esc(ch.questionCount)}q · EF ${_numOr(ch.avgEF, 0).toFixed(2)}${_esc(tauText)}${_esc(forecastText)}</text>`
-            : '';
-
-        // Forecast tick on the exam date projection (when set).
-        const tickSvg = (examMs != null && ch.forecast != null)
-            ? `<line x1="${trackX + Math.max(0, Math.min(trackW, (ch.forecast / 100) * trackW)).toFixed(1)}" y1="${trackY - 3}" x2="${trackX + Math.max(0, Math.min(trackW, (ch.forecast / 100) * trackW)).toFixed(1)}" y2="${trackY + TRACK_H + 3}" stroke="rgba(255,255,255,0.55)" stroke-width="1.5" stroke-dasharray="2 2"/>`
-            : '';
-
-        const subjEnc = encodeURIComponent(ch.subject || '');
-        const chapEnc = encodeURIComponent(ch.name || '');
-        return `
-            <g class="decay-row" onclick="window.openDecayDrilldown('${subjEnc}','${chapEnc}')" style="cursor: pointer;">
-                <title>${_esc(ch.name)} — retention ${ch.health.toFixed(0)}% · coverage ${Math.round(ch.coverage * 100)}% · tap for item decay</title>
-                <text x="${LEFT}" y="${y + ROW_H / 2}" style="fill: var(--text-secondary); font-size: 11.5px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600;" dominant-baseline="middle" text-anchor="start">${_esc(displayName)}</text>
-                <rect x="${trackX}" y="${trackY}" width="${trackW}" height="${TRACK_H}" rx="${TRACK_R}" style="fill: rgba(255,255,255,0.035); stroke: rgba(255,255,255,0.06); stroke-width: 1;"/>
-                <rect x="${trackX}" y="${trackY}" width="${covW}" height="${TRACK_H}" rx="${TRACK_R}" style="fill: rgba(61,220,255,0.12);"/>
-                <rect x="${trackX}" y="${trackY}" width="${fillW}" height="${TRACK_H}" rx="${TRACK_R}" style="${band.fill === 'var(--glow-green)' ? 'fill: var(--glow-green);' : (band.fill === 'var(--glow-yellow)' ? 'fill: var(--glow-yellow);' : 'fill: var(--glow-red);')} ${glowAttr} ${opacityAttr} transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);"/>
-                ${tickSvg}
-                <text x="${pctX}" y="${y + ROW_H / 2}" style="fill: ${trendColor}; font-size: 11px; font-family: 'Space Grotesk', monospace; font-weight: 700;" dominant-baseline="middle" text-anchor="start">${trendGlyph}</text>
-                <text x="${pctX + 13}" y="${y + ROW_H / 2}" style="fill: ${band.fill}; font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 700;" dominant-baseline="middle" text-anchor="start">${ch.health.toFixed(0)}%</text>
-                <text x="${critX}" y="${y + ROW_H / 2}" style="fill: ${critColor}; font-size: 10px; font-family: 'Space Grotesk', monospace; font-weight: 600;" dominant-baseline="middle" text-anchor="start">${_esc(critText)}</text>
-                ${metaCell}
-            </g>`;
+        const trend = ch.trend > 0 ? '<i class="rh-trend rh-up">↑</i>'
+            : (ch.trend < 0 ? '<i class="rh-trend rh-dn">↓</i>' : '');
+        return `<div class="rh-row rh-${band}" style="--i:${i}" role="button" tabindex="0"
+                 data-subject="${_esc(encodeURIComponent(ch.subject || ''))}"
+                 data-chapter="${_esc(encodeURIComponent(ch.name || ''))}"
+                 aria-label="${_esc(ch.name)}: ${Math.round(h)} percent retention"
+                 title="${_esc(ch.name)} — retention ${Math.round(h)}% · coverage ${covPct}% · ${ch.questionCount} items · tap for item decay"
+><span class="rh-name">${_esc(ch.name)}</span><span class="rh-gauge" aria-hidden="true"><i class="rh-cov" style="width:${covPct}%"></i><i class="rh-line" style="width:${h.toFixed(1)}%"></i>${fc != null ? `<i class="rh-fc" style="left:${fc.toFixed(1)}%"></i>` : ''}<i class="rh-dot" style="left:${h.toFixed(1)}%"></i></span><span class="rh-val">${Math.round(h)}<em>%</em>${trend}</span><span class="rh-hz ${horizonCls}">${_esc(horizonTxt)}</span></div>`;
     }).join('');
 
     // Commit this render's health values as the next trend baseline.
     chapters.forEach(ch => { _decayTrendCache.set(ch.subject + '||' + ch.name, ch.health); });
 
     container.innerHTML = `
-        <svg viewBox="0 0 ${cw} ${svgH}" width="100%" height="${svgH}"
-             preserveAspectRatio="xMidYMid meet"
-             style="overflow: visible; display: block; min-width: 0;">
-            <defs>
-                <filter id="decay-glow-green" x="-20%" y="-40%" width="140%" height="180%">
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur"/>
-                    <feFlood flood-color="#22c55e" flood-opacity="0.45" result="color"/>
-                    <feComposite in="color" in2="blur" operator="in" result="glow"/>
-                    <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-            </defs>
-            ${svgRows}
-        </svg>`;
+        <div class="rh-ledger">
+            <div class="rh-head" aria-hidden="true">
+                <span>Chapter</span>
+                <span class="rh-head-g">Retention<i>tick · exam day</i></span>
+                <span class="rh-head-r">Health</span>
+                <span class="rh-head-r rh-head-hz">Critical in</span>
+            </div>
+            ${rowsHtml}
+        </div>
+        ${hiddenCount > 0 ? `<button type="button" class="rh-more">${expanded ? 'Show fewer' : '+' + hiddenCount + ' more'}</button>` : ''}`;
+
+    // One delegated listener per page life: rows open the item drilldown
+    // (data attrs instead of inline onclick → any character in a chapter
+    // name is safe), and the expander toggles full list vs top-risk slice.
+    if (!container.__rhWired) {
+        container.__rhWired = true;
+        container.addEventListener('click', (e) => {
+            const more = e.target.closest('.rh-more');
+            if (more) {
+                container.dataset.expanded = container.dataset.expanded === '1' ? '0' : '1';
+                renderChapterDecayGrid();
+                return;
+            }
+            const row = e.target.closest('.rh-row');
+            if (row) window.openDecayDrilldown(row.dataset.subject, row.dataset.chapter);
+        });
+        container.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            const row = e.target.closest('.rh-row');
+            if (row) { e.preventDefault(); row.click(); }
+        });
+    }
 }
 
 // ── Item-level decay drilldown ────────────────────────────────────────────────
@@ -2448,15 +2415,18 @@ window.openDecayDrilldown = openDecayDrilldown;
 // Mirrors the practice view's completion definition (app.js stats-row):
 // progress = questions with status 'solved' / all questions in the chapter.
 // Every registered chapter appears — untouched ones (0%) rise to the top.
+//
+// Visual language: a quiet ledger (styles-chapters.css). Fresh 'cpx-*'
+// namespace — the global .cp-* rules in styles.css belong to Checkpoint and
+// are deliberately NOT reused here. One accent (--accent), reserved for the
+// single weakest chapter; everything else stays near-monochrome ink.
+const CPX_MAX_VISIBLE = 7;
+
 export function renderChapterProgressList() {
     const container = document.getElementById('chapter-progress-list');
     if (!container) return;
 
-    const SUBJ_META = {
-        physics:   { glyph: 'P', label: 'Physics' },
-        chemistry: { glyph: 'C', label: 'Chemistry' },
-        maths:     { glyph: 'M', label: 'Maths' },
-    };
+    const SUBJ_META = { physics: 'P', chemistry: 'C', maths: 'M' };
     const match = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
     const totals = {};
     const solvedCounts = {};
@@ -2492,31 +2462,81 @@ export function renderChapterProgressList() {
     rows.forEach(r => { r.pct = r.total > 0 ? Math.round((r.solved / r.total) * 100) : 0; });
     rows.sort((a, b) => a.pct - b.pct || b.total - a.total || a.name.localeCompare(b.name));
 
+    const firstPaint = !container.dataset.cpxReady;
+    container.dataset.cpxReady = '1';
+
     if (rows.length === 0) {
-        container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:28px 16px; font-size:13px;">No chapters yet. Add one in Grind Station to start the grind.</div>';
+        container.innerHTML =
+            '<div class="cpx-empty">' +
+                '<span class="cpx-empty-title">Nothing to conquer yet</span>' +
+                '<span class="cpx-empty-sub">Add a chapter in Grind Station — it surfaces here, weakest first.</span>' +
+            '</div>';
+        container.classList.remove('cpx-animate');
         return;
     }
 
-    const MAX_ROWS = 10;
-    const shown = rows.slice(0, MAX_ROWS);
-    const overflow = rows.length - shown.length;
+    // Render the FULL ledger; styles-chapters.css shows a capped window
+    // (first CPX_MAX_VISIBLE rows) and "+N more" expands it in place.
+    const overflow = Math.max(0, rows.length - CPX_MAX_VISIBLE);
+    const safeAttr = s => escapeHtml(s).replace(/"/g, '&quot;');
 
-    container.innerHTML = shown.map(r => {
-        const meta = SUBJ_META[r.subj] || { glyph: '?', label: r.subj };
-        const pctCls = r.pct === 0 ? 'cp-pct cp-pct-void' : 'cp-pct';
-        const rowCls = r.pct === 0 ? 'cp-row cp-row-void' : 'cp-row';
-        const fillCls = r.pct >= 100 ? 'cp-fill cp-fill-full' : (r.pct >= 50 ? 'cp-fill cp-fill-mid' : 'cp-fill');
-        const safeTitle = escapeHtml(r.name).replace(/"/g, '&quot;');
-        return `
-            <div class="${rowCls}" onclick="window.openChapterProgress('${r.subj}','${encodeURIComponent(r.name)}')" title="Grind ${safeTitle}">
-                <span class="cp-chip">${meta.glyph}</span>
-                <span class="cp-name">${escapeHtml(r.name)}</span>
-                <span class="cp-bar"><span class="${fillCls}" style="width:${r.pct}%"></span></span>
-                <span class="cp-meta">${r.solved}/${r.total}</span>
-                <span class="${pctCls}">${r.pct}%</span>
-            </div>`;
-    }).join('') +
-    (overflow > 0 ? `<div class="cp-more">+ ${overflow} more · weakest first</div>` : '');
+    const rowHtml = (r, i) => {
+        const cls = ['cpx-row'];
+        if (r.total === 0) cls.push('is-void');      // registered but untouched
+        if (i === 0 && rows.length > 0) cls.push('is-flag');   // THE weakest — only accent
+        if (r.pct >= 100) cls.push('is-done');
+        const name = safeAttr(r.name);
+        return `<div class="${cls.join(' ')}" role="button" tabindex="0"` +
+               ` data-subj="${r.subj}" data-enc="${encodeURIComponent(r.name)}" data-pct="${r.pct}"` +
+               ` aria-label="${name} · ${r.pct}% complete">` +
+               `<span class="cpx-subj" aria-hidden="true">${SUBJ_META[r.subj] || '·'}</span>` +
+               `<span class="cpx-name">${escapeHtml(r.name)}</span>` +
+               `<span class="cpx-track" aria-hidden="true"><i style="width:${r.pct}%"></i></span>` +
+               `<span class="cpx-pct">${r.pct}<i>%</i></span>` +
+           `</div>`;
+    };
+
+    container.innerHTML =
+        '<div class="cpx-cols" aria-hidden="true">Chapter &middot; weakest first</div>' +
+        '<div class="cpx-rows">' + rows.map(rowHtml).join('') + '</div>' +
+        (overflow > 0
+            ? `<button type="button" class="cpx-more" data-open="0"` +
+              ` data-more-label="+ ${overflow} more" data-less-label="Show less">+ ${overflow} more</button>`
+            : '');
+
+    // Width-in animation only on the first paint after page load — later
+    // re-renders (each solve triggers updateUI) must NOT replay the motion.
+    container.classList.toggle('cpx-animate', firstPaint);
+
+    // One delegated pair for the card's lifetime: row activation (click /
+    // keyboard) routes through window.openChapterProgress exactly as before,
+    // and the tail affordance expands the ledger in place.
+    if (!container.dataset.cpxBound) {
+        container.dataset.cpxBound = '1';
+        container.addEventListener('click', e => {
+            if (e.target.closest('.cpx-more')) { toggleCpxOverflow(container); return; }
+            const row = e.target.closest('.cpx-row');
+            if (row) window.openChapterProgress(row.dataset.subj, row.dataset.enc);
+        });
+        container.addEventListener('keydown', e => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            const row = e.target.closest('.cpx-row');
+            if (!row) return;
+            e.preventDefault();
+            window.openChapterProgress(row.dataset.subj, row.dataset.enc);
+        });
+    }
+}
+
+// Expand / collapse the truncated tail. Rows never reorder — weakest stays on
+// top whether capped or fully expanded.
+function toggleCpxOverflow(container) {
+    const btn = container.querySelector('.cpx-more');
+    if (!btn) return;
+    const expand = btn.dataset.open !== '1';
+    btn.dataset.open = expand ? '1' : '0';
+    btn.textContent = expand ? btn.dataset.lessLabel : btn.dataset.moreLabel;
+    container.classList.toggle('is-expanded', expand);
 }
 
 // ── Dashboard card → jump into a chapter's question list in Grind Station ──

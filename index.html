@@ -46,6 +46,12 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
 <link rel="stylesheet" href="./vendor/katex/katex.min.css">
 
 <link rel="stylesheet" href="styles.css">
+
+<!-- ── Dashboard component redesign layers (loaded after styles.css so
+     component-scoped overrides win without touching the base sheet) ── -->
+<link rel="stylesheet" href="styles-daily.css">
+<link rel="stylesheet" href="styles-retention.css">
+<link rel="stylesheet" href="styles-chapters.css">
 </head>
 <body>
 
@@ -166,26 +172,23 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
     <!-- ═══════════════ MAIN CONTENT ═══════════════ -->
     <main class="main-content">
 
-        <!-- ── Header: page identity left · data chips + actions right ──
-             Contracts: #top-date (app.js), #top-streak (read by cns-load/deload),
-             #top-study-time (pomodoro.js), .sync-cluster/#manual-sync-btn/
-             #sync-sub-text (storage.js / dashboard-clean.js). -->
+        <!-- ── Header: page identity left · live calibration strip + actions right ──
+             Contracts: #top-date (app.js), #calibration-report (app.js renderCalibrationReport),
+             .sync-cluster/#manual-sync-btn/#sync-sub-text (storage.js / dashboard-clean.js).
+             Streak / focus chips and the calendar button were removed — streak and study
+             time already live on dashboard cards, history lives on the variance map. -->
         <header class="header-section" id="main-header">
             <div class="header-copy">
                 <h1 id="view-title">Grind Hub</h1>
                 <p class="header-sub">Welcome back · <span id="top-date">Today</span> · locked in and loaded.</p>
             </div>
             <div class="header-badges">
-                <div class="badge stat-chip" title="Consistency streak">
-                    <span class="chip-ic chip-streak" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c.9 2.6.4 5-.9 7.2-.8-.6-1.4-1.4-1.8-2.4-1.9 1.9-3.3 4-3.3 6.4A6.9 6.9 0 0 0 12 21a6.9 6.9 0 0 0 6-10.1C16.6 8.2 13.9 5.6 12 3Z"/></svg></span>
-                    <span class="chip-meta"><span class="chip-lbl">Streak</span><span class="val" id="top-streak">0 Days</span></span>
-                </div>
-                <div class="badge stat-chip" title="Total study time today">
-                    <span class="chip-ic chip-time" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.25"/><path d="M12 7.5V12l3 1.8"/></svg></span>
-                    <span class="chip-meta"><span class="chip-lbl">Focus</span><span class="val" id="top-study-time">0m</span></span>
-                </div>
+                <!-- Calibration Report — slim always-on header readout (was a full dash
+                     card). Rendered/refreshed live by app.js renderCalibrationReport()
+                     after every graded solve and on every dashboard entry. -->
+                <div class="badge calib-strip" id="calibration-report" aria-live="polite"
+                     title="Calibration Report · does your confidence match your accuracy? Rolling last 60 graded solves."><span class="calib-kicker">CALIBRATION</span><span class="calib-warmup">loading…</span></div>
                 <div class="header-actions">
-                    <button class="icon-btn" onclick="openModal('calendar-modal')" title="Open calendar" aria-label="Open calendar" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16"/><path d="M8.5 3.5v3.5"/><path d="M15.5 3.5v3.5"/></svg></button>
                     <div class="badge sync-cluster" title="Cloud sync">
                         <button class="manual-sync-btn" id="manual-sync-btn" onclick="executeUnifiedSync()" aria-label="Force cloud sync" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5A8.5 8.5 0 1 0 18 17.2"/><path d="M18.5 12.5 21 10l-3.4-.6"/></svg></button>
                         <span class="val" id="sync-sub-text">Cloud Link</span>
@@ -204,73 +207,55 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                 <div class="dash-card dash-card-tracker">
                     <div class="dash-card-head tp-head">
                         <div class="tp-head-text">
-                            <span class="kicker">// DAILY OUTPUT</span>
+                            <span class="kicker">Daily output</span>
                             <h2 class="box-title">Today’s Progress</h2>
                         </div>
                         <span class="tp-variance" id="variance-val" title="Solved vs target today">0.0%</span>
                     </div>
 
-                    <div class="tp-body">
-                        <div class="tp-ring" role="img" aria-label="Total questions solved today versus your combined target">
-                            <svg viewBox="0 0 120 120" aria-hidden="true">
-                                <circle class="tp-ring-track" cx="60" cy="60" r="50"></circle>
-                                <circle class="tp-ring-track" cx="60" cy="60" r="40"></circle>
-                                <circle class="tp-ring-track" cx="60" cy="60" r="30"></circle>
-                                <circle class="tp-ring-arc tp-arc-physics" id="tp-arc-physics" cx="60" cy="60" r="50"></circle>
-                                <circle class="tp-ring-arc tp-arc-chemistry" id="tp-arc-chemistry" cx="60" cy="60" r="40"></circle>
-                                <circle class="tp-ring-arc tp-arc-maths" id="tp-arc-maths" cx="60" cy="60" r="30"></circle>
-                            </svg>
-                            <div class="tp-ring-center">
-                                <span class="tp-total"><b id="tp-total">0</b><i id="tp-total-tgt">/ 30</i></span>
-                                <span class="tp-total-lbl">Solved</span>
+                    <div class="tp-hero">
+                        <p class="tp-hero-figure"><span class="tp-hero-count" id="tp-total">0</span><span class="tp-hero-target" id="tp-total-tgt">/ 30</span></p>
+                        <span class="tp-hero-caption">Solved today</span>
+                        <div class="tp-hero-stroke" role="img" aria-label="Questions solved today versus your combined target">
+                            <div class="tp-hero-fill" id="tp-total-bar"></div>
+                        </div>
+                    </div>
+
+                    <div class="tp-ledger">
+                        <div class="compact-subject-card" data-subject="physics">
+                            <div class="tp-row-top">
+                                <h4>Physics</h4>
+                                <span class="tp-count"><span class="tp-num" id="physics-count">0</span><span class="tp-tgt" id="tgt-phys-lbl">/ 10</span></span>
+                                <span class="tp-steppers">
+                                    <button class="tp-step-btn" type="button" onclick="changeCount('physics', -1)" aria-label="Decrement physics">−</button>
+                                    <button class="tp-step-btn" type="button" onclick="changeCount('physics', 1)" aria-label="Increment physics">+</button>
+                                </span>
                             </div>
+                            <div class="tp-entry-stroke"><div class="tp-entry-fill" id="physics-bar" style="width:0%"></div></div>
                         </div>
 
-                        <div class="subject-card-group tp-rows">
-                            <div class="compact-subject-card tp-row" data-subject="physics">
-                                <span class="subj-glyph">P</span>
-                                <div class="tp-row-main">
-                                    <div class="tp-row-top">
-                                        <h4>Physics</h4>
-                                        <span class="tp-count"><span class="counter" id="physics-count">0</span><span class="target" id="tgt-phys-lbl">/ 10</span></span>
-                                    </div>
-                                    <div class="distribution-pill"><div class="distribution-fill" id="physics-bar" style="width:0%"></div></div>
-                                </div>
-                                <div class="counter-controls">
-                                    <button class="counter-btn" onclick="changeCount('physics', -1)" aria-label="Decrement physics">−</button>
-                                    <button class="counter-btn" onclick="changeCount('physics', 1)" aria-label="Increment physics">+</button>
-                                </div>
+                        <div class="compact-subject-card" data-subject="chemistry">
+                            <div class="tp-row-top">
+                                <h4>Chemistry</h4>
+                                <span class="tp-count"><span class="tp-num" id="chemistry-count">0</span><span class="tp-tgt" id="tgt-chem-lbl">/ 10</span></span>
+                                <span class="tp-steppers">
+                                    <button class="tp-step-btn" type="button" onclick="changeCount('chemistry', -1)" aria-label="Decrement chemistry">−</button>
+                                    <button class="tp-step-btn" type="button" onclick="changeCount('chemistry', 1)" aria-label="Increment chemistry">+</button>
+                                </span>
                             </div>
+                            <div class="tp-entry-stroke"><div class="tp-entry-fill" id="chemistry-bar" style="width:0%"></div></div>
+                        </div>
 
-                            <div class="compact-subject-card tp-row" data-subject="chemistry">
-                                <span class="subj-glyph">C</span>
-                                <div class="tp-row-main">
-                                    <div class="tp-row-top">
-                                        <h4>Chemistry</h4>
-                                        <span class="tp-count"><span class="counter" id="chemistry-count">0</span><span class="target" id="tgt-chem-lbl">/ 10</span></span>
-                                    </div>
-                                    <div class="distribution-pill"><div class="distribution-fill" id="chemistry-bar" style="width:0%"></div></div>
-                                </div>
-                                <div class="counter-controls">
-                                    <button class="counter-btn" onclick="changeCount('chemistry', -1)" aria-label="Decrement chemistry">−</button>
-                                    <button class="counter-btn" onclick="changeCount('chemistry', 1)" aria-label="Increment chemistry">+</button>
-                                </div>
+                        <div class="compact-subject-card" data-subject="maths">
+                            <div class="tp-row-top">
+                                <h4>Maths</h4>
+                                <span class="tp-count"><span class="tp-num" id="maths-count">0</span><span class="tp-tgt" id="tgt-math-lbl">/ 10</span></span>
+                                <span class="tp-steppers">
+                                    <button class="tp-step-btn" type="button" onclick="changeCount('maths', -1)" aria-label="Decrement maths">−</button>
+                                    <button class="tp-step-btn" type="button" onclick="changeCount('maths', 1)" aria-label="Increment maths">+</button>
+                                </span>
                             </div>
-
-                            <div class="compact-subject-card tp-row" data-subject="maths">
-                                <span class="subj-glyph">M</span>
-                                <div class="tp-row-main">
-                                    <div class="tp-row-top">
-                                        <h4>Maths</h4>
-                                        <span class="tp-count"><span class="counter" id="maths-count">0</span><span class="target" id="tgt-math-lbl">/ 10</span></span>
-                                    </div>
-                                    <div class="distribution-pill"><div class="distribution-fill" id="maths-bar" style="width:0%"></div></div>
-                                </div>
-                                <div class="counter-controls">
-                                    <button class="counter-btn" onclick="changeCount('maths', -1)" aria-label="Decrement maths">−</button>
-                                    <button class="counter-btn" onclick="changeCount('maths', 1)" aria-label="Increment maths">+</button>
-                                </div>
-                            </div>
+                            <div class="tp-entry-stroke"><div class="tp-entry-fill" id="maths-bar" style="width:0%"></div></div>
                         </div>
                     </div>
                 </div>
@@ -329,16 +314,6 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                         </div>
                     </div>
                     <div id="chapter-decay-grid"></div>
-                </div>
-
-                <!-- Calibration Report (metacognitive honesty) -->
-                <div class="dash-card dash-card-calibration">
-                    <div class="dash-card-head">
-                        <span class="kicker">// METACOGNITION</span>
-                        <h2 class="box-title">Calibration Report</h2>
-                        <p class="box-desc">Does your confidence match your accuracy? Top-100 rankers are calibrated.</p>
-                    </div>
-                    <div id="calibration-report"></div>
                 </div>
 
             </div>
