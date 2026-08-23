@@ -7,6 +7,8 @@
   },
   "scripts": {
     "smoke": "node scripts/smoke-answer-resolve.mjs && node scripts/smoke-pomo-config.mjs && node scripts/smoke-boot-sequence.mjs && node scripts/smoke-practice-nav.mjs",
+    "smoke:memory": "node scripts/smoke-memory-model.mjs",
+    "smoke:weights": "node scripts/smoke-chapter-weight.mjs",
     "qa": "node scripts/qa-boot-sequence.mjs",
     "qa-progress": "node scripts/qa-today-progress.mjs",
     "qa-focus": "node scripts/qa-focus-mode.mjs && node scripts/qa-focus-layout.mjs && node scripts/qa-focus-sound.mjs"

@@ -298,16 +298,19 @@ Time-boxed bounty questions: answer within the countdown or the attempt is marke
 - **Error matrix** — every wrong/fumbled question is vaulted with friction reasons (`CALC`, `FORMULA`, `CONCEPT`, `APPROACH`).
 - **Filters**: all / errors / solved / by friction type / by due status; `filterErrors()` drives the list.
 - **Daily Fix Queue** (`toggleDailyQueue`) — auto-curates a weighted 20-question set: lowest ease-factor items first, sliced to paper-distribution targets.
-- **Chapter decay grid** (`renderChapterDecayGrid`) — live chapter health bars (emerald → crimson) with CSS glow; drives the "lowest health chapter" pulse on the nav.
+- **Chapter decay grid v2** (`renderChapterDecayGrid`) — exam-aware risk bars: JEE-weightage × forecast retention at your exam date, coverage underlay, "critical in Nd" chips, trend arrows and a fluency (τ) readout; tap any row for the per-item decay drilldown (`openDecayDrilldown`). Powered by **memory.js** — an FSRS-style three-state kernel (Difficulty / Stability / Retrievability, power-law forgetting curve, unbounded stability growth). `node scripts/smoke-memory-model.mjs` property-tests it.
 
 #### Spaced repetition math
 
-- **SuperMemo-2 variant** with multi-variable tuning: ease factor, friction severity weight, performance quality `q` (0.0–5.0 from autonomy vs. time ratio), and a **Biologically-grounded chapter health model** (Bjork's *New Theory of Disuse*):
+- **SuperMemo-2 variant** with multi-variable tuning: ease factor, friction severity weight, performance quality `q` (0.0–5.0 from autonomy vs. time ratio).
+- **Memory Kernel v2** (`memory.js`, canonical for BOTH the grid and `_getChapterHealth`):
 
   ```
-  RS_i(t) = e^( −ln2 · (Δt / S_i) )          ← retrieval strength per item
-  A_ch(t) = (Σ Q_Elo,i · RS_i(t)) / (Σ Q_Elo,i) · 100   ← chapter accessibility
+  R(t,S) = (1 + (19/81) · t/S)^−0.5        ← power-law retrievability; R(S)=0.9
+  pass:  S' = S · (1 + G·((11−D)/10)·S^−0.15·(e^(0.4·(1−R))−1))
+  lapse: S' = max(0.5, F·((S+1)^0.25 − 1)·e^(0.3·(1−R))/D^0.2)
   ```
+- **Elo v2**: Glicko-lite rating deviation (uncertainty-weighted K_eff), graded partial-credit scores, 3PL guess correction on 4-option MCQs, continuous retrievability gating (low-R recalls earn ~full credit), pre-reveal confidence capture → Brier-scored Calibration Report, chapter-level ability θ_c (`getChapterTheta`), and an AIR uncertainty cone + Top-100 gap panel in the rating popup.
 
 - `getDueStatus()` decides if an item is `ready`/`due`; the nav's "Vault" badge counts ready items (O(1) cached).
 - **SR practice drawer** (`openPracticeDrawer`) — full spaced-repetition session: flip card, select options / self-report, autonomy & friction rating, optional stopwatch + manual time, hint/image toggles, then `submitPracticeLog()` feeds Elo migration.

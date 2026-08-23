@@ -23,7 +23,21 @@ import {
     recordCloudTombstone,
     // Canonical subject-key mapper (physics/chemistry/maths) for counter writes.
     normSubjKey,
+    // Chapter weightage for exam-aware risk sorting in the Decay Grid.
+    getChapterWeight,
+    resolveChapterWeightInfo,
+    setChapterWeightOverride,
 } from './storage.js';
+
+// Memory Kernel v2 — canonical pure implementation (imported directly; the
+// kernel has zero dependencies so this cannot form a cycle).
+import {
+    chapterMemoryStats,
+    currentRetrievability,
+    retrievabilityAt,
+    hydrateMemory,
+    refineDifficultyAfterTag,
+} from './memory.js';
 
 // ---------------------------------------------------------------------------
 //  Daily Core Queue state
@@ -531,6 +545,39 @@ function _renderQuestionMedia(q) {
         </div>`;
 }
 
+/**
+ * Pre-reveal confidence capture (Calibration layer). Shown BEFORE the answer
+ * is committed so this measures foresight, not hindsight — the metacognitive
+ * skill that actually separates top-100 rankers. Selection lands on
+ * _drawerState.confidence and is consumed by _applyResult → Elo engine
+ * (Brier scoring + overconfidence stinginess).
+ */
+const CONFIDENCE_LEVELS = [
+    { key: 'sure',   label: '😎 Sure',    anchor: 0.92 },
+    { key: 'likely', label: '🤔 Likely',  anchor: 0.70 },
+    { key: 'guess',  label: '🎲 Guess',   anchor: 0.45 },
+];
+
+function _renderConfidenceSeg() {
+    const btns = CONFIDENCE_LEVELS.map(c =>
+        '<button class="sr-conf-btn" data-conf="' + c.key + '" type="button" onclick="srSetConfidence(\'' + c.key + '\')">' + c.label + '</button>'
+    ).join('');
+    return '<div class="sr-conf-seg" id="sr-conf-seg">' +
+        '<div class="sr-conf-label">How confident are you?</div>' +
+        '<div class="sr-conf-btns">' + btns + '</div>' +
+        '</div>';
+}
+
+window.srSetConfidence = function (level) {
+    _drawerState.confidence = level;
+    const seg = document.getElementById('sr-conf-seg');
+    if (seg) {
+        seg.querySelectorAll('.sr-conf-btn').forEach(b => {
+            b.classList.toggle('selected', b.getAttribute('data-conf') === level);
+        });
+    }
+};
+
 function _renderAnswerStage(q) {
     if (q.type === 'mcq' && Array.isArray(q.options) && q.options.length) {
         const isMulti = Array.isArray(q.correctAnswer);
@@ -549,6 +596,7 @@ function _renderAnswerStage(q) {
             <div class="sr-mcq-block">
                 <div class="sr-mcq-label">${isMulti ? 'Select all that apply' : 'Select your answer'}</div>
                 <div class="sr-mcq-options">${optsHtml}</div>
+                ${_renderConfidenceSeg()}
                 <button class="sr-confirm-btn" id="sr-confirm-btn" type="button" onclick="srConfirmAnswer()" disabled>Confirm Answer</button>
             </div>`;
     }
@@ -560,12 +608,14 @@ function _renderAnswerStage(q) {
         return `
             <div class="sr-self-report sr-self-report-inline">
                 <div class="sr-self-report-label">Free-response question — solved it? Tap to reveal the answer, then grade yourself.</div>
+                ${_renderConfidenceSeg()}
                 <button class="sr-confirm-btn" id="sr-reveal-answer-btn" type="button" onclick="srRevealAnswer()">🔍 Reveal Answer</button>
             </div>`;
     }
     return `
         <div class="sr-self-report sr-self-report-inline">
             <div class="sr-self-report-label">No answer on file — were you correct?</div>
+            ${_renderConfidenceSeg()}
             <div class="sr-self-report-btns">
                 <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
                 <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
@@ -737,6 +787,10 @@ function _applyResult(result, source, q) {
     let _eloResult = null;
     if (typeof window.calculateEloMigration === 'function' && q.subject) {
         try {
+            // Calibration capture: publish the pre-reveal confidence for the
+            // engine to consume synchronously inside this solve, then clear it
+            // so it can never leak into an unrelated solve.
+            window._pendingSolveConfidence = _drawerState.confidence || null;
             const _actualSeconds = Math.max(0, Math.round(_drawerState.frozenTimeMins * 60));
             const _score = _drawerState.result === 'correct' ? 1 : 0;
             const _health = (typeof window._getChapterHealth === 'function')
@@ -751,6 +805,8 @@ function _applyResult(result, source, q) {
             );
         } catch (_eloErr) {
             console.error('Elo migration fault in _applyResult:', _eloErr);
+        } finally {
+            window._pendingSolveConfidence = null;
         }
     }
     _drawerState.eloResult = _eloResult;
@@ -1088,6 +1144,12 @@ export function submitPracticeLog() {
         timeSpentMins: Math.round(timeSpent * 10) / 10,
     });
 
+    // Memory Kernel v2 — the honest friction/autonomy tag arrived AFTER the
+    // Elo moment, so refine ONLY the difficulty axis here (stability/reps/
+    // lapses were already committed inside calculateEloMigration; refining a
+    // single aspect per event keeps the kernel free of double-counting).
+    try { refineDifficultyAfterTag(q, srResult.performanceQ); } catch (_) {}
+
     // Append history log entry
     if (!Array.isArray(q.historyLogs)) q.historyLogs = [];
     q.historyLogs.push({
@@ -1100,6 +1162,8 @@ export function submitPracticeLog() {
         performanceQ: srResult.performanceQ,
         newInterval: srResult.newInterval,
         newEaseFactor: srResult.newEaseFactor,
+        // Calibration layer — pre-reveal confidence for this attempt.
+        confidence: _drawerState.confidence || null,
     });
 
     // ── Bound text-bloat: keep only the 30 most recent logs per question.
@@ -1181,6 +1245,18 @@ export function submitPracticeLog() {
             }
         }
     }
+
+    // Autonomy honesty clawback — the Elo delta fired at the moment of truth,
+    // BEFORE the user tagged their autonomy level. Reading the solution is not
+    // retrieval practice, and a hint is not independence: reclaim the credit
+    // gap now (helper lives in app.js next to the engine; no-op when the solve
+    // earned nothing or autonomy was independent).
+    try {
+        if (typeof window._applyAutonomyClawback === 'function') {
+            window._applyAutonomyClawback(q, _drawerState.eloResult, _drawerState.autonomy);
+            _drawerState.confidence = null;   // consumed — never leaks to next log
+        }
+    } catch (_) { /* honesty adjustment must never block the log */ }
 
     saveAllAsync().catch(console.error);
     closePracticeDrawer();
@@ -1473,7 +1549,16 @@ function _getDailyQueueSnapshot() {
         if (bySubject[subj]) bySubject[subj].push(q);
     });
     Object.keys(bySubject).forEach(subj => {
-        bySubject[subj].sort((a, b) => _numOr(a.easeFactor, 2.5) - _numOr(b.easeFactor, 2.5));
+        // Weakest-memory-first with a Memory-Kernel tiebreak: among equally
+        // fragile items (same ease factor), surface the one whose retrievability
+        // has decayed FURTHEST — it is closest to being lost and cheapest to
+        // save now (spacing effect works hardest near the verge of forgetting).
+        bySubject[subj].sort((a, b) => {
+            const efDiff = _numOr(a.easeFactor, 2.5) - _numOr(b.easeFactor, 2.5);
+            if (efDiff !== 0) return efDiff;
+            try { return currentRetrievability(a) - currentRetrievability(b); }
+            catch (_) { return 0; }
+        });
     });
     const ids = [
         ...bySubject.physics.slice(0, DAILY_QUEUE_LIMITS.physics),
@@ -1987,40 +2072,15 @@ export function openLightbox(src) {
  */
 function _matrixChapterHealthContinuous(questions) {
     if (!questions || questions.length === 0) return 50;
-    const nowMs = Date.now();
-    const MS_PER_DAY = 86400000;
-    const LN2 = Math.LN2;
-    let weightedSum = 0;
-    let weightTotal = 0;
-    for (const q of questions) {
-        const easeFactor = (typeof q.easeFactor === 'number' && isFinite(q.easeFactor)) ? q.easeFactor : 2.5;
-        const qElo = (typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0) ? q.qElo : 1200;
-        let lastReviewedAt = q.lastReviewedAt;
-        if (!lastReviewedAt || isNaN(new Date(lastReviewedAt).getTime())) {
-            if (Array.isArray(q.historyLogs) && q.historyLogs.length > 0) {
-                let latestMs = NaN;
-                for (const log of q.historyLogs) {
-                    if (log && log.timestamp) {
-                        const t = new Date(log.timestamp).getTime();
-                        if (!isNaN(t) && (isNaN(latestMs) || t > latestMs)) latestMs = t;
-                    }
-                }
-                if (!isNaN(latestMs)) lastReviewedAt = new Date(latestMs).toISOString();
-            }
-            if (!lastReviewedAt && q.status === 'solved') lastReviewedAt = new Date(Date.now() - 86400000).toISOString();
-            if (!lastReviewedAt && (q.status === 'error' || q.status === 'wrong')) lastReviewedAt = new Date(Date.now()).toISOString();
-            if (!lastReviewedAt) lastReviewedAt = new Date(Date.now()).toISOString();
-        }
-        const lastMs = new Date(lastReviewedAt).getTime();
-        const deltaDays = (nowMs - (isNaN(lastMs) ? nowMs : lastMs)) / MS_PER_DAY;
-        const S_i = Math.max(0.5, easeFactor);
-        const RS = Math.exp(-LN2 * (deltaDays / S_i));
-        weightedSum += qElo * RS;
-        weightTotal += qElo;
-    }
-    if (weightTotal === 0) return 50;
-    let health = (weightedSum / weightTotal) * 100;
-    return Math.max(10, Math.min(100, health));
+    // DELEGATED to the Memory Kernel v2 (memory.js) — the SAME power-law
+    // retrievability model app.js's _getChapterHealth now uses. One source of
+    // truth: the grid, the cat-banner scanner, the Daily Briefing and the Elo
+    // engine all evaluate the identical continuous percentage.
+    try {
+        const stats = chapterMemoryStats(questions, { nowMs: Date.now() });
+        if (!stats) return 50;
+        return Math.max(10, Math.min(100, stats.health));
+    } catch (_) { return 50; }
 }
 
 // Exposed for the Daily Briefing flow — the SAME health model the Chapter
@@ -2043,6 +2103,21 @@ window._getDailyQueueSnapshot = () => {
     try { return _getDailyQueueSnapshot(); } catch (_) { return []; }
 };
 
+const MS_PER_DAY = 86400000;
+
+// Previous-render health per chapter key — powers the ↑/↓ trend arrows.
+// Module-scoped (resets on boot by design: trends compare within a session).
+const _decayTrendCache = new Map();
+
+function _examDateMsSafe() {
+    try {
+        const raw = AppState.examDate;
+        if (!raw) return null;
+        const t = new Date(raw).getTime();
+        return isNaN(t) ? null : t;
+    } catch (_) { return null; }
+}
+
 export function renderChapterDecayGrid() {
     const container = document.getElementById('chapter-decay-grid');
     if (!container) return;
@@ -2054,15 +2129,45 @@ export function renderChapterDecayGrid() {
         const subject = q.subject || '';
         const chapter = q.chapter || 'Uncategorized';
         const key = subject + '||' + chapter;
-        if (!chapterMap[key]) chapterMap[key] = { name: chapter, questions: [] };
+        if (!chapterMap[key]) chapterMap[key] = { name: chapter, subject, questions: [] };
         chapterMap[key].questions.push(q);
     });
-    const chapters = Object.values(chapterMap).map(({ name, questions }) => {
-        const avgEF = questions.reduce((sum, q) => sum + _numOr(q.easeFactor, 2.5), 0) / questions.length;
-        const health = _matrixChapterHealthContinuous(questions);
-        return { name, health, questionCount: questions.length, avgEF };
+
+    // Coverage denominators: EVERY registered bank question per chapter, so
+    // untouched chapters are visible as 0% attempted instead of invisible.
+    const covTotals = {};
+    AppState.questionBank.forEach(q => {
+        const key = (q.subject || '') + '||' + String(q.chapter || 'Uncategorized').trim().toLowerCase();
+        covTotals[key] = (covTotals[key] || 0) + 1;
     });
-    chapters.sort((a, b) => a.health - b.health);
+
+    const examMs = _examDateMsSafe();
+
+    const chapters = Object.values(chapterMap).map(({ name, subject, questions }) => {
+        const avgEF = questions.reduce((sum, q) => sum + _numOr(q.easeFactor, 2.5), 0) / questions.length;
+        const stats = chapterMemoryStats(questions, { examDateMs: examMs, nowMs: Date.now() });
+        const health = stats ? stats.health : 50;
+        const forecast = stats ? stats.forecastHealth : null;
+        const covKey = subject + '||' + String(name).trim().toLowerCase();
+        const total = covTotals[covKey] || questions.length;
+        const coverage = total > 0 ? questions.length / total : 1;
+        // Exam-aware risk: JEE weightage × how much retention will be MISSING
+        // at exam time (falls back to current health without an exam date).
+        const weight = getChapterWeight(name);
+        const retentionRef = (forecast != null) ? forecast : health;
+        const risk = weight * (100 - Math.max(0, Math.min(100, retentionRef)));
+        // Fluency: mean solve time vs the question's own band target — JEE Adv
+        // is speed-under-pressure, so retention without fluency is half-blind.
+        const timed = questions.filter(q => (Number(q.timeTaken) || 0) > 0 && _numOr(q.targetTimeMins, 0) > 0);
+        const fluency = timed.length > 0
+            ? timed.reduce((s, q) => s + (q.timeTaken / (_numOr(q.targetTimeMins, 5) * 60)), 0) / timed.length
+            : null;
+        const prev = _decayTrendCache.get(subject + '||' + name);
+        const trend = (prev == null || Math.abs(prev - health) < 0.5) ? 0 : (health > prev ? 1 : -1);
+        return { name, subject, health, forecast, stats, coverage, weight, risk, fluency, trend, questionCount: questions.length, avgEF };
+    });
+    // Most exam-dangerous chapter first.
+    chapters.sort((a, b) => b.risk - a.risk);
     if (chapters.length === 0) {
         container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:32px 16px; font-size:13px;">No chapter data available yet. Log errors to see decay analysis.</div>';
         return;
@@ -2077,38 +2182,86 @@ export function renderChapterDecayGrid() {
     const tight = cw < 560;
     const SHOW_META = cw > 520;
 
-    const ROW_H = 38, PAD = 4;
-    const LEFT = 10, G = 12, PCT_W = 44, META_W = 116, RIGHT = 8;
+    const ROW_H = 40, PAD = 4;
+    const LEFT = 10, G = 12, PCT_W = 52, CRIT_W = 58, META_W = 128, RIGHT = 8;
     const LABEL_W = compact ? 84 : (tight ? 120 : 168);
+    const SHOW_CRIT = cw > 400;
     const trackX = LEFT + LABEL_W + G;
-    const trackW = Math.max(40, cw - LEFT - LABEL_W - G - G - PCT_W - (SHOW_META ? G + META_W : 0) - RIGHT);
+    const trackW = Math.max(40, cw - LEFT - LABEL_W - G - PCT_W - (SHOW_CRIT ? G + CRIT_W : 0) - (SHOW_META ? G + META_W : 0) - RIGHT);
     const pctX = trackX + trackW + G;
-    const metaX = pctX + PCT_W + G;
+    const critX = pctX + PCT_W + (SHOW_CRIT ? G : 0);
+    const metaX = critX + (SHOW_CRIT ? CRIT_W : 0) + G;
     const maxName = compact ? 10 : (tight ? 16 : 24);
     const TRACK_H = 18, TRACK_R = 5;
     const svgH = chapters.length * ROW_H + PAD * 2;
 
+    // Exam-ready color bands: ≥90 green (recall-ready under pressure),
+    // 80–90 amber (fading), <80 red (cooked). Aligned to the kernel's
+    // RETENTION_CRITICAL so the grid and the risk model agree on "critical".
+    function _band(h) {
+        if (h >= 90) return { fill: 'var(--glow-green)', glow: true };
+        if (h >= 80) return { fill: 'var(--glow-yellow)', glow: false };
+        return { fill: 'var(--glow-red)', glow: false };
+    }
+
     let svgRows = chapters.map((ch, i) => {
         const y = i * ROW_H + PAD;
         const trackY = y + (ROW_H - TRACK_H) / 2;
+        const band = _band(ch.health);
         const fillW = Math.max(3, (ch.health / 100) * trackW);
-        let fillStyle, glowAttr = '', opacityAttr = '';
-        if (ch.health > 75) { fillStyle = 'fill: var(--glow-green);'; glowAttr = 'filter: url(#decay-glow-green);'; }
-        else if (ch.health >= 45) { fillStyle = 'fill: var(--glow-yellow);'; }
-        else { fillStyle = 'fill: var(--glow-red);'; opacityAttr = 'opacity: 0.88;'; }
+        const covW = Math.max(0, Math.min(trackW, ch.coverage * trackW));
+        const glowAttr = band.glow ? 'filter: url(#decay-glow-green);' : '';
+        const opacityAttr = ch.health < 80 ? 'opacity: 0.9;' : '';
         const displayName = (ch.name || '').length > maxName ? ch.name.substring(0, maxName - 1) + '…' : (ch.name || '');
-        const metaCell = SHOW_META
-            ? `<text x="${metaX}" y="${y + ROW_H / 2}" style="fill: var(--text-muted); font-size: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500;" dominant-baseline="middle" text-anchor="start">${_esc(ch.questionCount)}q · EF ${_numOr(ch.avgEF, 0).toFixed(2)}</text>`
+
+        // Trend arrow vs the previous render this session.
+        const trendGlyph = ch.trend > 0 ? '↗' : (ch.trend < 0 ? '↘' : '·');
+        const trendColor = ch.trend > 0 ? 'var(--glow-green)' : (ch.trend < 0 ? 'var(--glow-red)' : 'var(--text-muted)');
+
+        // Critical-in-Nd chip — days until weighted retention crosses 80%.
+        let critText = 'stable', critColor = 'var(--text-muted)';
+        if (ch.stats && isFinite(ch.stats.criticalDays)) {
+            const d = ch.stats.criticalDays;
+            if (d <= 0) { critText = 'crit NOW'; critColor = 'var(--glow-red)'; }
+            else if (d <= 45) { critText = 'crit ' + Math.ceil(d) + 'd'; critColor = 'var(--glow-yellow)'; }
+            else { critText = Math.ceil(d) + 'd'; }
+        }
+
+        // Fluency readout (τ = mean actual time ÷ target time).
+        const tauText = (ch.fluency != null && SHOW_META)
+            ? ' τ ' + ch.fluency.toFixed(2) + '×'
             : '';
+        const forecastText = (examMs != null && ch.forecast != null && SHOW_META)
+            ? ' · exam ' + ch.forecast.toFixed(0) + '%'
+            : '';
+        const metaCell = SHOW_META
+            ? `<text x="${metaX}" y="${y + ROW_H / 2}" style="fill: var(--text-muted); font-size: 10px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500;" dominant-baseline="middle" text-anchor="start">${_esc(ch.questionCount)}q · EF ${_numOr(ch.avgEF, 0).toFixed(2)}${_esc(tauText)}${_esc(forecastText)}</text>`
+            : '';
+
+        // Forecast tick on the exam date projection (when set).
+        const tickSvg = (examMs != null && ch.forecast != null)
+            ? `<line x1="${trackX + Math.max(0, Math.min(trackW, (ch.forecast / 100) * trackW)).toFixed(1)}" y1="${trackY - 3}" x2="${trackX + Math.max(0, Math.min(trackW, (ch.forecast / 100) * trackW)).toFixed(1)}" y2="${trackY + TRACK_H + 3}" stroke="rgba(255,255,255,0.55)" stroke-width="1.5" stroke-dasharray="2 2"/>`
+            : '';
+
+        const subjEnc = encodeURIComponent(ch.subject || '');
+        const chapEnc = encodeURIComponent(ch.name || '');
         return `
-            <g class="decay-row">
+            <g class="decay-row" onclick="window.openDecayDrilldown('${subjEnc}','${chapEnc}')" style="cursor: pointer;">
+                <title>${_esc(ch.name)} — retention ${ch.health.toFixed(0)}% · coverage ${Math.round(ch.coverage * 100)}% · tap for item decay</title>
                 <text x="${LEFT}" y="${y + ROW_H / 2}" style="fill: var(--text-secondary); font-size: 11.5px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600;" dominant-baseline="middle" text-anchor="start">${_esc(displayName)}</text>
                 <rect x="${trackX}" y="${trackY}" width="${trackW}" height="${TRACK_H}" rx="${TRACK_R}" style="fill: rgba(255,255,255,0.035); stroke: rgba(255,255,255,0.06); stroke-width: 1;"/>
-                <rect x="${trackX}" y="${trackY}" width="${fillW}" height="${TRACK_H}" rx="${TRACK_R}" style="${fillStyle} ${glowAttr} ${opacityAttr} transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);"/>
-                <text x="${pctX}" y="${y + ROW_H / 2}" style="${fillStyle} font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 700;" dominant-baseline="middle" text-anchor="start">${ch.health.toFixed(0)}%</text>
+                <rect x="${trackX}" y="${trackY}" width="${covW}" height="${TRACK_H}" rx="${TRACK_R}" style="fill: rgba(61,220,255,0.12);"/>
+                <rect x="${trackX}" y="${trackY}" width="${fillW}" height="${TRACK_H}" rx="${TRACK_R}" style="${band.fill === 'var(--glow-green)' ? 'fill: var(--glow-green);' : (band.fill === 'var(--glow-yellow)' ? 'fill: var(--glow-yellow);' : 'fill: var(--glow-red);')} ${glowAttr} ${opacityAttr} transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);"/>
+                ${tickSvg}
+                <text x="${pctX}" y="${y + ROW_H / 2}" style="fill: ${trendColor}; font-size: 11px; font-family: 'Space Grotesk', monospace; font-weight: 700;" dominant-baseline="middle" text-anchor="start">${trendGlyph}</text>
+                <text x="${pctX + 13}" y="${y + ROW_H / 2}" style="fill: ${band.fill}; font-size: 12px; font-family: 'Space Grotesk', monospace; font-weight: 700;" dominant-baseline="middle" text-anchor="start">${ch.health.toFixed(0)}%</text>
+                <text x="${critX}" y="${y + ROW_H / 2}" style="fill: ${critColor}; font-size: 10px; font-family: 'Space Grotesk', monospace; font-weight: 600;" dominant-baseline="middle" text-anchor="start">${_esc(critText)}</text>
                 ${metaCell}
             </g>`;
     }).join('');
+
+    // Commit this render's health values as the next trend baseline.
+    chapters.forEach(ch => { _decayTrendCache.set(ch.subject + '||' + ch.name, ch.health); });
 
     container.innerHTML = `
         <svg viewBox="0 0 ${cw} ${svgH}" width="100%" height="${svgH}"
@@ -2125,6 +2278,171 @@ export function renderChapterDecayGrid() {
             ${svgRows}
         </svg>`;
 }
+
+// ── Item-level decay drilldown ────────────────────────────────────────────────
+// Tapping a grid row opens a floating panel listing the chapter's vault items
+// weakest-retrieval-first with a 60-day R(t) sparkline (30d past + projection).
+let _decayDrillStylesInjected = false;
+
+function _injectDecayDrilldownStyles() {
+    if (_decayDrillStylesInjected) return;
+    _decayDrillStylesInjected = true;
+    const style = document.createElement('style');
+    style.id = 'decay-drill-styles';
+    style.textContent = `
+.decay-drill-overlay {
+  position: fixed; inset: 0; z-index: 99998;
+  background: rgba(6,8,14,0.72); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: ddFade .18s ease;
+}
+@keyframes ddFade { from { opacity: 0; } to { opacity: 1; } }
+.decay-drill-panel {
+  width: min(560px, calc(100vw - 32px)); max-height: min(78vh, 640px);
+  background: linear-gradient(160deg,#18181b,#12121a);
+  border: 1px solid rgba(61,220,255,0.28); border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.65);
+  display: flex; flex-direction: column; overflow: hidden;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #e8eefb;
+}
+.decay-drill-head { padding: 14px 18px 10px; border-bottom: 1px solid rgba(255,255,255,0.07); display: flex; align-items: baseline; gap: 10px; }
+.decay-drill-title { font-family:'Space Grotesk',monospace; font-weight:700; font-size:15px; letter-spacing:.3px; }
+.decay-drill-sub { font-size: 11px; color: #8aa0c8; margin-left: auto; text-align: right; }
+.decay-drill-close { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color:#e8eefb; border-radius: 8px; width:26px; height:26px; cursor:pointer; font-size:12px; flex: none; align-self: center; }
+.decay-drill-list { overflow-y: auto; padding: 8px 12px 14px; }
+.decay-item { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.decay-item:last-child { border-bottom: none; }
+.dd-r { font-family:'Space Grotesk',monospace; font-weight:700; font-size:13px; width:44px; flex:none; text-align:right; }
+.dd-spark { flex:none; }
+.dd-meta { font-size: 10.5px; color:#8aa0c8; line-height: 1.45; }
+.dd-meta b { color:#cdd9f2; font-weight:600; }
+`;
+    document.head.appendChild(style);
+}
+
+function _decaySparkline(q, examMs) {
+    try {
+        const mem = hydrateMemory(q);
+        const W = 92, H = 22, SAMPLES = 22;
+        const now = Date.now();
+        const pastMs = now - 30 * MS_PER_DAY;
+        const projDays = (examMs && examMs > now)
+            ? Math.min(120, (examMs - now) / MS_PER_DAY)
+            : 30;
+        const endMs = now + projDays * MS_PER_DAY;
+        const pts = [];
+        for (let i = 0; i < SAMPLES; i++) {
+            const t = pastMs + (i / (SAMPLES - 1)) * (endMs - pastMs);
+            const deltaDays = isNaN(mem.lastMs) ? 0 : Math.max(0, (t - mem.lastMs) / MS_PER_DAY);
+            const r = retrievabilityFrom(mem.stability, deltaDays);
+            const x = ((t - pastMs) / (endMs - pastMs)) * W;
+            const y = H - 2 - r * (H - 4);
+            pts.push(x.toFixed(1) + ',' + y.toFixed(1));
+        }
+        const lastMsX = ((Math.min(now, mem.lastMs || pastMs) - pastMs) / (endMs - pastMs)) * W;
+        return '<svg class="dd-spark" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+            '<line x1="0" y1="' + (H - 2 - 0.8 * (H - 4)) + '" x2="' + W + '" y2="' + (H - 2 - 0.8 * (H - 4)) + '" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2 3"/>' +
+            '<line x1="' + lastMsX.toFixed(1) + '" y1="0" x2="' + lastMsX.toFixed(1) + '" y2="' + H + '" stroke="rgba(61,220,255,0.35)" stroke-width="1"/>' +
+            '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-linejoin="round"/>' +
+            '</svg>';
+    } catch (_) { return ''; }
+}
+
+export function openDecayDrilldown(subjectEnc, chapEnc) {
+    let subject = '', chapterName = '';
+    try { subject = decodeURIComponent(subjectEnc || ''); } catch (_) { subject = subjectEnc || ''; }
+    try { chapterName = decodeURIComponent(chapEnc || ''); } catch (_) { chapterName = chapEnc || ''; }
+    const norm = (v) => String(v || '').trim().toLowerCase();
+    const items = AppState.questionBank.filter(q =>
+        q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') &&
+        norm(q.subject) === norm(subject) && String(q.chapter || 'Uncategorized').trim().toLowerCase() === norm(chapterName)
+    );
+    if (!items.length) return;
+    items.forEach(q => { try { q.__R = currentRetrievability(q); } catch (_) { q.__R = 0; } });
+    items.sort((a, b) => a.__R - b.__R);
+
+    _injectDecayDrilldownStyles();
+    const examMs = _examDateMsSafe();
+    // Chapter ability (θ_c) vs the chapter's item difficulty — "how you stack
+    // up HERE", which subject Elo alone cannot answer.
+    let thetaTxt = '';
+    try {
+        const th = window.getChapterTheta(subject, chapterName);
+        const avgQ = items.reduce((s, q) => s + (Number(q.qElo) || 1200), 0) / items.length;
+        const diff = Math.round(th.theta - avgQ);
+        thetaTxt = ' · you ' + th.theta + ' (' + (diff >= 0 ? '+' : '') + diff + ' vs items)';
+    } catch (_) {}
+    // Weightage provenance — show WHY this chapter carries its risk weight.
+    // Silent magic numbers are how trust dies; niche/renamed chapters show the
+    // tier that resolved them (alias / typo-corrected / unit estimate / AI).
+    let weightTxt = '';
+    try {
+        const wi = resolveChapterWeightInfo(chapterName);
+        const srcLabel = { user: 'your override', exact: 'table', ai: 'AI-stamped', alias: 'matched', match: 'matched', typo: 'typo-corrected', unit: 'unit estimate', default: 'unknown — assumed' }[wi.source] || wi.source;
+        weightTxt = ' · weight ' + wi.weight.toFixed(2) + ' (' + srcLabel + (wi.matched ? ': ' + wi.matched : '') + ')';
+    } catch (_) {}
+
+    const rows = items.slice(0, 60).map(q => {
+        const rpct = Math.round((q.__R || 0) * 100);
+        const col = rpct >= 90 ? '#22c55e' : (rpct >= 80 ? '#eab308' : '#ef4444');
+        const rel = (() => {
+            try {
+                const t = new Date(q.lastReviewedAt || q.lastSolvedAt).getTime();
+                if (isNaN(t)) return 'never';
+                const d = Math.floor((Date.now() - t) / MS_PER_DAY);
+                return d <= 0 ? 'today' : d + 'd ago';
+            } catch (_) { return 'never'; }
+        })();
+        return '<div class="decay-item">' +
+            '<div class="dd-r" style="color:' + col + '">' + rpct + '%</div>' +
+            _decaySparkline(q, examMs) +
+            '<div class="dd-meta"><b>S</b> ' + Number(q.stability || 0).toFixed(1) + 'd' +
+            ' · <b>D</b> ' + Number(q.difficultyD || 0).toFixed(1) +
+            ' · <b>' + (q.lapses || 0) + '</b>L/<b>' + (q.reps || 0) + '</b>R' +
+            ' · EF ' + _numOr(q.easeFactor, 2.5).toFixed(2) +
+            ' · ' + _esc(rel) + '</div>' +
+            '</div>';
+    }).join('');
+
+    document.querySelectorAll('.decay-drill-overlay').forEach(o => o.remove());
+    const overlay = document.createElement('div');
+    overlay.className = 'decay-drill-overlay';
+    overlay.innerHTML =
+        '<div class="decay-drill-panel" role="dialog" aria-label="Item decay drilldown">' +
+        '<div class="decay-drill-head">' +
+        '<span class="decay-drill-title">🧠 ' + _esc(chapterName) + '</span>' +
+        '<span class="decay-drill-sub">' + items.length + ' tracked items · weakest first' + (examMs ? ' · projected to exam' : '') + _esc(thetaTxt) + '</span>' +
+        '<div style=\'width:100%; font-size:10px; color:#8aa0c8; margin-top:2px;\'><span id=\'dd-weight-line\'>' + _esc(weightTxt) + '</span>' +
+        '<button id=\'dd-weight-edit\' type=\'button\' style=\'margin-left:8px; background:none; border:none; color:#38bdf8; cursor:pointer; font-size:10px; padding:0;\'>✎ edit</button></div>' +
+        '<button class="decay-drill-close" type="button" aria-label="Close">✕</button>' +
+        '</div>' +
+        '<div class="decay-drill-list">' + rows + '</div>' +
+        '</div>';
+    const close = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    // ✎ edit → user override tier. Blank input clears back to automatic
+    // resolution. Grid re-renders so risk ordering reflects the correction.
+    const editBtn = overlay.querySelector('#dd-weight-edit');
+    if (editBtn) {
+        editBtn.addEventListener('click', () => {
+            let cur = 0.5;
+            try { cur = resolveChapterWeightInfo(chapterName).weight; } catch (_) {}
+            const inp = prompt('Exam weight for "' + chapterName + '"\n(0 to 1.5 — e.g. 1.0 = highest yield; blank = auto)', cur.toFixed(2));
+            if (inp === null) return;
+            const trimmed = inp.trim();
+            const num = Number(trimmed);
+            setChapterWeightOverride(chapterName, trimmed === '' ? null : (isFinite(num) && num > 0 ? num : null));
+            try { renderChapterDecayGrid(); } catch (_) {}
+            close();
+            try { window.openDecayDrilldown(encodeURIComponent(subject), encodeURIComponent(chapterName)); } catch (_) {}
+        });
+    }
+    overlay.querySelector('.decay-drill-close').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+}
+window.openDecayDrilldown = openDecayDrilldown;
 
 // ── Dashboard card: per-chapter completion, weakest first ──────────────────
 // Mirrors the practice view's completion definition (app.js stats-row):

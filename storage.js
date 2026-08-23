@@ -12,6 +12,14 @@
  * unit-tested without the full DOM graph present.
  */
 
+// ── Memory Kernel v2 + Chapter-Weights resolver — canonical pure
+// implementations (zero DOM deps, Node-testable).
+import { backfillMemoryFields } from './memory.js';
+import {
+    resolveChapterWeight as _resolveCW,
+    DEFAULT_CHAPTER_WEIGHT as _DEFAULT_CHAPTER_W,
+} from './chapter-weights.js';
+
 // ---------------------------------------------------------------------------
 //  Lazy UI-callback bridge — set from app.js during bootstrap
 // ---------------------------------------------------------------------------
@@ -507,6 +515,12 @@ export const AppState = {
     // cloud merge so a real (downward) rating change propagates instead of
     // being swallowed by the old high-water-mark Math.max merge.
     eloUpdatedAt: 0,
+    // ── Chapter weightage dynamic tiers (chapter-weights.js resolver) ──
+    // ai: Gemini-stamped during ingestion (gemini gem prompt.txt optional
+    //     chapterWeight field) — fills gaps for renamed/niche chapters.
+    // user: explicit overrides from the UI — highest authority.
+    chapterWeights: {},
+    userChapterWeights: {},
 };
 
 
@@ -590,6 +604,105 @@ export const SR_AUTONOMY_SCORES = {
 };
 
 export const SR_FRICTION_TYPES = ['PERFECT', 'CALC', 'FORMULA', 'CONCEPT', 'APPROACH'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MEMORY KERNEL v2 bridge — canonical implementation lives in memory.js
+//  (pure, DOM-free, Node-testable). Re-exported here so existing consumers of
+//  storage.js see one coherent surface. See memory.js header for the math.
+// ─────────────────────────────────────────────────────────────────────────────
+export {
+    MEMORY_MODEL_VERSION,
+    FSRS_PARAMS,
+    hydrateMemory,
+    backfillMemoryFields,
+    retrievabilityFrom,
+    retrievabilityAt,
+    currentRetrievability,
+    updateMemoryOnReview,
+    refineDifficultyAfterTag,
+    weightedRetention,
+    chapterMemoryStats,
+    RETENTION_CRITICAL,
+} from './memory.js';
+
+/**
+ * Rating-uncertainty tuning (Glicko-lite). Every subject carries a rating
+ * deviation (rd): wide ⇒ the Elo estimate is young/stale and moves fast;
+ * narrow ⇒ well-calibrated and stable. K_eff scales with rd instead of the
+ * legacy fixed K=32.
+ */
+export const RD_TUNING = {
+    START: 350,             // fresh profile — nothing is known yet
+    FLOOR: 45,              // fully calibrated floor
+    SHRINK_PER_SOLVE: 40,   // variance removed per solve (√(rd²−C²) model)
+    DRIFT_PER_DAY: 12,      // staleness widening per idle day
+    CAP: 350,
+    K_REF_RD: 150,          // rd at which K_eff === legacy K_user
+    K_MIN: 8,               // calibrated floor for the effective K
+    K_MAX: 64,              // fresh-profile ceiling for the effective K
+};
+
+/** Pre-reveal confidence anchors for calibration capture (Brier scoring). */
+export const CONFIDENCE_ANCHORS = { sure: 0.92, likely: 0.70, guess: 0.45 };
+export const CALIBRATION_LOG_CAP = 240;
+
+// ---------------------------------------------------------------------------
+// Chapter weightage - canonical resolver lives in chapter-weights.js (pure).
+// storage.js supplies the DYNAMIC tiers (user overrides + AI-stamped weights
+// learned during Gem ingestion) on top of the static calibrated table.
+// Tiers: user > exact-table > ai > alias > fuzzy-match > typo > unit > default.
+// ---------------------------------------------------------------------------
+export {
+    JEE_CHAPTER_WEIGHTS,
+    CHAPTER_ALIASES,
+    UNIT_KEYWORD_RULES,
+    DEFAULT_CHAPTER_WEIGHT,
+} from './chapter-weights.js';
+
+/** Full provenance lookup: {weight, source, matched} - for UI trust display. */
+export function resolveChapterWeightInfo(chapter) {
+    return _resolveCW(chapter, {
+        overrides: AppState.userChapterWeights,
+        ai: AppState.chapterWeights,
+    });
+}
+
+/** Numeric shortcut for hot paths (grid risk math). */
+export function getChapterWeight(chapter) {
+    try {
+        return resolveChapterWeightInfo(chapter).weight;
+    } catch (_) {
+        return _DEFAULT_CHAPTER_W;
+    }
+}
+
+/** Normalize a chapter name the same way the resolver does. */
+function _cwKey(name) {
+    return String(name || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** AI tier writer - Gem ingestion stamps what the model believes per chapter. */
+export function setAiChapterWeight(name, w) {
+    const n = Number(w);
+    if (!isFinite(n) || n <= 0) return false;
+    const key = _cwKey(name);
+    if (!key) return false;
+    if (!AppState.chapterWeights || typeof AppState.chapterWeights !== 'object') AppState.chapterWeights = {};
+    AppState.chapterWeights[key] = Math.max(0.05, Math.min(1.5, n));
+    return true;
+}
+
+/** User override writer - highest authority; pass null/undefined to clear. */
+export function setChapterWeightOverride(name, w) {
+    const key = _cwKey(name);
+    if (!key) return false;
+    if (!AppState.userChapterWeights || typeof AppState.userChapterWeights !== 'object') AppState.userChapterWeights = {};
+    if (w === null || w === undefined) { delete AppState.userChapterWeights[key]; return true; }
+    const n = Number(w);
+    if (!isFinite(n) || n <= 0) return false;
+    AppState.userChapterWeights[key] = Math.max(0.05, Math.min(1.5, n));
+    return true;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cognitive MMR / qElo band system
@@ -910,6 +1023,10 @@ export function migrateQuestionBankSR() {
         if (q.stampBatchSuspiciousStdev === undefined) { q.stampBatchSuspiciousStdev = false; dirty = true; }
         // Carry over the canonical tags field so qElo picker can filter later.
         if (!Array.isArray(q.tags)) { q.tags = []; dirty = true; }
+        // ── Memory Kernel v2 backfill (additive-only): stability / difficultyD /
+        // reps / lapses derived from legacy SR state. Legacy fields are never
+        // touched — see memory.js backfillMemoryFields. ──
+        try { if (backfillMemoryFields(q)) dirty = true; } catch (_) { /* never block boot */ }
     }
     if (dirty) saveAllAsync().catch(console.error);
 }
