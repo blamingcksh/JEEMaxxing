@@ -10,6 +10,7 @@
  * ============================================================================ */
 'use strict';
 
+// v40 — Mock Mode: mock.js exam engine joins the shell precache.
 // v39 — Chapter-Weights tiered resolver (chapter-weights.js precache):
 //        alias/fuzzy/typo/unit tiers + AI-stamped + user-override weights.
 // v38 — Memory Kernel v2 + Elo v2: memory.js joins the shell precache.
@@ -26,7 +27,7 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v39';
+const VERSION = 'jeemax-v40';
 const SHELL = [
   './',
   './index.html',
@@ -36,6 +37,7 @@ const SHELL = [
   './storage.js',
   './memory.js',
   './chapter-weights.js',
+  './mock.js',
   './checkpoint.js',
   './fx.js',
   './matrix.js',
