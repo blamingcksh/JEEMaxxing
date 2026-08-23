@@ -146,6 +146,9 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
             <li><a class="nav-item" data-tab="practice" href="#practice" onclick="switchTab('practice', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.4C10.1 4.8 7.2 4.2 3.8 4.5V18c3.4-.3 6.3.3 8.2 1.9 1.9-1.6 4.8-2.2 8.2-1.9V4.5c-3.4-.3-6.3.3-8.2 1.9Z"/><path d="M12 6.4V19.9"/></svg></span>
                 <span class="text-label">Grind Station</span></a></li>
+            <li><a class="nav-item" data-tab="mocks" href="#mocks" onclick="switchTab('mocks', this);return false;">
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.25"/><path d="M12 7.5V12l3 2"/></svg></span>
+                <span class="text-label">Mocks</span></a></li>
             <li><a class="nav-item" data-tab="settings" href="#config" onclick="switchTab('settings', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 5h-6.8"/><path d="M10.2 5H3"/><path d="M21 12h-8.8"/><path d="M8.2 12H3"/><path d="M21 19h-4.8"/><path d="M12.2 19H3"/><path d="M14.2 3v4"/><path d="M8.2 10v4"/><path d="M16.2 17v4"/></svg></span>
                 <span class="text-label">Config</span></a></li>
@@ -654,6 +657,18 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
              (#cp-hub, #cp-control-panel, lockdown overlays, toasts) at
              runtime via checkpoint.js — no static markup here, or IDs collide.
         ════════════════════════════════════════════ -->
+        <!-- ═══════════════════════════════════════════
+             VIEW · MOCKS (exam simulation)
+             All rendering owned by mock.js (#mock-studio-root).
+        ════════════════════════════════════════════ -->
+        <section id="view-mocks" class="view-section">
+            <div class="glow-wrapper">
+                <div class="glow-box-inner">
+                    <div id="mock-studio-root"></div>
+                </div>
+            </div>
+        </section>
+
         <section id="view-settings" class="view-section">
             <span class="kicker">// SYSTEM CONFIG</span>
             <h2 class="box-title" style="margin-bottom:20px">Config Panel</h2>

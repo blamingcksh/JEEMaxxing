@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "dependencies": {
     "freebuff": "^0.0.130"
   },

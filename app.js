@@ -57,6 +57,9 @@ import {
     chapterMemoryStats,
 } from './memory.js';
 
+// Mock Mode — staged paper builder + exam runner (self-registers UI bridges).
+import './mock.js';
+
 import {
     resetPomoUI, startTimer, pauseTimer, resumeTimer, quitTimer,
     skipBreak, addBreakTime, finishAll,
@@ -2940,6 +2943,12 @@ export function saveAllQuestions() {
         // in the bank (so re-uploads flag "duplicate") but never rendered. ──
         const _chList = AppState.chapters[newQ.subject] || (AppState.chapters[newQ.subject] = []);
         if (newQ.chapter && !_chList.some(c => _chaptersMatch(c, newQ.chapter))) _chList.push(newQ.chapter);
+        // ── Mock Mode: while a mock section panel is open for filling, every
+        // committed question is stamped reserved and linked into that draft
+        // section, so a paper survives app closes mid-build. ──
+        if (AppState.mockDraftContext && window.MockEngine && typeof window.MockEngine.linkQuestion === 'function') {
+            try { window.MockEngine.linkQuestion(AppState.mockDraftContext, newQ); } catch (_) {}
+        }
     }
     const importedCount = AppState.questionBank.length - bankBeforeLength;
     // ── Clear the import buffer AFTER a successful commit so a second
@@ -9588,6 +9597,7 @@ window.renderLatexInElement = function () {
     if (el) processElementMath(el);
 };
 window.answerMathHTML = answerMathHTML;
+window.processElementMath = processElementMath;
 window.deleteQuestion = deleteQuestion;
 window.handleDriveAuth = handleDriveAuth;
 window.updateStreakDisplay = updateStreakDisplay;

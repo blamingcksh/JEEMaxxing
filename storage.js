@@ -521,6 +521,13 @@ export const AppState = {
     // user: explicit overrides from the UI — highest authority.
     chapterWeights: {},
     userChapterWeights: {},
+    // ── Mock Mode state (mock.js owns semantics; storage owns persistence) ──
+    // mocks[]: draft/ready/in-progress/done papers. mockDraftContext: while set,
+    // every Save-All commit links its new questions into that draft section.
+    // mockFocus: chapter::pattern loss-mass from completed papers (×0.7 weekly).
+    mocks: [],
+    mockDraftContext: null,
+    mockFocus: {},
 };
 
 
@@ -645,6 +652,29 @@ export const RD_TUNING = {
 /** Pre-reveal confidence anchors for calibration capture (Brier scoring). */
 export const CONFIDENCE_ANCHORS = { sure: 0.92, likely: 0.70, guess: 0.45 };
 export const CALIBRATION_LOG_CAP = 240;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MOCK MODE — real marking schemes (JEE Advanced style). Editable data.
+// ─────────────────────────────────────────────────────────────────────────────
+export const MARKS_SCHEMES = {
+    'adv-single':  { id: 'adv-single',  label: 'Single correct',   correct: 4, wrong: -1, skipped: 0 },
+    'adv-numeric': { id: 'adv-numeric', label: 'Numeric',         correct: 4, wrong: 0,  skipped: 0 },
+    'adv-multi':   { id: 'adv-multi',   label: 'Multi correct',   full: 4, partialPerCorrect: 1, anyWrongPenalty: -2, skipped: 0 },
+};
+
+/** Pattern resolver — multi is encoded as an array correctAnswer everywhere. */
+export function getPatternForQuestion(q) {
+    if (!q) return 'numeric';
+    if (q.type === 'numeric') return 'numeric';
+    if (q.type === 'mcq') return Array.isArray(q.correctAnswer) ? 'multi' : 'single';
+    return 'numeric'; // text/free-response mocks treat like numeric-neutral
+}
+
+/** Scheme id for a question based on its pattern. */
+export function getSchemeIdForQuestion(q) {
+    const p = getPatternForQuestion(q);
+    return p === 'multi' ? 'adv-multi' : p === 'single' ? 'adv-single' : 'adv-numeric';
+}
 
 // ---------------------------------------------------------------------------
 // Chapter weightage - canonical resolver lives in chapter-weights.js (pure).
