@@ -28,6 +28,9 @@ import {
     getSchemeIdForQuestion,
 } from './storage.js';
 
+// Smart Mistake Report engine — post-mock tag × difficulty autopsy (pure).
+import { buildMockAutopsy } from './report.js';
+
 // Browser bridge alias — Node smoke tests have no window; UI handlers attach
 // through this so importing the module for its pure functions never crashes.
 const win = (typeof window !== 'undefined') ? window : {};
@@ -463,11 +466,36 @@ function accumulateMockFocus(m) {
 // ── Results screen ──
 function showResults(m) {
     closeRunnerChrome();
-    const sc = m.scorecard || computeMockScorecard(m, qByIdMap());
+    const qMap = qByIdMap();
+    const sc = m.scorecard || computeMockScorecard(m, qMap);
     const rows = sc.sections.map(r =>
         '<tr><td>' + SUBJECT_GLYPH[r.subject] + '</td><td>' + r.marks + ' / ' + r.max + '</td><td>' + (r.attempted || 0) + '</td><td>' + r.correct + '</td><td>' + r.wrong + '</td><td>' + r.skipped + '</td></tr>').join('');
     const brierLine = sc.brier != null
         ? '<div class=\"mr-res-line\">Calibration Brier: <b>' + sc.brier.toFixed(3) + '</b> over ' + sc.brierN + ' confidence-tagged answers (lower = honest)</div>'
+        : '';
+    // ── Post-mock autopsy: which tags × difficulty bands produced the losses.
+    // Fresh on submit, then cached on the mock so reopening this scorecard
+    // later shows the same breakdown even as the bank evolves underneath.
+    let autopsy = null;
+    if (sc.wrongIds.length) {
+        if (m.autopsy && Array.isArray(m.autopsy.byTag)) {
+            autopsy = m.autopsy;
+            win._lastAutopsyText = m.autopsy.text || '';
+        } else {
+            autopsy = buildMockAutopsy(sc.wrongIds, qMap);
+            if (autopsy) {
+                m.autopsy = { total: autopsy.total, byTag: autopsy.byTag, byBand: autopsy.byBand, text: autopsy.text, generatedAt: Date.now() };
+                win._lastAutopsyText = autopsy.text;
+            }
+        }
+    }
+    const autopsyHtml = autopsy
+        ? '<div class=\"mr-autopsy\"><div class=\"rp-h\">🔍 Mistake autopsy — what actually cost you</div>' +
+          '<table class=\"mr-table\"><tr><th>Topic</th><th>✗</th></tr>' +
+          autopsy.byTag.slice(0, 6).map(t => '<tr><td>' + _esc(t.tag) + '</td><td class=\"rp-bad\">' + t.count + '</td></tr>').join('') +
+          '</table><div style=\"margin-top:8px;\">' +
+          autopsy.byBand.map(b => '<span class=\"rp-chip\" title=\"' + _esc(b.label) + '\">' + _esc(b.label.split('·')[0].trim()) + ' ×' + b.count + '</span>').join(' ') +
+          '</div><button class=\"mr-navbtn\" style=\"margin-top:10px;\" onclick=\"window.mockCopyAutopsy()\" type=\"button\">📋 Copy autopsy</button></div>'
         : '';
     const ov = document.createElement('div');
     ov.className = 'mock-runner';
@@ -476,11 +504,38 @@ function showResults(m) {
         '<div class=\"mr-res-line\">Predicted from your ratings: ~' + sc.predicted + '</div>' + brierLine +
         '<table class=\"mr-table\"><tr><th></th><th>Marks</th><th>Att</th><th>✓</th><th>✗</th><th>Skip</th></tr>' + rows + '</table>' +
         (sc.wrongIds.length ? '<div class=\"mr-res-line\">❌ ' + sc.wrongIds.length + ' to review — they are waiting in <b>The Vault</b> for friction tagging.</div>' : '<div class=\"mr-res-line\">Clean paper. 😤</div>') +
+        autopsyHtml +
         '<div style=\"margin-top:14px; display:flex; gap:8px; justify-content:center;\">' +
         '<button class=\"mr-navbtn\" onclick=\"window.mockCloseResults()\" type=\"button\">Back to Studio</button></div></div>';
     document.body.appendChild(ov);
     persist();
 };
+
+/** Clipboard copy of the last rendered autopsy text (with legacy fallback). */
+win.mockCopyAutopsy = function () {
+    const txt = win._lastAutopsyText || '';
+    if (!txt) return;
+    const done = () => alert('Autopsy copied — paste it anywhere.');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(done).catch(() => _fallbackCopyAutopsy(txt));
+    } else _fallbackCopyAutopsy(txt);
+};
+
+function _fallbackCopyAutopsy(txt) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        alert('Autopsy copied — paste it anywhere.');
+    } catch (_) {
+        alert('Copy failed. Autopsy text:\n\n' + txt);
+    }
+}
 
 win.mockCloseResults = function () {
     document.querySelectorAll('.mock-runner').forEach(o => o.remove());
