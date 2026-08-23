@@ -858,21 +858,27 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
     </div>
 </div>
 
-<!-- AI Dump Modal: export raw matrix data for pasting into Google Gemini -->
+<!-- Smart Mistake Report Modal: live tag×difficulty analysis over the bank -->
 <div id="ai-dump-modal" class="modal-overlay" onclick="closeModal(event, 'ai-dump-modal')">
     <div class="modal-content" style="max-width:520px;max-height:85vh;overflow-y:auto;">
         <button class="close-btn" onclick="closeModalStr('ai-dump-modal')" aria-label="Close">✕</button>
-        <h2>🧠 AI Matrix Dump</h2>
-        <p style="color:var(--text-muted);margin:4px 0 16px;font-size:13px;">Select chapters to export. Paste the downloaded file into Google Gemini or ChatGPT for a full diagnosis.</p>
+        <h2>🧠 Smart Mistake Report</h2>
+        <p style="color:var(--text-muted);margin:4px 0 16px;font-size:13px;">Pick chapters — the analysis below updates live: which tags produced how many mistakes, at what difficulty, and why.</p>
 
         <div id="ai-dump-chapter-list"></div>
+
+        <div id="ai-dump-report-preview" class="rp-preview" aria-live="polite"></div>
 
         <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
             <button class="btn btn-secondary" onclick="window.selectAllDumpChapters(true)" style="flex:1;">✅ Select All</button>
             <button class="btn btn-secondary" onclick="window.selectAllDumpChapters(false)" style="flex:1;">❌ Clear All</button>
         </div>
-        <button class="btn btn-primary" onclick="window.exportMatrixDump()" style="width:100%;margin-top:12px;">📥 Download Raw Dump (.txt)</button>
-        <button class="btn btn-danger" onclick="window.purgeDuplicateQuestions()" style="width:100%;margin-top:8px;">🧹 Purge Duplicate Questions</button>
+        <button class="btn btn-primary" onclick="window.exportSmartReport()" style="width:100%;margin-top:12px;">📥 Download Smart Report (.txt)</button>
+        <details class="rp-advanced">
+            <summary>⬇ Advanced: raw JSON export &amp; maintenance</summary>
+            <button class="btn btn-secondary" onclick="window.exportRawBankJson()" style="width:100%;margin-top:8px;">⬇ Raw Bank JSON (.json)</button>
+            <button class="btn btn-danger" onclick="window.purgeDuplicateQuestions()" style="width:100%;margin-top:8px;">🧹 Purge Duplicate Questions</button>
+        </details>
     </div>
 </div>
 

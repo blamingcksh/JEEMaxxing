@@ -10,6 +10,10 @@
  * ============================================================================ */
 'use strict';
 
+// v42 — Smart Mistake Report: report.js joins the shell precache. AI Dump
+//        modal becomes a live tag×difficulty mistake analysis (inline preview
+//        + bounded .txt download; raw export demoted to .json), and finished
+//        mocks gain a cached mistake autopsy on their scorecard.
 // v41 — Mock Mode hotfix: inline onclick handlers referenced a module-scoped
 //        alias instead of window (ReferenceError on every real button click).
 // v40 — Mock Mode: mock.js exam engine joins the shell precache.
@@ -29,7 +33,7 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v41';
+const VERSION = 'jeemax-v42';
 const SHELL = [
   './',
   './index.html',
@@ -40,6 +44,7 @@ const SHELL = [
   './memory.js',
   './chapter-weights.js',
   './mock.js',
+  './report.js',
   './checkpoint.js',
   './fx.js',
   './matrix.js',

@@ -11689,3 +11689,45 @@ body.mock-running { overflow:hidden; }
     .mr-palette { position:absolute; right:0; top:0; bottom:0; background:#0d0f18; z-index:5; display:none; }
     .mr-palette.open { display:flex; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════ 
+   SMART MISTAKE REPORT — renderers from report.js (AI Dump modal preview,
+   downloaded-report companion styling) + post-mock autopsy block.           
+   ════════════════════════════════════════════════════════════════════════ */
+.rp-preview { margin-top:14px; border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:12px 14px; background:rgba(255,255,255,.02); }
+.rp-banner { font-size:12.5px; padding:8px 10px; border-radius:10px; border:1px solid rgba(120,170,255,.35); background:rgba(120,170,255,.08); margin-bottom:10px; }
+.rp-kpis { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+.rp-kpi { flex:1 1 70px; min-width:70px; text-align:center; border:1px solid rgba(255,255,255,.07); border-radius:10px; padding:8px 4px; }
+.rp-kpi-v { display:block; font-weight:800; font-size:16px; color:var(--accent-primary); font-variant-numeric:tabular-nums; }
+.rp-kpi-l { font-size:9.5px; letter-spacing:.5px; color:var(--text-muted); text-transform:uppercase; }
+.rp-section { margin-top:12px; }
+.rp-h { font-size:12px; font-weight:700; letter-spacing:.3px; margin-bottom:6px; }
+.rp-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+.rp-table th, .rp-table td { padding:6px 8px; border-bottom:1px solid rgba(255,255,255,.06); text-align:left; vertical-align:top; }
+.rp-table th { color:var(--text-muted); font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+.rp-tagcell { font-weight:600; max-width:180px; overflow-wrap:anywhere; }
+.rp-mono { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.rp-bandmix { color:var(--text-muted); font-size:11px; }
+.rp-chip { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.13); font-size:11px; margin:2px 3px 2px 0; white-space:nowrap; }
+.rp-chip-warn { border-color:rgba(255,170,80,.45); color:#ffb46e; }
+.rp-bad { color:#ff7a7a; font-weight:700; }
+.rp-good { color:#69db7c; }
+.rp-trend-bad { color:#ff7a7a; font-weight:800; }
+.rp-trend-good { color:#69db7c; font-weight:800; }
+.rp-dim { color:var(--text-muted); }
+.rp-more, .rp-empty { color:var(--text-muted); font-size:12px; padding:6px 2px; }
+.rp-bars { display:flex; flex-direction:column; gap:5px; }
+.rp-bar-row { display:flex; align-items:center; gap:8px; font-size:12px; }
+.rp-bar-label { width:112px; flex:none; color:var(--text-muted); }
+.rp-bar-track { flex:1; height:9px; border-radius:6px; background:rgba(255,255,255,.05); overflow:hidden; }
+.rp-bar-fill { display:block; height:100%; border-radius:6px; background:linear-gradient(90deg, var(--accent-primary), #ff6b81); min-width:2px; transition:width .35s ease; }
+.rp-bar-val { width:64px; flex:none; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted); }
+.rp-leakline { margin-top:8px; }
+.rp-signal { font-size:12.5px; padding:3px 0; color:var(--text-muted); }
+.rp-action { font-size:13px; margin-top:8px; }
+.rp-action-body { color:var(--text-muted); font-size:12.5px; margin-top:2px; }
+details.rp-advanced { margin-top:10px; }
+details.rp-advanced summary { cursor:pointer; color:var(--text-muted); font-size:12.5px; user-select:none; }
+/* Mock results — mistake autopsy */
+.mr-autopsy { margin-top:14px; text-align:left; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:12px 14px; }
+.mr-autopsy .rp-h { margin-bottom:8px; }

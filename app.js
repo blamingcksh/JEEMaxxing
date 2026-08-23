@@ -57,6 +57,14 @@ import {
     chapterMemoryStats,
 } from './memory.js';
 
+// Smart Mistake Report engine — tag × difficulty aggregation behind the AI Dump
+// modal's live preview + compact download (pure, Node-testable module).
+import {
+    buildMistakeReport,
+    renderReportText,
+    renderReportHtml,
+} from './report.js';
+
 // Mock Mode — staged paper builder + exam runner (self-registers UI bridges).
 import './mock.js';
 
@@ -9094,34 +9102,52 @@ window.populateAiDumpChapters = function () {
     });
 
     const icons = { physics: '🌌', chemistry: '🧪', maths: '📐' };
-    let html = '';
+    // Mock Studio linking context → pre-check only that subject's chapters so the
+    // report (and any dump pasted next) scopes to the panel being filled.
+    const ctxSubj = AppState.mockDraftContext ? String(AppState.mockDraftContext.subject || '').toLowerCase() : null;
+    let html = ctxSubj
+        ? '<div class="rp-banner">🔗 Mock-link active — scoping to <b>' + escapeHtml(ctxSubj.toUpperCase()) + '</b>; other subjects unchecked.</div>'
+        : '';
     for (const [subj, chapters] of Object.entries(bySubject)) {
         html += `<div style="margin-bottom:12px;">`;
         html += `<div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--accent-primary);">${icons[subj]||'📋'} ${escapeHtml(subj.toUpperCase())}</div>`;
         chapters.forEach(c => {
             const id = `dump-${subj}-${String(c.chapter).replace(/[^a-zA-Z0-9]/g,'_')}`;
             html += `<label style="display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:13px;cursor:pointer;border-radius:4px;">
-                <input type="checkbox" checked data-dump-subj="${escapeAttribute(subj)}" data-dump-chapter="${escapeAttribute(c.chapter)}" id="${escapeAttribute(id)}" style="accent-color:var(--accent-primary);">
+                <input type="checkbox" ${(!ctxSubj || subj.toLowerCase() === ctxSubj) ? 'checked' : ''} data-dump-subj="${escapeAttribute(subj)}" data-dump-chapter="${escapeAttribute(c.chapter)}" id="${escapeAttribute(id)}" style="accent-color:var(--accent-primary);">
                 ${escapeHtml(c.chapter)} <span style="color:var(--text-muted);font-size:11px;margin-left:auto;">${c.count} Qs${c.errorCount > 0 ? ' · ' + c.errorCount + ' err' : ''}</span>
             </label>`;
         });
         html += `</div>`;
     }
     listEl.innerHTML = html;
+
+    // Live smart-report preview: recompute whenever the scope checkboxes change.
+    if (!listEl.dataset.rpWired) {
+        listEl.dataset.rpWired = '1';
+        listEl.addEventListener('change', () => window.renderAiDumpPreview());
+    }
+    window.renderAiDumpPreview();
 };
 
 /** Select or deselect all chapter checkboxes. */
 window.selectAllDumpChapters = function (select) {
     const checks = document.querySelectorAll('#ai-dump-chapter-list input[type="checkbox"]');
     checks.forEach(cb => { cb.checked = select; });
+    window.renderAiDumpPreview();
 };
 
-/** Gather raw data for selected chapters and download as a .txt file. */
-window.exportMatrixDump = function () {
+/**
+ * Shared scope gatherer for the AI Dump modal: reads the checked chapter
+ * checkboxes into a flat, enriched question list plus its human label.
+ * Returns null when nothing is selected (alerts unless silent=true — the
+ * live preview passes silent and shows an inline nudge instead).
+ */
+function _gatherDumpScopeQuestions(silent) {
     const checks = document.querySelectorAll('#ai-dump-chapter-list input[type="checkbox"]:checked');
     if (checks.length === 0) {
-        alert('Select at least one chapter to export.');
-        return;
+        if (!silent) alert('Select at least one chapter to export.');
+        return null;
     }
 
     const selected = [];
@@ -9134,12 +9160,14 @@ window.exportMatrixDump = function () {
 
     // Gather ALL questions in selected chapters (with or without errors — full context)
     const results = [];
+    const raw = []; // untouched bank objects — what the report engine consumes
     selected.forEach(({ subject, chapter }) => {
         const qs = AppState.questionBank.filter(q =>
             (q.subject || '').toLowerCase() === subject.toLowerCase() &&
             (q.chapter || '').toLowerCase() === chapter.toLowerCase()
         );
         qs.forEach((q, idx) => {
+            raw.push(q);
             const historySummary = (q.historyLogs || []).map(log => {
                 let ft = log.frictionTypes || [];
                 if (typeof ft === 'string') {
@@ -9178,56 +9206,77 @@ window.exportMatrixDump = function () {
         });
     });
 
-    if (results.length === 0) {
+    if (!results.length) {
         alert('No questions found in selected chapters.');
+        return null;
+    }
+    return { selected, results, raw };
+}
+
+// ═══ Smart Mistake Report — live inline preview + compact download (primary) ═══
+
+/**
+ * Render the aggregated tag × difficulty analysis directly under the chapter
+ * list. Silent nudge when nothing is checked; recomputed by the change
+ * listener wired in populateAiDumpChapters().
+ */
+window.renderAiDumpPreview = function () {
+    const box = document.getElementById('ai-dump-report-preview');
+    if (!box) return;
+    const scope = _gatherDumpScopeQuestions(true);
+    if (!scope) {
+        box.innerHTML = '<div class="rp-empty">Tick some chapters above — the analysis builds itself here.</div>';
         return;
     }
-
-    // Build a rich human-readable + JSON dump (both formats in one file)
-    const dateStr = new Date().toISOString().slice(0, 10);
-    const header = [
-        '════════════════════════════════════════════════',
-        '  JEEMaxxing Raw Matrix Dump',
-        '  Date: ' + new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }),
-        '  Chapters: ' + selected.map(s => s.subject + ' › ' + s.chapter).join(', '),
-        '  Total Questions: ' + results.length,
-        '════════════════════════════════════════════════',
-        '',
-        '─── HUMAN-READABLE SUMMARY (paste into Google Gemini) ───',
-        '',
-    ].join('\n');
-
-    let summary = header;
-    const subjIcons = { physics: '⚛️', chemistry: '🧪', maths: '📐' };
-    let currentSubject = '';
-    results.forEach(r => {
-        if (r.subject !== currentSubject) {
-            currentSubject = r.subject;
-            summary += `\n━━━ ${(subjIcons[currentSubject] || '📋')} ${currentSubject.toUpperCase()} ━━━\n\n`;
-        }
-        summary += `#${r.index} · ${r.chapter} · qElo:${r.qElo} · ${r.errorReason !== 'none' ? '❌ ' + r.errorReason : '✅ clean'}\n`;
-        if (r.questionText !== '(no text)') summary += `   Q: ${r.questionText.slice(0, 500)}${r.questionText.length > 500 ? '…' : ''}\n`;
-        if (r.options.length > 0) summary += `   Options: ${r.options.join(' | ')}\n`;
-        if (r.correctAnswer) summary += `   Answer: ${Array.isArray(r.correctAnswer) ? r.correctAnswer.join(', ') : r.correctAnswer} (${r.type})\n`;
-        if (r.solution !== '(no solution)') summary += `   Solution: ${r.solution.slice(0, 500)}${r.solution.length > 500 ? '…' : ''}\n`;
-        if (r.hint !== '(no hint)') summary += `   Hint: ${r.hint.slice(0, 300)}${r.hint.length > 300 ? '…' : ''}\n`;
-        if (r.tags.length > 0) summary += `   Tags: ${r.tags.join(', ')}\n`;
-        summary += `   Attempts: ${r.totalAttempts} | Interval: ${r.currentInterval}d | EF: ${r.easeFactor} | Mastered: ${r.isMastered}\n`;
-        r.attemptTimeline.forEach(a => {
-            summary += `     ${a.result === 'correct' ? '✅' : '❌'} ${a.date} ${a.timeMins}m ${a.autonomy}(${a.friction})\n`;
-        });
-        summary += `\n`;
+    const scopeLabel = scope.selected.map(s => s.subject + ' › ' + s.chapter).join(', ');
+    const report = buildMistakeReport(scope.raw, {
+        scopeText: scopeLabel,
+        elo: AppState.elo || {},
     });
+    box.innerHTML = renderReportHtml(report, { maxTags: 12 });
+};
 
-    summary += '\n─── RAW JSON (machine-readable) ───\n\n';
-    summary += JSON.stringify(results, null, 2);
-
-    // Trigger download
-    const blob = new Blob([summary], { type: 'text/plain;charset=utf-8' });
+/** Download the compact aggregated mistake report (.txt) — bounded size. */
+window.exportSmartReport = function () {
+    const scope = _gatherDumpScopeQuestions(false);
+    if (!scope) return;
+    const scopeLabel = scope.selected.map(s => s.subject + ' › ' + s.chapter).join(', ');
+    const report = buildMistakeReport(scope.raw, {
+        scopeText: scopeLabel,
+        elo: AppState.elo || {},
+    });
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([renderReportText(report)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `jeemaxxing-matrix-dump-${dateStr}.txt`;
+    a.download = `jeemaxxing-smart-report-${dateStr}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    closeModalStr('ai-dump-modal');
+};
+
+// ═══ Raw bank JSON — demoted to secondary; feeds Gem/LLM paste workflows ═══
+
+/** Download the full per-question raw data as .json (legacy export, JSON-only). */
+window.exportRawBankJson = function () {
+    const scope = _gatherDumpScopeQuestions(false);
+    if (!scope) return;
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const payload = {
+        generatedAt: new Date().toISOString(),
+        scope: scope.selected.map(s => s.subject + ' › ' + s.chapter),
+        totalQuestions: scope.results.length,
+        questions: scope.results,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `jeemaxxing-raw-bank-${dateStr}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
