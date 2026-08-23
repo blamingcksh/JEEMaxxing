@@ -10,6 +10,8 @@
  * ============================================================================ */
 'use strict';
 
+// v41 — Mock Mode hotfix: inline onclick handlers referenced a module-scoped
+//        alias instead of window (ReferenceError on every real button click).
 // v40 — Mock Mode: mock.js exam engine joins the shell precache.
 // v39 — Chapter-Weights tiered resolver (chapter-weights.js precache):
 //        alias/fuzzy/typo/unit tiers + AI-stamped + user-override weights.
@@ -27,7 +29,7 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v40';
+const VERSION = 'jeemax-v41';
 const SHELL = [
   './',
   './index.html',
