@@ -320,12 +320,22 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                         <h2 class="box-title">Retention Health</h2>
                         <p class="box-desc">Retention by chapter, so you can prioritise at-risk topics.</p>
                         <div class="decay-legend">
-                            <span class="legend-chip legend-green">Based &gt;75%</span>
-                            <span class="legend-chip legend-yellow">Mid 45–75%</span>
-                            <span class="legend-chip legend-red">Cooked &lt;45%</span>
+                            <span class="legend-chip legend-green">Exam-ready ≥90%</span>
+                            <span class="legend-chip legend-yellow">Fading 80–90%</span>
+                            <span class="legend-chip legend-red">Critical &lt;80%</span>
                         </div>
                     </div>
                     <div id="chapter-decay-grid"></div>
+                </div>
+
+                <!-- Calibration Report (metacognitive honesty) -->
+                <div class="dash-card dash-card-calibration">
+                    <div class="dash-card-head">
+                        <span class="kicker">// METACOGNITION</span>
+                        <h2 class="box-title">Calibration Report</h2>
+                        <p class="box-desc">Does your confidence match your accuracy? Top-100 rankers are calibrated.</p>
+                    </div>
+                    <div id="calibration-report"></div>
                 </div>
 
             </div>

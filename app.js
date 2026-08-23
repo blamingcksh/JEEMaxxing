@@ -40,7 +40,22 @@ import {
     // ── Practice modes (Flow State / Hardcore) — picker windows + reward tuning ──
     PRACTICE_MODES,
     MODE_TUNING,
+    // ── Rating-uncertainty + calibration tuning (Elo v2) ──
+    RD_TUNING,
+    CONFIDENCE_ANCHORS,
+    CALIBRATION_LOG_CAP,
+    // ── Chapter weightage dynamic tiers ──
+    setAiChapterWeight,
 } from './storage.js';
+
+// Memory Kernel v2 — canonical pure implementation (zero-dep module).
+import {
+    hydrateMemory,
+    currentRetrievability,
+    retrievabilityFrom,
+    updateMemoryOnReview,
+    chapterMemoryStats,
+} from './memory.js';
 
 import {
     resetPomoUI, startTimer, pauseTimer, resumeTimer, quitTimer,
@@ -909,6 +924,7 @@ export async function switchTab(viewId, element) {
         try { void renderDailyVarianceHeatmap(); } catch (_) {}
         try { renderChapterDecayGrid(); } catch (_) {}
         try { renderChapterProgressList(); } catch (_) {}
+        try { _renderCalibrationReport(); } catch (_) {}
     }
 }
 
@@ -1077,6 +1093,7 @@ export async function updateUI() {
             renderEloMatrix();
             renderChapterDecayGrid();
             renderChapterProgressList();
+            try { _renderCalibrationReport(); } catch (_) {}
         }
     } catch (_) { /* never block updateUI */ }
 
@@ -3460,6 +3477,7 @@ export async function processGemTextDump() {
                 tags:           _extractStringArrayField(metadata, 'tags'),
                 model:          _extractStringField(metadata, 'model'),
                 hint:           _extractStringField(metadata, 'hint'),
+                chapterWeight:  _extractNumberField(metadata, 'chapterWeight'),
             };
 
             // Auto-fallback type classification logic if not explicitly returned by the Gem
@@ -3494,6 +3512,12 @@ export async function processGemTextDump() {
             const gemTags = Array.isArray(rawQ.tags)
                 ? rawQ.tags.filter(t => typeof t === 'string').map(t => t.trim()).filter(Boolean).slice(0, 5)
                 : [];
+            // Optional AI weightage stamp (gemini gem prompt.txt): teaches the
+            // resolver how important THIS user-named chapter is, even when the
+            // saved name is a niche/short form no table could know.
+            const gemChapterWeight = (typeof rawQ.chapterWeight === 'number' && isFinite(rawQ.chapterWeight))
+                ? Math.max(0.05, Math.min(1.5, rawQ.chapterWeight))
+                : null;
 
             // ── Gem diagram auto-crop mapping (legacy path): same imageRef +
             // cropBox extraction, done with regexes over the raw metadata. ──
@@ -3524,6 +3548,7 @@ export async function processGemTextDump() {
                 qEloStampedBy: gemStampedBy,
                 qEloStampedAt: gemStampedAt,
                 tags: gemTags,
+                _aiChapterWeight: gemChapterWeight,
                 difficulty: typeof rawQ.difficulty === 'string' ? rawQ.difficulty : null,                // ── Placement fix: the question lives where the user pasted it ──
                 // subject/chapter are locked to the active session context. The
                 // Gem's own stamps are preserved ONLY as backend provenance
@@ -3547,6 +3572,12 @@ export async function processGemTextDump() {
         // automation (stdDev < 15 over >20 questions = same-script timing).
         const chapterStats = _auditGemBatchByChapter(parsedItems);
         for (const it of parsedItems) {
+            // Chapter-weightage learning: one AI opinion per pasted batch is
+            // enough — keyed to the USER's chapter name (the placement name),
+            // because that's the exact string the decay grid will resolve.
+            if (it._aiChapterWeight != null && it.chapter) {
+                try { setAiChapterWeight(it.chapter, it._aiChapterWeight); } catch (_) {}
+            }
             // Keyed on the GEM's provenance stamps so a mixed-chapter paste is
             // audited exactly as the Gem structured it. Key order MUST match
             // _auditGemBatchByChapter's bucket generator, including its trim +
@@ -4749,6 +4780,38 @@ export function answerMathHTML(raw) {
     return esc;                                                   // plain text
 }
 
+/**
+ * Pre-reveal confidence capture for the standard practice modal (Calibration
+ * layer). Selection is stored on window._pendingSolveConfidence and consumed
+ * synchronously by calculateEloMigration at submit; cleared on close/advance
+ * so it can never leak into an unrelated solve. Pre-reveal timing measures
+ * FORESIGHT — the metacognitive signal that actually predicts top-100 ranks.
+ */
+function _renderPracticeConfidenceSeg() {
+    const levels = [
+        { key: 'sure', label: '😎 Sure' },
+        { key: 'likely', label: '🤔 Likely' },
+        { key: 'guess', label: '🎲 Guess' },
+    ];
+    const cur = window._pendingSolveConfidence || null;
+    const btns = levels.map(l =>
+        '<button type="button" class="pconf-btn' + (cur === l.key ? ' selected' : '') + '" data-conf="' + l.key + '"' +
+        " onclick=\"window.setSolveConfidence('" + l.key + "')\">" + l.label + '</button>'
+    ).join('');
+    return '<div class="pconf-seg" id="practice-conf-seg">' +
+        '<span class="pconf-label">Confidence?</span>' + btns + '</div>';
+}
+
+window.setSolveConfidence = function (level) {
+    window._pendingSolveConfidence = level;
+    const seg = document.getElementById('practice-conf-seg');
+    if (seg) {
+        seg.querySelectorAll('.pconf-btn').forEach(b => {
+            b.classList.toggle('selected', b.getAttribute('data-conf') === level);
+        });
+    }
+};
+
 export function renderPracticeQuestionModal() {
     AppState.currentQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
     // ── Empty-queue guard ──
@@ -4848,6 +4911,7 @@ export function renderPracticeQuestionModal() {
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
         document.getElementById('practice-submit-btn').innerText = 'Reveal Answer';
     }
+    html += _renderPracticeConfidenceSeg();
     html += `</div>`;
     container.innerHTML = html;
     container.removeAttribute('data-math-rendered');
@@ -5092,46 +5156,16 @@ function _getChapterHealth(subject, chapter) {
     );
     if (qs.length === 0) return 50; // neutral default for UI consistency
 
-    const nowMs = Date.now();
-    const MS_PER_DAY = 86400000;
-    const LN2 = Math.LN2; // natural log of 2
-
-    let weightedSum = 0;   // Σ ( Q_Elo,i · RS_i(t) )
-    let weightTotal = 0;   // Σ  Q_Elo,i
-
-    for (const q of qs) {
-        // ── JIT (Just-In-Time) legacy hydration: resolve the biological-memory
-        //    fields on the fly WITHOUT mutating the source object, so cloud-sync
-        //    shape is never disturbed by a read path. ──
-        const mem = _hydrateMemoryFields(q);
-
-        // Δt — continuous time variance in days (floating point).
-        const lastMs = new Date(mem.lastReviewedAt).getTime();
-        const deltaMs = nowMs - (isNaN(lastMs) ? nowMs : lastMs);
-        const deltaDays = deltaMs / MS_PER_DAY;
-
-        // S_i — structural memory stability tracking coefficient (days).
-        const S_i = Math.max(0.5, mem.easeFactor);
-
-        // RS_i(t) — exponential retrievability. e^(−ln2 · Δt/S_i) ∈ (0, 1].
-        // A freshly logged fumble (Δt = 0) yields RS = 1, so it degrades the
-        // chapter baseline smoothly proportional to its difficulty weight
-        // rather than triggering an architectural crash.
-        const RS = Math.exp(-LN2 * (deltaDays / S_i));
-
-        // Difficulty weight: Q_Elo,i (Implied Difficulty Rating).
-        weightedSum += mem.qElo * RS;
-        weightTotal += mem.qElo;
-    }
-
-    if (weightTotal === 0) return 50; // guard against an all-zero-weight chapter
-
-    // A_ch(t) — difficulty-weighted harmonic accessibility mean, scaled to 0–100.
-    let health = (weightedSum / weightTotal) * 100;
-
-    // Clamp tightly between 10 and 100 to prevent chart layout breakage.
-    health = Math.max(10, Math.min(100, health));
-    return health;
+    // DELEGATED to the Memory Kernel v2 — power-law retrievability with real
+    // per-item stability (unbounded growth), replacing the legacy model that
+    // treated easeFactor (clamped ≤3.0) as a half-life in days. matrix.js's
+    // grid mirror delegates to the SAME kernel, so the visual, monitoring and
+    // scoring layers can no longer drift apart.
+    try {
+        const stats = chapterMemoryStats(qs, { nowMs: Date.now() });
+        if (!stats) return 50;
+        return Math.max(10, Math.min(100, stats.health));
+    } catch (_) { return 50; }
 }
 
 /**
@@ -5227,6 +5261,195 @@ function _computeGlobalMetaMMR(eP, eC, eM) {
     const mean = (P + C + M) / 3;
     const penalty = 0.15 * (Math.max(0, mean - P) + Math.max(0, mean - C) + Math.max(0, mean - M));
     return Math.max(0, Math.round(harm - penalty));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  ELO v2 — rating uncertainty (Glicko-lite), calibration capture,
+//  guess correction, retrievability gating, chapter-level ability (θ_c)
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Lazily hydrate the additive Elo-v2 state on AppState (merge-safe: additive). */
+function _ensureEloV2State() {
+    if (!AppState.elo.rd || typeof AppState.elo.rd !== 'object') AppState.elo.rd = {};
+    if (!AppState.chapterTheta || typeof AppState.chapterTheta !== 'object') AppState.chapterTheta = {};
+    if (!Array.isArray(AppState.calibrationLog)) AppState.calibrationLog = [];
+}
+
+/**
+ * Current rating deviation for a subject — WIDE means the estimate is young
+ * or stale and should move fast; NARROW means well-calibrated and stable.
+ * Widens with idle days since the last Elo write (staleness).
+ */
+function _rdForSubject(subject) {
+    _ensureEloV2State();
+    const rd = Number(AppState.elo.rd[subject]);
+    let cur = (isFinite(rd) && rd > 0) ? rd : RD_TUNING.START;
+    if (AppState.eloUpdatedAt > 0) {
+        const idleDays = Math.max(0, (Date.now() - AppState.eloUpdatedAt) / 86400000);
+        if (idleDays > 0) {
+            const widen = idleDays * RD_TUNING.DRIFT_PER_DAY;
+            cur = Math.min(RD_TUNING.CAP, Math.sqrt(cur * cur + widen * widen));
+        }
+    }
+    return cur;
+}
+
+/**
+ * Effective K-factor — replaces the fixed K=32. A fresh profile swings ~64
+ * points per solve; a calibrated one settles to ~10. This is the Glicko
+ * insight (uncertainty-weighted updates) without the full Glicko-2 math.
+ */
+function _kEff(subject, baseK) {
+    const rd = _rdForSubject(subject);
+    const scale = Math.max(0.25, Math.min(2, rd / RD_TUNING.K_REF_RD));
+    return Math.max(8, Math.min(RD_TUNING.K_MAX, (baseK || 32) * scale));
+}
+
+/** Remove one solve's worth of rating variance (√(rd²−C²) model). */
+function _shrinkRdAfterSolve(subject) {
+    _ensureEloV2State();
+    const cur = _rdForSubject(subject);
+    const c = RD_TUNING.SHRINK_PER_SOLVE;
+    const next = Math.sqrt(Math.max(RD_TUNING.FLOOR * RD_TUNING.FLOOR, cur * cur - c * c));
+    AppState.elo.rd[subject] = Math.max(RD_TUNING.FLOOR, next);
+}
+
+/**
+ * Continuous retrievability gate — replaces the flat 0.25× re-solve discount
+ * with the psychology it was approximating: correctly solving an item you were
+ * ABOUT to forget (low R) proves real strength and earns ~full credit;
+ * re-solving one you saw yesterday (high R) proves almost nothing (~0.15×).
+ * Never-seen items always earn 1.0×.
+ */
+function _retrievabilityGate(questionObj) {
+    if (!questionObj) return { scale: 1, r: null };
+    const hasHistory = !!questionObj.firstAttemptResult ||
+        (Number(questionObj.solveCount) || 0) > 0 ||
+        (Array.isArray(questionObj.historyLogs) && questionObj.historyLogs.length > 0);
+    if (!hasHistory) return { scale: 1, r: null };
+    let r = 1;
+    try { r = currentRetrievability(questionObj); } catch (_) { r = 1; }
+    const clamped = Math.max(0, Math.min(1, r));
+    return { scale: 0.15 + 0.85 * (1 - clamped), r: clamped };
+}
+
+/**
+ * Guess correction for single-answer 4-option MCQs (3PL-flavored floor):
+ * blind luck succeeds 25% of the time, so observed score S is rescaled to
+ * S_eff = (S − g)/(1 − g) before the rating update. A lucky coin-flip now
+ * moves the needle ~0 instead of +K; a genuine wrong answer still stings.
+ */
+function _guessAdjustedScore(questionObj, S) {
+    try {
+        if (!questionObj || questionObj.type !== 'mcq') return { sEff: S, adjusted: false };
+        if (Array.isArray(questionObj.correctAnswer)) return { sEff: S, adjusted: false }; // multi → partial-credit path
+        if (!Array.isArray(questionObj.options) || questionObj.options.length !== 4) return { sEff: S, adjusted: false };
+        const g = 0.25;
+        return { sEff: Math.max(-1, Math.min(1, (S - g) / (1 - g))), adjusted: true };
+    } catch (_) { return { sEff: S, adjusted: false }; }
+}
+
+/**
+ * Consume the pending pre-reveal confidence (set by the practice modal / SR
+ * drawer just before this solve resolved). Logs a Brier entry for the weekly
+ * Calibration Report and returns the anchor probability (or null).
+ */
+function _consumeConfidence(S) {
+    _ensureEloV2State();
+    const lvl = window._pendingSolveConfidence || null;
+    window._pendingSolveConfidence = null;
+    if (!lvl || !Object.prototype.hasOwnProperty.call(CONFIDENCE_ANCHORS, lvl)) return null;
+    const p = CONFIDENCE_ANCHORS[lvl];
+    try {
+        AppState.calibrationLog.push({ t: Date.now(), p, s: Math.max(0, Math.min(1, Number(S) || 0)) });
+        if (AppState.calibrationLog.length > CALIBRATION_LOG_CAP) {
+            AppState.calibrationLog = AppState.calibrationLog.slice(-CALIBRATION_LOG_CAP);
+        }
+    } catch (_) { /* telemetry never blocks scoring */ }
+    return p;
+}
+
+/**
+ * Chapter-level ability vector (θ_c) — a small-K companion rating per
+ * (subject, chapter). Subject Elo answers "how good are you overall"; θ_c
+ * answers "how good are you HERE", which is what mode windows, the Daily Fix
+ * Queue and the sub-100 gap panel actually need. Never feeds the AIR model
+ * (no double counting — subject Elo remains the sole rank input).
+ */
+function _updateChapterTheta(subject, chapter, sEff) {
+    try {
+        if (!chapter) return null;
+        _ensureEloV2State();
+        const key = subject + '::' + String(chapter).trim().toLowerCase();
+        const avgQ = _getChapterAvgElo(subject, chapter);
+        let node = AppState.chapterTheta[key];
+        if (!node || !isFinite(node.e)) node = { e: 1200, n: 0 };
+        const pWin = 1 / (1 + Math.pow(10, (avgQ - node.e) / 400));
+        node.e = Math.max(0, Math.min(2999, node.e + Math.round(24 * (sEff - pWin))));
+        node.n += 1;
+        AppState.chapterTheta[key] = node;
+        return node.e;
+    } catch (_) { return null; }
+}
+
+/** Read accessor for pickers/UI: current chapter ability + sample size. */
+window.getChapterTheta = function (subject, chapter) {
+    try {
+        const key = _normalizeSubjectKey(subject) + '::' + String(chapter).trim().toLowerCase();
+        const node = AppState.chapterTheta && AppState.chapterTheta[key];
+        return node ? { theta: Math.round(node.e), solves: node.n } : { theta: 1200, solves: 0 };
+    } catch (_) { return { theta: 1200, solves: 0 }; }
+};
+
+/**
+ * Autonomy honesty clawback (SR-drawer flow). The Elo delta fires at the
+ * moment of truth — BEFORE the user tags their autonomy level. Reading the
+ * full solution is not retrieval practice and a hint is not independence, so
+ * once the honest tag lands we reclaim the credit gap. Only ever shrinks
+ * POSITIVE deltas; losses stand (you still failed, whatever you read).
+ */
+window._applyAutonomyClawback = function (q, eloResult, autonomy) {
+    try {
+        if (!q || !eloResult || !autonomy || autonomy === 'independent') return false;
+        if (!(eloResult.deltaSubject > 0)) return false;
+        const cap = (autonomy === 'solution_read') ? 0.4 : (autonomy === 'hint_used') ? 0.75 : 1.0;
+        if (cap >= 1) return false;
+        const allowed = Math.round(eloResult.deltaSubject * cap);
+        const clawback = eloResult.deltaSubject - allowed;
+        if (clawback <= 0) return false;
+        const subj = _normalizeSubjectKey(q.subject);
+        const cur = AppState.elo[subj] || 1200;
+        AppState.elo[subj] = Math.max(0, Math.round(cur - clawback));
+        eloResult.deltaSubject = allowed;
+        eloResult.newSubjectElo = AppState.elo[subj];
+        eloResult.adjustedForAutonomy = autonomy;
+        return true;
+    } catch (_) { return false; }
+};
+
+/** performanceQ proxy when only outcome + timing exist (SR tag comes later). */
+function _proxyPerformanceQ(sCorrect, tauRaw) {
+    if (sCorrect >= 0.999) return (isFinite(tauRaw) && tauRaw > 0 && tauRaw <= 0.6) ? 4.5 : 3.4;
+    if (sCorrect > 0) return 2.5;
+    return 1.3;
+}
+
+/**
+ * Suspect-fast guard: a correct answer at <35% of target time on a 4-option
+ * MCQ smells like a lucky guess. First occurrence damps the yield ×0.5 and
+ * stamps the question; a CONFIRMING second solve clears the flag at full
+ * credit. Knowledge repeats; luck does not.
+ */
+function _applySuspectFastDamp(questionObj, sPositive, tauRatio) {
+    if (!questionObj || !(sPositive > 0.001)) return 1.0;
+    if (!(Number(tauRatio) > 0) || tauRatio >= 0.35) return 1.0;
+    if (questionObj.type !== 'mcq' || !Array.isArray(questionObj.options) || Array.isArray(questionObj.correctAnswer) || (questionObj.options.length !== 4)) return 1.0;
+    if (questionObj._fastSuspectAt) {
+        delete questionObj._fastSuspectAt;   // confirmed — knowledge, not luck
+        return 1.0;
+    }
+    questionObj._fastSuspectAt = Date.now();
+    return 0.5;
 }
 
 /**
@@ -5373,7 +5596,7 @@ function _eloTargetSeconds(q) {
  * preserves the chemistry slow-penalty and the physics calculation
  * buffer from the legacy code.
  */
-function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, actualSecs, targetSecs, mode) {
+function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, actualSecs, targetSecs, mode, kUserOverride) {
     const S = typeof isCorrect === 'number' ? isCorrect : (isCorrect ? 1 : 0);
     const T = ELO_GEM_STAMP_TUNING;
     // Standard ELO win probability for the user
@@ -5387,11 +5610,13 @@ function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, act
     // The mode arrives pre-gated from the caller (matrix/SR-drawer solves
     // pass 'standard' even while a mode is armed in the practice modal).
     const timeMult = _modeTimeMultiplier(S >= 0.5 ? 1 : 0, tau, mode || 'standard');
-    // User ELO delta — full rating swing
-    let rawSubjectDelta = T.K_user * (S - P_win) * timeMult;
+    // User ELO delta — full rating swing. K may be overridden per-subject by
+    // the Glicko-lite effective K (uncertainty-weighted learning rate).
+    const _kUser = (typeof kUserOverride === 'number' && kUserOverride > 0) ? kUserOverride : T.K_user;
+    let rawSubjectDelta = _kUser * (S - P_win) * timeMult;
     // Stinginess: missing an easier-than-me question should hurt more
     // (high P_win × wrong outcome = worse than missing a hard one)
-    if (S === 0) rawSubjectDelta *= (P_win >= 0.7 ? T.misfireExtraMult : 1.0);
+    if (S <= 0.001) rawSubjectDelta *= (P_win >= 0.7 ? T.misfireExtraMult : 1.0);
     rawSubjectDelta = Math.round(rawSubjectDelta);
     // Question qElo drift — tiny K_q. Question "wins" when user loses (1-S),
     // and matches ~the magnitude the system expects for the user's win probability.
@@ -5604,7 +5829,9 @@ let _modeSeenIds = new Set();
 
 // Session-scoped adaptive difficulty throttle: the live target win-probability
 // the picker aims at. Reset on mode entry; drifts with performance + skips.
-const _modeAdaptive = { targetPwin: null };
+// `hist` feeds the 85%-rule drift (Wilson et al. 2019, Nature Communications:
+// gradient-based learners peak near 85% training accuracy).
+const _modeAdaptive = { targetPwin: null, hist: [] };
 
 function _clearModeHistory() {
     _modeSeenIds = new Set();
@@ -5642,6 +5869,21 @@ function _modeNextTargetPwin(mode, outcome) {
         const d = _clamp01(((Number(outcome && outcome.qElo) || 1200) - (Number(outcome && outcome.userElo) || 1200) + 400) / 800);
         delta = -0.10 * (1.5 - d);                 // miss an easy q → ease up a lot
     }
+
+    // ── 85%-rule session drift ──
+    // Track rolling accuracy (last 12 outcomes); if the session is cruising
+    // above ~85% success, lean harder; struggling below it, ease off. The
+    // bias is gentle and clamped so single swings never whipsaw the picker.
+    try {
+        _modeAdaptive.hist.push(outcome && outcome.correct ? 1 : 0);
+        if (_modeAdaptive.hist.length > 24) _modeAdaptive.hist = _modeAdaptive.hist.slice(-24);
+        if (_modeAdaptive.hist.length >= 4) {
+            const h = _modeAdaptive.hist.slice(-12);
+            const acc = h.reduce((a, c) => a + c, 0) / h.length;
+            delta += Math.max(-0.06, Math.min(0.10, (0.85 - acc) * 0.30));
+        }
+    } catch (_) { /* telemetry never steers blind */ }
+
     const target = Math.max(lo, Math.min(hi, center + delta));
     _modeAdaptive.targetPwin = cur * 0.5 + target * 0.5;
     return _modeAdaptive.targetPwin;
@@ -5871,6 +6113,7 @@ function _hideModeContinueButton() {
 /** Present a mode question (history entry or fresh pick) as the current one. */
 function _serveModeEntry(entry) {
     if (!entry || !entry.q) return;
+    window._pendingSolveConfidence = null;   // fresh item → stale tap discarded
     AppState.practiceQuestions = [entry.q];
     AppState.practiceSubmittedFlags = [!!entry.submitted];
     AppState.currentPracticeIndex = 0;
@@ -6210,6 +6453,9 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         isAnomaly: false,
     };
     if (!base) return result;
+    // Elo v2 uncertainty telemetry — captured BEFORE any mutation this solve.
+    result.rdBefore = _rdForSubject(safeSubject);
+    result.kEffUsed = _kEff(safeSubject, base ? base.K : undefined);
 
     // ── Step A: Temporal Divergence (τ) + Subject Behavioral Adjustments ──
     const T_act = Math.max(0, Number(actualTime) || 0);
@@ -6217,8 +6463,13 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     const tauRaw = T_act / Math.max(1, T_avg);
 
     let tau = tauRaw;
-    const S = (Number(scoreOutcome) === 1) ? 1 : 0;
-    let S_forPerf = S;
+    // ── Elo v2: graded score support. scoreOutcome may now arrive fractional
+    // [0,1] (partial marking). Binary semantics are preserved for branch
+    // selection; the continuous vector drives R_perf and the delta blend.
+    const S_in = Math.max(0, Math.min(1, Number(scoreOutcome) || 0));
+    const S = (S_in >= 0.999) ? 1 : 0;
+    result.partialCredit = (S_in > 0 && S_in < 1) ? S_in : null;
+    let S_forPerf = S_in;
 
     if (safeSubject === 'physics') {
         tau = tauRaw * 0.85; // Calculation buffer window
@@ -6249,19 +6500,59 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         const mode = _activeModeForQuestion(questionObj);
         const modeCfg = MODE_TUNING[mode] || MODE_TUNING.standard;
 
+        // ── Elo v2 pre-modifiers ──────────────────────────────────────────
+        // Graded score: partial credit (multi-select marking) flows straight
+        // into the canonical delta — no more all-or-nothing rating signal.
+        let sScore = Math.max(0, Math.min(1, Number(scoreOutcome) || 0));
+        result.partialCredit = (sScore > 0 && sScore < 1) ? sScore : null;
+        // Guess correction for single-answer 4-option MCQs.
+        const guessF = _guessAdjustedScore(questionObj, sScore);
+        if (guessF.adjusted) {
+            sScore = Math.max(0, Math.min(1, guessF.sEff));   // clamp ≥0; wrong stays wrong
+            result.guessAdjusted = true;
+        }
+        // Suspect-fast damping (knowledge repeats; luck does not).
+        const targetSecsF = _eloTargetSeconds(questionObj || { qElo: Q_Elo });
+        const tauRatioF = ((Number(actualTime) || 0) > 0) ? (Number(actualTime) / Math.max(1, targetSecsF)) : 1;
+        const fastDampF = _applySuspectFastDamp(questionObj, sScore, tauRatioF);
+        if (fastDampF < 1) result.suspectFastDamped = true;
+
         const dr = _deltaBasedUserAndQuestionReward(
-            E_s, Q_Elo, Sefc, safeSubject,
+            E_s, Q_Elo, sScore, safeSubject,
             Number(actualTime) || 0,
-            _eloTargetSeconds(questionObj || { qElo: Q_Elo }),
-            mode
+            targetSecsF,
+            mode,
+            _kEff(safeSubject, ELO_GEM_STAMP_TUNING.K_user)   // uncertainty-weighted K
         );
+        if (fastDampF < 1) dr.rawSubjectDelta = Math.round(dr.rawSubjectDelta * fastDampF);
+
+        // Calibration capture — Brier-logged; overconfident-wrong stings extra,
+        // underconfident-right yields slightly damped (metacognitive shaping).
+        const confPF = _consumeConfidence(Sefc);
+        if (confPF != null) {
+            result.confidenceUsed = confPF;
+            if (dr.rawSubjectDelta < 0 && confPF >= CONFIDENCE_ANCHORS.sure) {
+                dr.rawSubjectDelta = Math.round(dr.rawSubjectDelta * 1.18);
+            } else if (dr.rawSubjectDelta > 0 && confPF <= CONFIDENCE_ANCHORS.guess) {
+                dr.rawSubjectDelta = Math.round(dr.rawSubjectDelta * 0.95);
+            }
+        }
+
+        // Continuous retrievability gate — the fast path previously had NO
+        // re-solve discount at all; it now shares the exact psychology the
+        // legacy path approximated with a flat 0.25× step.
+        const gateF = _retrievabilityGate(questionObj);
+        if (gateF.scale < 1 && dr.rawSubjectDelta > 0) {
+            dr.rawSubjectDelta = Math.round(dr.rawSubjectDelta * gateF.scale);
+        }
+        result.rAtSolve = gateF.r;
 
         // Applied BEFORE the AppState.elo mutation — previously the rating was
         // written with the UN-multiplied delta and the multiplier only mutated
         // the local dr object afterwards, so Hardcore 1.8× never landed.
         dr.rawSubjectDelta = Math.round(
             dr.rawSubjectDelta *
-            (Sefc === 1 ? (modeCfg.winsMultiplier || 1) : (modeCfg.lossMultiplier || 1))
+            (sScore >= 0.999 ? (modeCfg.winsMultiplier || 1) : (modeCfg.lossMultiplier || 1))
         );
 
         const oldE_s = E_s;
@@ -6331,6 +6622,21 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
             }
         }
 
+        // ── Elo v2 post-commit ──
+        _shrinkRdAfterSolve(safeSubject);
+        // Memory Kernel v2 write: stability/difficulty/reps/lapses move HERE
+        // (single authoritative commit per solve). Also stamps lastReviewedAt,
+        // which this path never set — a long-standing grid-staleness bug that
+        // left gem-stamped items decaying from their FIRST review forever.
+        try {
+            updateMemoryOnReview(questionObj, {
+                correct: sScore >= 0.999,
+                performanceQ: _proxyPerformanceQ(sScore, tauRatioF),
+            });
+            questionObj.lastReviewedAt = new Date().toISOString();
+        } catch (_) { /* memory telemetry never blocks scoring */ }
+        result.thetaC = _updateChapterTheta(safeSubject, questionObj ? questionObj.chapter : null, sScore);
+
         const oldQ = Q_Elo;
         let newQ = Math.max(0, Q_Elo + dr.qEloDrift);
 
@@ -6384,6 +6690,8 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
                 ? 'SLOW ×' + _tm.toFixed(2)
                 : 'BALANCED';
         result.modeActive = (mode !== 'standard') ? mode : null;
+        result.rdAfter = _rdForSubject(safeSubject);
+        result.kEffUsed = _kEff(safeSubject, ELO_GEM_STAMP_TUNING.K_user);
         return result;
     }
     // === END INSERTED FAST PATH ===
@@ -6409,36 +6717,53 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     const omega_decay = 1.0 + Math.log(Math.max(0.0001, 2 - (H_ch / 100)));
     const N_active = _getActiveErrorBankCount();
     const delta_error = Math.exp(-0.4 * (N_active / 15));
-    const K_system = K_base * mu_block * omega_decay * delta_error;
+    let K_system = K_base * mu_block * omega_decay * delta_error;
+    // Uncertainty-weighted learning rate — young/stale estimates move faster,
+    // calibrated ones barely drift (rd-scaled on top of the subject baseline).
+    K_system *= (_kEff(safeSubject, base.K) / Math.max(1, base.K));
 
-    // ── Step E: Asymmetric Antagonistic Scaling Curves ──
+    // ── Elo v2 pre-modifiers: guess correction, suspect-fast, calibration ──
+    let sBlend = S_in;
+    const guessL = _guessAdjustedScore(questionObj, S_in);
+    if (guessL.adjusted) {
+        sBlend = Math.max(0, Math.min(1, guessL.sEff));   // clamp ≥0; wrong stays wrong
+        result.guessAdjusted = true;
+    }
+    const targetSecsL = _eloTargetSeconds(questionObj || { qElo: Q_Elo });
+    const tauRatioL = ((Number(actualTime) || 0) > 0) ? (Number(actualTime) / Math.max(1, targetSecsL)) : 1;
+    const fastDampL = _applySuspectFastDamp(questionObj, sBlend, tauRatioL);
+    if (fastDampL < 1) result.suspectFastDamped = true;
+    const confPL = _consumeConfidence(S_in);
+    let confMultL = 1;
+    if (confPL != null) {
+        result.confidenceUsed = confPL;
+        if (sBlend <= 0.001 && confPL >= CONFIDENCE_ANCHORS.sure) confMultL = 1.18;       // overconfident-wrong
+        else if (sBlend >= 0.999 && confPL <= CONFIDENCE_ANCHORS.guess) confMultL = 0.95; // underconfident-right
+    }
+
+    // ── Step E: Asymmetric Antagonistic Scaling Curves (graded blend) ──
     // Ω_win compresses point yields heavily at high ratings (making climbing tough).
     // Ω_loss minimizes deductions at low ratings but scales up heavily at high levels.
+    // Partial credit linearly blends the win-yield and loss-yield vectors, so a
+    // half-correct multi-select now lands BETWEEN the poles instead of counting
+    // as a total loss — the rating signal finally matches JEE marking.
     const omegaWin = 2 / (1 + Math.pow(10, (E_s - 1200) / 800));
     const omegaLoss = 2 / (1 + Math.pow(10, (1200 - E_s) / 800));
+    const winYield = omegaWin * (1 - E_score);
+    const lossYield = omegaLoss * (0 - E_score);
+    let rawDelta = K_system * (sBlend * winYield + (1 - sBlend) * lossYield);
+    rawDelta *= fastDampL * confMultL;
 
-    let rawDelta = 0;
-    if (S === 1) {
-        rawDelta = K_system * omegaWin * (1 - E_score);
-    } else {
-        rawDelta = K_system * omegaLoss * (0 - E_score);
+    // ── Re-solve Decay → CONTINUOUS retrievability gate (Memory Kernel v2).
+    // The flat 0.25× step is superseded by the psychology it approximated:
+    // solving an item you were about to forget (low R at solve time) proves
+    // real strength and earns near-full credit; re-solving one you reviewed
+    // yesterday earns ~0.15×. Losses always stand at full weight.
+    const _gateL = _retrievabilityGate(questionObj);
+    if (_gateL.scale < 1 && rawDelta > 0) {
+        rawDelta *= _gateL.scale;
     }
-
-    // ── Re-solve Decay: Questions from the Error Vault that have already been
-    // seen (have an errorReason and a firstAttemptResult) generate significantly
-    // less ELO on re-solve. The logic: you already know the solution, so
-    // correctly re-solving it doesn't prove raw problem-solving ability — it
-    // proves memory retention, which is valuable but NOT the same as solving
-    // a cold question you've never seen. Wrong answers on re-solves still
-    // hurt normally (you had the solution and STILL got it wrong = massive loss).
-    let reSolveMultiplier = 1.0;
-    if (questionObj && questionObj.errorReason && questionObj.firstAttemptResult) {
-        // This question has been attempted before AND has a logged result.
-        // Correct re-solves give only 25% of the normal delta.
-        // Wrong re-solves still hurt at 100% (you saw the solution and blew it).
-        reSolveMultiplier = (S === 1) ? 0.25 : 1.0;
-    }
-    rawDelta *= reSolveMultiplier;
+    result.rAtSolve = _gateL.r;
 
     // ── Asymmetric Rating Disparity Filter ──
     // Prevents an advanced rating from point-farming elementary lower-tier content.
@@ -6516,6 +6841,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     if (newE_s > 2999.99) newE_s = 2999.99;
     AppState.elo[safeSubject] = newE_s;
     AppState.eloUpdatedAt = Date.now(); // LWW clock for cloud merge
+    _shrinkRdAfterSolve(safeSubject);
 
     // ── Fixed Question Retro-Mutation Loop ──
     // FIXED: Changed learning scale from 20 down to an elegant fractional 0.05 convergence 
@@ -6543,6 +6869,15 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         if (questionObj.qEloSource !== 'gem-stamped') {
             questionObj.qEloSource = 'learned';
         }
+
+        // ── Memory Kernel v2 commit (runs BEFORE the review stamp so the
+        // update sees the true pre-review Δt and rewards low-R recalls). ──
+        try {
+            updateMemoryOnReview(questionObj, {
+                correct: S >= 0.999,
+                performanceQ: _proxyPerformanceQ(S_in, tauRaw),
+            });
+        } catch (_) { /* memory telemetry never blocks scoring */ }
 
         // ── Biological Memory Construct: permanent field attachment ──
         // When an execution frame resolves, stamp the question with the exact
@@ -6601,11 +6936,71 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         // scoreOutcome arrives as 1/0 from every caller — comparing it to the string
 // 'correct' was ALWAYS false, so CNS telemetry logged every solve as incorrect
 // (accuracy-collapse component dead, anti-cheat veto trivially satisfied).
-CNSLoad.logSolve(safeSubject, Number(scoreOutcome) === 1, actualTime || 0, T_avg);
+CNSLoad.logSolve(safeSubject, S_in >= 0.999, actualTime || 0, T_avg);
     } catch (_) { /* never block ELO migration */ }
+
+    // Chapter ability vector + closing uncertainty telemetry.
+    result.thetaC = _updateChapterTheta(safeSubject, questionObj ? questionObj.chapter : null, S_in);
+    result.rdAfter = _rdForSubject(safeSubject);
+    result.kEffUsed = _kEff(safeSubject, base.K);
 
     return result;
 }
+
+// ── Calibration Report (dashboard card) ───────────────────────────────────
+// Rolling metacognitive honesty readout over the last 60 confidence-tagged
+// solves: stated certainty vs actual accuracy, Brier score, and a verdict.
+// Calibration — saying "sure" ONLY when you are actually right — is the
+// highest-leverage exam-day skill this app can train.
+function _renderCalibrationReport() {
+    const el = document.getElementById('calibration-report');
+    if (!el) return;
+    try { _ensureEloV2State(); } catch (_) {}
+    const log = Array.isArray(AppState.calibrationLog) ? AppState.calibrationLog : [];
+    if (log.length < 5) {
+        el.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:18px 12px; font-size:12px;">Tap your confidence before locking in an answer. After ~5 graded solves this card shows whether your certainty is honest.</div>';
+        return;
+    }
+    const recent = log.slice(-60);
+    const n = recent.length;
+    const acc = recent.reduce((a, c) => a + c.s, 0) / n;
+    const avgP = recent.reduce((a, c) => a + c.p, 0) / n;
+    const brier = recent.reduce((a, c) => a + Math.pow(c.p - c.s, 2), 0) / n;
+    // Per-anchor realized accuracy ("when you said sure, how often were you right?")
+    function anchorRow(key, label) {
+        const grp = recent.filter(c => Math.abs(c.p - CONFIDENCE_ANCHORS[key]) < 0.001);
+        if (grp.length < 2) return '';
+        const gAcc = grp.reduce((a, c) => a + c.s, 0) / grp.length;
+        return '<span style="font-size:10px; color:#8aa0c8;">' + label + ' ' + Math.round(gAcc * 100) + '%</span>';
+    }
+    const gap = avgP - acc;   // >0 overconfident · <0 underconfident
+    const verdict = (gap > 0.08)
+        ? { txt: 'OVERCONFIDENT', color: '#fda4af', note: 'You say sure when you are not. Discount first instincts.' }
+        : (gap < -0.08)
+            ? { txt: 'UNDERCONFIDENT', color: '#fde047', note: 'You know more than you admit — commit faster.' }
+            : { txt: 'CALIBRATED', color: '#4ade80', note: 'Your certainty matches your reality. Exam-ready trait.' };
+    const brierColor = brier <= 0.15 ? '#4ade80' : (brier <= 0.25 ? '#fde047' : '#fda4af');
+    const meterW = Math.min(50, Math.abs(gap) * 250);
+    el.innerHTML =
+        '<div style="display:flex; align-items:baseline; gap:14px; justify-content:center; margin:6px 0 10px;">' +
+        '<div style="text-align:center;"><div style="font-family:\'Space Grotesk\',monospace; font-weight:700; font-size:22px; color:' + brierColor + '">' + brier.toFixed(3) + '</div><div style="font-size:9.5px; color:var(--text-muted); letter-spacing:.5px;">BRIER · ' + n + ' SOLVES</div></div>' +
+        '<div style="text-align:center;"><div style="font-family:\'Space Grotesk\',monospace; font-weight:700; font-size:22px;">' + Math.round(acc * 100) + '%</div><div style="font-size:9.5px; color:var(--text-muted); letter-spacing:.5px;">ACTUAL</div></div>' +
+        '<div style="text-align:center;"><div style="font-family:\'Space Grotesk\',monospace; font-weight:700; font-size:22px; color:#c4b5fd;">' + Math.round(avgP * 100) + '%</div><div style="font-size:9.5px; color:var(--text-muted); letter-spacing:.5px;">CLAIMED</div></div>' +
+        '</div>' +
+        '<div style="height:6px; border-radius:999px; background:rgba(255,255,255,0.06); overflow:hidden; position:relative;">' +
+        '<div style="position:absolute; top:0; bottom:0; width:' + meterW + '%; background:' + verdict.color + '; opacity:.75;' + (gap >= 0 ? ' left:50%;' : ' right:50%;') + '"></div>' +
+        '<div style="position:absolute; left:calc(50% - 1px); top:-1px; bottom:-1px; width:2px; background:rgba(255,255,255,0.35);"></div>' +
+        '</div>' +
+        '<div style="display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); margin-top:4px;"><span>underconfident</span><span>honest</span><span>overconfident</span></div>' +
+        '<div style="display:flex; gap:12px; justify-content:center; margin-top:8px;">' +
+        anchorRow('sure', 'sure→') + anchorRow('likely', 'likely→') + anchorRow('guess', 'guess→') +
+        '</div>' +
+        '<div style="margin-top:10px; text-align:center;">' +
+        '<span style="font-size:10px; letter-spacing:1px; font-family:\'Space Grotesk\',monospace; font-weight:700; color:' + verdict.color + '; border:1px solid ' + verdict.color + '55; padding:3px 10px; border-radius:999px;">' + verdict.txt + '</span>' +
+        '<div style="font-size:10.5px; color:var(--text-muted); margin-top:6px;">' + verdict.note + '</div>' +
+        '</div>';
+}
+window.renderCalibrationReport = _renderCalibrationReport;
 
 // ── Front-End Interface Hydration ──────────────────────────────────────────
 
@@ -6634,6 +7029,8 @@ function _renderGlobalMmrRow(globalElo) {
 
     // If the popup is already open, refresh its content with the latest elo.
     _refreshAirPopupIfOpen(globalElo);
+    // Exam countdown rides the same HUD cadence (never its own timer).
+    try { _updateExamCountdownChip(); } catch (_) {}
 }
 
 // ── JEE Advanced AIR projection popup ──────────────────────────────────────
@@ -6675,6 +7072,41 @@ function _formatPercentile(air, candidates) {
     return percentile.toFixed(2) + ' %ile';
 }
 
+/**
+ * Average rating deviation across subjects → the honest uncertainty of the
+ * rank projection. A young/stale profile gets a wide cone and a stabilization
+ * note instead of a deceptively precise single number.
+ */
+function _effectiveGlobalRd() {
+    try {
+        _ensureEloV2State();
+        const subjects = ['physics', 'chemistry', 'maths'];
+        const vals = subjects.map(s => {
+            const v = Number(AppState.elo.rd && AppState.elo.rd[s]);
+            return (isFinite(v) && v > 0) ? v : RD_TUNING.START;
+        });
+        return Math.round(vals.reduce((a, c) => a + c, 0) / vals.length);
+    } catch (_) { return RD_TUNING.START; }
+}
+
+function _rdStabilizationNote(effRd) {
+    if (effRd >= 200) return 'Early estimate — solve to stabilize';
+    if (effRd >= 90) return 'Firming up with every solve';
+    return 'Calibrated estimate';
+}
+
+function _examCountdownText() {
+    try {
+        if (!AppState.examDate) return null;
+        const t = new Date(AppState.examDate).getTime();
+        if (isNaN(t)) return null;
+        const days = Math.ceil((t - Date.now()) / 86400000);
+        if (days > 0) return days + ' days to exam';
+        if (days === 0) return 'EXAM DAY';
+        return 'exam done — reset target?';
+    } catch (_) { return null; }
+}
+
 /** Build (or refresh) the inner content of the AIR popup for a given elo. */
 function _airPopupInnerHtml(globalElo) {
     const tier = getRankTierDetails(globalElo);
@@ -6683,6 +7115,20 @@ function _airPopupInnerHtml(globalElo) {
     const advPct = _formatPercentile(advAir, JEE_ADV_CANDIDATES);
     const mainPct = _formatPercentile(mainAir, JEE_MAIN_CANDIDATES);
     const isLow = advAir >= JEE_ADV_CANDIDATES; // wouldn't clear Advanced cutoff
+
+    // ── Uncertainty cone: project ±effRd through the same log-linear model. ──
+    const effRd = _effectiveGlobalRd();
+    const eloHi = Math.min(3000, globalElo + effRd);   // optimistic rating
+    const eloLo = Math.max(0, globalElo - effRd);      // pessimistic rating
+    const airBest = _computeJeeAdvAir(eloHi);          // smaller number = better
+    const airWorst = _computeJeeAdvAir(eloLo);
+    const showCone = effRd >= 25 && !isLow;
+
+    // Sub-100 gap decomposition anchor: Elo ≈2800 ⇔ AIR ≈100.
+    const gapToTop100 = Math.max(0, Math.ceil(2800 - globalElo));
+    const examTxt = _examCountdownText();
+    const examVal = AppState.examDate || '';
+
     return `
         <div class="air-pop-head">
             <span class="air-pop-title">🎯 JEE Advanced</span>
@@ -6692,6 +7138,8 @@ function _airPopupInnerHtml(globalElo) {
             <div class="air-pop-air ${isLow ? 'air-low' : ''}">${_formatAir(advAir)}</div>
             <div class="air-pop-air-label">Predicted AIR</div>
             <div class="air-pop-pct">${isLow ? 'Below cutoff — keep grinding' : advPct}</div>
+            ${showCone ? `<div style="margin-top:6px; font-size:10px; color:#8aa0c8;">range ~${_formatAir(Math.min(airBest, airWorst))} – ${_formatAir(Math.max(airBest, airWorst))} · ±${effRd} rd</div>` : ''}
+            ${showCone ? `<div style="font-size:9.5px; color:#5d6f96;">${_rdStabilizationNote(effRd)}</div>` : ''}
         </div>
         <div class="air-pop-divider"></div>
         <div class="air-pop-secondary">
@@ -6703,11 +7151,53 @@ function _airPopupInnerHtml(globalElo) {
                 <span class="air-pop-sec-label">Main %ile</span>
                 <span class="air-pop-sec-val">${_formatPercentile(mainAir, JEE_MAIN_CANDIDATES)}</span>
             </div>
+            <div class="air-pop-sec-row">
+                <span class="air-pop-sec-label">Top-100 gap</span>
+                <span class="air-pop-sec-val" style="${gapToTop100 === 0 ? 'color:#22c55e;' : ''}">${gapToTop100 === 0 ? 'ZONE REACHED' : '-' + gapToTop100 + ' Elo'}</span>
+            </div>
+            <div class="air-pop-sec-row" style="align-items:center;">
+                <span class="air-pop-sec-label">Exam date</span>
+                <input type="date" value="${escapeHtml(examVal)}" onchange="window._setExamDate(this.value)"
+                       style="background:rgba(255,255,255,0.06); border:1px solid rgba(168,85,247,0.3); border-radius:6px; color:#e4e4e7; font-size:10px; padding:2px 4px; font-family:inherit;">
+            </div>
+            ${examTxt ? `<div class="air-pop-sec-row"><span class="air-pop-sec-label">Countdown</span><span class="air-pop-sec-val">${escapeHtml(examTxt)}</span></div>` : ''}
         </div>
         <div class="air-pop-foot">
             <span class="air-pop-tier">${tier.icon} ${tier.name}</span>
             <span class="air-pop-elo">${Math.round(globalElo)} Global</span>
         </div>`;
+}
+
+/** Persist the exam date and refresh every exam-aware surface. */
+window._setExamDate = function (value) {
+    try {
+        AppState.examDate = value || null;
+        saveAllAsync().catch(() => {});
+    } catch (_) {}
+    _refreshAirPopupIfOpen(AppState.elo.global || 1200);
+    try { _updateExamCountdownChip(); } catch (_) {}
+};
+
+// ── Exam countdown chip in the sidebar (next to the Global MMR badge) ──────
+function _updateExamCountdownChip() {
+    const profile = document.querySelector('.user-profile');
+    if (!profile) return;
+    let chip = document.getElementById('exam-countdown-chip');
+    const txt = _examCountdownText();
+    if (!txt) { if (chip && chip.parentNode) chip.remove(); return; }
+    if (!chip) {
+        chip = document.createElement('div');
+        chip.id = 'exam-countdown-chip';
+        profile.appendChild(chip);
+    }
+    const urgent = /^(d|[12]d|EXAM)/.test(txt) && txt !== 'exam done — reset target?' && parseInt(txt, 10) <= 30;
+    chip.textContent = '⏳ ' + txt;
+    chip.style.cssText =
+        'margin-top:6px; text-align:center; font-size:10.5px; letter-spacing:.4px; padding:3px 8px;' +
+        'border-radius:999px; font-family:\'Space Grotesk\',monospace; font-weight:700;' +
+        (urgent
+            ? 'color:#fda4af; background:rgba(244,63,94,0.12); border:1px solid rgba(244,63,94,0.35);'
+            : 'color:#c4b5fd; background:rgba(168,85,247,0.10); border:1px solid rgba(168,85,247,0.3);');
 }
 
 /** Open the small square AIR popup, anchored near the clicked badge. */
@@ -7195,6 +7685,9 @@ export function practiceSubmit() {
 
     let userAns = "";
     let isCorrect = false;
+    // Graded score for the Elo engine — null ⇒ binary (isCorrect ? 1 : 0).
+    // Only the multi-select branch computes a fractional JEE-style score.
+    let gradedScore = null;
 
     // ── Guard parity with renderPracticeQuestionModal: an 'mcq' question with
     //    NO options (e.g. legacy rows misclassified during ingestion) is
@@ -7227,6 +7720,17 @@ export function practiceSubmit() {
                 selectedSorted.length === correctSorted.length &&
                 selectedSorted.every((val, i) => val.toLowerCase() === correctSorted[i].toLowerCase())
             );
+
+            // ── Partial-credit score (JEE Advanced multi-marking spirit):
+            // each correctly chosen option earns an equal share of the item;
+            // every wrong pick cancels one correct choice. Full match → 1.0,
+            // half-right → 0.5-ish, any-wrong-heavy → 0. Status/counters stay
+            // strictly full-match (a partial never marks the chapter solved).
+            const _correctSet = new Set(correctSorted.map(v => String(v).toLowerCase()));
+            const _hits = selectedLetters.filter(l => _correctSet.has(String(l).toLowerCase())).length;
+            const _wrongs = selectedLetters.length - _hits;
+            gradedScore = Math.max(0, (_hits - _wrongs) / Math.max(1, _correctSet.size));
+            if (isCorrect) gradedScore = 1;
 
             userAns = selectedLetters.join(',');
 
@@ -7324,7 +7828,7 @@ export function practiceSubmit() {
         _eloResult = calculateEloMigration(
             AppState.currentQ.subject,
             AppState.practiceSeconds,
-            isCorrect ? 1 : 0,
+            (gradedScore != null && !isCorrect) ? gradedScore : (isCorrect ? 1 : 0),
             _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter),
             AppState.currentQ
         );
@@ -7598,6 +8102,9 @@ export function closePracticeModal() {
     // next unrelated solve with its ×0.65 flag (leaked until the NEXT
     // lifeline/calibrated solve cleared it).
     window.__lastQuestionPickedWithLifeline = false;
+    // Calibration hygiene: an un-consumed confidence tap belongs to a question
+    // that was never submitted — never let it leak into the next solve.
+    window._pendingSolveConfidence = null;
     // A closed modal must not leak its run's navigation history into the next
     // session — without this, a standard session started right after closing a
     // Flow/Hardcore run could inherit stale back/forward stacks.

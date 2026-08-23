@@ -10,6 +10,9 @@
  * ============================================================================ */
 'use strict';
 
+// v39 — Chapter-Weights tiered resolver (chapter-weights.js precache):
+//        alias/fuzzy/typo/unit tiers + AI-stamped + user-override weights.
+// v38 — Memory Kernel v2 + Elo v2: memory.js joins the shell precache.
 // v37 — Soundscape v5.2: calm grain canvases — global smoothed loudness
 // envelope baked into recordings before granulation + drifting grain walk
 // + safety-only compressor curve (no more ~1s level churn or fade-in/
@@ -23,7 +26,7 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v37';
+const VERSION = 'jeemax-v39';
 const SHELL = [
   './',
   './index.html',
@@ -31,6 +34,8 @@ const SHELL = [
   './styles.css',
   './app.js',
   './storage.js',
+  './memory.js',
+  './chapter-weights.js',
   './checkpoint.js',
   './fx.js',
   './matrix.js',

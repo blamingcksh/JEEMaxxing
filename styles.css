@@ -11526,3 +11526,83 @@ html.fx-effects-off .metro-fab-badge { animation: none !important; transition: n
     .metro-fab { bottom: 14px; right: 14px; width: 46px; height: 46px; }
     .metro-pop { right: 12px; bottom: 72px; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   CALIBRATION LAYER — pre-reveal confidence capture (practice modal + SR drawer)
+   ════════════════════════════════════════════════════════════════════════ */
+.pconf-seg {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 8px 10px;
+    background: rgba(168, 85, 247, 0.06);
+    border: 1px solid rgba(168, 85, 247, 0.22);
+    border-radius: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.pconf-label {
+    font-size: 10.5px;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    color: #c4b5fd;
+    font-family: 'Space Grotesk', monospace;
+    font-weight: 700;
+}
+.pconf-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e8eefb;
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+.pconf-btn:hover { background: rgba(168, 85, 247, 0.16); border-color: rgba(168, 85, 247, 0.45); }
+.pconf-btn.selected {
+    background: rgba(168, 85, 247, 0.28);
+    border-color: rgba(192, 132, 252, 0.7);
+    transform: scale(1.05);
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.35);
+}
+
+/* SR drawer variant */
+.sr-conf-seg {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 10px 0;
+    padding: 9px 10px;
+    background: rgba(168, 85, 247, 0.06);
+    border: 1px solid rgba(168, 85, 247, 0.22);
+    border-radius: 12px;
+}
+.sr-conf-label {
+    font-size: 10px;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    color: #c4b5fd;
+    font-family: 'Space Grotesk', monospace;
+    font-weight: 700;
+}
+.sr-conf-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.sr-conf-btn {
+    flex: 1 1 auto;
+    min-width: 84px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e8eefb;
+    border-radius: 10px;
+    padding: 7px 10px;
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.sr-conf-btn:hover { background: rgba(168, 85, 247, 0.16); border-color: rgba(168, 85, 247, 0.45); }
+.sr-conf-btn.selected {
+    background: rgba(168, 85, 247, 0.28);
+    border-color: rgba(192, 132, 252, 0.7);
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.35);
+}

@@ -1,0 +1,175 @@
+================================================================================
+        J E E M A X X I N G   --   D E E P   O V E R V I E W
+     The whole app, compressed. (Full detail lives in APP_DOCUMENTATION.txt)
+================================================================================
+
+WHAT IT IS
+----------
+JEEMaxxing is a client-side JEE-prep grind command center: a single offline
+PWA that turns studying into a closed feedback loop. You lock in with focus
+timers, feed it questions (manually or via AI), practice against an Elo-style
+skill rating that adapts to you, review mistakes with spaced repetition, and
+watch a virtual island grow with your effort. Accountability systems actively
+police procrastination - scheduled checkpoints, late-night rating decay, and
+daily boss-fight bounties - while recovery systems (fatigue meter, deload
+days, lifeline) protect you from burnout. Everything runs in the browser:
+no server, no build step, all data in IndexedDB with optional Google Drive
+backup.
+
+In one line: a self-coaching exam grinder that measures your skill like a
+competitive game, schedules your memory like Anki, and pressures you like a
+drill sergeant - while a little world grows in the background.
+
+
+ARCHITECTURE AT A GLANCE
+------------------------
+- Vanilla ES6 modules, zero framework/bundler. Serve over HTTP; installable
+  PWA (service worker: network-first HTML, cached assets, fully offline).
+- storage.js owns AppState = single source of truth; IndexedDB (jeemaxxing_db)
+  persists everything; localStorage only caches small prefs.
+- app.js (~11k lines) is the orchestrator: boot/day-cycle, question bank,
+  ingestion, practice, Elo math, streaks, dashboard wiring.
+- Feature modules plug in without circular imports via window.* bridges:
+  pomodoro (timers), matrix (vault/SR), checkpoint (accountability),
+  cns-load/deload/lifeline/nightguard (recovery), gallery-break/metronome/
+  focus-sound/fx (rituals + feedback), grove-islands/forest-bg/candlestick-
+  engine (visuals), theme/dashboard-clean/boot-sequence (shell).
+- Multi-tab safe: BroadcastChannel merges counters across open tabs.
+
+
+THE CORE LOOP
+-------------
+ 1. LOCK IN - Start a sprint (Pomodoro or stopwatch). Solves earn a real x1.5
+    ELO bonus while the timer runs; soundscapes auto-play; quitting mid-block
+    breaks your chain and logs a forfeit in the focus ledger.
+ 2. FEED - Add questions four ways: screenshot multi-crop + OCR, Gemini Gem
+    JSON dumps (auto difficulty stamping, anti-cheat audits, LaTeX healing,
+    diagram auto-crop from tagged screenshots), answer-key mapping, or manual
+    entry. Duplicates are detected and purged automatically.
+ 3. GRIND - Practice in Standard, Flow (moderately hard) or Hardcore (brutal,
+    high-reward) mode. Every solve feeds the Elo engine.
+ 4. RATE - Elo/MMR per subject plus a global rating: your time vs expected,
+    chapter health, fatigue and mode all move the numbers. Ranks climb from
+    NPC to Unhinged Gigachad; an AIR popup projects your All-India Rank.
+ 5. HEAL - Wrong answers go to the Error Vault; SuperMemo-2-style spaced
+    repetition resurfaces them weakest-memory-first until mastered.
+ 6. GROW - Solves water a persistent island world; daily target rings close
+    the loop on the sidebar; missed days put your streak and trees at risk.
+
+
+MAJOR SYSTEMS (conceptually)
+----------------------------
+FOCUS ENGINE (pomodoro.js + focus-sound.js)
+  Countdown/stopwatch/rounds with wall-clock accuracy; dynamic subject
+  switching; an always-visible Sprint Widget; a per-day ledger tracking
+  blocks completed, current chain and forfeits; session receipts showing
+  exact ELO earned per block; procedural soundscapes (rain/cafe/fire/noise)
+  that duck under the end-of-session bell.
+
+ELO / MMR ENGINE (app.js, tunings in storage.js)
+  A chess-like rating per subject. Questions carry their own difficulty
+  (qElo): AI-stamped ones are trusted after validation, others are learned
+  from your results. Wins and losses move both your rating and the question's
+  estimated difficulty, weighted by solve speed, chapter health, fatigue,
+  late-night penalties and active mode. First-attempt accuracy only - retries
+  never inflate stats. Global rating punishes unbalanced subjects.
+
+ERROR VAULT + SPACED REPETITION (matrix.js)
+  Every mistake is vaulted with a friction tag (concept / calc / misread).
+  Items are scheduled by a tuned SM-2 algorithm where honesty matters:
+  rating your autonomy and error type changes interval growth (a perfect
+  solve grows roughly 8x faster than a blind-approach guess). Chapter health
+  is the decayed memory strength of all its items - it drives the Retention
+  grid, nav warnings, and checkpoint question selection. A Daily Fix Queue
+  auto-picks today's weakest memories within per-subject caps.
+
+ACCOUNTABILITY (checkpoint.js + nightguard.js + bounty)
+  Scheduled checkpoints arm when you idle too long; miss the grace window
+  and a lockdown forces a Proof-of-Work solve - failure scars Protocol Zero
+  onto your graphs. After 23:00 a Night Guard progressively decays ELO gains
+  (x0.80 -> x0.55 -> x0.20 force-set) unless you hold-to-override. A daily
+  Bounty Boss dares you to clutch a previously-missed question in 180 s:
+  win = tripled supercharged payoffs; loss = 24h lockout plus a target tax.
+
+RECOVERY (cns-load.js + lifeline.js + deload.js + mood calibration)
+  A CNS fatigue meter rises with study volume; high load gates hardcore
+  modes and activates a Lifeline that eases difficulty at 35% reduced yield.
+  Sustained strain can schedule Deload rest days that preserve your streak.
+  Mood calibration scales daily targets; accumulated sleep debt caps harder.
+
+GAMIFICATION & WORLD (grove-islands.js + fx.js + CK rail)
+  Cumulative study seconds grow trees on an island archipelago - harder
+  solves plant rarer, faster-growing flora. Streak flames pixel-animate
+  hotter with combo; wrong answers may consume a shield. Sidebar rings track
+  physics/chemistry/maths/fix targets; closing all four shows LOOP CLOSED.
+  Emoji bursts, ripples, haptics and synth SFX everywhere - all toggleable
+  for photosensitivity or reduced-motion users.
+
+DASHBOARD & ANALYTICS (index.html bento + candlestick-engine.js)
+  Draggable bento cards: Today's Progress triple ring, Momentum candlesticks
+  of a custom cognitive-yield index (with trend detection and 5-day
+  prediction), a GitHub-style year heatmap of daily variance, Chapter
+  Progress and Retention Health. Layout, density and card sizes persist.
+
+CLOUD & DATA (storage.js)
+  Optional Google Drive folder mirrors state plus question images. Merge is
+  conflict-tolerant: high-water daily counters, last-write-wins ratings, and
+  tombstones so deletes never resurrect. Auto-push every 30s throttle +
+  2-minute heartbeat + manual Sync Now. Persistence failures surface a
+  warning banner - never silent data loss.
+
+UI / THEMES (styles.css + theme.js)
+  Token-based design system: 7 accent themes (Furnace, Synthwave, Glacier,
+  Overgrowth, Blood Moon, Sakura, Stealth) x Midnight/Dusk appearance modes,
+  all re-skinning live via CSS variables. Heavy glassmorphism, 53 keyframe
+  animations, full reduced-motion support, responsive down to 480px.
+
+
+DATA MODEL IN ONE BREATH
+------------------------
+questionBank[] holds every question: text, options, answer, type (MCQ single
+or multi, numeric, or free-response), optional diagram/option/solution
+images (local or fetched from Drive), qElo difficulty plus provenance
+(gem-stamped vs learned), SM-2 fields (interval, ease factor, due date,
+capped attempt history), status lifecycle (unsolved -> solved/wrong/error),
+friction reason, skip ledger, and anti-cheat stamps. Around it: per-subject
+daily solved counts and study seconds, a permanent day-by-day history ledger
+(feeds streaks, graphs and the world), elo {physics, chemistry, maths,
+global} with an update clock, daily targets with a 24h edit lock, bounty
+state, mood multiplier, practice mode with hardcore daily cap, Drive tokens
+and tombstones. Images live in a persistent vault inside IndexedDB.
+
+
+KEY NUMBERS WORTH KNOWING
+-------------------------
+  Elo starts at 1200 (soft cap ~3000); K = 12 physics/chem, 16 maths
+  Flow P_win window 0.75-0.85; Hardcore 0.35-0.50, capped 8 solves/day
+  Lifeline activates at CNS >= 0.80 (yield x0.65), disables below 0.40
+  Night Guard tiers x0.80 / x0.55 / x0.20 from 23:00 (force-set 03:00)
+  SM-2 mastery = interval > 30 days && ease > 2.5; ease floor 1.3
+  Fix Queue caps: 5 physics, 5 maths, 10 chemistry - weakest memory first
+  Deep-work bonus x1.5 while a timer runs; bounty clock is 180 seconds
+  Default targets 10/10/10 solves + 5/5/5 fixes, locked 24h once saved
+  AIR projection: Adv 10^(8.00 - 0.00214*E); Main 10^(8.61 - 0.00236*E)
+
+
+RUNNING & TOOLING
+-----------------
+  python3 -m http.server 8000   (any static server) -> http://localhost:8000
+  No build step. node_modules exists only for Playwright QA harnesses in
+  scripts/ (npm run smoke / qa / qa-focus / qa-progress). KaTeX and three.js
+  are vendored locally; icons and ambient WAVs come from generator scripts.
+
+
+KNOWN QUIRKS (code reality vs README)
+-------------------------------------
+- Checkpoint monitoring loop is currently deactivated in source (system
+  armed but passive; old penalties remain as graph scars).
+- nightguard.js is the ELO-decay sleep guard, not a maintenance job.
+- The old 15-day vault sparkline was removed (rail counters remain).
+- Time Bank card is not injected by dashboard-clean.js despite README claims.
+
+================================================================================
+End of overview. For element ids, formulas, storage keys, function names,
+the bug list and every threshold, see APP_DOCUMENTATION.txt (full detail).
+================================================================================

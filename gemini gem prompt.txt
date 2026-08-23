@@ -18,6 +18,12 @@ CRITICAL: ORIGINAL QUESTION PRESERVATION
 [... keep the existing verbatim rule exactly as before ...]
 
 ADDITIONALLY:
+For every question you MAY also emit an optional integer-or-decimal field
+"chapterWeight" (range 0.05–1.5): how much this question's topic matters for
+JEE Advanced rank (1.0 ≈ highest-yield staples like Rotational Mechanics /
+GOC / Definite Integration, 0.3 ≈ peripheral). Use YOUR knowledge of the JEE
+Advanced syllabus — the app learns your judgement per chapter name and stops
+asking implicitly by trusting the highest recent stamp. Omit it when unsure.
 When assigning qElo, difficulty, and targetTimeMins, base your
 judgement SOLELY on the underlying problem‑solving process:
 - What concepts must the student recall and combine?
