@@ -258,15 +258,15 @@ function openRunner(m) {
     ov.innerHTML = '<div class="mr-shell"><div class="mr-topbar">' +
         '<span class="mr-name">📝 ' + _esc(m.name) + '</span>' +
         '<span class="mr-clock" id="mr-clock">--:--</span>' +
-        '<button class="mr-palette-btn" onclick="win.mrTogglePalette()" type="button">☰</button>' +
+        '<button class="mr-palette-btn" onclick="window.mrTogglePalette()" type="button">☰</button>' +
         '</div><div class="mr-clockbar"><div id="mr-clockfill"></div></div>' +
         '<div class="mr-body"><div class="mr-qarea" id="mr-qarea"></div>' +
         '<div class="mr-palette" id="mr-palette"></div></div>' +
         '<div class="mr-footer">' +
-        '<button class="mr-navbtn" onclick="win.mrNav(-1)" type="button">← Prev</button>' +
-        '<button class="mr-markbtn" id="mr-markbtn" onclick="win.mrToggleMark()" type="button">⚑ Mark</button>' +
-        '<button class="mr-navbtn mr-submit" onclick="win.mrAskSubmit()" type="button">Submit paper</button>' +
-        '<button class="mr-navbtn" onclick="win.mrNav(1)" type="button">Next →</button>' +
+        '<button class="mr-navbtn" onclick="window.mrNav(-1)" type="button">← Prev</button>' +
+        '<button class="mr-markbtn" id="mr-markbtn" onclick="window.mrToggleMark()" type="button">⚑ Mark</button>' +
+        '<button class="mr-navbtn mr-submit" onclick="window.mrAskSubmit()" type="button">Submit paper</button>' +
+        '<button class="mr-navbtn" onclick="window.mrNav(1)" type="button">Next →</button>' +
         '</div></div>' +
         '<div class="mr-confirm" id="mr-confirm" style="display:none"></div>';
     document.body.appendChild(ov);
@@ -318,13 +318,13 @@ function renderMrQuestion() {
     if (q.diagramImageUrl) body += '<img class="mr-img" src="' + q.diagramImageUrl + '">';
     if (q.extractedText) body += '<div class="mr-text latex">' + _esc(q.extractedText) + '</div>';
     if (pattern === 'numeric') {
-        body += '<input type="text" inputmode="decimal" class="mr-numeric" id="mr-numinput" placeholder="Your answer" value="' + _esc(ans.value != null && !Array.isArray(ans.value) ? ans.value : '') + '" oninput="win.mrNum(this.value)">';
+        body += '<input type="text" inputmode="decimal" class="mr-numeric" id="mr-numinput" placeholder="Your answer" value="' + _esc(ans.value != null && !Array.isArray(ans.value) ? ans.value : '') + '" oninput="window.mrNum(this.value)">';
     } else {
         const isMulti = pattern === 'multi';
         const sel = Array.isArray(ans.value) ? ans.value : [];
         body += '<div class="mr-opts">' + (q.options || []).map((o, i) => {
             const L = String.fromCharCode(65 + i);
-            return '<div class="mr-opt' + (sel.includes(L) ? ' sel' : '') + '" data-letter="' + L + '" onclick="win.mrPick(this)\" role="button">' +
+            return '<div class="mr-opt' + (sel.includes(L) ? ' sel' : '') + '" data-letter="' + L + '" onclick="window.mrPick(this)\" role="button">' +
                 '<b>' + L + '</b> ' + _esc(o) + '</div>';
         }).join('') + '</div>' + (isMulti ? '<div class="mr-multihint">Multiple options may be correct</div>' : '');
     }
@@ -333,7 +333,7 @@ function renderMrQuestion() {
         '<div class="mr-qhead"><span class="mr-qnum">Q' + (m.run.cur + 1) + ' / ' + m.run.order.length + '</span>' +
         '<span class="mr-pattern">' + pattern.toUpperCase() + '</span>' +
         '<span class="mr-conf">' + ['sure', 'likely', 'guess'].map(c =>
-            '<button class="mr-confbtn' + (conf === c ? ' sel' : '') + '\" data-c=\"' + c + '\" onclick=\"win.mrConf(\'' + c + '\')\">' + c[0].toUpperCase() + '</button>').join('') +
+            '<button class="mr-confbtn' + (conf === c ? ' sel' : '') + '\" data-c=\"' + c + '\" onclick=\"window.mrConf(\'' + c + '\')\">' + c[0].toUpperCase() + '</button>').join('') +
         '</span></div>' + body +
         '<div class=\"mr-lockednote\" style=\"display:none\"></div>';
     try { if (typeof win.processElementMath === 'function') win.processElementMath(area); } catch (_) {}
@@ -415,7 +415,7 @@ function renderMrPalette() {
         const cls = a && ((Array.isArray(a.value) && a.value.length) || (!Array.isArray(a.value) && a.value)) ? 'ans' : 'un';
         const mk = m.run.marked.includes(qid) ? ' mk' : '';
         const cur = i === m.run.cur ? ' cur' : '';
-        return '<button class=\"mr-pal-cell ' + cls + mk + cur + '\" onclick=\"win.mrGoto(' + i + ')\" type=\"button\">' + (i + 1) + '</button>';
+        return '<button class=\"mr-pal-cell ' + cls + mk + cur + '\" onclick=\"window.mrGoto(' + i + ')\" type=\"button\">' + (i + 1) + '</button>';
     }).join('');
 };
 
@@ -427,7 +427,7 @@ win.mrAskSubmit = function () {
     box.innerHTML = '<div class=\"mr-confirm-card\"><h3>Submit paper?</h3>' +
         '<p>' + unanswered + ' unanswered · ' + m.run.marked.length + ' marked</p>' +
         '<p class=\"mr-warn\">Clock keeps running until you confirm.</p>' +
-        '<button class=\"mr-navbtn mr-submit\" onclick=\"win.mrDoSubmit()\" type=\"button\">Confirm submit</button>' +
+        '<button class=\"mr-navbtn mr-submit\" onclick=\"window.mrDoSubmit()\" type=\"button\">Confirm submit</button>' +
         '<button class=\"mr-navbtn\" onclick=\"document.getElementById(\'mr-confirm\').style.display=\'none\'\" type=\"button\">Keep solving</button></div>';
 };
 
@@ -477,7 +477,7 @@ function showResults(m) {
         '<table class=\"mr-table\"><tr><th></th><th>Marks</th><th>Att</th><th>✓</th><th>✗</th><th>Skip</th></tr>' + rows + '</table>' +
         (sc.wrongIds.length ? '<div class=\"mr-res-line\">❌ ' + sc.wrongIds.length + ' to review — they are waiting in <b>The Vault</b> for friction tagging.</div>' : '<div class=\"mr-res-line\">Clean paper. 😤</div>') +
         '<div style=\"margin-top:14px; display:flex; gap:8px; justify-content:center;\">' +
-        '<button class=\"mr-navbtn\" onclick=\"win.mockCloseResults()\" type=\"button\">Back to Studio</button></div></div>';
+        '<button class=\"mr-navbtn\" onclick=\"window.mockCloseResults()\" type=\"button\">Back to Studio</button></div></div>';
     document.body.appendChild(ov);
     persist();
 };
@@ -521,7 +521,7 @@ function renderHome(root) {
     root.innerHTML =
         '<div class=\"mk-head\"><div><span class=\"kicker\">// EXAM SIMULATION</span><h2 class=\"box-title\">Mock Tests</h2>' +
         '<p class=\"box-desc\">Real papers, real clocks, real marking. No feedback until you submit.</p></div>' +
-        '<div class=\"mk-create\"><input id=\"mk-name\" class=\"pomo-input\" placeholder=\"Paper name (e.g., Allen Major 7)\"><button class=\"btn btn-primary\" onclick=\"win.mockCreate()\" type=\"button\">+ New Mock</button></div></div>' +
+        '<div class=\"mk-create\"><input id=\"mk-name\" class=\"pomo-input\" placeholder=\"Paper name (e.g., Allen Major 7)\"><button class=\"btn btn-primary\" onclick=\"window.mockCreate()\" type=\"button\">+ New Mock</button></div></div>' +
         '<div id=\"mk-list\"></div>';
     const list = document.getElementById('mk-list');
     if (!drafts.length) {
@@ -532,13 +532,13 @@ function renderHome(root) {
         const counts = SUBJECTS.map(s => SUBJECT_GLYPH[s].split(' ')[0] + ' ' + m.sections[s].questionIds.length).join(' · ');
         const stLabel = { building: '🔨 Building', ready: '🟢 Ready', 'in-progress': '⏳ In progress', done: '✅ Done' }[m.status] || m.status;
         const actions = m.status === 'building'
-            ? '<button class=\"btn btn-primary btn-sm\" onclick=\"win.mockOpenBuilder(\'' + m.id + '\')\" type=\"button\">Continue building</button>'
+            ? '<button class=\"btn btn-primary btn-sm\" onclick=\"window.mockOpenBuilder(\'' + m.id + '\')\" type=\"button\">Continue building</button>'
             : (m.status === 'ready'
-                ? '<button class=\"btn btn-primary btn-sm\" onclick=\"win.mockStart(\'' + m.id + '\')\" type=\"button\">▶ Start paper</button>'
+                ? '<button class=\"btn btn-primary btn-sm\" onclick=\"window.mockStart(\'' + m.id + '\')\" type=\"button\">▶ Start paper</button>'
                 : (m.status === 'in-progress'
-                    ? '<button class=\"btn btn-primary btn-sm\" onclick=\"win.mockStart(\'' + m.id + '\')\" type=\"button\">⏳ Resume</button>'
-                    : '<button class=\"btn btn-secondary btn-sm\" onclick=\"win.mockStart(\'' + m.id + '\')\" type=\"button\">📊 Scorecard</button>')) +
-              ' <button class=\"btn btn-danger btn-sm\" onclick=\"win.mockDelete(\'' + m.id + '\')\" type=\"button\">🗑</button>';
+                    ? '<button class=\"btn btn-primary btn-sm\" onclick=\"window.mockStart(\'' + m.id + '\')\" type=\"button\">⏳ Resume</button>'
+                    : '<button class=\"btn btn-secondary btn-sm\" onclick=\"window.mockStart(\'' + m.id + '\')\" type=\"button\">📊 Scorecard</button>')) +
+              ' <button class=\"btn btn-danger btn-sm\" onclick=\"window.mockDelete(\'' + m.id + '\')\" type=\"button\">🗑</button>';
         return '<div class=\"mk-card\"><div class=\"mk-card-main\"><b>' + _esc(m.name) + '</b>' +
             '<span class=\"mk-status\">' + stLabel + '</span><span class=\"mk-counts\">' + counts + '</span></div>' +
             '<div class=\"mk-card-actions\">' + actions + '</div></div>';
@@ -563,12 +563,12 @@ win.mockStart = function (id) { startMock(id); };
 function renderBuilder(root) {
     const m = getMock(_studioMode.mockId);
     if (!m) { _studioMode = { view: 'home' }; renderHome(root); return; }
-    root.innerHTML = '<div class=\"mk-head\"><button class=\"btn btn-secondary btn-sm\" onclick=\"win.mockBackHome()\" type=\"button\">← Papers</button>' +
+    root.innerHTML = '<div class=\"mk-head\"><button class=\"btn btn-secondary btn-sm\" onclick=\"window.mockBackHome()\" type=\"button\">← Papers</button>' +
         '<h2 class=\"box-title\">' + _esc(m.name) + '</h2></div>' +
         '<div class=\"mk-note\">While a subject panel below is <b>active</b>, every AI-dump you paste commits straight into it. Set the right chapter context before dumping, review crops like usual.</div>' +
         '<div class=\"mk-subjects\"></div>' +
         (SUBJECTS.every(s => sectionComplete(m, s))
-            ? '<div style=\"text-align:center; margin-top:14px;\"><button class=\"btn btn-primary\" onclick=\"win.mockGoKeys()\" type=\"button\">🔑 Answer-key pass → Finalize</button></div>'
+            ? '<div style=\"text-align:center; margin-top:14px;\"><button class=\"btn btn-primary\" onclick=\"window.mockGoKeys()\" type=\"button\">🔑 Answer-key pass → Finalize</button></div>'
             : '<div class=\"mk-note\" style=\"text-align:center; opacity:.7;\">Fill every subject, then complete the answer-key pass to finalize.</div>');
     const wrap = root.querySelector('.mk-subjects');
     wrap.innerHTML = SUBJECTS.map(s => {
@@ -578,12 +578,12 @@ function renderBuilder(root) {
             const q = AppState.questionBank.find(x => String(x.id) === String(qid));
             const title = q ? (q.extractedText || '(image question)').slice(0, 70) : '(deleted)';
             return '<div class=\"mk-qrow\"><span class=\"mk-qnum\">' + (i + 1) + '</span><span class=\"mk-qtitle\">' + _esc(title) + '</span>' +
-                '<button class=\"mk-qdel\" onclick=\"win.mockUnlink(\'' + m.id + '\',\'' + qid + '\')\" type=\"button\">✕</button></div>';
+                '<button class=\"mk-qdel\" onclick=\"window.mockUnlink(\'' + m.id + '\',\'' + qid + '\')\" type=\"button\">✕</button></div>';
         }).join('');
         return '<div class=\"mk-subj-panel' + (active ? ' active' : '') + '\">' +
             '<div class=\"mk-subj-head\"><b>' + SUBJECT_GLYPH[s] + '</b><span>' + ids.length + ' Q</span></div>' +
             '<div class=\"mk-subj-body\">' + (rows || '<div class=\"mk-none\">Empty — paste your dump below.</div>') + '</div>' +
-            '<button class=\"btn ' + (active ? 'btn-danger' : 'btn-primary') + ' btn-sm\" style=\"width:100%; margin-top:8px;\" onclick=\"win.mockToggleIngest(\'' + m.id + '\',\'' + s + '\')\" type=\"button\">' +
+            '<button class=\"btn ' + (active ? 'btn-danger' : 'btn-primary') + ' btn-sm\" style=\"width:100%; margin-top:8px;\" onclick=\"window.mockToggleIngest(\'' + m.id + '\',\'' + s + '\')\" type=\"button\">' +
             (active ? '⏹ Stop linking dumps here' : '🧠 Link AI dumps to this panel') + '</button></div>';
     }).join('');
 }
@@ -632,17 +632,17 @@ function renderKeyPass(root) {
             const cur = sec.keys[qid];
             const shown = Array.isArray(cur) ? cur.join('') : (cur != null ? String(cur) : '');
             return '<tr><td>' + n + '</td><td>' + s + '</td><td>' + pattern + '</td>' +
-                '<td><input class=\"mk-key-in\" data-mock=\"' + m.id + '\" data-subj=\"' + s + '\" data-qid=\"' + qid + '\" data-pattern=\"' + pattern + '\" value=\"' + _esc(shown) + '\" onchange=\"win.mockKeyChange(this)\" placeholder=\"' + (pattern === 'numeric' ? 'e.g. 42' : 'e.g. A / AC') + '\"></td>' +
+                '<td><input class=\"mk-key-in\" data-mock=\"' + m.id + '\" data-subj=\"' + s + '\" data-qid=\"' + qid + '\" data-pattern=\"' + pattern + '\" value=\"' + _esc(shown) + '\" onchange=\"window.mockKeyChange(this)\" placeholder=\"' + (pattern === 'numeric' ? 'e.g. 42' : 'e.g. A / AC') + '\"></td>' +
                 '<td>' + (sec.keys[qid] ? '✅' : '⬜') + '</td></tr>';
         }).join('');
         return rows;
     }).join('');
     const ready = SUBJECTS.every(s => sectionComplete(m, s));
-    root.innerHTML = '<div class=\"mk-head\"><button class=\"btn btn-secondary btn-sm\" onclick=\"win.mockOpenBuilder(\'' + m.id + '\')\" type=\"button\">← Builder</button>' +
+    root.innerHTML = '<div class=\"mk-head\"><button class=\"btn btn-secondary btn-sm\" onclick=\"window.mockOpenBuilder(\'' + m.id + '\')\" type=\"button\">← Builder</button>' +
         '<h2 class=\"box-title\">Answer-key pass</h2></div>' +
         '<div class=\"mk-note\">Prefilled from your dumps where the Gem knew the answer. Fix anything wrong — the paper scores itself against these.</div>' +
         '<table class=\"mk-key-table\"><thead><tr><th>#</th><th>Subj</th><th>Type</th><th>Correct answer</th><th></th></tr></thead><tbody>' + secHtml + '</tbody></table>' +
-        '<div style=\"text-align:center; margin:16px 0 30px;\"><button class=\"btn btn-primary\" ' + (ready ? '' : 'disabled style=\"opacity:.45; cursor:not-allowed;\" ') + 'onclick=\"win.mockDoFinalize()\" type=\"button\">🔒 Finalize paper (' + (ready ? 'all keys set' : 'missing keys') + ')</button></div>';
+        '<div style=\"text-align:center; margin:16px 0 30px;\"><button class=\"btn btn-primary\" ' + (ready ? '' : 'disabled style=\"opacity:.45; cursor:not-allowed;\" ') + 'onclick=\"window.mockDoFinalize()\" type=\"button\">🔒 Finalize paper (' + (ready ? 'all keys set' : 'missing keys') + ')</button></div>';
 }
 
 win.mockKeyChange = function (inp) {
