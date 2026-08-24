@@ -1625,9 +1625,44 @@ window.clearMatrixFilters = function () {
     var proto = location.protocol;
     if (proto !== 'https:' && proto !== 'http:' && location.hostname !== 'localhost') return;
     if (proto === 'http:' && location.hostname !== 'localhost') return;
+    // Update-available toast [AUDIT P2]: the SW's activation-time client
+    // navigate remains the fallback, but the user now gets a non-blocking
+    // heads-up with an explicit Reload action instead of a surprise yank.
+    function showUpdateToast(reg) {
+        try {
+            if (document.getElementById('jmax-update-toast')) return;
+            var t = document.createElement('div');
+            t.id = 'jmax-update-toast';
+            t.style.cssText = 'position:fixed;z-index:100002;bottom:calc(22px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(15,17,26,.97);border:1px solid rgba(61,220,255,.4);border-radius:999px;color:#dfe7f5;font-size:12.5px;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+            var s = document.createElement('span');
+            s.textContent = '✨ New version ready';
+            var b = document.createElement('button');
+            b.textContent = 'Reload';
+            b.style.cssText = 'background:rgba(61,220,255,.16);color:#8be9ff;border:1px solid rgba(61,220,255,.45);border-radius:999px;padding:5px 14px;cursor:pointer;font-weight:700;font-size:12px';
+            b.onclick = function () { try { reg.waiting && reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {} location.reload(); };
+            var x = document.createElement('button');
+            x.textContent = '✕';
+            x.setAttribute('aria-label', 'Dismiss update notice');
+            x.style.cssText = 'background:none;border:none;color:#7a8aa8;cursor:pointer;font-size:13px;padding:4px';
+            x.onclick = function () { t.remove(); };
+            t.appendChild(s); t.appendChild(b); t.appendChild(x);
+            document.body.appendChild(t);
+        } catch (e) {}
+    }
     window.addEventListener('load', function () {
         try {
-            navigator.serviceWorker.register('./sw.js').catch(function () {});
+            navigator.serviceWorker.register('./sw.js').then(function (reg) {
+                try {
+                    if (reg.waiting && navigator.serviceWorker.controller) showUpdateToast(reg);
+                    reg.addEventListener('updatefound', function () {
+                        var nw = reg.installing;
+                        if (!nw) return;
+                        nw.addEventListener('statechange', function () {
+                            if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateToast(reg);
+                        });
+                    });
+                } catch (e) {}
+            }).catch(function () {});
         } catch (e) {}
     });
 })();

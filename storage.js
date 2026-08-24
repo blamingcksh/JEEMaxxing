@@ -2154,7 +2154,9 @@ export async function executeUnifiedSync() {
                         // id → question Map: the merge used to .find() per cloud
                         // question (O(n·m) — ~9M comparisons at 3k×3k every poll).
                         const localById = new Map(AppState.questionBank.map(q => [q.id, q]));
-                        await _getTombstones();
+                        // Union remote deletions BEFORE filtering, so a question
+                        // deleted on another device is dropped here too.
+                        await _mergeRemoteTombstones(cloudState.tombstones);
                         cloudState.questionBank.forEach(cloudQ => {
                             if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
                             if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect
@@ -2210,7 +2212,7 @@ export async function executeUnifiedSync() {
         }
         // Strip inline images from the cloud payload (mirrors syncStateToCloud)
         // — driveImageId re-fetches them on demand; keeps Drive JSON lean.
-        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(_stripBankImages), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory() };
+        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(_stripBankImages), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())] };
         if (!fileId) {
             let createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
                 method: 'POST', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' },
@@ -2234,6 +2236,7 @@ export async function executeUnifiedSync() {
 // per solve on iPad. Throttle to one push per 30s (manual sync bypasses).
 const CLOUD_PUSH_THROTTLE_MS = 30000;
 let _lastCloudPushAt = 0;
+let _cachedCloudFileId = null;   // system_state.json fileId, resolved once per session
 let _cloudSyncInFlight = false;
 let _cloudSyncQueued = false;
 
@@ -2264,6 +2267,23 @@ export async function recordCloudTombstone(id) {
 
 function _isTombstoned(id) {
     return !!_tombstones && _tombstones.has(String(id));
+}
+
+/**
+ * Union remote tombstones into the local set and persist once [AUDIT P2].
+ * Without this, a deletion on device A never reached device B: B kept the
+ * deleted question, and its next push resurrected it in the cloud forever.
+ */
+async function _mergeRemoteTombstones(remoteList) {
+    if (!Array.isArray(remoteList) || remoteList.length === 0) return;
+    const t = await _getTombstones();
+    let added = false;
+    for (const id of remoteList) {
+        const s = String(id);
+        if (s && !t.has(s)) { t.add(s); added = true; }
+    }
+    if (!added) return;
+    try { await idbSet(CLOUD_TOMBSTONE_KEY, [...t]); } catch (e) { /* best-effort */ }
 }
 
 // ── Elo last-write-wins ──
@@ -2349,12 +2369,18 @@ export async function syncStateToCloud(force = false) {
             await persistImageCacheIfChanged();
         }
         if (subText) subText.textContent = "Syncing system state...";
-        const payload = { date: todayLocalKey(), questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory() };
-        const query = `name='system_state.json' and '${AppState.cloudFolderId}' in parents and trashed=false`;
-        let searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, { headers: { Authorization: `Bearer ${AppState.driveAccessToken}` } });
-        if (!searchRes.ok) { if (searchRes.status === 404) throw new Error("Target cloud storage folder directory not found."); throw new Error(`Drive connection interface dropped with code: ${searchRes.status}`); }
-        let searchData = await searchRes.json();
-        let fileId = searchData.files && searchData.files.length > 0 ? searchData.files[0].id : null;
+        const payload = { date: todayLocalKey(), questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())] };
+        // fileId cache [AUDIT P1-11 staging]: every push used to re-run the
+        // Drive file-search round-trip. Cache per session; invalidate on 404
+        // (folder/file deleted mid-session) so the next push recreates it.
+        let fileId = _cachedCloudFileId;
+        if (!fileId) {
+            const query = `name='system_state.json' and '${AppState.cloudFolderId}' in parents and trashed=false`;
+            let searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, { headers: { Authorization: `Bearer ${AppState.driveAccessToken}` } });
+            if (!searchRes.ok) { if (searchRes.status === 404) throw new Error("Target cloud storage folder directory not found."); throw new Error(`Drive connection interface dropped with code: ${searchRes.status}`); }
+            let searchData = await searchRes.json();
+            fileId = searchData.files && searchData.files.length > 0 ? searchData.files[0].id : null;
+        }
         if (!fileId) {
             let createRes = await fetch('https://www.googleapis.com/drive/v3/files', { method: 'POST', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'system_state.json', parents: [AppState.cloudFolderId] }) });
             if (!createRes.ok) throw new Error(`Failed to generate system JSON metadata container file shell.`);
@@ -2362,7 +2388,11 @@ export async function syncStateToCloud(force = false) {
         }
         if (fileId) {
             let uploadRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, { method: 'PATCH', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (!uploadRes.ok) throw new Error(`State content array matrix synchronization delivery fault.`);
+            if (!uploadRes.ok) {
+                if (uploadRes.status === 404) _cachedCloudFileId = null; // file deleted mid-session — re-search next push
+                throw new Error(`State content array matrix synchronization delivery fault.`);
+            }
+            _cachedCloudFileId = fileId;
             if (subText) { subText.textContent = "Sync Complete ✔"; subText.style.color = "var(--glow-green)"; setTimeout(() => { subText.textContent = "System Idle"; subText.style.color = "#fff"; }, 3000); }
         }
     } catch (e) {
@@ -2396,7 +2426,8 @@ export async function loadStateFromCloud(isBackground = false) {
             if (cloudState.questionBank) {
                 // id → question Map (was .find() per cloud question — O(n·m))
                 const localById = new Map(AppState.questionBank.map(q => [q.id, q]));
-                await _getTombstones();
+                // Union remote deletions BEFORE filtering (cross-device delete).
+                await _mergeRemoteTombstones(cloudState.tombstones);
                 cloudState.questionBank.forEach(cloudQ => {
                     if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
                     if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect

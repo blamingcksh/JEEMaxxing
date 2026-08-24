@@ -208,6 +208,15 @@ function buildScene(){
   renderer.setPixelRatio(Math.min(devicePixelRatio,iosChip?1:1.5));
   renderer.setSize(innerWidth,innerHeight);
   renderer.setClearColor(0x070809,1);
+  // GPU eviction recovery [AUDIT P1-5]: iPadOS Safari evicts WebGL contexts
+  // under memory pressure. preventDefault keeps the context recoverable
+  // (three.js re-uploads buffers on restore); the app loop pauses while the
+  // context is lost and resumes with a fresh viewport once it returns.
+  canvas.addEventListener('webglcontextlost',function(e){e.preventDefault();stopLoop();},false);
+  canvas.addEventListener('webglcontextrestored',function(){
+    try{renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}catch(e){}
+    if(enabled)startLoop();
+  },false);
   scene=new THREE.Scene();
   env={fog:new THREE.FogExp2(0x9ab4c8,0.006)};scene.fog=env.fog;
   camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,0.1,900);
