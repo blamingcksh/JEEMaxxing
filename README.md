@@ -39,13 +39,12 @@ JEEMaxxing is a **vanilla ES6 module** application. There is no framework, no bu
 ┌─────────────────────────────────────────────────────────────┐
 │  UI / Views        index.html · dashboard-clean.js · theme.js│
 ├─────────────────────────────────────────────────────────────┤
-│  Feature Engines   app.js (orchestrator, ~9.5k lines)       │
+│  Feature Engines   app.js (orchestrator, ~11.5k lines)      │
 │                    matrix.js (SR + error vault)              │
 │                    pomodoro.js (focus timers)                │
-│                    checkpoint.js (accountability)            │
-│                    forest-island-full.js + grove-islands.js  │
-│                    + forest-bg.js + forest-juice.js          │
-│                    + forest-island-juice.js + gallery-break.js│
+│                    checkpoint.js (accountability, passive)   │
+│                    grove-islands.js + forest-bg.js           │
+│                    + gallery-break.js                        │
 │                    cns-load.js · deload.js · lifeline.js     │
 │                    nightguard.js                             │
 ├─────────────────────────────────────────────────────────────┤
@@ -100,19 +99,19 @@ The UI runs on a single token foundation declared at the top of `styles.css` (`:
 | `cns-load.js` | — | CNS load meter (fatigue telemetry) that gates flow/hardcore practice modes. |
 | `deload.js` | — | Deload-day engine: automatic + manual deload scheduling, streak preservation. |
 | `lifeline.js` | — | Flow-state lifeline: when CNS load is high, shifts practice difficulty windows easier. |
-| `nightguard.js` | — | Overnight maintenance: pending-write flush, streak/target rollover, silent data protection. |
-| `grove-islands.js` | ~1,859 | The **island biome** forest: island canvas, trees, clouds, growth physics. |
-| `forest-island-full.js` | — | Full island renderer (trees, palms, rocks, water) driven by solve counts. |
-| `forest-island-juice.js` | ~814 | Polish layer: animations, particles, ambient effects on the island. |
+| `nightguard.js` | — | Post-23:00 ELO-yield guard (×0.80/×0.55/×0.20 tiers), clock-rollback detection, sleep-debt ledger, hold-to-override. |
+| `grove-islands.js` | ~2,570 | The **island biome** forest: island canvas, trees, clouds, growth physics. |
+| `forest-island-full.js` | — | *(removed — folded into `grove-islands.js`)* |
+| `forest-island-juice.js` | — | *(removed — folded into `grove-islands.js` / `forest-bg.js`)* |
 | `forest-bg.js` | ~333 | Animated background layers for the forest (sky, stars, parallax). |
-| `forest-juice.js` | — | Particle/sprite juice for the classic forest. |
+| `forest-juice.js` | — | *(removed — folded into `grove-islands.js` / `forest-bg.js`)* |
 | `gallery-break.js` | — | **The Burn Reveal** — during a pomodoro break the app dissolves away to reveal a public-domain painting (Wikimedia, cached in IDB); reveal radius tracks break progress, quote + Continue button at 100%. |
-| `dashboard-clean.js` | ~200 | Declutter pass: hides banners, injects a live Time Bank card, floating layout FAB, momentum legend, sidebar collapse persistence. |
+| `dashboard-clean.js` | ~200 | Declutter pass: hides banners, floating layout FAB, momentum legend, sidebar collapse persistence. *(No Time Bank card — that README claim was stale.)* |
 | `theme.js` | — | 7 accent themes × 2 appearance modes, live re-skinning. |
 | `fx.js` | — | Centralized sound / visual / haptic FX controller (`window.FX`): correct/wrong/super sounds, red flash, streak-shield glow, emoji bursts, haptics; prefs in `jeemax_fx_prefs`, honors `prefers-reduced-motion`. |
 | `checkpoint.js` | — | See above (accountability). |
 | `lifeline.js` | — | See above. |
-| `sw.js` | — | Service worker: network-first HTML, stale-while-revalidate assets, offline cache (v15). |
+| `sw.js` | — | Service worker: network-first HTML, stale-while-revalidate assets, offline cache (`jeemax-v44`). |
 | `manifest.webmanifest` | — | PWA manifest (standalone, icons, dark background). |
 | `storage.js` | — | See above. |
 
@@ -145,7 +144,7 @@ Writes go through `saveAllAsync()` → `flushSaves()` which coalesces and persis
 `getDailyHistory()` / `updateDailyHistory()` maintain a per-day solve-count ledger (`date → count`). It feeds:
 
 - Streak computation (see [Streaks](#streaks))
-- The 15-day error momentum sparkline
+- The Momentum candlestick graph (the old 15-day sparkline was removed)
 - Forest daily stores (`jeemax_forest_daily_v1`, mirrored to IndexedDB)
 - Deload 48h missed-day checks
 
@@ -185,7 +184,7 @@ Writes go through `saveAllAsync()` → `flushSaves()` which coalesces and persis
 #### Dashboard (`app.js` + `dashboard-clean.js`)
 
 - Per-subject **daily solve targets** (settable via `#set-tgt-[subject]`) and **error-resolution targets** (`#set-err-[subject]`), with a 24-hour lock (`jeeTargetLockDate`) so you can't nudge targets mid-day.
-- **Time Bank card** — live total + per-subject study time, always synced with the pomodoro hour-stats (injected by `dashboard-clean.js`).
+- ~~**Time Bank card**~~ *(removed from the product; `dashboard-clean.js` no longer injects it)* — live per-subject study time lives in **Focus Mode**'s hour-stats instead.
 - **Loop-rail navigation** — sidebar arcs show progress toward today's physics/chemistry/maths targets plus a "fix" ring for error resolution. When all four rings close, the loop is "CLOSED"; after 18:00 with zero solves the sidebar flashes a "STREAK AT RISK" warning.
 - **Candlestick graphs** (`candlestick-engine.js`) — the home-section trend graphs (solves/time) rendered as SVG candlesticks with momentum colors.
 - **Momentum legend** injected into the Momentum Tracker by `dashboard-clean.js`.
@@ -314,12 +313,22 @@ Time-boxed bounty questions: answer within the countdown or the attempt is marke
 
 - `getDueStatus()` decides if an item is `ready`/`due`; the nav's "Vault" badge counts ready items (O(1) cached).
 - **SR practice drawer** (`openPracticeDrawer`) — full spaced-repetition session: flip card, select options / self-report, autonomy & friction rating, optional stopwatch + manual time, hint/image toggles, then `submitPracticeLog()` feeds Elo migration.
-- **Error resolution dashboard** (`renderErrorResolutionDashboard`) — 15-day sparkline of resolved errors vs. targets.
+- **Error resolution dashboard** (`renderErrorResolutionDashboard`) — decay grid + penalty scars (the old 15-day sparkline was removed).
 - **Chapter progress** (`renderChapterProgressList`, `openChapterProgress`) — per-chapter mastery breakdown.
 
 ---
 
 ### 🔒 Accountability (Slump Sentry / Checkpoints)
+
+> **⚠ STATUS: DECOMMISSIONED (passive).** The 1-second monitoring loop and its
+> penalty driver were **removed from the source** (`checkpoint.js` — "TODAY'S
+> LOOP: REMOVED"): it re-armed on every reload and kept writing Protocol-Zero
+> hard-zeros into the Fix Streak, so "closing it" never stuck. `cfg.enabled`
+> ships `false`, no tick driver exists, and the control-center UI stays hidden
+> and inert. **Stored penalties are kept as plain history for the graphs** —
+> they are never re-armed or re-written. Manual debug access survives via
+> `window.__checkpoint`. The table below documents how the system *worked*
+> before decommissioning.
 
 `checkpoint.js` — a hardened "4-pillar accountability checkpoint system" that actively guards your schedule. **8 known exploits patched** (documented in the file header):
 
@@ -362,7 +371,7 @@ When `CNS_LOAD ≥ 0.80`, the lifeline shifts practice difficulty windows toward
 
 #### Night Guard (`nightguard.js`)
 
-Overnight/overnight-flush maintenance: ensures pending `saveAllAsync` writes land, rolls over daily counters cleanly at midnight, and guards streak/target data during inactivity windows.
+Post-23:00 **"Diminishing Returns" guard** — a stepped ELO-yield degradation driven by the local clock: Tier 1 (23:00–01:00) ×0.80 🌙, Tier 2 (01:00–03:00) ×0.55 🌑, Tier 3 (03:00+) ×0.20 🛌 uninterruptible modal with force-CNS. Also detects clock rollback, tracks late-night overrides (3s hold-to-override) and keeps a sleep-debt ledger (consecutive short gaps → mood penalty). Pure read over AppState; persists its own tier/override state in localStorage.
 
 ---
 
@@ -372,11 +381,13 @@ Overnight/overnight-flush maintenance: ensures pending `saveAllAsync` writes lan
 
 The forest grows as you solve questions. Layers:
 
-- `forest-bg.js` — animated sky/stars/parallax backdrop.
-- `forest-island-full.js` — the **island biome**: trees, palms, rocks, water rendered from solve counts.
-- `grove-islands.js` — the bigger island archipelago with its own growth physics (~1.8k lines: growth curves, cloud movement, maturity stages).
-- `forest-island-juice.js` + `forest-juice.js` — particles, sparkles, ambient animations on top.
+- `forest-bg.js` — animated sky/stars/parallax backdrop (three.js, vendored build first with CDN fallbacks).
+- `grove-islands.js` — the bigger island archipelago with its own growth physics (~2.5k lines: growth curves, cloud movement, maturity stages, mini widget + full explorer).
 - Daily forest store (`jeemax_forest_daily_v1` in localStorage + IDB mirror) records daily growth per subject.
+
+> Note: the old `forest-island-full.js` / `forest-island-juice.js` /
+> `forest-juice.js` modules no longer exist — their roles were folded into
+> `grove-islands.js` and `forest-bg.js`.
 
 **Growth rules:** solves (and subject balance) plant/water trees; targets met grow trees to maturity; missed days can wilt them. The forest is a persistent visual progress bar for your grind.
 
@@ -493,7 +504,7 @@ npx serve .
 ## 📱 PWA & Offline
 
 - `manifest.webmanifest` — installable, standalone, dark theme, maskable icons.
-- `sw.js` (cache version `jeemax-v23`):
+- `sw.js` (cache version `jeemax-v44`):
   - **Network-first for HTML** — a cached `index.html` can never pin old code; fresh shell served every load, cached copy only when offline.
   - **Stale-while-revalidate** for JS/CSS/fonts; CDN prefix whitelist (`jsdelivr`, `esm.sh`, `unpkg`, Google Identity).
   - **KaTeX vendored locally** (`vendor/katex/`) so math renders offline.

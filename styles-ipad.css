@@ -153,3 +153,20 @@ body.dc-active .metro-pop {
         min-height: 44px;
     }
 }
+
+/* ── 8. Virtual-keyboard adaptation [AUDIT P2] ─────────────────────────────
+   index.html publishes the keyboard height as --kb via visualViewport and
+   toggles body.kb-open. With the docked keyboard covering ~45% of a landscape
+   iPad, floating chrome is hidden instead of hovering over keys. */
+@media (pointer: coarse) {
+    body.kb-open .metro-fab,
+    body.kb-open #dc-layout-fab,
+    body.kb-open #cp-hub,
+    body.kb-open .pomo-mini-widget,
+    body.kb-open .skip-undo-toast,
+    body.kb-open .jmax-app-toast {
+        opacity: 0 !important;
+        pointer-events: none !important;
+        transition: opacity 0.15s ease;
+    }
+}
