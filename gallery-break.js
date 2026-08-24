@@ -154,6 +154,7 @@ let _gen = 0;           // session token — invalidates stale async work after 
 let _target = 0;        // timer-driven progress 0..1
 let _display = 0;         // eased, what's actually painted
 let _raf = null;
+let _lastSettledPaint = 0;   // settled-state repaint cap clock [AUDIT P1-13]
 let _art = null;          // ImageBitmap | HTMLImageElement | canvas (fallback)
 let _painting = null;     // metadata of current painting
 let _artTint = { r: 255, g: 231, b: 201 };  // color sampled from the art (warm ivory fallback)
@@ -387,10 +388,11 @@ function _frame(now) {
   const step = TUNING.easePerFrame;
   _display += (target - _display) * step;
   if (Math.abs(target - _display) < 0.0004) _display = target;
+  const settling = Math.abs(target - _display) > 0.0004;
 
   // Wet-print sheen: hot while the edge is actively spreading, dries out when
   // the bloom freezes or finishes — like developer liquid settling on paper.
-  _sheen = (Math.abs(target - _display) > 0.0015) ? 1 : (_sheen * TUNING.sheenDecay);
+  _sheen = settling ? 1 : (_sheen * TUNING.sheenDecay);
 
   // Fully revealed after finish() → one-shot particle bloom over the print.
   // Gated on motion+FX prefs like every other v3 layer (no motion, no bloom).
@@ -400,7 +402,15 @@ function _frame(now) {
     _burstBokeh();
   }
 
-  _paint(now);
+  // [AUDIT P1-13] Settled-state repaint cap: once the reveal stops moving,
+  // nothing on screen needs 60fps — art cover, grain, vignette and drifting
+  // bokeh look identical at ~24fps, but the old loop recomposited the full
+  // stack (shadowBlur paths + ~23 gradients/frame) at uncapped rAF through
+  // entire 5–20 min breaks. Transitions still paint at full rate.
+  if (settling || (now - _lastSettledPaint) >= 42) {
+    _paint(now);
+    _lastSettledPaint = now;
+  }
 
   // The bloom is the enforcement: past the threshold the overlay blocks input
   _overlay.style.pointerEvents =

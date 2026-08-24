@@ -643,6 +643,8 @@ export function getStatus() {
 
 // ==================== MODAL AUTO-TRIGGER ====================
 
+import { SessionFocus } from './storage.js';
+
 /**
  * Check if the Tier 3 uninterruptible modal should be shown.
  * Called from the cat-banner telemetry loop.
@@ -655,6 +657,12 @@ export function checkAndShowTier3Modal() {
     // Don't show if already shown
     const modal = document.getElementById('nightguard-modal');
     if (!modal || modal.classList.contains('active')) return false;
+
+    // Interruption gate [AUDIT P0-1]: never bury the uninterruptible modal
+    // under an active mock runner or pop it mid-solve. The telemetry loop
+    // polls us again every tick, so deferral needs no extra queueing — the
+    // ELO decay itself is clock-driven and unaffected by the UI hold.
+    if (SessionFocus.isBusy()) return false;
 
     // Show the modal (class-based like every other modal) and apply sky-blue tint
     modal.classList.add('active');

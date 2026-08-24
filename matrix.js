@@ -27,6 +27,8 @@ import {
     getChapterWeight,
     resolveChapterWeightInfo,
     setChapterWeightOverride,
+    // ── Shared "user is mid-activity" registry (interruption gating) ──
+    SessionFocus,
 } from './storage.js';
 
 // Memory Kernel v2 — canonical pure implementation (imported directly; the
@@ -109,10 +111,13 @@ export function openErrorMatrix(subject, element) {
     filterErrors();
 }
 
-// Normalize subject keys: mixed-case / whitespace variants must match the
-// lowercased keys used everywhere else ("Physics" vs "physics").
+// Normalize subject keys. Delegates to the CANONICAL storage.js mapper so
+// filtering/grouping agrees with how questions were written: the previous
+// local trim+lowercase skipped alias mapping, so a question stored as
+// "Mathematics" was counted as maths but filtered as "mathematics" — an
+// invisible row in the Vault.
 function _normSubj(s) {
-    return (s || '').toString().trim().toLowerCase();
+    return normSubjKey(s);
 }
 
 // ── Staggered macrotask chain ──────────────────────────────────────────────
@@ -261,6 +266,8 @@ export function openPracticeDrawer(qId) {
     const overlay = document.createElement('div');
     overlay.className = 'sr-practice-overlay';
     overlay.id = 'sr-practice-overlay';
+    // Own the user's attention while a review is on stage (P0-1 gate).
+    SessionFocus.acquire('vault-drawer');
     // Click on the backdrop (not the drawer itself) closes the drawer.
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) closePracticeDrawer();
@@ -340,6 +347,7 @@ export function openPracticeDrawer(qId) {
 }
 
 export function closePracticeDrawer() {
+    SessionFocus.release('vault-drawer');
     _pauseStopwatch();
     _resetDrawerState();
     const overlay = document.getElementById('sr-practice-overlay');
@@ -1111,8 +1119,12 @@ function _updateDrawerUI() {
 
     // Enable/disable submit — a 0s answer must still be loggable: requiring
     // timeSpent > 0 left the button dead for instant answers.
-    const timeSpent = _drawerState.timeSpentMins > 0 ? _drawerState.timeSpentMins : _drawerState.stopwatchSeconds / 60;
-    const canSubmit = _drawerState.result && _drawerState.autonomy && _drawerState.frictionTypes.length > 0 && timeSpent >= 0;
+    // Friction tags are OPTIONAL [AUDIT P1-7]: demanding ≥1 tag forced users
+    // to invent a "friction type" even for flawless instant solves (~100+
+    // taps per 15-card queue), the classic reason SR systems get abandoned.
+    // Untagged logs flow into the report engine's untagged bucket, which
+    // already exists; result + autonomy remain required (they drive SM-2).
+    const canSubmit = _drawerState.result && _drawerState.autonomy;
     const btn = document.getElementById('sr-submit-btn');
     if (btn) btn.disabled = !canSubmit;
 }
@@ -1785,6 +1797,8 @@ export function addErrorBlock() {
     AppState.newErrorPicData = "";
     const successEl = document.getElementById('err-img-success');
     if (successEl) successEl.style.display = 'none';
+    // Saved successfully — the draft mirror has served its purpose.
+    try { localStorage.removeItem(ADD_ERR_DRAFT_KEY); } catch (_) {}
 
     _closeModalStr('add-error-modal');
     // Defer heavy DOM rebuilds so the modal close transition completes first
@@ -2638,6 +2652,48 @@ function _initFilterDock() {
 }
 // Static markup — safe to wire at module eval (module scripts run after parse).
 _initFilterDock();
+
+// ── Draft persistence for the manual Log-a-Mistake form [AUDIT P1-9] ──────
+// A student typing a chapter/topic who swipes the PWA away (iPad app switcher
+// is one gesture) used to lose everything typed. Text fields are mirrored to
+// localStorage on every input and restored when the modal opens; cleared only
+// after a successful save. The attached image is NOT persisted (multi-MB data
+// URLs would blow the localStorage quota) — noted in the audit as accepted.
+const ADD_ERR_DRAFT_KEY = 'jeemax_draft_add_error';
+function _saveAddErrorDraft() {
+    try {
+        const ch = document.getElementById('new-err-chapter');
+        const ty = document.getElementById('new-err-type');
+        if (!ch || !ty) return;
+        const v = { chapter: ch.value, type: ty.value };
+        if (!v.chapter && !v.type) { localStorage.removeItem(ADD_ERR_DRAFT_KEY); return; }
+        localStorage.setItem(ADD_ERR_DRAFT_KEY, JSON.stringify(v));
+    } catch (_) {}
+}
+function _restoreAddErrorDraft() {
+    try {
+        const raw = localStorage.getItem(ADD_ERR_DRAFT_KEY);
+        if (!raw) return;
+        const d = JSON.parse(raw);
+        const ch = document.getElementById('new-err-chapter');
+        const ty = document.getElementById('new-err-type');
+        // Never clobber what the user is currently looking at.
+        if (ch && !ch.value && d.chapter) ch.value = d.chapter;
+        if (ty && !ty.value && d.type) ty.value = d.type;
+    } catch (_) {}
+}
+try {
+    if (!window.__addErrorDraftWired) {
+        window.__addErrorDraftWired = true;
+        ['input', 'change'].forEach(evName => {
+            document.addEventListener(evName, (e) => {
+                const t = e.target;
+                if (t && (t.id === 'new-err-chapter' || t.id === 'new-err-type')) _saveAddErrorDraft();
+            });
+        });
+    }
+} catch (_) {}
+window.__restoreAddErrorDraft = _restoreAddErrorDraft;
 
 function _startRolloverWatcher() {
     if (_rolloverWatchStarted) return;

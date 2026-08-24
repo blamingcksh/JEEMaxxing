@@ -83,8 +83,11 @@ function applyTOD(v){
   env.fog.color.copy(L(a.fog,b.fog));
 }
 function loadThree(){
-  var urls=['https://esm.sh/three@0.160.0','https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js','https://unpkg.com/three@0.160.0/build/three.module.js'];
-  function tryOne(i){return new Promise(function(res,rej){if(i>=urls.length)return rej(new Error('all CDNs failed'));import(urls[i]).then(function(m){res(m);}).catch(function(){tryOne(i+1).then(res,rej);});});}
+  /* Vendored build FIRST (same policy as grove-islands): the SW precaches it,
+     so the ambient world works on a first OFFLINE launch. CDNs remain as
+     fallbacks for non-installed / stale-cache cases. */
+  var urls=['./vendor/three/three.module.min.js','https://esm.sh/three@0.160.0','https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js','https://unpkg.com/three@0.160.0/build/three.module.js'];
+  function tryOne(i){return new Promise(function(res,rej){if(i>=urls.length)return rej(new Error('all three.js sources failed'));import(urls[i]).then(function(m){res(m);}).catch(function(){tryOne(i+1).then(res,rej);});});}
   return tryOne(0);
 }
 function glowTex(){var c=document.createElement('canvas');c.width=c.height=64;var g=c.getContext('2d');var r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(0.3,'rgba(255,240,180,.8)');r.addColorStop(1,'rgba(255,240,180,0)');g.fillStyle=r;g.fillRect(0,0,64,64);var t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
@@ -189,8 +192,8 @@ function juiceUpdate(J,el,dt,night){
   if(J.sparkGeo){var take=Math.min(J.queue.length,40);for(var k=0;k<take;k++){var p=J.queue.shift();var idx=-1;for(var q=0;q<J.sPos.length/3;q++){var ii=(J.sFree+q)%(J.sPos.length/3);if(J.sLife[ii]<=0){J.sFree=(ii+1)%(J.sPos.length/3);idx=ii;break;}}if(idx<0)break;J.sPos[idx*3]=p[0]+rand(-0.3,0.3);J.sPos[idx*3+1]=p[1]+rand(0,0.6);J.sPos[idx*3+2]=p[2]+rand(-0.3,0.3);var an=rand(0,6.283),spd=rand(1.5,3.5);J.sVx[idx]=Math.cos(an)*spd;J.sVz[idx]=Math.sin(an)*spd;J.sVy[idx]=rand(2,4.5);J.sLife[idx]=rand(0.7,1.3);J.sMax[idx]=J.sLife[idx];J.sBr[idx]=p[3];J.sBg[idx]=p[4];J.sBb[idx]=p[5];}var any=false;for(var s=0;s<J.sLife.length;s++){if(J.sLife[s]<=0)continue;any=true;J.sLife[s]-=dt;if(J.sLife[s]<=0){J.sPos[s*3+1]=-9999;J.sCol[s*3]=J.sCol[s*3+1]=J.sCol[s*3+2]=0;continue;}J.sVy[s]-=2.2*dt;J.sPos[s*3]+=J.sVx[s]*dt;J.sPos[s*3+1]+=J.sVy[s]*dt;J.sPos[s*3+2]+=J.sVz[s]*dt;var ff=J.sLife[s]/J.sMax[s];J.sCol[s*3]=J.sBr[s]*ff;J.sCol[s*3+1]=J.sBg[s]*ff;J.sCol[s*3+2]=J.sBb[s]*ff;}if(any||J.queue.length){J.sparkGeo.attributes.position.needsUpdate=true;J.sparkGeo.attributes.color.needsUpdate=true;}}
   // shockwave rings
   var now=performance.now();for(var r=J.rings.length-1;r>=0;r--){var w=J.rings[r];var pp=(now-w.t0)/700;if(pp>=1){scene.remove(w.mesh);w.geo.dispose();w.mat.dispose();J.rings.splice(r,1);}else{var ss=1+pp*6;w.mesh.scale.set(ss,1,ss);w.mat.opacity=0.7*(1-pp);}}
-  // streak-warmed sunlight
-  if(el-J.streakAt>2){J.streakAt=el;var eln=document.getElementById('top-streak');var mm=eln?(eln.textContent||'').match(/(\d+)/):null;J.streakCache=mm?(parseInt(mm[1],10)||0):0;}
+  // streak-warmed sunlight (bridge first; #top-streak element no longer exists)
+  if(el-J.streakAt>2){J.streakAt=el;var br=(typeof window!=='undefined')?window.__jmaxStreak:null;if(br&&typeof br.days==='number'){J.streakCache=br.days;}else{var eln=document.getElementById('top-streak');var mm=eln?(eln.textContent||'').match(/(\d+)/):null;J.streakCache=mm?(parseInt(mm[1],10)||0):0;}}
   var kk=Math.min(1,J.streakCache/7)*0.3;if(kk>0&&env&&env.sun){env.sun.color.lerp(J.warm,Math.min(1,dt*1.2)*kk);if(env.hemi)env.hemi.color.lerp(J.warm,Math.min(1,dt)*kk*0.6);}
 }
 

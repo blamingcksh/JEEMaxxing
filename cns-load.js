@@ -259,11 +259,19 @@ function _tauInflation(subject) {
  */
 function _streakStrainBonus() {
     try {
-        const el = document.getElementById('top-streak');
-        if (!el) return 0;
-        const match = (el.textContent || '').match(/(\d+)/);
-        if (!match) return 0;
-        const streak = parseInt(match[1], 10) || 0;
+        // Canonical source: the streak published by updateStreakDisplay().
+        // (The old #top-streak DOM read silently returned 0 forever — the
+        // element was removed in a header redesign.)
+        const bridge = (typeof window !== 'undefined') ? window.__jmaxStreak : null;
+        let streak = 0;
+        if (bridge && typeof bridge.days === 'number') streak = bridge.days;
+        else {
+            const el = document.getElementById('top-streak');
+            if (!el) return 0;
+            const match = (el.textContent || '').match(/(\d+)/);
+            if (!match) return 0;
+            streak = parseInt(match[1], 10) || 0;
+        }
         if (streak < STREAK_STRAIN_THRESHOLD) return 0;
         return _clamp01((streak - STREAK_STRAIN_THRESHOLD) / 20); // max at 30 days
     } catch (e) {

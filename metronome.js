@@ -123,6 +123,16 @@
       var C = window.AudioContext || window.webkitAudioContext;
       if (!C) return null;
       actx = new C();
+      // iPadOS: alarms/Siri/incoming calls flip the context to 'interrupted'.
+      // The visibilitychange path below never fires for that, so auto-resume
+      // on statechange — a running click-track must not die silently.
+      try {
+        actx.addEventListener('statechange', function () {
+          if (running && actx && actx.state !== 'running') {
+            actx.resume()['catch'](function () {});
+          }
+        });
+      } catch (e) {}
       master = actx.createGain();
       master.gain.value = volCurve(prefs.volume);
       master.connect(actx.destination);

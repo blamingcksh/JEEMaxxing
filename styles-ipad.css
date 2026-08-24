@@ -1,0 +1,138 @@
+/* ============================================================================
+   styles-ipad.css — iPad / coarse-pointer production-hardening layer
+   ----------------------------------------------------------------------------
+   Loaded LAST (after styles-chapters.css) so these fixes win the cascade
+   without editing the component sheets. Every rule here traces to a finding
+   in AUDIT-PRODUCTION-READINESS.md (§ iPad batch). Desktop/mouse rendering
+   is intentionally untouched: almost everything below is gated behind
+   (pointer: coarse) or env() insets that evaluate to 0 elsewhere.
+   ============================================================================ */
+
+/* ── 1. Kill iOS focus auto-zoom [AUDIT P1-2] ──────────────────────────────
+   iPadOS Safari zooms the page when a focused field renders <16px. These are
+   the only sub-16px field styles in the app (13.5/13/12.5px). Forcing 16px on
+   coarse pointers removes the zoom-jump; desktop keeps the tighter look. */
+@media (pointer: coarse) {
+    .pomo-input, textarea.pomo-input, .pomo-select,
+    .matrix-search, .sr-manual-input, .text-track-terminal-input {
+        font-size: 16px !important;
+    }
+}
+
+/* ── 2. Range sliders: real touch hit-boxes [AUDIT P1-3] ───────────────────
+   The sliders paint their 3–6px hairline track on the input's own background.
+   Giving the input 28px of height while pinning the visible stripe back to
+   its painted thickness keeps the exact look and multiplies the finger
+   target ~5x. Thumbs re-center vertically on their own. */
+@media (pointer: coarse) {
+    .fx-range,
+    #view-pomodoro .sc-range {
+        height: 28px;
+        background-repeat: no-repeat;
+        background-position: left center;
+        background-size: 100% 6px;
+    }
+    .metro-range {
+        height: 28px;
+        background-repeat: no-repeat;
+        background-position: left center;
+        background-size: 100% 3px;
+    }
+}
+
+/* ── 3. FAB de-collision [AUDIT P1-4] ───────────────────────────────────────
+   #dc-layout-fab (z950) parks exactly on top of #metro-fab (z900) because
+   dashboard-clean.js keeps `dc-active` on <body> permanently. Stack the
+   metronome above it, and lift its popover with it. */
+body.dc-active .metro-fab {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+}
+body.dc-active .metro-pop {
+    bottom: calc(148px + env(safe-area-inset-bottom));
+}
+
+/* ── 4. Safe-area insets for all fixed chrome [AUDIT P1-6] ─────────────────
+   Standalone mode (viewport-fit=cover + black-translucent) puts raw px offsets
+   inside the home-indicator gesture zone and under the status bar. env() falls
+   back to 0 where no inset exists, so desktop is pixel-identical. */
+#cp-hub {
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    left: calc(20px + env(safe-area-inset-left));
+}
+#cp-ignite-float {
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    left: calc(80px + env(safe-area-inset-left));
+}
+#dc-layout-fab {
+    bottom: calc(22px + env(safe-area-inset-bottom));
+    right: calc(22px + env(safe-area-inset-right));
+}
+.bento-toolbar.dc-fab-panel {
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    right: calc(22px + env(safe-area-inset-right));
+}
+.metro-fab {
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    right: calc(20px + env(safe-area-inset-right));
+}
+.metro-pop {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    right: calc(20px + env(safe-area-inset-right));
+}
+#cp-control-panel {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+    left: calc(20px + env(safe-area-inset-left));
+}
+.gi-full-top, .fi-full-top {
+    top: calc(16px + env(safe-area-inset-top));
+}
+/* Expanded sidebar (≥1181px widths) clears the standalone status bar;
+   the collapsed rail already had its own clearance hack in styles.css. */
+@media (min-width: 1181px) {
+    .sidebar {
+        padding-top: calc(22px + env(safe-area-inset-top));
+    }
+}
+
+/* ── 5. Wide modals clipped in Slide Over [AUDIT P2] ───────────────────────
+   .modal-content.wide (0,2,0) beat the phone-width rescue (0,1,0) at every
+   width; upload/edit-question forms became unreachable below ~520px. */
+@media (max-width: 640px) {
+    .modal-content.wide {
+        width: 100%;
+        max-width: 520px;
+    }
+}
+
+/* ── 6. Invisible hit-area expansion for chronic micro-targets [AUDIT P2] ──
+   Pure ::after overlays — no visual change, just forgiving fingers. Kept off
+   dense clusters (mini-widget collapse gets a smaller halo so it never steals
+   neighbouring taps). */
+@media (pointer: coarse) {
+    .counter-btn, .tp-step-btn, .cpcc-close, .cp-prenotify-dismiss,
+    .bento-ctrl-btn {
+        position: relative;
+    }
+    .counter-btn::after, .tp-step-btn::after, .cpcc-close::after,
+    .cp-prenotify-dismiss::after, .bento-ctrl-btn::after {
+        content: '';
+        position: absolute;
+        inset: -9px;
+    }
+    .mini-collapse-btn {
+        position: relative;
+    }
+    .mini-collapse-btn::after {
+        content: '';
+        position: absolute;
+        inset: -5px;
+    }
+    /* Dimmed-until-hover close affordance is unusable on touch */
+    #practice-modal .hide-toggle.pm-close {
+        opacity: 0.85;
+    }
+    /* Primary nav rows reach Apple HIG minimum */
+    .nav-item {
+        min-height: 44px;
+    }
+}

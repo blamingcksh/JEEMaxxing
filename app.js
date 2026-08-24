@@ -29,6 +29,11 @@ import {
     registerUiCallbacks, changeCount,
     settleDayCounters,
     recordCloudTombstone,
+    // ── Full backup / restore (Config → Data Vault) ──
+    buildFullBackup,
+    applyFullBackup,
+    // ── Shared "user is mid-activity" registry (interruption gating) ──
+    SessionFocus,
     // ── SR due-status helper (used by the CK nav readiness count) ──
     getDueStatus,
     // ── Cognitive MMR band system (pre-ELO schema) ──
@@ -116,6 +121,63 @@ import { drawCandlesticks, extractCountsFromSvg } from './candlestick-engine.js'
 window.toggleDailyQueue = toggleDailyQueue;           // Daily Fix Queue button
 window.activateDailyQueue = activateDailyQueue;       // boot-flow force-arm
 window.cacheAllDriveImages = cacheAllDriveImages;     // Cache All Images button
+
+// ── Full Backup / Restore bridges (Config → Data Vault) [AUDIT P1-1] ──────
+window.exportFullBackup = async function () {
+    try {
+        const payload = await buildFullBackup();
+        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `jeemaxxing-full-backup-${todayLocalKey()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        alert(`Backup downloaded (${payload.counts.idbKeys} data sections).\n\nKeep this file safe — it is your ENTIRE grind: bank, images, ELO, mocks, history and settings.`);
+    } catch (e) {
+        console.error('[backup] export failed:', e);
+        alert('Backup failed: ' + (e && e.message ? e.message : e));
+    }
+};
+
+window.restoreFullBackup = function (fileInput) {
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+        try {
+            const payload = JSON.parse(reader.result);
+            if (!payload || payload.__jmaxBackup !== true) {
+                alert('That file is not a JEEMaxxing full backup.');
+                return;
+            }
+            // Safety net: auto-download the CURRENT state before overwriting.
+            try {
+                const safety = await buildFullBackup();
+                const sb = new Blob([JSON.stringify(safety)], { type: 'application/json;charset=utf-8' });
+                const surl = URL.createObjectURL(sb);
+                const sa = document.createElement('a');
+                sa.href = surl;
+                sa.download = `jeemaxxing-PRE-RESTORE-safety-${todayLocalKey()}.json`;
+                document.body.appendChild(sa);
+                sa.click();
+                sa.remove();
+                setTimeout(() => URL.revokeObjectURL(surl), 1500);
+            } catch (_) { /* safety copy is best-effort */ }
+            const ok = confirm(`Restore backup from ${payload.exportedAt || 'unknown date'}?\n\nThis OVERWRITES everything on this device — bank, images, ELO, history, mocks, settings.\nA safety copy of the current state has just been downloaded.`);
+            if (!ok) return;
+            const res = await applyFullBackup(payload);
+            alert(`Restored ${res.keys} data sections.\n\nThe app will now reload.`);
+            location.reload();
+        } catch (e) {
+            console.error('[backup] restore failed:', e);
+            alert('Restore failed: ' + (e && e.message ? e.message : e));
+        }
+    };
+    reader.readAsText(file);
+};
 
 import { CNSLoad } from './cns-load.js';
 import { DeloadEngine } from './deload.js';
@@ -774,7 +836,15 @@ export function openModal(id) {
     const m = document.getElementById(id);
     if (!m) return;
     if (id === 'calendar-modal') renderCalendar();
-    if (id === 'practice-modal') { try { _ensureStreakLoop(); } catch (_) {} }
+    if (id === 'practice-modal') {
+        try { _ensureStreakLoop(); } catch (_) {}
+        // Own the user's attention while a solve is on stage (P0-1 gate).
+        SessionFocus.acquire('practice');
+    }
+    // Manual Log-a-Mistake form: restore any unsaved draft [AUDIT P1-9].
+    if (id === 'add-error-modal' && typeof window.__restoreAddErrorDraft === 'function') {
+        try { window.__restoreAddErrorDraft(); } catch (_) {}
+    }
     m.style.display = 'flex';
     // Hydrate LaTeX in the freshly-opened modal synchronously (the observer
     // is a backup). Idempotent: already-rendered wrappers are never touched.
@@ -792,10 +862,22 @@ export function closeModal(e, id, force) {
     const m = document.getElementById(id);
     if (!m) return;
     if (force || (e && e.target === m)) {
+        // ── Stray-tap guard [AUDIT P1-8] ──
+        // A thumb landing just outside the card must not silently kill a
+        // LIVE timed attempt: it cleared the sprint timer, the Flow/Hardcore
+        // stacks and any armed lifeline with no confirm and no undo.
+        // Programmatic closes (force) and explicit X buttons are unaffected.
+        if (id === 'practice-modal' && !force && e && e.target === m && AppState.practiceTimer) {
+            const keepGoing = typeof confirm === 'function'
+                ? !confirm('Leave this solve?\n\nYour focus sprint is still running — closing now ends this attempt and loses its progress.')
+                : false;
+            if (keepGoing) return;
+        }
         _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
         m.classList.remove('active');
         setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
         if (id === 'practice-modal') {
+            SessionFocus.release('practice');
             if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
             // Parity with closePracticeModal(): a backdrop dismiss used to
             // leak the run's Flow/Hardcore navigation stacks into the next
@@ -809,6 +891,7 @@ export function closeModal(e, id, force) {
 export function closeModalStr(id) {
     const m = document.getElementById(id);
     if (!m) return;
+    if (id === 'practice-modal') SessionFocus.release('practice');
     _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
@@ -833,6 +916,7 @@ export function closeModalStr(id) {
 function forceHideModal(id) {
     const m = document.getElementById(id);
     if (!m) return;
+    if (id === 'practice-modal') SessionFocus.release('practice');
     _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     m.style.display = 'none';
@@ -1266,9 +1350,15 @@ export async function renderDailyVarianceHeatmap() {
 }
 
 // ==================== STREAK VECTOR TRACKER ====================
+// Consumers (cns-load strain bonus, deload continuity fallback, forest-bg
+// sunlight warmth) used to parse this value out of a `#top-streak` header
+// element that no longer exists — silently zeroing all of them. The computed
+// streak is now published on window.__jmaxStreak every render; DOM writes stay
+// guarded for legacy markup.
 export async function updateStreakDisplay() {
     let history = await getDailyHistory();
     if (!Array.isArray(history) || history.length === 0) {
+        try { window.__jmaxStreak = { days: 0, label: '0 Days (start something)' }; } catch (_) {}
         const streakEl = document.getElementById('top-streak');
         if (streakEl) streakEl.textContent = "0 Days (start something)";
         return;
@@ -1343,6 +1433,8 @@ export async function updateStreakDisplay() {
     if (streakEl) {
         streakEl.textContent = `${streak} Day${streak !== 1 ? 's' : ''}`;
     }
+    // Live bridge for headless consumers — see note above.
+    try { window.__jmaxStreak = { days: streak, label: `${streak} Day${streak !== 1 ? 's' : ''}` }; } catch (_) {}
 }
 
 // ==================== FRICTION-INVERSE COGNITIVE YIELD (Y_day) ====================
@@ -1401,43 +1493,52 @@ function _cognitiveItemWeight(q) {
 }
 
 /**
- * Granular Friction-Inverse Cognitive Yield for a single calendar date.
+ * One-pass cognitive-yield index over the whole bank.
  *
- * Scans AppState.questionBank for questions with status 'solved' whose
- * `lastReviewedAt` (the canonical review stamp attached at solve time) falls
- * on `dateStr` (YYYY-MM-DD), computes each item's weight, buckets it by
- * subject, and applies the Model B asymmetric multipliers.
+ * renderGraph() used to call _computeYieldForDate() once PER history day,
+ * each call rescanning the entire bank — O(days × questions) ≈ millions of
+ * iterations on mature accounts, paid at boot and on every dashboard-visible
+ * solve. This builds the same data in ONE pass: Map<YYYY-MM-DD, bucket>.
  *
- * @param {string} dateStr  ISO calendar date (YYYY-MM-DD).
- * @returns {{yield:number, hasGranular:boolean, bySubject:Object, matched:number}}
- *          `hasGranular` is true when at least one solved bank question matched
- *          the date — otherwise the caller must fall back to macro-imputation.
+ * @returns {Map<string,{maths:number,physics:number,chemistry:number,matched:number}>}
  */
-function _computeYieldForDate(dateStr) {
-    const bySubject = { maths: 0, physics: 0, chemistry: 0 };
-    let matched = 0;
-
+function _buildYieldIndex() {
+    const byDate = new Map();
     for (const q of AppState.questionBank) {
         if (!q || q.status !== 'solved') continue;
         // Resolve the solve date from lastReviewedAt. The field is an ISO
         // string stamped at solve/review time (see calculateEloMigration /
         // practiceSubmit); slicing the first 10 chars yields YYYY-MM-DD.
         const stamp = q.lastReviewedAt;
-        if (!stamp || typeof stamp !== 'string') continue;
-        if (stamp.slice(0, 10) !== dateStr) continue;
-
+        if (!stamp || typeof stamp !== 'string' || stamp.length < 10) continue;
         const subj = _normalizeSubjectKey(q.subject);
-        if (!(subj in bySubject)) continue;
-        bySubject[subj] += _cognitiveItemWeight(q);
-        matched++;
+        if (!(subj === 'maths' || subj === 'physics' || subj === 'chemistry')) continue;
+        const dateStr = stamp.slice(0, 10);
+        let bucket = byDate.get(dateStr);
+        if (!bucket) {
+            bucket = { maths: 0, physics: 0, chemistry: 0, matched: 0 };
+            byDate.set(dateStr, bucket);
+        }
+        bucket[subj] += _cognitiveItemWeight(q);
+        bucket.matched++;
     }
+    return byDate;
+}
+
+/**
+ * Granular Friction-Inverse Cognitive Yield for one calendar date, read from
+ * a prebuilt index (see _buildYieldIndex) instead of rescanning the bank.
+ */
+function _computeYieldForDate(dateStr, byDate) {
+    if (!byDate) byDate = _buildYieldIndex();
+    const bucket = byDate.get(dateStr) || { maths: 0, physics: 0, chemistry: 0, matched: 0 };
 
     const yieldVal =
-        YIELD_SUBJECT_WEIGHTS.maths     * bySubject.maths +
-        YIELD_SUBJECT_WEIGHTS.physics   * bySubject.physics +
-        YIELD_SUBJECT_WEIGHTS.chemistry * bySubject.chemistry;
+        YIELD_SUBJECT_WEIGHTS.maths     * bucket.maths +
+        YIELD_SUBJECT_WEIGHTS.physics   * bucket.physics +
+        YIELD_SUBJECT_WEIGHTS.chemistry * bucket.chemistry;
 
-    return { yield: yieldVal, hasGranular: matched > 0, bySubject, matched };
+    return { yield: yieldVal, hasGranular: bucket.matched > 0, bySubject: bucket, matched: bucket.matched };
 }
 
 /**
@@ -1526,8 +1627,9 @@ export async function renderGraph() {
     // value matrix as the live yield points instead of reverting to raw
     // integer tallies. P0 enforcement is still applied inside drawCandlesticks.
     const C_macro = _computeMacroImputationScalar();
+    const yieldByDate = _buildYieldIndex(); // one O(n) pass — was O(days × n)
     const counts = history.map(h => {
-        const granular = _computeYieldForDate(h.date);
+        const granular = _computeYieldForDate(h.date, yieldByDate);
         if (granular.hasGranular) return granular.yield;          // live Y_day
         return (Number(h.count) || 0) * C_macro;                  // imputed Y_day
     });
@@ -5960,7 +6062,7 @@ function _injectSkipStyles() {
 }
 .skip-popover button:hover { background:rgba(61,220,255,.14); border-color:rgba(61,220,255,.4); }
 .skip-undo-toast {
-  position:fixed; z-index:100001; bottom:22px; left:50%; transform:translateX(-50%);
+  position:fixed; z-index:100001; bottom:calc(22px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%);
   display:flex; align-items:center; gap:12px; padding:10px 14px;
   background:rgba(15,17,26,.96); border:1px solid rgba(61,220,255,.3);
   border-radius:999px; box-shadow:0 8px 30px rgba(0,0,0,.45);
@@ -9232,7 +9334,9 @@ window.exportSmartReport = function () {
         scopeText: scopeLabel,
         elo: AppState.elo || {},
     });
-    const dateStr = new Date().toISOString().slice(0, 10);
+    // Local day key via the shared helper — en-CA can emit non-ISO shapes on
+    // odd ICU builds (see deload.js note); every module must agree on the form.
+    const dateStr = todayLocalKey();
     const blob = new Blob([renderReportText(report)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -9252,7 +9356,7 @@ window.exportSmartReport = function () {
 window.exportRawBankJson = function () {
     const scope = _gatherDumpScopeQuestions(false);
     if (!scope) return;
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = todayLocalKey(); // shared local YYYY-MM-DD helper
     const payload = {
         generatedAt: new Date().toISOString(),
         scope: scope.selected.map(s => s.subject + ' › ' + s.chapter),
@@ -10083,11 +10187,14 @@ const globalMathObserver = new MutationObserver(function (mutations) {
             injectKatexFallback();
             showBanner();
         } else if (waited > 30000) {
-            // Slow-loading or blocked — don't give up. Re-check every 2s
-            // forever; once katex lands, sweep. Cheap enough to leave running.
+            // Slow-loading or blocked — re-check every 2s, but STOP the moment
+            // KaTeX lands (the old slow-poll swept the whole body forever).
             clearInterval(poll);
-            setInterval(function () {
-                if (window.katex) sweep();
+            const slowPoll = setInterval(function () {
+                if (window.katex) {
+                    clearInterval(slowPoll);
+                    sweep();
+                }
             }, 2000);
         }
     }, 500);

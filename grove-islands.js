@@ -1479,7 +1479,14 @@ function initScene() {
   fullOrbit = makeOrbit(fullCam, { x: 0, y: 2.2, z: 0 }, 20);
 
   clock = new THREE.Clock();
-  try { new ResizeObserver(sizeCanvases).observe(card); } catch (e) {}
+  /* One shared ResizeObserver for the card's lifetime — buildWorld() reruns on
+     travel/slot-expansion, and a fresh observer per rebuild stacked N live
+     observers on the same node (N× sizeCanvases per resize). observe() on an
+     already-observed target is idempotent, so reuse is always safe. */
+  try {
+    if (!window.__giCardRO) window.__giCardRO = new ResizeObserver(sizeCanvases);
+    window.__giCardRO.observe(card);
+  } catch (e) {}
   built = true;
 }
 
@@ -2482,6 +2489,14 @@ function boot() {
   buildChrome();
   mountCard();
   seenDay = todayKey();
+  /* Boot-perf: engine load + island mesh generation is the single heaviest
+     startup task (seconds of main-thread work). Defer it into idle time so
+     first paint and app interactivity never wait behind scenery. The idle
+     timeout guarantees the grove still builds even on a busy main thread. */
+  var kickHeavyInit = (typeof requestIdleCallback === 'function')
+    ? function (fn) { requestIdleCallback(fn, { timeout: 4000 }); }
+    : function (fn) { setTimeout(fn, 800); };
+  kickHeavyInit(function groveHeavyInit() {
   ensureThree().then(async function () {
     await restoreFromIDB();
     var firstRun = !localStorage.getItem(LS_GROVE);   /* AFTER the IDB restore (v1 fix) */
@@ -2519,6 +2534,7 @@ function boot() {
     showFallbackPoster();
     warn('Could not load the 3D engine: ' + (e && e.message ? e.message : e));
   });
+  }); /* end kickHeavyInit — heavy 3D init runs in idle time */
   window.addEventListener('resize', sizeCanvases);
   window.addEventListener('visibilitychange', function () {
     if (!document.hidden) { tick(false); ensureLoop(); }
