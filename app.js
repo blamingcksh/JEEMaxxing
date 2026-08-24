@@ -14,6 +14,7 @@ import {
     monthNamesCal,
     MODEL_FALLBACK, CLIENT_ID, SCOPES,
     saveAllAsync, flushSaves, loadDataAsync,
+    idbGetMany,
     idbSet, idbGet,
     callGeminiWithFallback, cropImageFromBBox,
     showLoading, hideLoading, readFileAsBase64,
@@ -9116,10 +9117,12 @@ async function initApp() {
     document.getElementById('set-tgt-chem').value = baseTargets.chemistry;
     document.getElementById('set-tgt-math').value = baseTargets.maths;
 
-    // NEW: load and set error resolution target inputs
-    const errPhys = await idbGet('baseErrPhys') ?? 5;
-    const errChem = await idbGet('baseErrChem') ?? 5;
-    const errMath = await idbGet('baseErrMath') ?? 5;
+    // NEW: load and set error resolution target inputs — one transaction
+    const errKeys = ['baseErrPhys', 'baseErrChem', 'baseErrMath'];
+    const errVals = await idbGetMany(errKeys);
+    const errPhys = errVals['baseErrPhys'] ?? 5;
+    const errChem = errVals['baseErrChem'] ?? 5;
+    const errMath = errVals['baseErrMath'] ?? 5;
     baseErrorTargets.physics = errPhys;
     baseErrorTargets.chemistry = errChem;
     baseErrorTargets.maths = errMath;
@@ -9146,7 +9149,11 @@ async function initApp() {
         AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
     }
     restoreDailyCountsIntoSolved();
-    await saveAllAsync().catch(console.error);
+    // Boot-perf [AUDIT P2]: don't block the rest of init (graph, HUD, widgets)
+    // on the save coalescer's 600ms trailing window. The commit still lands —
+    // pagehide/visibilitychange flush guarantees it — the UI just stops
+    // waiting for it.
+    saveAllAsync().catch(console.error);
     startMidnightRolloverWatcher();
 
     document.getElementById('vis-beaker').style.display = 'none';
