@@ -1,5 +1,5 @@
 // ==================== POMODORO MODULE ====================
-import { formatTime, formatStudyDuration, saveAllAsync, studySecs } from './storage.js';
+import { formatTime, formatStudyDuration, saveAllAsync, studySecs, SessionFocus } from './storage.js';
 import { GalleryBreak } from './gallery-break.js';
 import { NightGuard } from './nightguard.js';
 
@@ -536,7 +536,20 @@ export function initAudioContext() {
     if (!bellAudioCtx) {
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (AudioContext) bellAudioCtx = new AudioContext();
+            if (AudioContext) {
+                bellAudioCtx = new AudioContext();
+                // iPadOS flips the context to 'interrupted'/'suspended' after
+                // alarms, Siri or phone calls. focus-sound.js already recovers
+                // this way; the session-end bell must survive interruptions
+                // too, so auto-resume whenever the state leaves 'running'.
+                try {
+                    bellAudioCtx.addEventListener('statechange', () => {
+                        if (bellAudioCtx && bellAudioCtx.state !== 'running') {
+                            bellAudioCtx.resume().catch(() => {});
+                        }
+                    });
+                } catch (_) {}
+            }
         } catch (e) {
             console.warn("Audio not supported", e);
         }
@@ -619,11 +632,52 @@ export function playStartChime() {
     }
 }
 
+// ── Interruption gate [AUDIT P0-1] ─────────────────────────────────────────
+// The phase-end modal must never stack invisibly under an open practice
+// session, vault drawer or mock exam (z-tie + DOM order used to bury it while
+// the state machine waited on a button nobody could see). While any of those
+// own the user's attention, queue the notification instead: the bell still
+// plays now, and the modal appears the instant focus frees.
+let _queuedNotify = null;
+function notifyOrQueue(title, icon, message, nextAction, receiptHTML) {
+    if (SessionFocus.isBusy()) {
+        _queuedNotify = { title, icon, message, nextAction, receiptHTML };
+        playBell();
+        _focusToast('⏳ Block finished — your receipt pops up as soon as you close this session.');
+        return;
+    }
+    showTimerNotification(title, icon, message, nextAction, receiptHTML);
+}
+function _flushQueuedNotify() {
+    if (!_queuedNotify) return;
+    // Macrotask defer so a same-tick release→re-acquire (drawer swap) wins.
+    setTimeout(() => {
+        if (!_queuedNotify) return;
+        if (SessionFocus.isBusy()) return;
+        if (typeof timerInterval !== 'undefined' && timerInterval) { _queuedNotify = null; return; } // new block started meanwhile — stale
+        const q = _queuedNotify; _queuedNotify = null;
+        showTimerNotification(q.title, q.icon, q.message, q.nextAction, q.receiptHTML);
+    }, 0);
+}
+try { document.addEventListener('jmax:focus-released', _flushQueuedNotify); } catch (_) {}
+try { document.addEventListener('visibilitychange', () => { if (!document.hidden) _flushQueuedNotify(); }); } catch (_) {}
+
+function _focusToast(msg) {
+    try {
+        document.querySelectorAll('.pomo-focus-toast').forEach(t => t.remove());
+        const t = document.createElement('div');
+        t.className = 'pomo-focus-toast';
+        t.textContent = msg;
+        t.style.cssText = 'position:fixed;z-index:100001;bottom:calc(22px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:86vw;padding:10px 16px;background:rgba(15,17,26,.96);border:1px solid rgba(255,178,36,.35);border-radius:999px;color:#ffd9a0;font-size:12.5px;box-shadow:0 8px 30px rgba(0,0,0,.45);pointer-events:none;';
+        document.body.appendChild(t);
+        setTimeout(() => { try { t.remove(); } catch (_) {} }, 4200);
+    } catch (_) {}
+}
+
 // ---- Timer Notification Popup ----
 // receiptHTML (optional) renders a session receipt — what the finished block
 // paid out — inside the modal. Kept as escaped, pre-built markup rows.
-function showTimerNotification(title, icon, message, nextAction, receiptHTML) {
-    _pomoPendingAction = nextAction;
+function showTimerNotification(title, icon, message, nextAction, receiptHTML) {    _pomoPendingAction = nextAction;
     document.getElementById('notify-title').textContent = title;
     document.getElementById('notify-icon').textContent = icon;
     document.getElementById('notify-message').textContent = message;
@@ -866,7 +920,7 @@ function handleTimerEnd() {
         _blockEloSnap = null;
         hydrateFocusStats();
         if (currentSession < totalSessions) {
-            showTimerNotification(
+            notifyOrQueue(
                 '🍅 Focus Session Done!',
                 '🧘',
                 'Take a break. You earned it.',
@@ -874,7 +928,7 @@ function handleTimerEnd() {
                 receipt
             );
         } else {
-            showTimerNotification(
+            notifyOrQueue(
                 '🏁 All Focus Blocks Complete',
                 '🎉',
                 'Pomodoro cycle finished. Great work!',
@@ -891,7 +945,7 @@ function handleTimerEnd() {
             playBell();
             GalleryBreak.finish(startStudyAfterBreakPopup);
         } else {
-            showTimerNotification(
+            notifyOrQueue(
                 '☕ Break Over',
                 '⚡',
                 `Ready for session ${currentSession} of ${totalSessions}?`,

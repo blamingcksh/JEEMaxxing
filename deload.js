@@ -135,8 +135,12 @@ function _getStreakDays() {
                 return streak;
             }
         }
-    } catch (e) { /* fall through to DOM read */ }
+    } catch (e) { /* fall through to bridge/DOM read */ }
     try {
+        // Canonical source first: window.__jmaxStreak (published by
+        // updateStreakDisplay). The #top-streak element is gone from the DOM.
+        const bridge = (typeof window !== 'undefined') ? window.__jmaxStreak : null;
+        if (bridge && typeof bridge.days === 'number') return bridge.days;
         const el = document.getElementById('top-streak');
         if (!el) return 0;
         const match = (el.textContent || '').match(/(\d+)/);

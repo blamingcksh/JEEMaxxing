@@ -67,16 +67,17 @@ await page.waitForTimeout(800);
 const card = page.locator('.dash-card-tracker');
 assert(await card.isVisible(), 'tracker card visible');
 
-// ── Structure ──
-assert(await page.locator('.dash-card-tracker .tp-ring').isVisible(), 'ring present');
-assert(await page.locator('.dash-card-tracker .tp-row').count() === 3, 'three subject rows');
+// ── Structure (v2 redesign: hero figure + compact ledger, no SVG ring) ──
+assert(await page.locator('.dash-card-tracker .tp-hero-stroke').isVisible(), 'hero stroke present');
+assert(await page.locator('#tp-total-bar').count() === 1, 'hero fill bar present');
+assert(await page.locator('.dash-card-tracker .compact-subject-card').count() === 3, 'three subject cards');
 assert(await page.locator('.dash-card-tracker .tp-variance').isVisible(), 'variance chip in header');
-const rowH = await page.locator('.dash-card-tracker .tp-row').first().evaluate(el => el.getBoundingClientRect().height);
-assert(rowH < 70, `row is slim (${Math.round(rowH)}px < 70px)`);
+const rowH = await page.locator('.dash-card-tracker .compact-subject-card').first().evaluate(el => el.getBoundingClientRect().height);
+assert(rowH > 0 && rowH <= 120, `row is a slim ledger entry (${Math.round(rowH)}px ≤ 120px)`);
 
 // ── Interaction: log solves ──
-const physPlus = page.locator('.tp-row[data-subject="physics"] .counter-btn').nth(1);
-const chemPlus = page.locator('.tp-row[data-subject="chemistry"] .counter-btn').nth(1);
+const physPlus = page.locator('.compact-subject-card[data-subject="physics"] .tp-step-btn').nth(1);
+const chemPlus = page.locator('.compact-subject-card[data-subject="chemistry"] .tp-step-btn').nth(1);
 for (let i = 0; i < 7; i++) await physPlus.click();
 await chemPlus.click();
 await page.waitForTimeout(700);
@@ -86,9 +87,9 @@ assert(physCount.trim() === '7', `physics counter hydrated (${physCount})`);
 const chemCount = await page.locator('#chemistry-count').textContent();
 assert(chemCount.trim() === '1', `chemistry counter hydrated (${chemCount})`);
 
-const arcP = await page.locator('#tp-arc-physics').evaluate(el => el.style.strokeDashoffset);
-const cP = await page.locator('#tp-arc-physics').evaluate(el => 2 * Math.PI * el.r.baseVal.value);
-assert(Math.abs(parseFloat(arcP) - cP * 0.3) < 1, `physics arc at 70% (offset ${arcP})`);
+// Hero fill mirrors progress: physics 7/10 → 70%
+const physFill = await page.locator('#physics-bar').evaluate(el => el.style.width);
+assert(physFill === '70%', `physics fill at 70% (width ${physFill})`);
 const total = await page.locator('#tp-total').textContent();
 assert(total.trim() === '8', `hub total = 8 (${total})`);
 const tgt = await page.locator('#tp-total-tgt').textContent();
@@ -97,7 +98,7 @@ const variance = await page.locator('#variance-val').textContent();
 assert(variance.includes('-'), `variance negative while under target (${variance})`);
 
 // Decrement works too
-await page.locator('.tp-row[data-subject="physics"] .counter-btn').first().click();
+await page.locator('.compact-subject-card[data-subject="physics"] .tp-step-btn').first().click();
 await page.waitForTimeout(300);
 assert((await page.locator('#physics-count').textContent()).trim() === '6', 'decrement works');
 assert((await page.locator('#tp-total').textContent()).trim() === '7', 'hub total updates on decrement');
@@ -105,7 +106,7 @@ assert((await page.locator('#tp-total').textContent()).trim() === '7', 'hub tota
 // fx bump class lands on the counter (fx.js fix)
 await chemPlus.click();
 const bumped = await page.evaluate(() => new Promise(res => {
-    const btn = document.querySelector('.tp-row[data-subject="chemistry"] .counter-btn:last-child');
+    const btn = document.querySelector('.compact-subject-card[data-subject="chemistry"] .tp-step-btn:last-child');
     btn.click();
     setTimeout(() => res(document.querySelector('#chemistry-count').classList.contains('fx-bump')), 120);
 }));
@@ -114,11 +115,16 @@ assert(bumped, 'fx-bump lands on the counter span');
 await page.screenshot({ path: path.join(SHOTS, 'dashboard-full.png') });
 await card.screenshot({ path: path.join(SHOTS, 'tracker-card.png') });
 
-// ── Narrow card → container query stacks ring above rows ──
+// ── Narrow card: ledger must stay single-column and never overflow ──
 await page.setViewportSize({ width: 400, height: 900 });
 await page.waitForTimeout(500);
-const stacked = await page.locator('.tp-body').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length === 1);
-assert(stacked, 'narrow viewport: ring stacks above rows');
+const narrowOk = await page.evaluate(() => {
+    const doc = document.documentElement;
+    const noHScroll = doc.scrollWidth - doc.clientWidth <= 0;
+    const ledger = document.querySelector('.dash-card-tracker .tp-ledger');
+    return noHScroll && !!ledger && ledger.getBoundingClientRect().height > 40;
+});
+assert(narrowOk, 'narrow viewport: ledger intact, no horizontal overflow');
 await card.screenshot({ path: path.join(SHOTS, 'tracker-narrow.png') });
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -10,6 +10,16 @@
  * ============================================================================ */
 'use strict';
 
+// v44 — iPad hardening layer: styles-ipad.css joins the shell precache
+//        (16px inputs, slider hit-boxes, FAB de-collision, safe-area insets,
+//        wide-modal Slide Over fix, invisible hit expansions).
+// v43 — Offline-completeness audit: metronome.js, the three dashboard
+//        redesign stylesheets (styles-daily/retention/chapters.css) and the
+//        vendored three.js build join the shell precache, so first OFFLINE
+//        launches get the full UI (previously the grove fell back to CDNs,
+//        which are unreachable offline). Network-first navigations now fall
+//        back to the cached shell on non-ok / non-HTML responses instead of
+//        caching captive-portal or error pages over index.html.
 // v42 — Smart Mistake Report: report.js joins the shell precache. AI Dump
 //        modal becomes a live tag×difficulty mistake analysis (inline preview
 //        + bounded .txt download; raw export demoted to .json), and finished
@@ -33,12 +43,16 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v42';
+const VERSION = 'jeemax-v44';
 const SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './styles.css',
+  './styles-daily.css',
+  './styles-retention.css',
+  './styles-chapters.css',
+  './styles-ipad.css',
   './app.js',
   './storage.js',
   './memory.js',
@@ -50,6 +64,7 @@ const SHELL = [
   './matrix.js',
   './pomodoro.js',
   './focus-sound.js',
+  './metronome.js',
   './theme.js',
   './dashboard-clean.js',
   './forest-bg.js',
@@ -61,6 +76,7 @@ const SHELL = [
   './lifeline.js',
   './nightguard.js',
   './boot-sequence.js',
+  './vendor/three/three.module.min.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',
@@ -185,10 +201,15 @@ self.addEventListener('fetch', (event) => {
   if (isLocal && (req.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html')) {
     event.respondWith(
       fetch(req).then((res) => {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(VERSION).then((cache) => { try { cache.put(req, copy); } catch (_) {} });
+        // Only a healthy HTML shell may be returned AND cached. A 404/500 or
+        // a captive-portal interception must never replace (or poison) the
+        // cached copy — fall through to the good cached shell instead.
+        const ct = res && res.headers ? (res.headers.get('content-type') || '') : '';
+        if (!res || !res.ok || !ct.includes('text/html')) {
+          throw new Error('bad-shell-response ' + (res ? res.status : 'network'));
         }
+        const copy = res.clone();
+        caches.open(VERSION).then((cache) => { try { cache.put(req, copy); } catch (_) {} });
         return res;
       }).catch(() =>
         caches.match(req, { ignoreSearch: true }).then((cached) => cached || caches.match('./'))

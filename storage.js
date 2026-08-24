@@ -236,7 +236,7 @@ function _reportPersistFailure(key, err) {
         if (!document.body || document.getElementById('jmax-persist-banner')) return;
         const banner = document.createElement('div');
         banner.id = 'jmax-persist-banner';
-        banner.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#7f1d1d;color:#fff;padding:10px 14px;font:14px/1.4 system-ui,sans-serif;text-align:center;box-shadow:0 -2px 12px rgba(0,0,0,.4)';
+        banner.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#7f1d1d;color:#fff;padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));font:14px/1.4 system-ui,sans-serif;text-align:center;box-shadow:0 -2px 12px rgba(0,0,0,.4)';
         banner.textContent = '⚠ Local storage is failing (private mode / disk full). Your progress cannot be saved on this device.';
         const close = document.createElement('span');
         close.textContent = '✕';
@@ -296,6 +296,79 @@ export async function idbGetMany(keys) {
         tx.oncomplete = () => resolve(out);
         tx.onerror = () => reject(tx.error);
     });
+}
+
+// ── Full Backup / Restore [AUDIT P1-1] ─────────────────────────────────────
+// Until now the only exports were a lossy analytics .txt and a Gem-feed .json
+// projection — no ids, no images, no counters/ELO/mocks/history/vault, and no
+// import at all. A lost iPad meant total loss. This dumps EVERYTHING this app
+// persists (the whole IndexedDB key-value store incl. the image vault, plus a
+// full localStorage snapshot) into one portable .json and puts it back.
+const BACKUP_MARKER = '__jmaxBackup';
+const BACKUP_VERSION = 2;
+
+export async function idbGetAllEntries() {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('storage', 'readonly');
+        const store = tx.objectStore('storage');
+        const keys = [], vals = [];
+        const kreq = store.getAllKeys(), vreq = store.getAll();
+        kreq.onsuccess = () => keys.push(...(kreq.result || []));
+        vreq.onsuccess = () => vals.push(...(vreq.result || []));
+        tx.oncomplete = () => resolve(keys.map((k, i) => [k, vals[i] ? vals[i].value : null]));
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+function _lsSnapshot() {
+    const out = {};
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            out[k] = localStorage.getItem(k);
+        }
+    } catch (_) {}
+    return out;
+}
+
+export async function buildFullBackup() {
+    flushSaves().catch(() => {});          // fold any pending coalesced save in
+    await new Promise(r => setTimeout(r, 650)); // > 600ms coalesce window
+    const idbEntries = await idbGetAllEntries();
+    return {
+        [BACKUP_MARKER]: true,
+        version: BACKUP_VERSION,
+        exportedAt: new Date().toISOString(),
+        counts: { idbKeys: idbEntries.length },
+        idb: idbEntries,
+        ls: _lsSnapshot(),
+    };
+}
+
+/**
+ * Validate + apply a backup payload. Writes straight through to IndexedDB /
+ * localStorage (NOT through _doSaveAll), then the caller reloads so every
+ * module re-hydrates from the restored rows.
+ */
+export async function applyFullBackup(payload) {
+    if (!payload || payload[BACKUP_MARKER] !== true) throw new Error('Not a JEEMaxxing backup file');
+    if (!Array.isArray(payload.idb)) throw new Error('Backup is missing its data section');
+    // Structural sanity before touching anything.
+    for (const entry of payload.idb) {
+        if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string') {
+            throw new Error('Backup data section is malformed');
+        }
+    }
+    if (payload.ls && typeof payload.ls !== 'object') throw new Error('Backup prefs section is malformed');
+    await idbSetMany(payload.idb);
+    try {
+        localStorage.clear();
+        for (const k of Object.keys(payload.ls || {})) {
+            try { localStorage.setItem(k, String(payload.ls[k])); } catch (_) {}
+        }
+    } catch (_) {}
+    return { keys: payload.idb.length };
 }
 
 export async function idbRemove(key) {
@@ -534,6 +607,35 @@ export const AppState = {
 export const baseTargets = { physics: 10, chemistry: 10, maths: 10 };
 export const baseErrorTargets = { physics: 5, chemistry: 5, maths: 5 };
 export const solved = { physics: 0, chemistry: 0, maths: 0 };
+
+// ── SessionFocus: shared "the user is mid-activity" registry ────────────────
+// Five independent systems can interrupt with modals/lockdowns (focus-block
+// notifications, Night Guard, checkpoints, bounty, boot briefing). Historically
+// none of them knew whether the user was mid-solve or mid-mock, and z-index
+// ties buried them invisibly while they still mutated state. Anything that
+// owns the user's attention acquires a reason here; interrupters consult
+// isBusy() and defer instead of stacking.
+//
+// 'practice'     — question practice modal is open (app.js)
+// 'vault-drawer' — Error Vault SR practice drawer is open (matrix.js)
+// mock exams     — detected via body.mock-running (set by mock.js openRunner)
+export const _sessionFocusReasons = new Set();
+export const SessionFocus = {
+    acquire(reason) { if (reason) _sessionFocusReasons.add(String(reason)); },
+    release(reason) {
+        if (!_sessionFocusReasons.delete(String(reason))) return;
+        // Let queued interrupters know the stage may be free now.
+        try {
+            document.dispatchEvent(new CustomEvent('jmax:focus-released', { detail: { reason: String(reason) } }));
+        } catch (_) {}
+    },
+    has(reason) { return _sessionFocusReasons.has(String(reason)); },
+    isBusy() {
+        if (_sessionFocusReasons.size > 0) return true;
+        try { if (document.body && document.body.classList.contains('mock-running')) return true; } catch (_) {}
+        return false;
+    },
+};
 export const studySecs = { physics: 0, chemistry: 0, maths: 0 };
 // Single source of truth for the "day" boundary: LOCAL calendar date
 // (YYYY-MM-DD). All daily counters, cloud payloads and history keys must use
@@ -884,17 +986,22 @@ export function calculatePerformanceQ(autonomy, timeSpentMins, targetTimeMins) {
  * Step 3 — Update Ease Factor (EF)
  *
  * EF_new = EF_current + (0.1 − (5.0 − q) × (0.08 + (5.0 − q) × 0.02))
- * Floor: max(1.3, EF_new)
+ * Clamp: [1.3, 3.0]
  *
  * Correct answers (q >= 3.0) must NEVER lower EF — a correct-but-slow review
  * should not shorten the next interval.
+ *
+ * The 3.0 CEILING is deliberate and unifying: the practice-submit inline nudge
+ * path (app.js) has always capped EF at 3.0, and memory.js's model documents
+ * "[1.3, 3.0]" — only this canonical SM-2 path was uncapped, so vault items
+ * could out-grow practice items on the same question and diverge scheduling.
  */
 export function calculateNewEaseFactor(currentEF, performanceQ) {
     const qGap      = 5.0 - performanceQ;
     let adjustment  = 0.1 - qGap * (0.08 + qGap * 0.02);
     if (performanceQ >= 3.0) adjustment = Math.max(0, adjustment);
     const newEF     = currentEF + adjustment;
-    return Math.max(1.3, newEF);
+    return Math.min(3.0, Math.max(1.3, newEF));
 }
 
 /**
@@ -1372,6 +1479,14 @@ let _saveBatchResolve = null;
 let _saveBatchReject = null;
 let _saveChain = Promise.resolve();
 
+// ── Wipe-propagation latch (set by loadDataAsync on a failed boot read) ──
+// While set, every full-bank persistence commit is refused: the in-memory
+// state was never populated, so committing it would overwrite good rows on
+// disk with an empty bank. The banner already tells the user data won't
+// survive; this guarantees it also can't be silently DESTROYED.
+let _degradedBootRead = false;
+let _degradedBlockWarned = false;
+
 export function saveAllAsync() {
     if (!_saveTimer) {
         _saveBatch = new Promise((resolve, reject) => {
@@ -1411,6 +1526,14 @@ try {
 } catch (_) {}
 
 async function _doSaveAll() {
+    // ── Wipe-propagation guard: never commit a gutted in-memory state ──
+    if (_degradedBootRead) {
+        if (!_degradedBlockWarned) {
+            _degradedBlockWarned = true;
+            console.error('[storage] Save blocked: boot read failed earlier this session — refusing to overwrite stored data with an empty state. Reload once storage is available.');
+        }
+        return; // resolve "successfully" so callers/flushes never wedge
+    }
     // Persist the bank WITHOUT inline images (kept in the bounded image cache)
     // so every save is a small text-only payload — this was the intent of
     // `lightweightBank`; the previous code saved the image-laden bank instead,
@@ -1466,7 +1589,9 @@ async function _doSaveAll() {
     entries.push(['jeemax_chapter_weights_user', _isObj(AppState.userChapterWeights) ? AppState.userChapterWeights : {}]);
     entries.push(['jeemax_mocks', Array.isArray(AppState.mocks) ? AppState.mocks : []]);
     entries.push(['jeemax_mock_focus', _isObj(AppState.mockFocus) ? AppState.mockFocus : {}]);
-    entries.push(['jeemax_username', document.getElementById('display-username').textContent]);
+    // Guarded DOM read: a missing element used to throw mid-commit and
+    // reject the ENTIRE save transaction (every key, not just the username).
+    entries.push(['jeemax_username', (document.getElementById('display-username') || {}).textContent || AppState.username || 'Grindset']);
     entries.push(['bounty_data', AppState.bounty]);
 
     // Persist error resolution targets under separate keys
@@ -1574,13 +1699,32 @@ export async function loadDataAsync() {
             'jeeTargetLockDate', 'basePhys', 'baseChem', 'baseMath',
             'baseErrPhys', 'baseErrChem', 'baseErrMath',
         ]);
+        // Storage answered — this session may persist again.
+        _degradedBootRead = false;
     } catch (e) {
         // A failed open/read must NOT hang or kill boot (private mode,
         // eviction). Fall back to a clean slate; the persistence banner
         // explains that nothing will survive a reload.
         _reportPersistFailure('loadDataAsync', e);
         g = {};
+        // ── Wipe-propagation latch ──
+        // The in-memory state is now EMPTY while the real rows may still be
+        // intact on disk (the failure can be transient). Any full-bank commit
+        // or auto cloud push made from this gutted state would permanently
+        // destroy the local AND off-device copies, so every destructive write
+        // path checks _degradedBootRead and refuses until a reload succeeds.
+        _degradedBootRead = true;
+        console.error('[storage] Boot read failed — persistence writes are BLOCKED this session to protect existing data.');
     }
+
+    // Ask the browser to make our storage persistent (never evicted under
+    // pressure). Months of question banks + solve history live here, so
+    // best-effort storage is the wrong default. Silent no-op where denied.
+    try {
+        if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.persist === 'function') {
+            navigator.storage.persist().catch(() => {});
+        }
+    } catch (_) {}
     const bank = g['jeemax_question_bank'];
     const ch = g['jeemax_chapters'];
     const savedBounty = g['bounty_data'];
@@ -1958,6 +2102,10 @@ export async function initializeCloudFolder() {
 // ==================== CLOUD SYNC OPERATIONS ====================
 
 export async function getCloudSolvedTotal() {
+    // Returns the summed cloud counters, 0 when no state file exists yet,
+    // or null when the cloud could not be reached/parsed (state UNKNOWN).
+    // Callers that guard against destructive overwrites must treat null as
+    // "cannot verify → refuse", never as "empty".
     try {
         const query = `name='system_state.json' and '${AppState.cloudFolderId}' in parents and trashed=false`;
         let searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
@@ -1971,8 +2119,9 @@ export async function getCloudSolvedTotal() {
             let cloudState = await fileRes.json();
             return (cloudState.solved?.physics || 0) + (cloudState.solved?.chemistry || 0) + (cloudState.solved?.maths || 0);
         }
+        return 0; // no state file yet — verified empty
     } catch (e) {}
-    return 0;
+    return null;
 }
 
 export async function executeUnifiedSync() {
@@ -2002,16 +2151,16 @@ export async function executeUnifiedSync() {
                     let cloudState = await fileRes.json();
                     if (subText) subText.textContent = "Merging runtime variables...";
                     if (cloudState.questionBank) {
-                        const localIds = new Set(AppState.questionBank.map(q => q.id));
+                        // id → question Map: the merge used to .find() per cloud
+                        // question (O(n·m) — ~9M comparisons at 3k×3k every poll).
+                        const localById = new Map(AppState.questionBank.map(q => [q.id, q]));
                         await _getTombstones();
                         cloudState.questionBank.forEach(cloudQ => {
                             if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
                             if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect
-                            if (!localIds.has(cloudQ.id)) { AppState.questionBank.push(cloudQ); }
-                            else {
-                                let localQ = AppState.questionBank.find(q => q.id === cloudQ.id);
-                                if (cloudQ.status === 'solved' && localQ.status !== 'solved') localQ.status = 'solved';
-                            }
+                            const localQ = localById.get(cloudQ.id);
+                            if (!localQ) { AppState.questionBank.push(cloudQ); localById.set(cloudQ.id, cloudQ); }
+                            else if (cloudQ.status === 'solved' && localQ.status !== 'solved') localQ.status = 'solved';
                         });
                     }
                     if (cloudState.chapters) {
@@ -2049,9 +2198,12 @@ export async function executeUnifiedSync() {
 
         if (subText) subText.textContent = "Uploading consolidated data...";
         const localTotal = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
-        if (localTotal === 0) {
+        if (localTotal === 0 && AppState.questionBank.length === 0) {
             const cloudTotal = await getCloudSolvedTotal();
-            if (cloudTotal > 0) {
+            // cloudTotal > 0: cloud holds data — never overwrite it with an
+            // empty local state. cloudTotal === null: cloud could not be
+            // verified — refuse as well rather than risk a blind clobber.
+            if (cloudTotal !== 0) {
                 if (subText) { subText.textContent = "Sync skipped – preserving cloud data"; subText.style.color = "#fbbf24"; setTimeout(() => { subText.textContent = "System Idle"; subText.style.color = "#fff"; }, 3000); }
                 return;
             }
@@ -2153,6 +2305,32 @@ export async function syncStateToCloud(force = false) {
     try {
         const subText = document.getElementById('sync-sub-text');
         if (subText) subText.textContent = "Processing media files...";
+
+        // ── Wipe-propagation guards (mirror executeUnifiedSync's protection) ──
+        // 1) A failed boot read leaves the in-memory state empty; pushing it
+        //    would destroy the off-device copy. The manual sync path already
+        //    refuses this — the automatic path must refuse it too.
+        if (_degradedBootRead) {
+            console.warn('[cloud] Auto-push skipped: boot read degraded this session — refusing to overwrite cloud state with an unverified local state.');
+            return;
+        }
+        // 2) Genuinely-empty local state (fresh-looking): verify the cloud is
+        //    also empty before overwriting. If the cloud holds data — or can't
+        //    be checked — refuse rather than clobber.
+        {
+            const _localTotal = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
+            if (_localTotal === 0 && AppState.questionBank.length === 0) {
+                let _cloudTotal = null;
+                try { _cloudTotal = await getCloudSolvedTotal(); } catch (_) { _cloudTotal = null; }
+                if (_cloudTotal !== 0) {
+                    console.warn('[cloud] Auto-push refused: local bank/counters are empty' +
+                        (_cloudTotal > 0 ? ' while the cloud mirror holds data.' : ' and the cloud state could not be verified.') +
+                        ' Possible storage degradation — nothing was overwritten.');
+                    return;
+                }
+            }
+        }
+
         let cloudQuestionBank = [];
         let newlyUploaded = false;
         for (let i = 0; i < AppState.questionBank.length; i++) {
@@ -2216,13 +2394,15 @@ export async function loadStateFromCloud(isBackground = false) {
             let fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${AppState.driveAccessToken}` } });
             let cloudState = await fileRes.json();
             if (cloudState.questionBank) {
-                const localIds = new Set(AppState.questionBank.map(q => q.id));
+                // id → question Map (was .find() per cloud question — O(n·m))
+                const localById = new Map(AppState.questionBank.map(q => [q.id, q]));
                 await _getTombstones();
                 cloudState.questionBank.forEach(cloudQ => {
                     if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
                     if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect
-                    if (!localIds.has(cloudQ.id)) { AppState.questionBank.push(cloudQ); }
-                    else { const localQ = AppState.questionBank.find(q => q.id === cloudQ.id); if (cloudQ.status === 'solved' && localQ.status !== 'solved') localQ.status = 'solved'; }
+                    const localQ = localById.get(cloudQ.id);
+                    if (!localQ) { AppState.questionBank.push(cloudQ); localById.set(cloudQ.id, cloudQ); }
+                    else if (cloudQ.status === 'solved' && localQ.status !== 'solved') localQ.status = 'solved';
                 });
                 // Persist the merged bank so the merge survives a crash before
                 // the next saveAllAsync, and so the heartbeat doesn't re-run

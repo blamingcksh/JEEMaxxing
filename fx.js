@@ -141,7 +141,7 @@
   // RIPPLE_HOSTS = elements safe to receive position:relative + overflow:hidden
   // (NO absolutely-positioned buttons, NO tooltip hosts, NO emoji tiles).
   var RIPPLE_HOSTS = '.btn, .matrix-pill, .subject-folder, .subject-card, .cal-day, ' +
-    '.daily-queue-master-btn, .counter-btn, .sr-mcq-option, .mcq-option, .cp-option, ' +
+    '.daily-queue-master-btn, .counter-btn, .tp-step-btn, .sr-mcq-option, .mcq-option, .cp-option, ' +
     '.sr-toggle-btn, .sr-friction-pill, .ingestion-toggle-btn, .sr-self-btn, ' +
     '.cp-selfreport-correct, .cp-selfreport-wrong, .chapter-item, .question-card, ' +
     '.file-upload-label, .file-upload-btn, .btn-break-opt, .sr-practice-btn, ' +
@@ -156,7 +156,7 @@
 
   function classify(host) {
     var c = host.classList;
-    if (c.contains('counter-btn')) return { s: 'tick', h: [3], bump: true };
+    if (c.contains('counter-btn') || c.contains('tp-step-btn')) return { s: 'tick', h: [3], bump: true };
     if (c.contains('btn-danger') || c.contains('cpcc-time-x')) return { s: 'delete', h: [20, 40, 20] };
     if (c.contains('close-btn') || c.contains('sr-drawer-close') || c.contains('cpcc-close') ||
         c.contains('delete-btn') || c.contains('card-close-btn') || c.contains('delete-chapter') ||
@@ -192,8 +192,14 @@
     sound(p.s);
     haptic(p.h);
     if (p.bump) {
-      var row = host.closest('.tp-row') || host.parentElement;
-      var cnt = row && row.querySelector('.counter');
+      // v2 tracker ledger: steppers sit inside [data-subject] cards and the
+      // counter span carries .tp-num. Legacy ring layout kept as fallback.
+      var bumpCard = host.closest('[data-subject]');
+      var cnt = bumpCard && bumpCard.querySelector('.tp-num');
+      if (!cnt) {
+        var row = host.closest('.tp-row') || host.parentElement;
+        cnt = row && row.querySelector('.counter');
+      }
       if (cnt) { cnt.classList.remove('fx-bump'); void cnt.offsetWidth; cnt.classList.add('fx-bump'); }
     }
     if (host.matches(RIPPLE_HOSTS)) ripple(host, e.clientX, e.clientY);
