@@ -515,7 +515,8 @@ function showResults(m) {
 win.mockCopyAutopsy = function () {
     const txt = win._lastAutopsyText || '';
     if (!txt) return;
-    const done = () => alert('Autopsy copied — paste it anywhere.');
+    // Non-blocking confirmation instead of a native dialog [AUDIT P2].
+    const done = () => (window.__jmaxAppToast || alert)('Autopsy copied — paste it anywhere.');
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(txt).then(done).catch(() => _fallbackCopyAutopsy(txt));
     } else _fallbackCopyAutopsy(txt);
@@ -531,9 +532,9 @@ function _fallbackCopyAutopsy(txt) {
         ta.select();
         document.execCommand('copy');
         document.body.removeChild(ta);
-        alert('Autopsy copied — paste it anywhere.');
+        (window.__jmaxAppToast || alert)('Autopsy copied — paste it anywhere.');
     } catch (_) {
-        alert('Copy failed. Autopsy text:\n\n' + txt);
+        (window.__jmaxAppToast || alert)('Copy failed. Autopsy text:\n\n' + txt);
     }
 }
 

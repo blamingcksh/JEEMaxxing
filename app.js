@@ -224,7 +224,8 @@ window.scheduleDeloadFromUi = function() {
         // Refresh streak display and UI
         updateStreakDisplay();
         updateUI();
-        alert('🌿 Deload Day scheduled. Your streak is preserved. Today is an Earned Rest day.');
+        if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('🌿 Deload Day scheduled. Your streak is preserved. Today is an Earned Rest day.');
+        else alert('🌿 Deload Day scheduled. Your streak is preserved. Today is an Earned Rest day.');
     } else {
         alert('Cannot schedule deload: ' + result.reason);
     }
@@ -1918,7 +1919,8 @@ export async function saveProfile() {
     document.getElementById('display-username').textContent = name;
     if (AppState.profilePicData) document.getElementById('display-pfp').src = AppState.profilePicData;
     await saveAllAsync();
-    alert("Profile data locked in. Your build has been updated.");
+    if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('✔ Profile data locked in. Your build has been updated.');
+    else alert("Profile data locked in. Your build has been updated.");
 }
 
 export async function saveTargets() {
@@ -2793,7 +2795,10 @@ Return a flat single JSON array containing exactly ${pendingItems.length} object
     // ── Downstream preview pipeline (preserved exactly) ─────────────────
     hideLoading();
     showPreviewModal();
-    alert('Text extracted and stored. Let\'s go.');
+    // Stage-completion notice as toast [AUDIT P2]: a blocking alert here made
+    // the ingestion wizard feel like a dialog gauntlet; the preview modal that
+    // just opened IS the confirmation.
+    if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('✅ Text extracted and stored — review the preview below.');
 }
 
 export async function processAnswerKey() {
@@ -2848,7 +2853,7 @@ IMPORTANT – MULTI‑ANSWER QUESTIONS:
             }
         });
         hideLoading();
-        alert('Answer mapping complete via image. All locked in.');
+        if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('✅ Answer mapping complete via image. All locked in.');
         showPreviewModal();
     } catch (e) {
         hideLoading();
@@ -2907,7 +2912,7 @@ IMPORTANT – MULTI‑ANSWER QUESTIONS:
             }
         });
         hideLoading();
-        alert('Text mapping complete. All answers linked.');
+        if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('✅ Text mapping complete. All answers linked.');
         showPreviewModal();
     } catch (e) {
         hideLoading();
@@ -3136,7 +3141,14 @@ export function saveAllQuestions() {
         const origins = Array.from(originSet).slice(0, 4);
         dupSummary = ` (${skippedDupes} duplicate${skippedDupes > 1 ? 's' : ''} skipped — already in ${origins.join(', ')}${originSet.size > 4 ? ` +${originSet.size - 4} more` : ''})`;
     }
-    alert(`Successfully imported ${importedCount} fresh problems into the local engine.${dupSummary} Let's see how you handle them.`);
+    // Final import summary as non-blocking toast [AUDIT P2]: the bank view
+    // already re-rendered beneath it — a blocking alert here interrupted the
+    // exact moment the user should be scanning their fresh questions.
+    if (typeof window.__jmaxAppToast === 'function') {
+        window.__jmaxAppToast(`✅ Imported ${importedCount} fresh problems.${dupSummary}`);
+    } else {
+        alert(`Successfully imported ${importedCount} fresh problems into the local engine.${dupSummary} Let's see how you handle them.`);
+    }
     } finally {
         _saveAllQuestionsInFlight = false;
     }
@@ -3779,10 +3791,10 @@ export async function processGemTextDump() {
         // to the preview grid as before.
         const gemTags = _collectGemImageTags(parsedItems);
         if (gemTags.length) {
-            alert(`Ingestion locked: ${parsedItems.length} items compiled. 🗺 ${gemTags.length} tagged source image${gemTags.length !== 1 ? 's' : ''} referenced (${gemTags.join(', ')}) — upload them to auto-crop the diagrams.`);
+            (window.__jmaxAppToast || alert)(`🗺 ${parsedItems.length} items compiled — upload the ${gemTags.length} tagged source image${gemTags.length !== 1 ? 's' : ''} to auto-crop diagrams.`);
             openGemImageMappingModal();
         } else {
-            alert(`Ingestion locked: ${parsedItems.length} items compiled successfully. Mounting preview grid.`);
+            (window.__jmaxAppToast || alert)(`✅ ${parsedItems.length} items compiled successfully.`);
             // Pass control flow directly to your interactive validation view
             showPreviewModal();
         }
@@ -4821,7 +4833,7 @@ export function evaluateBountyOutcome(wasCorrect) {
         AppState.bounty.payoffCount = 3;
         AppState.practiceCorrectStreak = Math.max(AppState.practiceCorrectStreak, 5);
         updateStreakVisualizer();
-        alert('🔥 CLUTCHED! Bounty absolutely demolished. Multiplier active. You are literally glowing purple.');
+        (window.__jmaxAppToast || alert)('🔥 CLUTCHED! Bounty demolished — tripled payoff active.');
     } else {
         q.bountyLockUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         q.criticalDeficit = true;
@@ -4834,7 +4846,7 @@ export function evaluateBountyOutcome(wasCorrect) {
         saveTargets();
         updateUI();
 
-        alert('❌ COOKED. Bounty timed out. Problem locked out and targets artificially amplified as a tax on failure.');
+        (window.__jmaxAppToast || alert)('❌ COOKED. Bounty timed out — problem locked out 24h, targets amplified as a tax on failure.');
     }
 
     AppState.bounty.done = true;
@@ -6059,6 +6071,23 @@ function _dismissSkipUndoToast() {
     if (t && t.parentNode) t.parentNode.removeChild(t);
 }
 
+// Generic non-blocking app toast [AUDIT P2: alert→toast migration]. Exposed on
+// window so feature modules can adopt it instead of adding more bespoke
+// implementations or reaching for blocking native dialogs.
+function _appToast(msg) {
+    try {
+        document.querySelectorAll('.jmax-app-toast').forEach(t => t.remove());
+        const t = document.createElement('div');
+        t.className = 'jmax-app-toast';
+        t.setAttribute('role', 'status');
+        t.textContent = msg;
+        t.style.cssText = 'position:fixed;z-index:100001;bottom:calc(22px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:86vw;padding:10px 16px;background:rgba(15,17,26,.96);border:1px solid rgba(61,220,255,.35);border-radius:999px;color:#dfe7f5;font-size:12.5px;box-shadow:0 8px 30px rgba(0,0,0,.45);pointer-events:none;';
+        document.body.appendChild(t);
+        setTimeout(() => { try { t.remove(); } catch (_) {} }, 3400);
+    } catch (_) {}
+}
+window.__jmaxAppToast = _appToast;
+
 function _showSkipUndoToast(onUndo) {
     try {
         _dismissSkipUndoToast();
@@ -6378,7 +6407,7 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
         // No more mode-eligible questions in this chapter — gracefully exit
         // the mode so the user is not stuck staring at a blank practice modal.
         const label = mode === 'flow' ? 'Flow' : 'Hardcore';
-        alert('No more ' + label + '-eligible questions in this chapter. Exiting to standard mode.');
+        (window.__jmaxAppToast || alert)('No more ' + label + '-eligible questions in this chapter. Exiting to standard mode.');
         AppState.practiceFlowMode = 'standard';
         _modeAdaptive.targetPwin = null;
         _renderModeBadge();
@@ -7703,6 +7732,9 @@ function injectEloShiftChip(eloResult) {
     const modeTag = eloResult.modeActive ? `<span class="elo-shift-time time-mode">[${eloResult.modeActive === 'flow' ? '🎯 FLOW' : '⚡ HC'}]</span>` : '';
     const chip = document.createElement('div');
     chip.className = 'elo-shift-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
+    // Plain-language tooltip [AUDIT P1-10]: unexplained moving numbers read as
+    // judgment — say what moved and why, right where it moved.
+    chip.title = `${subjLabel} rating ${sign}${Math.round(delta)}. Solved faster than expected → up; slower, harder questions, Flow/Hardcore mode and late-night fatigue all shape it. It is a skill estimate, not a grade.`;
     chip.innerHTML =
         `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
         `<span class="elo-shift-label">${subjLabel} Elo</span>` +
@@ -7725,6 +7757,7 @@ function injectEloShiftChip(eloResult) {
         headerSlot.innerHTML = '';
         const headerChip = document.createElement('div');
         headerChip.className = 'elo-header-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
+        headerChip.title = `${subjLabel} rating ${sign}${Math.round(delta)} — a live skill estimate shaped by your solve speed, question difficulty and practice mode.`;
         headerChip.innerHTML =
             `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
             `<span class="elo-shift-tier">[${tier.name}]</span>`;
@@ -8170,7 +8203,10 @@ export function confirmErrorLog() {
         AppState.pendingWrongQ.easeFactor = 2.5;
     }
     saveAllAsync().catch(console.error);
-    alert("Logged to the Vault. Error archived.");
+    // Non-blocking confirmation [AUDIT P2]: the old alert() fired mid-practice
+    // at the user's emotional low point (just got it wrong) and froze the page
+    // until dismissed.
+    if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('🗂 Logged to the Vault — it will resurface when memory fades.');
     closeModalStr('error-reason-modal');
     renderErrorMatrixFromBank();
     try { renderChapterDecayGrid(); } catch (_) {}
@@ -9443,7 +9479,7 @@ window.purgeDuplicateQuestions = function () {
     saveAllAsync().catch(console.error);
     try { renderChaptersList(); } catch (_) {}
     try { showQuestionList(); } catch (_) {}
-    alert(`Purged ${dupIndexes.length} duplicate question${dupIndexes.length !== 1 ? 's' : ''}. Bank now holds ${AppState.questionBank.length} questions.`);
+        (window.__jmaxAppToast || alert)(`🧹 Purged ${dupIndexes.length} duplicate question${dupIndexes.length !== 1 ? 's' : ''}. Bank now holds ${AppState.questionBank.length} questions.`);
 };
 
 /**

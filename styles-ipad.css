@@ -104,7 +104,24 @@ body.dc-active .metro-pop {
     }
 }
 
-/* ── 6. Invisible hit-area expansion for chronic micro-targets [AUDIT P2] ──
+/* ── 6. Backdrop-filter diet for touch devices [AUDIT P1 / measured] ───────
+   Dashboard cards re-composited a blur(22px) pass each while the page scrolled:
+   measured 22.7% dropped frames vs 1.6% with this treatment (see
+   scripts/audit-bf-diet-ab.mjs). The solid gradient below is the app's own
+   bento-dragging recipe — visually within ~4% pixel delta of the glass, and
+   desktop/pointer:fine rendering is untouched. */
+@media (pointer: coarse) {
+    #view-dashboard .dash-card,
+    html[data-mode] #view-dashboard .dash-card,
+    html[data-mode="dusk"] #view-dashboard .dash-card,
+    html[data-mode="dusk"] .dc-time-card {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: linear-gradient(180deg, rgba(20, 22, 32, 0.97), rgba(11, 13, 20, 0.98)) !important;
+    }
+}
+
+/* ── 7. Invisible hit-area expansion for chronic micro-targets [AUDIT P2] ──
    Pure ::after overlays — no visual change, just forgiving fingers. Kept off
    dense clusters (mini-widget collapse gets a smaller halo so it never steals
    neighbouring taps). */
