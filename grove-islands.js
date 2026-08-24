@@ -1399,12 +1399,30 @@ function buildWorld(biome, view) {
 /* ==========================================================================
    SCENE INIT - shared scene, two renderers (mini card + full explorer)
    -------------------------------------------------------------------------- */
+/* GPU eviction recovery [AUDIT P1-5]: iPadOS evicts WebGL contexts under
+   memory pressure. preventDefault keeps the context recoverable (three.js
+   re-uploads geometry lazily on restore); the render loop pauses while lost
+   and resumes with fresh viewports once it returns. Idempotent per canvas. */
+function bindContextRecovery(cvs) {
+  if (!cvs || cvs.__ctxRecoveryBound) return;
+  cvs.__ctxRecoveryBound = true;
+  cvs.addEventListener('webglcontextlost', function (e) {
+    e.preventDefault();
+    if (raf != null) { cancelAnimationFrame(raf); raf = null; }
+  }, false);
+  cvs.addEventListener('webglcontextrestored', function () {
+    try { sizeCanvases(); } catch (e) {}
+    ensureLoop();
+  }, false);
+}
+
 function initScene() {
   var card = document.getElementById('gi-card');
   if (!card) return;
   try {
     miniRenderer = new THREE.WebGLRenderer({ canvas: card, antialias: true });
   } catch (e) { engineFailed = true; showFallbackPoster(); return; }
+  bindContextRecovery(card);
   miniRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   miniRenderer.shadowMap.enabled = true;
   miniRenderer.shadowMap.type = THREE.PCFShadowMap;
@@ -1995,6 +2013,7 @@ function ensureFull() {
   try {
     fullRenderer = new THREE.WebGLRenderer({ canvas: cvs, antialias: true });
   } catch (e) { engineFailed = true; return; }
+  bindContextRecovery(cvs);
   fullRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, DPR_TIERS[dprTier]));
   fullRenderer.shadowMap.enabled = true;
   fullRenderer.shadowMap.type = THREE.PCFSoftShadowMap;

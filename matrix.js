@@ -188,7 +188,7 @@ try {
 let _drawerState = {
     qId: null,
     result: null,           // 'correct' | 'incorrect'
-    autonomy: null,         // 'independent' | 'hint_used' | 'solution_read'
+    autonomy: 'independent', // 'independent' | 'hint_used' | 'solution_read' — honest default [AUDIT P1-7]
     frictionTypes: [],      // ['PERFECT', 'CALC', ...]
     timeSpentMins: 0,
     targetTimeMins: 5,
@@ -207,7 +207,10 @@ function _resetDrawerState() {
         resultSource: null,     // 'auto' (graded against loaded answer) | 'self' (user-reported)
         selectedOptions: [],    // MCQ letters the user picked, e.g. ['A'] or ['A','C']
         imageHidden: false,
-        autonomy: null,         // 'independent' | 'hint_used' | 'solution_read'
+        // [AUDIT P1-7] Honest default: a fresh solve IS independent work.
+        // Preselecting removes one mandatory tap per card; hint/solution stay
+        // opt-in corrections to that default.
+        autonomy: 'independent',
         frictionTypes: [],      // ['PERFECT', 'CALC', ...]
         timeSpentMins: 0,
         targetTimeMins: 5,
@@ -638,14 +641,14 @@ function _renderTagStage() {
         <div class="sr-row">
             <div class="sr-row-label">Autonomy Level</div>
             <div class="sr-toggle-group sr-toggle-group-3">
-                <button class="sr-toggle-btn" data-group="autonomy" data-value="independent" onclick="srSetAutonomy('independent')">🧠 Independent</button>
-                <button class="sr-toggle-btn" data-group="autonomy" data-value="hint_used" onclick="srSetAutonomy('hint_used')">💡 Hint Used</button>
-                <button class="sr-toggle-btn" data-group="autonomy" data-value="solution_read" onclick="srSetAutonomy('solution_read')">📖 Soln Read</button>
+                <button class="sr-toggle-btn${_drawerState.autonomy === 'independent' ? ' active' : ''}" data-group="autonomy" data-value="independent" onclick="srSetAutonomy('independent')">🧠 Independent</button>
+                <button class="sr-toggle-btn${_drawerState.autonomy === 'hint_used' ? ' active' : ''}" data-group="autonomy" data-value="hint_used" onclick="srSetAutonomy('hint_used')">💡 Hint Used</button>
+                <button class="sr-toggle-btn${_drawerState.autonomy === 'solution_read' ? ' active' : ''}" data-group="autonomy" data-value="solution_read" onclick="srSetAutonomy('solution_read')">📖 Soln Read</button>
             </div>
         </div>
         <!-- Friction Type -->
         <div class="sr-row">
-            <div class="sr-row-label">Friction Type</div>
+            <div class="sr-row-label">Friction Type <span style="opacity:.55;font-weight:400;">(optional — tap any that apply)</span></div>
             <div class="sr-friction-pills">
                 ${SR_FRICTION_TYPES.map(ft => `<button class="sr-friction-pill" data-friction="${ft}" onclick="srToggleFriction('${ft}')">${SR_FRICTION_LABELS[ft]}</button>`).join('')}
             </div>

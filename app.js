@@ -857,6 +857,36 @@ export function openModal(id) {
     });
 }
 
+// ── Unified Escape-to-close [AUDIT P2: modal grammar was split three ways] ──
+// One delegated handler sweeps the TOPMOST active generic overlay. Enforcement
+// surfaces (timer notification, night guard, checkpoint, crop) are excluded —
+// they intentionally have no dismissal shortcut. The practice modal keeps its
+// live-attempt confirmation. Typing targets never trigger a close.
+try {
+    const ESCAPE_EXEMPT = new Set(['timer-notify-modal', 'nightguard-modal', 'crop-modal']);
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+        // Vault SR drawer first (it sits above everything as an overlay div).
+        const drawer = document.getElementById('sr-practice-overlay');
+        if (drawer) { try { closePracticeDrawer(); } catch (_) {} return; }
+        const open = Array.from(document.querySelectorAll('.modal-overlay.active'))
+            .filter(m => m.style.display !== 'none');
+        if (!open.length) return;
+        const top = open[open.length - 1];
+        if (!top.id || top.hasAttribute('data-keep-escape')) return;
+        if (ESCAPE_EXEMPT.has(top.id)) return;
+        if (top.id === 'practice-modal' && AppState.practiceTimer) {
+            if (!confirm('Leave this solve?\n\nYour focus sprint is still running — closing now ends this attempt and loses its progress.')) {
+                e.preventDefault();
+                return;
+            }
+        }
+        closeModalStr(top.id);
+    }, false);
+} catch (_) {}
+
 export function closeModal(e, id, force) {
     if (typeof e === 'string') { closeModalStr(e); return; }
     const m = document.getElementById(id);
