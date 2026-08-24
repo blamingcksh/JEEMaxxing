@@ -1667,6 +1667,24 @@ window.clearMatrixFilters = function () {
     });
 })();
 </script>
+<!-- Virtual-keyboard inset [AUDIT P2]: publishes the iPadOS docked-keyboard
+     height as --kb and toggles body.kb-open so fixed bottom chrome can step
+     aside while typing (styles-ipad.css §8 consumes it). -->
+<script>
+(function () {
+    if (!('visualViewport' in window)) return;
+    var vv = window.visualViewport, root = document.documentElement, raf = 0;
+    function apply() {
+        raf = 0;
+        var kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+        root.style.setProperty('--kb', kb.toFixed(0) + 'px');
+        document.body.classList.toggle('kb-open', kb > 120);
+    }
+    vv.addEventListener('resize', function () { if (!raf) raf = requestAnimationFrame(apply); });
+    vv.addEventListener('scroll', function () { if (!raf) raf = requestAnimationFrame(apply); });
+    window.addEventListener('DOMContentLoaded', apply);
+})();
+</script>
 
 </body>
 </html>
