@@ -5041,9 +5041,10 @@ export function renderPracticeQuestionModal() {
         processElementMath(container);
         container.querySelectorAll('.mcq-option').forEach(div => {
             div.addEventListener('click', function (e) {
-                const rawOption = e.currentTarget.dataset.option;
-                const decoded = new DOMParser().parseFromString(rawOption, 'text/html').documentElement.textContent;
-                toggleMcqOption(e.currentTarget, decoded);
+                // dataset.option is already entity-decoded by the parser —
+                // use it verbatim (a DOMParser re-parse would swallow any
+                // "<" in the option text as a phantom tag).
+                toggleMcqOption(e.currentTarget, e.currentTarget.dataset.option);
                 document.querySelectorAll('.mcq-option').forEach(el => el.classList.remove('selected'));
                 e.currentTarget.classList.add('selected');
             });
@@ -5107,16 +5108,15 @@ export function toggleMcqOption(element, optionText) {
     }
 }
 
-// Entity-decodes a data-option value (it was stored with escapeAttribute).
-// Without this, grading's indexOf() compares encoded text against raw options
-// and any option containing & < > " ' becomes unselectable.
+// Returns a data-option value verbatim. getAttribute()/dataset ALREADY
+// entity-decode the value at parse time (escapeAttribute's single encode is
+// inverted by the parser's single decode = the original option text). The
+// previous DOMParser step decoded TWICE: it re-parsed the restored "<" / ">"
+// characters as live markup, so any option containing "<" (e.g. "A) $a<b$")
+// was truncated to "A) $a" and became unselectable ("That's not a valid
+// pick"), and literal "&lt;"-style text was corrupted into "<".
 function decodeOption(raw) {
-    if (typeof raw !== 'string') return raw;
-    try {
-        return new DOMParser().parseFromString(raw, 'text/html').documentElement.textContent;
-    } catch (_) {
-        return raw;
-    }
+    return raw;
 }
 
 // ── Practice Time → Daily/Subjective Study Counter Convergence ────────────
@@ -10117,8 +10117,18 @@ function processElementMath(element) {
                     // KaTeX output. Bounded walk (≤6 levels) covers the sealed
                     // [data-math-rendered] wrapper KaTeX output always sits in,
                     // without an unbounded closest() per candidate.
+                    //
+                    // FIX: the walk MUST stop at the scan root (the element arg).
+                    // The init sweep stamps document.body with data-math-rendered,
+                    // and the practice modal's #latex-render text nodes sit
+                    // exactly 5 ancestor levels under body — inside the old
+                    // bound — so body's stale sweep stamp silently vetoed EVERY
+                    // question stem in the practice modal (and the solution
+                    // popup / vault drawer, which are just as shallow). Stamps
+                    // ABOVE the subtree being processed never mean "this text
+                    // is already rendered" — only sealed wrappers INSIDE it do.
                     let anc = parent;
-                    for (let depth = 0; anc && depth < 6; depth++) {
+                    for (let depth = 0; anc && anc !== element && depth < 6; depth++) {
                         if (anc.classList && anc.classList.contains('katex')) return NodeFilter.FILTER_REJECT;
                         if (anc.nodeType === Node.ELEMENT_NODE && anc.hasAttribute('data-math-rendered')) return NodeFilter.FILTER_REJECT;
                         anc = anc.parentNode;
