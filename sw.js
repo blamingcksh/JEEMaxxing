@@ -10,6 +10,16 @@
  * ============================================================================ */
 'use strict';
 
+// v45 — KaTeX practice-view hotfix: the math engine's ancestor-stamp walk
+//        escaped the scan root, so document.body's init-sweep stamp vetoed
+//        every math fragment in shallow modals — practice-modal question
+//        stems rendered as raw LaTeX while chapter previews worked. Walk
+//        now stops at the scan root; the vault drawer's _renderKatexIn
+//        delegates to the global engine (its raw-innerHTML replace mangled
+//        any prose containing < > &), and the MCQ option double-decode
+//        (DOMParser over already-decoded attribute values) that made
+//        "<"-containing options unselectable is gone. Cache bump forces
+//        the fixed app.js / matrix.js out of stale-while-revalidate.
 // v44 — iPad hardening layer: styles-ipad.css joins the shell precache
 //        (16px inputs, slider hit-boxes, FAB de-collision, safe-area insets,
 //        wide-modal Slide Over fix, invisible hit expansions).
@@ -43,7 +53,7 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v44';
+const VERSION = 'jeemax-v45';
 const SHELL = [
   './',
   './index.html',

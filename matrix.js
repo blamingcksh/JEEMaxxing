@@ -1086,14 +1086,33 @@ function _showSelfReportPrompt(q) {
 
 function _renderKatexIn(el) {
     if (!el || !window.katex) return;
+    // Delegate to app.js's global math engine: it escapes the prose BETWEEN
+    // math fragments segment-by-segment before splicing KaTeX markup in.
+    // The old single .replace() fed the raw source straight into innerHTML,
+    // so any question text containing "<", ">" or "&" (e.g. "If a<b and
+    // b<c, then ...") materialized phantom HTML tags that swallowed both
+    // the prose and the KaTeX output — the "broken KaTeX" in the drawer.
+    if (typeof window.processElementMath === 'function') {
+        if (el.hasAttribute('data-math-rendered')) el.removeAttribute('data-math-rendered');
+        window.processElementMath(el);
+        return;
+    }
+    // Fallback (global engine unavailable): same algorithm, escaped per segment.
     const raw = el.textContent;
     // Auto-wrap delimiter-less \command fragments (shared with app.js's global
     // math engine) so Gem output without $...$ delimiters still hydrates.
     const wrapped = (typeof window._wrapBareLatex === 'function') ? window._wrapBareLatex(raw) : raw;
-    el.innerHTML = wrapped.replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^\$]+)\$|\\\(([\s\S]+?)\\\)/g, (m, block, brk, inline, paren) => {
-        try { return window.katex.renderToString(block || brk || inline || paren, { throwOnError: false, displayMode: !!(block || brk) }); }
-        catch (e) { return m; }
-    });
+    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const re = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^\$]+)\$|\\\(([\s\S]+?)\\\)/g;
+    let out = '', last = 0, m;
+    while ((m = re.exec(wrapped)) !== null) {
+        out += esc(wrapped.slice(last, m.index));
+        try { out += window.katex.renderToString(m[1] || m[2] || m[3] || m[4], { throwOnError: false, displayMode: !!(m[1] || m[2]) }); }
+        catch (e) { out += esc(m[0]); }
+        last = m.index + m[0].length;
+    }
+    out += esc(wrapped.slice(last));
+    el.innerHTML = out;
 }
 
 function _postRenderDrawer(q) {
