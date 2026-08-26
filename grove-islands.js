@@ -1321,7 +1321,21 @@ function disposeWorld() {
   if (world.particles) world.particles.dispose();
   world = null;
 }
-function buildWorld(biome, view) {
+/* ==========================================================================
+   PERF: cooperative chunking
+   The island rebuild is pure main-thread geometry work. Run as one block it
+   produced multi-second long tasks mid-session on iPad (measured 2.3s+).
+   Yielding to the compositor BETWEEN stages splits that monolith into
+   sub-frame-budget slices — visually identical (the swap is fade-covered),
+   but scroll/touch input stays live throughout. */
+function frameYield() {
+  return new Promise(function (r) {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(function () { r(); });
+    else setTimeout(r, 0);
+  });
+}
+
+async function buildWorld(biome, view) {
   disposeWorld();
   var seed = hashStr(biome.id + '|v2');
   var rng = mulberry32(seed);
@@ -1337,10 +1351,11 @@ function buildWorld(biome, view) {
   };
   var gf = makeGroundFn(biome, R, seed);
   w.groundFn = gf;
-  var island = buildIslandMesh(biome, R, seed, gf);
+  var island = buildIslandMesh(biome, R, seed, gf);          // [stage 1]
   w.uniqueGeos.push(island.geometry, island.material);
   group.add(island);
-  var under = buildUnderside(biome, R, seed, gf);
+  await frameYield();
+  var under = buildUnderside(biome, R, seed, gf);            // [stage 2]
   w.uniqueGeos.push(under.geometry, under.material);
   group.add(under);
   try {
@@ -1353,7 +1368,8 @@ function buildWorld(biome, view) {
     w.uniqueGeos.push(ringG, ringM);
   } catch (eFoam) {}
   if (waterMesh) waterMesh.scale.setScalar(Math.max(34, R * 3.2));
-  var stream = buildStream(gf, biome);
+  await frameYield();
+  var stream = buildStream(gf, biome);                       // [stage 3]
   if (stream) {
     w.uniqueGeos.push(stream.geometry, stream.material);
     group.add(stream);
@@ -1367,8 +1383,10 @@ function buildWorld(biome, view) {
     slots.push({ x: x, z: z, y: gf.height(x, z), rot: rng() * Math.PI * 2, 'var': 0.9 + rng() * 0.22 });
   }
   w.slots = slots;
-  addProps(w, biome, rng, gf.height, R);
-  var field = createTreeField(group);
+  await frameYield();
+  addProps(w, biome, rng, gf.height, R);                     // [stage 4]
+  await frameYield();
+  var field = createTreeField(group);                        // [stage 5]
   w.treeField = field;
   w.trees = field.entries;
   w.springs = field.springs;
@@ -1382,10 +1400,12 @@ function buildWorld(biome, view) {
     group.add(animal);
     w.animals.push(animal);
   } catch (e) {}
-  w.particles = ParticleField(biome.particles, seed ^ 0x51f, R * 0.8);
+  await frameYield();
+  w.particles = ParticleField(biome.particles, seed ^ 0x51f, R * 0.8);   // [stage 6]
   group.add(w.particles.points);
   try { addClouds(w, R, rng); } catch (e) {}
-  try { addBirds(w, R, rng); } catch (e) {}
+  await frameYield();
+  try { addBirds(w, R, rng); } catch (e) {}                  // [stage 7]
   try { addFireflies(w, R, rng); } catch (e) {}
   var sc = R + 8;
   sun.shadow.camera.left = -sc; sun.shadow.camera.right = sc;
@@ -1871,16 +1891,29 @@ var travelingFlagRef = function () { return travelingFlag; };
 function travel(biomeId, instant) {
   var biome = biomeById(biomeId);
   if (!biome || !biomeUnlocked(biomeId)) return;
-  var doSwap = function () {
+  /* PERF: buildWorld is now stage-chunked (async) — the fade must stay up
+     until the swap actually lands, and travelingFlag releases on completion
+     so a re-travel can't race a half-built world. */
+  var doSwap = async function () {
     grove.activeBiome = biomeId; saveGrove();
     applyEnvironment(biome);
-    buildWorld(biome, viewFor(biomeId, worldPeriod));
+    await buildWorld(biome, viewFor(biomeId, worldPeriod));
     syncTrees(true);
     updateHUD();
     renderStoreIfOpen();
     renderMapIfOpen();
+    setTimeout(function () { if (fadeElRef()) fadeElRef().style.opacity = '0'; travelingFlag = false; }, 60);
   };
-  if (instant || !built || !motionOK()) { doSwap(); return; }
+  var fadeElRef = function () { return document.getElementById('gi-fade'); };
+  if (instant || !built || !motionOK()) {
+    // Uncovered path: still sequence correctly, no fade bookkeeping needed.
+    grove.activeBiome = biomeId; saveGrove();
+    applyEnvironment(biome);
+    buildWorld(biome, viewFor(biomeId, worldPeriod)).then(function () {
+      syncTrees(true); updateHUD(); renderStoreIfOpen(); renderMapIfOpen();
+    });
+    return;
+  }
   if (travelingFlag) return;
   travelingFlag = true;
   var fade = document.getElementById('gi-fade');
@@ -1890,11 +1923,10 @@ function travel(biomeId, instant) {
   }
   setTimeout(function () {
     sndTravel();
-    doSwap();
-    setTimeout(function () { if (fade) fade.style.opacity = '0'; travelingFlag = false; }, 60);
+    doSwap().catch(function (e) { warn('travel build fault: ' + (e && e.message)); travelingFlag = false; });
   }, 400);
 }
-function maybeExpand() {
+async function maybeExpand() {
   if (!world || !built) return false;
   var bio = biomeById(world.biomeId);
   var view = viewFor(bio.id, worldPeriod);
@@ -1906,7 +1938,7 @@ function maybeExpand() {
     fade.style.opacity = '1';
   }
   applyEnvironment(bio);
-  buildWorld(bio, view);
+  await buildWorld(bio, view);
   syncTrees(true);
   if (fade) setTimeout(function () { fade.style.opacity = '0'; }, 60);
   updateTreeStat();
@@ -2515,8 +2547,20 @@ function boot() {
   var kickHeavyInit = (typeof requestIdleCallback === 'function')
     ? function (fn) { requestIdleCallback(fn, { timeout: 4000 }); }
     : function (fn) { setTimeout(fn, 800); };
-  kickHeavyInit(function groveHeavyInit() {
+  /* PERF: never boot the 3D world while the tab is hidden (iPad app-switch /
+     background battery drain). Defer until the tab becomes visible again. */
+  kickHeavyInit(function groveGate() {
+    if (!document.hidden) { groveHeavyGo(); return; }
+    var onVis = function () {
+      document.removeEventListener('visibilitychange', onVis);
+      if (!document.hidden) groveHeavyGo();
+      else document.addEventListener('visibilitychange', onVis);
+    };
+    document.addEventListener('visibilitychange', onVis);
+  });
+  function groveHeavyGo() {
   ensureThree().then(async function () {
+    await frameYield();                    /* split engine-load from data work */
     await restoreFromIDB();
     var firstRun = !localStorage.getItem(LS_GROVE);   /* AFTER the IDB restore (v1 fix) */
     initScene();
@@ -2526,7 +2570,7 @@ function boot() {
     }
     var bio = biomeById(grove.activeBiome);
     applyEnvironment(bio);
-    buildWorld(bio, viewFor(bio.id, worldPeriod));
+    await buildWorld(bio, viewFor(bio.id, worldPeriod));
     syncTrees(true);
     ensureLoop();
     sizeCanvases();
@@ -2553,7 +2597,7 @@ function boot() {
     showFallbackPoster();
     warn('Could not load the 3D engine: ' + (e && e.message ? e.message : e));
   });
-  }); /* end kickHeavyInit — heavy 3D init runs in idle time */
+  } /* end groveHeavyGo — kickHeavyInit gate closed above */
   window.addEventListener('resize', sizeCanvases);
   window.addEventListener('visibilitychange', function () {
     if (!document.hidden) { tick(false); ensureLoop(); }

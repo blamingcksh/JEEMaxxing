@@ -41,6 +41,23 @@ import {
     refineDifficultyAfterTag,
 } from './memory.js';
 
+// Cognitive Cortex v3 — brain-like scheduling layer (pure, zero DOM; same
+// no-cycle contract as memory.js). Powers priority ordering, per-tag leak,
+// contagion, age/overdue priors and the target-retention scheduler.
+import {
+    buildTagInventory,
+    commitCortexReview,
+    computeTagProfiles,
+    collectLapseEvents,
+    cortexPriority,
+    cortexRetrievability,
+    leakOf,
+    normalizeTag,
+    preReviewSnapshot,
+    scheduleNextReview,
+    suggestTags,
+} from './cortex.js';
+
 // ---------------------------------------------------------------------------
 //  Daily Core Queue state
 // ---------------------------------------------------------------------------
@@ -63,6 +80,85 @@ let _dailyQueueSnapshot = { date: null, ids: [] };
 // cache drift mid-day (i.e. the queue scrambling/cycling/re-pulling new items
 // after a page reload).
 const DAILY_QUEUE_LS_KEY = 'jeemax_daily_queue_snapshot';
+
+// ---------------------------------------------------------------------------
+//  Cognitive Cortex v3 — memoized per-render context
+// ---------------------------------------------------------------------------
+// Tag inventory / leak profiles / lapse events are pure derivations over the
+// whole bank. Rebuilding them is O(N·logs) — trivially cheap next to this
+// module's existing innerHTML card wipes and forced-layout filter pass, but
+// autocomplete keystrokes and multi-surface renders shouldn't recompute, so
+// the bundle memoizes on a bank revision counter bumped by EVERY mutating
+// path (solve commit / manual add / delete / tag edit).
+let _bankRev = 0;
+function _bumpBankRev() { _bankRev++; }
+
+const _cortexCache = { rev: -1, len: -1, ctx: null };
+
+/**
+ * Build (or reuse) the cortex context: { inventory, profiles, lapseEvents }.
+ * Every consumer wraps its use in try/catch — a cortex fault must degrade to
+ * the legacy sort order, never blank the vault.
+ */
+function _cortexCtx(nowMs) {
+    const bank = AppState.questionBank;
+    const now = nowMs || Date.now();
+    if (_cortexCache.ctx && _cortexCache.rev === _bankRev && _cortexCache.len === bank.length) {
+        return _cortexCache.ctx;
+    }
+    let ctx;
+    try {
+        const inventory = buildTagInventory(bank);
+        const { profiles } = computeTagProfiles(bank, { nowMs: now });
+        const lapseEvents = collectLapseEvents(bank, { nowMs: now });
+        ctx = {
+            nowMs: now,
+            examDateMs: _examDateMsSafe(),
+            inventory,
+            profiles,
+            lapseEvents,
+            chapterWeight: getChapterWeight,
+        };
+    } catch (e) {
+        console.error('[cortex] context build failed — degrading to legacy ordering:', e);
+        ctx = null;
+    }
+    _cortexCache.rev = _bankRev;
+    _cortexCache.len = bank.length;
+    _cortexCache.ctx = ctx;
+    return ctx;
+}
+
+/** Priority with a legacy-shaped fallback (never NaN, never throws). */
+function _safeCortexPriority(q, ctx) {
+    try {
+        const p = cortexPriority(q, ctx || undefined);
+        return isFinite(p) ? p : 0;
+    } catch (_) { return 0; }
+}
+
+/**
+ * Memoized priority lookup for SORTS.
+ *
+ * A comparator that recomputes cortexPriority on every call costs
+ * O(N log N) full evaluations per render (hydrateMemory parses dates,
+ * effectiveStability walks historyLogs, synapseCharge scans lapse events).
+ * Priorities are stable within one context generation (same bank revision,
+ * same evaluation instant), so each question is computed AT MOST ONCE per
+ * render pass and the sort itself becomes plain number comparisons.
+ */
+function _prioOf(q, ctx) {
+    if (!ctx) return _safeCortexPriority(q, null);
+    let memo = ctx._prio;
+    if (!memo) { memo = new Map(); ctx._prio = memo; }
+    const id = String(q && q.id);
+    let p = memo.get(id);
+    if (p === undefined) {
+        p = _safeCortexPriority(q, ctx);
+        memo.set(id, p);
+    }
+    return p;
+}
 
 // ---------------------------------------------------------------------------
 //  Local modal helpers
@@ -219,6 +315,7 @@ function _resetDrawerState() {
         eloResult: null,        // 🧠 Elo migration result captured at the decision instant
         frozenTimeMins: 0,      // ⏱ Stopwatch time frozen at the moment of truth
         resultLocked: false,    // 🔒 True once the user committed correct/incorrect
+        tagDraft: null,         // 🏷 Cortex v3 draft of q.tags while the drawer is open
     };
 }
 
@@ -634,9 +731,87 @@ function _renderAnswerStage(q) {
         </div>`;
 }
 
+// ── Cortex v3 tag editor (drawer-only, v1) ─────────────────────────────────
+// The personal tag vocabulary is the cortex's highest-weight namespace, so it
+// must be editable where the user is already reflecting on the mistake. Draft
+// lives on _drawerState.tagDraft (never the question itself) — committed only
+// on "Log Attempt", discarded if the drawer closes. Suggestion chips come
+// from the memoized bank inventory: reusing an existing tag must be cheaper
+// than inventing a synonym (the #1 anti-drift defense).
+
+function _drawerTags() {
+    if (!_drawerState.tagDraft) {
+        const q = _currentDrawerQuestion();
+        _drawerState.tagDraft = (q && Array.isArray(q.tags)) ? q.tags.slice(0, 6).map(String) : [];
+    }
+    return _drawerState.tagDraft;
+}
+
+function _renderTagEditorRow() {
+    let tags = [];
+    try { tags = _drawerTags(); } catch (_) { tags = []; }
+    const chips = tags.map(t =>
+        '<span class="sr-tagedit-chip">#' + _esc(t) +
+        '<button type="button" class="sr-tagedit-x" aria-label="Remove tag ' + _esc(t) + '" onclick="event.stopPropagation();srRemoveTag(\'' + _jsId(t) + '\')">✕</button></span>'
+    ).join('');
+    let sugg = [];
+    try {
+        const q = _currentDrawerQuestion();
+        sugg = suggestTags(AppState.questionBank, q && q.subject, q && q.chapter, tags, 4);
+    } catch (_) { sugg = []; }
+    const suggHtml = sugg.map(s =>
+        '<button type="button" class="sr-tagedit-sugg" onclick="event.stopPropagation();srAddTag(\'' + _jsId(s.label) + '\')">' +
+        '#' + _esc(s.label) + '</button>'
+    ).join('');
+    return `
+        <div class="sr-row">
+            <div class="sr-row-label">Personal Tags <span style="opacity:.55;font-weight:400;">(#vocabulary the engine learns from — optional)</span></div>
+            <div class="sr-tagedit" id="sr-tagedit">
+                <div class="sr-tagedit-chips" id="sr-tagedit-chips">${chips || '<span class="sr-tagedit-none">No tags yet</span>'}</div>
+                <div class="sr-tagedit-inputrow">
+                    <input type="text" class="sr-tagedit-input" id="sr-tagedit-input" maxlength="40"
+                        placeholder="${tags.length >= 6 ? 'Tag limit reached (6)' : 'Add a tag…'}"
+                        ${tags.length >= 6 ? 'disabled' : ''}
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();srAddTag(this.value);}"
+                        onclick="event.stopPropagation()">
+                    <span class="sr-tagedit-count">${tags.length}/6</span>
+                </div>
+                ${suggHtml ? '<div class="sr-tagedit-suggs" id="sr-tagedit-suggs"><span style="font-size:10px;color:#66708a;">Reuse:</span>' + suggHtml + '</div>' : ''}
+            </div>
+        </div>`;
+}
+
+window.srAddTag = function (raw) {
+    const label = String(raw == null ? '' : raw).trim().slice(0, 40);
+    if (!label) return;
+    const tags = _drawerTags();
+    const norm = normalizeTag(label);
+    if (!norm || tags.length >= 6) { _refreshTagEditor(); return; }
+    if (tags.some(t => normalizeTag(t) === norm)) { _refreshTagEditor(); return; }
+    tags.push(label);
+    _refreshTagEditor();
+};
+
+window.srRemoveTag = function (encoded) {
+    let target = '';
+    try { target = decodeURIComponent(String(encoded)); } catch (_) { target = String(encoded); }
+    const tags = _drawerTags();
+    const norm = normalizeTag(target);
+    const idx = tags.findIndex(t => normalizeTag(t) === norm);
+    if (idx >= 0) tags.splice(idx, 1);
+    _refreshTagEditor();
+};
+
+/** Re-render just the editor row in place (keeps stopwatch/result state). */
+function _refreshTagEditor() {
+    const holder = document.getElementById('sr-tag-editor-holder');
+    if (holder) holder.innerHTML = _renderTagEditorRow();
+}
+
 function _renderTagStage() {
     return `
         <div class="sr-tag-divider">Now log your attempt ↓</div>
+        <div id="sr-tag-editor-holder">${_renderTagEditorRow()}</div>
         <!-- Autonomy -->
         <div class="sr-row">
             <div class="sr-row-label">Autonomy Level</div>
@@ -1143,6 +1318,16 @@ export function submitPracticeLog() {
 
     const timeSpent = _drawerState.timeSpentMins > 0 ? _drawerState.timeSpentMins : _drawerState.stopwatchSeconds / 60;
 
+    // ── Cognitive Cortex v3: capture the PRE-commit memory state BEFORE any
+    // writer touches q (computeSR overwrites nextReviewAt; the kernel moves
+    // stability). daysOverdue / age-at-solve / rBefore all come from here.
+    // Also record whether this is the item's FIRST vault-drawer review — the
+    // hot-strike/cold-revival priors key on it (practice-fumbled items arrive
+    // with kernel reps already advanced, so reps===1 alone never fires). ──
+    let _cortexSnap = null;
+    try { _cortexSnap = preReviewSnapshot(q); } catch (_) { _cortexSnap = null; }
+    const _vaultFirstReview = !Array.isArray(q.historyLogs) || q.historyLogs.length === 0;
+
     // ── Lock the first-attempt result BEFORE pushing the new historyLog.
     // Accuracy only counts the FIRST attempt of each question, so re-solving
     // from the error matrix must NOT change it. We set firstAttemptResult only
@@ -1165,6 +1350,38 @@ export function submitPracticeLog() {
     // single aspect per event keeps the kernel free of double-counting).
     try { refineDifficultyAfterTag(q, srResult.performanceQ); } catch (_) {}
 
+    // ── Cognitive Cortex v3 commit: age-at-solve priors (hot strike / cold
+    // revival) + overdue spacing credit, applied to q.stability AFTER both
+    // engines wrote their state. Single-aspect rule preserved — nothing else
+    // is touched here. Then the cortex scheduler (target-retention model)
+    // overrides nextReviewAt once the kernel has taken over (reps ≥ 1);
+    // brand-new items keep the SM-2 schedule. Every step guarded — a cortex
+    // fault degrades to pure SM-2 behavior. ──
+    let _cortexSummary = null;
+    try {
+        _cortexSummary = commitCortexReview(q, _cortexSnap, {
+            correct: _drawerState.result === 'correct',
+            vaultFirst: _vaultFirstReview,
+        });
+        const _sched = scheduleNextReview(q, {
+            examDateMs: _examDateMsSafe(),
+            chapterWeight: getChapterWeight,
+        });
+        if (_sched && typeof _sched === 'string') {
+            q.nextReviewAt = _sched;
+            // Keep the displayed interval honest with the new schedule.
+            try {
+                const dDays = Math.max(0, (new Date(_sched).getTime() - Date.now()) / 86400000);
+                if (_drawerState.result === 'correct' || dDays > srResult.newInterval) {
+                    q.currentInterval = Math.max(1, Math.round(dDays));
+                }
+            } catch (_) {}
+            // Re-derive mastery against the cortex horizon (>30d at ≥0.9
+            // target retention with healthy ease ⇒ resting memory).
+            if (!(q.currentInterval > 30 && q.easeFactor > 2.5)) q.isMastered = false;
+        }
+    } catch (_) { /* SM-2 output already on the question — safe fallback */ }
+
     // Append history log entry
     if (!Array.isArray(q.historyLogs)) q.historyLogs = [];
     q.historyLogs.push({
@@ -1179,6 +1396,14 @@ export function submitPracticeLog() {
         newEaseFactor: srResult.newEaseFactor,
         // Calibration layer — pre-reveal confidence for this attempt.
         confidence: _drawerState.confidence || null,
+        // ── Cognitive Cortex v3 attempt telemetry ──
+        ageAtSolveDays: _cortexSnap ? _r1(_cortexSnap.ageAtSolveDays) : null,
+        dueAtMs: _cortexSnap ? _cortexSnap.dueMs : null,
+        daysOverdue: _cortexSnap ? _r1(_cortexSnap.daysOverdue) : null,
+        rBefore: _cortexSnap ? Math.round(_cortexSnap.rBefore * 1000) / 1000 : null,
+        sBefore: _cortexSnap ? Math.round(_cortexSnap.sBefore * 100) / 100 : null,
+        ageClass: _cortexSummary ? _cortexSummary.ageClass : null,
+        spacingCredit: _cortexSummary ? Math.round(_cortexSummary.spacingCredit * 1000) / 1000 : 0,
     });
 
     // ── Bound text-bloat: keep only the 30 most recent logs per question.
@@ -1229,6 +1454,25 @@ export function submitPracticeLog() {
     } else if (_drawerState.result === 'incorrect') {
         q.status = 'error';
     }
+
+    // ── Cognitive Cortex v3: commit the tag draft edited in the drawer.
+    // Normalized-dedupe, cap 6, Gem tags preserved unless explicitly removed
+    // via the editor. Only runs when the user actually touched the editor. ──
+    try {
+        if (Array.isArray(_drawerState.tagDraft)) {
+            const seen = new Set();
+            const clean = [];
+            for (const raw of _drawerState.tagDraft) {
+                const norm = normalizeTag(raw);
+                if (!norm || seen.has(norm)) continue;
+                seen.add(norm);
+                clean.push(String(raw).trim().slice(0, 40));
+                if (clean.length >= 6) break;
+            }
+            q.tags = clean;
+        }
+    } catch (_) { /* tag persistence must never block the log */ }
+    _bumpBankRev();
 
     // 🎮 Gamification effects (red flash / sounds / streak) and 🧠 Elo
     // migration now fire at the moment of truth in _applyResult() — i.e. when
@@ -1335,6 +1579,7 @@ export function removeErrorLog(id) {
         id = targetId;
         // Tombstone the id so a stale cloud snapshot can never resurrect it.
         recordCloudTombstone(id).catch(console.error);
+        _bumpBankRev();
         saveAllAsync().catch(console.error);
         closePracticeDrawer();
         // Defer heavy DOM rebuilds — staggered so the close animation + any
@@ -1564,10 +1809,18 @@ function _getDailyQueueSnapshot() {
         if (bySubject[subj]) bySubject[subj].push(q);
     });
     Object.keys(bySubject).forEach(subj => {
-        // Weakest-memory-first with a Memory-Kernel tiebreak: among equally
-        // fragile items (same ease factor), surface the one whose retrievability
-        // has decayed FURTHEST — it is closest to being lost and cheapest to
-        // save now (spacing effect works hardest near the verge of forgetting).
+        // ── Cognitive Cortex v3 ordering ──
+        // Composite priority field (urgency × overdue-stress × importance ×
+        // tag-leak × neglect × contagion × fatigue-brake) replaces the flat
+        // "weakest easeFactor first" rule. Falls back to the exact legacy
+        // comparator if the cortex context fails to build — a brain hiccup
+        // must never blank the queue.
+        const ctx = _cortexCtx();
+        if (ctx) {
+            bySubject[subj].sort((a, b) => _prioOf(b, ctx) - _prioOf(a, ctx));
+            return;
+        }
+        // Legacy fallback: weakest-memory-first with a Memory-Kernel tiebreak.
         bySubject[subj].sort((a, b) => {
             const efDiff = _numOr(a.easeFactor, 2.5) - _numOr(b.easeFactor, 2.5);
             if (efDiff !== 0) return efDiff;
@@ -1691,6 +1944,19 @@ function _buildErrorCardHTML(q) {
     const tagLabel = TAG_LABELS[q.errorReason] || q.errorReason;
     const dueInfo = getDueStatus(q);
 
+    // ── Cognitive Cortex v3 card telemetry (all reads are pure + guarded) ──
+    // Live retrievability, days-sitting-overdue and age-since-logging turn the
+    // card into an honest memory readout instead of a bare interval counter.
+    let rPct = null, ageTxt = '';
+    try { rPct = Math.round(cortexRetrievability(q) * 100); } catch (_) { rPct = null; }
+    try {
+        const cMs = new Date(q.createdAt || '').getTime();
+        if (!isNaN(cMs)) {
+            const d = Math.floor((Date.now() - cMs) / MS_PER_DAY);
+            ageTxt = d <= 0 ? 'today' : (d >= 60 ? Math.floor(d / 30) + 'mo' : d + 'd');
+        }
+    } catch (_) { ageTxt = ''; }
+
     // ALWAYS render a lightweight placeholder — the real image (from the
     // in-memory bank or Drive) is swapped in by initErrorLazyLoaders() only
     // while the card is near the viewport, and swapped back out (freed) once
@@ -1723,17 +1989,21 @@ function _buildErrorCardHTML(q) {
                  onclick="openPracticeDrawer('${_jsId(q.id)}')" title="Open practice session">
                 <div class="error-img-box">
                     ${imgHtml}
-                    <span class="sr-due-badge sr-due--${_esc(dueInfo.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(dueInfo))}</span>
+                    <span class="sr-due-badge sr-due--${_esc(dueInfo.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(dueInfo, q))}</span>
                 </div>
                 <div class="error-details">
                     <div class="error-chapter">${_esc(q.chapter || 'Unknown')}</div>
                     <div class="error-tag-row">
                         <span class="error-tag error-tag--${_esc(q.errorReason || 'conceptual')}" style="color:${tagStyle.color};background:${tagStyle.bg};">${_esc(tagLabel)}</span>
+                        ${(Array.isArray(q.tags) && q.tags.length)
+                            ? q.tags.slice(0, 3).map(t => `<span class="sr-card-usertag" title="Personal tag — tap to hunt this tag" onclick="event.stopPropagation();window.__cortexHuntTag&&__cortexHuntTag('${_esc(String(t).replace(/'/g, ''))}')">#${_esc(t)}</span>`).join('')
+                            : ''}
                     </div>
                     <div class="sr-stats-row">
+                        <span class="sr-stat${rPct != null ? (rPct >= 90 ? ' sr-stat--ok' : rPct >= 80 ? ' sr-stat--warn' : ' sr-stat--crit') : ''}" title="Live retrievability — the brain's current recall odds for this mistake"><b>${rPct != null ? rPct + '%' : '—'}</b><i>recall</i></span>
                         <span class="sr-stat" title="Spaced-repetition interval — how long this memory currently survives"><b>${_numOr(q.currentInterval, 0)}d</b><i>interval</i></span>
                         <span class="sr-stat" title="Ease factor — higher means recall is sticking"><b>${_numOr(q.easeFactor, 2.5).toFixed(2)}</b><i>ease</i></span>
-                        <span class="sr-stat" title="Target time per attempt"><b>${_numOr(q.targetTimeMins, 5)}m</b><i>target</i></span>
+                        ${ageTxt ? `<span class="sr-stat" title="Time since this mistake was logged (age at every solve feeds cortex priors)"><b>${_esc(ageTxt)}</b><i>logged</i></span>` : `<span class="sr-stat" title="Target time per attempt"><b>${_numOr(q.targetTimeMins, 5)}m</b><i>target</i></span>`}
                     </div>
                     <div class="sr-attempt-dots-row">
                         <span class="sr-dots-label">History</span>
@@ -1791,9 +2061,12 @@ export function addErrorBlock() {
         qEloStampedBy: null,
         qEloStampedAt: null,
         solveCount: 0,
+        // Cognitive Cortex v3 — creation anchor for age-at-solve priors.
+        createdAt: new Date().toISOString(),
     };
 
     AppState.questionBank.push(newErrorQ);
+    _bumpBankRev();
     saveAllAsync().catch(console.error);
 
     document.getElementById('new-err-chapter').value = '';
@@ -1830,9 +2103,18 @@ const TAG_LABELS = {
 
 // Plain-language due badge. One glance → "do I need to act on this?"
 // Vocabulary matches the filter pills exactly: Due now / Due soon / Later / Mastered.
-function _dueLabel(dueInfo) {
+// When an item is READY but has sat overdue, quantify it — "how long was this
+// left due" is a first-class cortex signal, not silent pressure (Cortex v3).
+function _dueLabel(dueInfo, q) {
     switch (dueInfo && dueInfo.status) {
-        case 'ready':     return 'Due now';
+        case 'ready': {
+            let late = 0;
+            try {
+                const t = new Date((q && q.nextReviewAt) || '').getTime();
+                if (!isNaN(t)) late = Math.max(0, (Date.now() - t) / MS_PER_DAY);
+            } catch (_) { late = 0; }
+            return late >= 1 ? 'Due now · ' + Math.floor(late) + 'd late' : 'Due now';
+        }
         case 'due_soon':  return 'Due in ' + (dueInfo.daysUntil ?? '?') + 'd';
         case 'scheduled': return 'In ' + (dueInfo.daysUntil ?? '?') + 'd';
         case 'mastered':  return 'Mastered';
@@ -1931,10 +2213,16 @@ const EM_GROUP_META = {
 
 function _buildGroupedBoardHTML(errs) {
     const withStatus = errs.map(q => ({ q, st: getDueStatus(q).status }));
+    // ── Cognitive Cortex v3 within-group ordering: composite priority field,
+    // highest first. The cortex context is computed ONCE for the whole board
+    // (memoized on _bankRev) so N cards don't rebuild profiles N times.
+    // Legacy easeFactor sort remains the fallback path. ──
+    const ctx = _cortexCtx();
     withStatus.sort((a, b) => {
         const sa = EM_STATUS_ORDER[a.st] ?? 9;
         const sb = EM_STATUS_ORDER[b.st] ?? 9;
         if (sa !== sb) return sa - sb;
+        if (ctx) return _prioOf(b.q, ctx) - _prioOf(a.q, ctx);
         return _numOr(a.q.easeFactor, 2.5) - _numOr(b.q.easeFactor, 2.5);
     });
 
@@ -2114,11 +2402,141 @@ window.getChapterHealth = (subject, chapter) => {
 };
 
 // Exposed for the Daily Briefing flow — the locked-in Daily Fix Queue in
-// priority order (ready errors, weakest easeFactor first, 5P/5M/10C). The
+// priority order (ready errors, cortex-priority first, 5P/5M/10C). The
 // boot flow feeds this order straight into the practice queue.
 window._getDailyQueueSnapshot = () => {
     try { return _getDailyQueueSnapshot(); } catch (_) { return []; }
 };
+
+// ── Cognitive Cortex v3 shared surfaces ─────────────────────────────────────
+
+// Card tag chip → hunt this tag across the vault (reuses the search filter).
+window.__cortexHuntTag = function (tag) {
+    try {
+        const input = document.getElementById('matrix-search-input');
+        if (!input) return;
+        input.value = String(tag == null ? '' : tag);
+        if (typeof window.setMatrixSearch === 'function') window.setMatrixSearch(input.value);
+        const errorsNav = document.querySelector('.nav-item[data-tab="errors"]');
+        if (errorsNav && typeof window.switchTab === 'function') window.switchTab('errors', errorsNav);
+    } catch (_) { /* navigation nicety — never crash on a chip tap */ }
+};
+
+let _cortexStylesInjected = false;
+function _injectCortexStyles() {
+    if (_cortexStylesInjected) return;
+    _cortexStylesInjected = true;
+    const style = document.createElement('style');
+    style.id = 'cortex-v3-styles';
+    style.textContent = `
+.sr-stat--ok b { color:#34d399; }
+.sr-stat--warn b { color:#fbbf24; }
+.sr-stat--crit b { color:#f87171; }
+.sr-card-usertag {
+  display:inline-block; margin:2px 4px 0 0; padding:1px 7px; border-radius:999px;
+  font-size:9.5px; letter-spacing:.3px; cursor:pointer;
+  color:#93c5fd; background:rgba(147,197,253,0.08); border:1px solid rgba(147,197,253,0.18);
+}
+.sr-card-usertag:hover { background:rgba(147,197,253,0.16); }
+.sr-tagedit { width:100%; }
+.sr-tagedit-chips { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:6px; min-height:18px; }
+.sr-tagedit-none { font-size:10.5px; color:#66708a; }
+.sr-tagedit-chip {
+  display:inline-flex; align-items:center; gap:4px; padding:2px 4px 2px 8px;
+  border-radius:999px; font-size:11px; color:#bfdbfe;
+  background:rgba(96,165,250,0.12); border:1px solid rgba(96,165,250,0.25);
+}
+.sr-tagedit-x {
+  background:none; border:none; color:#93c5fd; cursor:pointer; font-size:9px;
+  padding:1px 4px; border-radius:50%; line-height:1;
+}
+.sr-tagedit-x:hover { background:rgba(239,68,68,0.25); color:#fecaca; }
+.sr-tagedit-inputrow { display:flex; align-items:center; gap:8px; }
+.sr-tagedit-input {
+  flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12);
+  border-radius:8px; padding:6px 10px; color:#e8eefb; font-size:12px; outline:none;
+}
+.sr-tagedit-input:focus { border-color:rgba(96,165,250,0.5); }
+.sr-tagedit-count { font-size:10px; color:#66708a; white-space:nowrap; }
+.sr-tagedit-suggs { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; align-items:center; }
+.sr-tagedit-sugg {
+  background:none; border:1px dashed rgba(147,197,253,0.35); border-radius:999px;
+  color:#93c5fd; font-size:10px; padding:2px 9px; cursor:pointer;
+}
+.sr-tagedit-sugg:hover { background:rgba(147,197,253,0.12); }
+.dd-contagion {
+  margin:8px 12px 0; padding:7px 10px; border-radius:9px; font-size:11px; line-height:1.5;
+  background:rgba(251,113,133,0.09); border:1px solid rgba(251,113,133,0.28); color:#fda4af;
+}
+.dd-tagleaks { padding:6px 12px 2px; }
+.dd-tagleak-row {
+  display:flex; align-items:center; gap:8px; padding:4px 2px; font-size:11px;
+  color:#cdd9f2; cursor:pointer; border-radius:6px;
+}
+.dd-tagleak-row:hover { background:rgba(255,255,255,0.05); }
+.dd-tagleak-bar { flex:1; height:4px; border-radius:2px; background:rgba(255,255,255,0.07); overflow:hidden; }
+.dd-tagleak-bar i { display:block; height:100%; border-radius:2px; }
+`;
+    document.head.appendChild(style);
+}
+
+/**
+ * Cortex summary strip for the decay drilldown: contagion banner (recent
+ * sibling lapses in this chapter) + top personal-tag leak bars. Pure reads,
+ * fully guarded — renders nothing on any fault.
+ */
+function _renderCortexDrilldownExtras(subject, chapterName, items) {
+    _injectCortexStyles();
+    let html = '';
+    try {
+        const ctx = _cortexCtx();
+        if (!ctx) return html;
+        // Contagion banner — lapses among THIS chapter's items in the last 14d.
+        try {
+            const chapKey = String(chapterName || '').trim().toLowerCase();
+            const ids = new Set(items.map(q => String(q.id)));
+            const recent = (ctx.lapseEvents || []).filter(ev =>
+                ev.chapter === chapKey && ids.has(ev.id));
+            if (recent.length >= 2) {
+                html += '<div class="dd-contagion">⚠ <b>' + recent.length +
+                    ' sibling lapses here in the last 21d</b> — these memories are entangled; one more lapse resurfaces all of them.</div>';
+            }
+        } catch (_) {}
+        // Per-tag leak rows for the chapter's personal vocabulary.
+        try {
+            const counts = new Map();
+            for (const q of items) {
+                for (const raw of (Array.isArray(q.tags) ? q.tags : [])) {
+                    const norm = normalizeTag(raw);
+                    if (!norm) continue;
+                    if (!counts.has(norm)) counts.set(norm, { label: String(raw).trim(), n: 0 });
+                    counts.get(norm).n++;
+                }
+            }
+            const rows = [...counts.entries()]
+                .map(([norm, e]) => ({ norm, label: e.label, leak: leakOfSafe(ctx.profiles, 'p:' + norm), df: e.n }))
+                .filter(r => r.leak != null)
+                .sort((a, b) => (b.leak - a.leak) || (b.df - a.df))
+                .slice(0, 5);
+            if (rows.length) {
+                html += '<div class="dd-tagleaks"><div style="font-size:10px;color:#8aa0c8;margin-bottom:2px;">Personal-tag leakiness (red = your passes don\'t hold):</div>' +
+                    rows.map(r => {
+                        const pct = Math.round(r.leak * 100);
+                        const col = pct >= 60 ? '#f87171' : pct >= 40 ? '#fbbf24' : '#34d399';
+                        return '<div class="dd-tagleak-row" data-hunt="' + _esc(r.label) + '" title="Tap to hunt #' + _esc(r.label) + ' across the vault">' +
+                            '<span style="min-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">#' + _esc(r.label) + '</span>' +
+                            '<span class="dd-tagleak-bar"><i style="width:' + pct + '%;background:' + col + '"></i></span>' +
+                            '<span style="color:' + col + ';min-width:30px;text-align:right;">' + pct + '%</span></div>';
+                    }).join('') + '</div>';
+            }
+        } catch (_) {}
+    } catch (_) {}
+    return html;
+}
+
+function leakOfSafe(profiles, key) {
+    try { return leakOf(profiles, key); } catch (_) { return null; }
+}
 
 const MS_PER_DAY = 86400000;
 
@@ -2389,6 +2807,9 @@ export function openDecayDrilldown(subjectEnc, chapEnc) {
     }).join('');
 
     document.querySelectorAll('.decay-drill-overlay').forEach(o => o.remove());
+    // Cognitive Cortex v3 — contagion banner + per-tag leak rows (guarded;
+    // renders '' on any fault so the legacy panel is untouched).
+    const cortexExtras = _renderCortexDrilldownExtras(subject, chapterName, items);
     const overlay = document.createElement('div');
     overlay.className = 'decay-drill-overlay';
     overlay.innerHTML =
@@ -2400,8 +2821,17 @@ export function openDecayDrilldown(subjectEnc, chapEnc) {
         '<button id=\'dd-weight-edit\' type=\'button\' style=\'margin-left:8px; background:none; border:none; color:#38bdf8; cursor:pointer; font-size:10px; padding:0;\'>✎ edit</button></div>' +
         '<button class="decay-drill-close" type="button" aria-label="Close">✕</button>' +
         '</div>' +
+        cortexExtras +
         '<div class="decay-drill-list">' + rows + '</div>' +
         '</div>';
+    // Cortex leak rows → hunt that tag in the vault.
+    overlay.addEventListener('click', (e) => {
+        const huntRow = e.target.closest && e.target.closest('.dd-tagleak-row');
+        if (huntRow && typeof window.__cortexHuntTag === 'function') {
+            close();
+            window.__cortexHuntTag(huntRow.getAttribute('data-hunt'));
+        }
+    });
     const close = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); document.removeEventListener('keydown', onKey, true); };
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     // ✎ edit → user override tier. Blank input clears back to automatic
@@ -2596,6 +3026,12 @@ let _rolloverWatchStarted = false;
 function _numOr(v, fallback) {
     const n = Number(v);
     return isFinite(n) ? n : fallback;
+}
+
+/** Round to 1 decimal; null/NaN/corrupt ⇒ null (cortex log fields). */
+function _r1(v) {
+    const n = Number(v);
+    return isFinite(n) ? Math.round(n * 10) / 10 : null;
 }
 
 // ICU-safe local YYYY-MM-DD key (manual formatting — toLocaleDateString

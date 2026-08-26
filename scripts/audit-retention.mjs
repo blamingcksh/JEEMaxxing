@@ -29,7 +29,9 @@ const server = await new Promise(resolve => {
 let browser;
 try { browser = await chromium.launch({ channel: 'msedge', headless: true }); }
 catch { browser = await chromium.launch({ channel: 'chrome', headless: true }); }
-context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
+// FIX: was a bare `context =` assignment — ESM strict mode throws
+// ReferenceError before the audit ever loads the app.
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
 const page = await context.newPage();
 await page.addInitScript(() => { try { localStorage.setItem('jeemax_boot_seq_date', new Date().toLocaleDateString('en-CA')); } catch {} });
 

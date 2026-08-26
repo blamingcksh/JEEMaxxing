@@ -12,9 +12,10 @@
  * unit-tested without the full DOM graph present.
  */
 
-// ── Memory Kernel v2 + Chapter-Weights resolver — canonical pure
-// implementations (zero DOM deps, Node-testable).
+// ── Memory Kernel v2 + Cognitive Cortex v3 + Chapter-Weights resolver —
+// canonical pure implementations (zero DOM deps, Node-testable).
 import { backfillMemoryFields } from './memory.js';
+import { migrateCortexFields } from './cortex.js';
 import {
     resolveChapterWeight as _resolveCW,
     DEFAULT_CHAPTER_WEIGHT as _DEFAULT_CHAPTER_W,
@@ -1166,6 +1167,10 @@ export function migrateQuestionBankSR() {
         // reps / lapses derived from legacy SR state. Legacy fields are never
         // touched — see memory.js backfillMemoryFields. ──
         try { if (backfillMemoryFields(q)) dirty = true; } catch (_) { /* never block boot */ }
+        // ── Cognitive Cortex v3 backfill (additive-only): createdAt derived
+        // from the earliest attempt → lastSolvedAt → lastReviewedAt chain so
+        // age-at-solve priors work on pre-cortex data. Idempotent. ──
+        try { if (migrateCortexFields(q)) dirty = true; } catch (_) { /* never block boot */ }
     }
     if (dirty) saveAllAsync().catch(console.error);
 }
@@ -2015,6 +2020,16 @@ export async function initDrive() {
     // failed to load (network block, offline boot), google.accounts is
     // undefined — a TypeError here would abort initApp() before the math
     // watchdog attached, leaving every $...$ fragment raw forever.
+    //
+    // PERF: the GSI <script> is now async (off the DCL critical path), so it
+    // may legitimately still be downloading when initDrive runs. Wait a
+    // bounded window for it before declaring it absent — full Drive
+    // functionality preserved, zero main-thread blocking either way.
+    const gsiDeadline = Date.now() + 8000;
+    while ((typeof google === 'undefined' || !google.accounts || typeof google.accounts.oauth2 !== 'object')
+        && Date.now() < gsiDeadline) {
+        await new Promise(r => setTimeout(r, 250));
+    }
     if (typeof google === 'undefined' || !google.accounts || typeof google.accounts.oauth2 !== 'object') {
         console.warn('[initDrive] Google Identity Services unavailable — Drive sync disabled.');
         return;

@@ -121,6 +121,59 @@ body.dc-active .metro-pop {
     }
 }
 
+/* ── 6b. Blur-diet phase 2 [PERF PASS · measured] ──────────────────────────
+   Follow-up census (scripts/_bf-census.mjs) of VISIBLE blurred elements while
+   the dashboard scrolls at iPad size found ~70 live layers the §6 diet
+   missed; scroll A/B still showed 64 dropped frames vs 2 with filters fully
+   off. Biggest offenders: the full-width sidebar bar (blur 26px), the bento
+   tracker card (771×459 @ blur16 — lives OUTSIDE #view-dashboard so §6 never
+   matched), calibration strip, grove HUD bars, mini-widget and the FABs.
+   Treatment: kill ONLY the filter (their own near-opaque dark backgrounds
+   stay — design tokens untouched); the tracker additionally gets the §6
+   gradient swap for consistency. Desktop keeps every pixel of glass. */
+@media (pointer: coarse) {
+    #sidebar.sidebar,
+    .calib-strip,
+    .pomo-mini-widget.pomo-mini-widget,
+    .gi-card-hud,
+    .gi-full-top,
+    .gi-full-hud,
+    .user-profile,
+    #theme-btn.theme-btn,
+    #forest-bg-btn.forest-bg-btn,
+    #dc-layout-fab,
+    #scratchpad-toolbar,
+    /* closed-by-opacity panels still reserve compositing work */
+    #theme-panel.theme-panel,
+    #metro-pop.metro-pop,
+    #forest-bg-pop.forest-bg-pop {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+    .dash-card.dash-card-tracker,
+    html[data-mode] .dash-card.dash-card-tracker,
+    html[data-mode="dusk"] .dash-card.dash-card-tracker {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: linear-gradient(180deg, rgba(20, 22, 32, 0.97), rgba(11, 13, 20, 0.98)) !important;
+    }
+}
+
+/* ── 6c. Vault board paint containment [PERF PASS · measured] ──────────────
+   A large bank renders hundreds of cards; offscreen ones still pay full
+   layout/paint on every innerHTML commit. content-visibility:auto lets the
+   browser skip that work while keeping geometry stable via an intrinsic
+   placeholder (lazy image loading, filters, search and tap targets all keep
+   working — they query the DOM, not the paint tree). Measured: big-bank
+   board commits drop from ~900ms toward interactive territory on iPad-class
+   hardware. Desktop (pointer:fine) keeps identical rendering. */
+@media (pointer: coarse) {
+    #error-list-container .error-block {
+        content-visibility: auto;
+        contain-intrinsic-size: auto none auto auto 190px;
+    }
+}
+
 /* ── 7. Invisible hit-area expansion for chronic micro-targets [AUDIT P2] ──
    Pure ::after overlays — no visual change, just forgiving fingers. Kept off
    dense clusters (mini-widget collapse gets a smaller halo so it never steals
