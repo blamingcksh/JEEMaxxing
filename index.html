@@ -1206,8 +1206,10 @@ window.clearMatrixFilters = function () {
 <!-- KaTeX engine (window.katex) — vendored locally; must precede the app module.
      onerror flags a failed load so app.js can inject a CDN fallback copy. -->
 <script defer src="./vendor/katex/katex.min.js" onerror="window.__katexLoadFailed=true;"></script>
-<!-- Google Identity Services — storage.js initDrive() needs google.accounts.oauth2 -->
-<script defer src="https://accounts.google.com/gsi/client"></script>
+<!-- Google Identity Services — storage.js initDrive() needs google.accounts.oauth2.
+     PERF: async (not defer) — a network CDN script must never sit on the
+     DOMContentLoaded critical path; initDrive() waits briefly for it. -->
+<script async src="https://accounts.google.com/gsi/client"></script>
 <!-- Main controller module — imports storage / pomodoro / matrix / candlestick -->
 <script type="module" src="./app.js"></script>
 <!-- 4-Pillar Accountability Checkpoint System — self-mounting (hub, control

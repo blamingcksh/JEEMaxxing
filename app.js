@@ -63,6 +63,13 @@ import {
     chapterMemoryStats,
 } from './memory.js';
 
+// Cognitive Cortex v3 — brain-like scheduling layer (pure, zero-dep).
+import {
+    computeTagProfiles,
+    leakOf,
+    normalizeTag,
+} from './cortex.js';
+
 // Smart Mistake Report engine — tag × difficulty aggregation behind the AI Dump
 // modal's live preview + compact download (pure, Node-testable module).
 import {
@@ -3051,6 +3058,11 @@ export function saveAllQuestions() {
             qEloStampedBy: q.qEloStampedBy || null,
             qEloStampedAt: q.qEloStampedAt || null,
             solveCount: 0,
+            // ── Cognitive Cortex v3: creation instant for age-at-solve
+            // priors (hot-strike / cold-revival) and neglect boosting.
+            // Purely additive; older rows are backfilled by
+            // migrateQuestionBankSR → migrateCortexFields on boot. ──
+            createdAt: new Date().toISOString(),
             lastSolvedAt: null,
             tags: Array.isArray(q.tags) ? q.tags.slice() : [],
             targetTimeMins: (typeof q.targetTimeMins === 'number' && q.targetTimeMins > 0)
@@ -8200,6 +8212,15 @@ export function confirmErrorLog() {
     //    responsibility of calculateEloMigration (the Elo engine). This path
     //    only guarantees the canonical schema fields are present.
     AppState.pendingWrongQ.lastReviewedAt = new Date().toISOString();
+    // ── Cognitive Cortex v3: guarantee createdAt exists on the vault entry.
+    // This is the PRIMARY error-insertion path (practice fumble → Vault), so
+    // age-at-solve priors need a creation anchor even when the question
+    // predates cortex or arrived through a non-Gem route. Never overwrites a
+    // valid existing stamp. ──
+    if (!(typeof AppState.pendingWrongQ.createdAt === 'string' && AppState.pendingWrongQ.createdAt
+            && !isNaN(Date.parse(AppState.pendingWrongQ.createdAt)))) {
+        AppState.pendingWrongQ.createdAt = new Date().toISOString();
+    }
     if (typeof AppState.pendingWrongQ.easeFactor !== 'number' || !isFinite(AppState.pendingWrongQ.easeFactor)) {
         AppState.pendingWrongQ.easeFactor = 2.5;
     }
@@ -9394,6 +9415,15 @@ window.renderAiDumpPreview = function () {
     const report = buildMistakeReport(scope.raw, {
         scopeText: scopeLabel,
         elo: AppState.elo || {},
+        // ── Cognitive Cortex v3: per-tag leak chips in the tag leaderboard.
+        // Profiles are recomputed over the scoped slice (cheap, pure) so the
+        // preview stays honest to exactly what the user ticked. ──
+        tagLeakFn: (label) => {
+            try {
+                const { profiles } = computeTagProfiles(scope.raw, {});
+                return leakOf(profiles, 'p:' + normalizeTag(label));
+            } catch (_) { return null; }
+        },
     });
     box.innerHTML = renderReportHtml(report, { maxTags: 12 });
 };
@@ -10057,25 +10087,42 @@ function processElementMath(element) {
 
     try {
         // ── Collect every text node that contains at least one math fragment ──
+        // PERF [measured]: this walker ran during every background text
+        // mutation storm and `closest('.katex')` executed PER TEXT NODE —
+        // an ancestor-chain crawl that dominated profiles (~30% of all CPU
+        // on large banks). Order now: free content fast-path FIRST (the vast
+        // majority of text nodes hold no $ or \ at all), and the ancestor
+        // stamp/katex check LAST, bounded, only for actual candidates.
         const walker = document.createTreeWalker(
             element,
             NodeFilter.SHOW_TEXT,
             {
                 acceptNode: function (node) {
-                    const parent = node.parentElement;
-                    if (!parent) return NodeFilter.FILTER_REJECT;
-                    const tag = parent.tagName;
-                    if (tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
-                    // Skip text already inside rendered KaTeX output.
-                    if (parent.closest('.katex')) return NodeFilter.FILTER_REJECT;
                     const val = node.nodeValue;
                     if (!val) return NodeFilter.FILTER_REJECT;
+                    // Fast path: no math delimiters and no LaTeX commands ⇒ reject
+                    // without touching the ancestor chain.
+                    if (val.indexOf('$') === -1 && val.indexOf('\\') === -1) return NodeFilter.FILTER_REJECT;
                     MATH_REGEX.lastIndex = 0;
                     const hasDelimited = MATH_REGEX.test(val);
                     MATH_REGEX.lastIndex = 0;
                     // Accept nodes with delimited math OR bare \command LaTeX
                     // (the auto-wrap pass handles the delimiter-less ones).
                     if (!hasDelimited && !/\\[a-zA-Z]/.test(val)) return NodeFilter.FILTER_REJECT;
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    const tag = parent.tagName;
+                    if (tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
+                    // Candidate nodes only: verify they're not inside rendered
+                    // KaTeX output. Bounded walk (≤6 levels) covers the sealed
+                    // [data-math-rendered] wrapper KaTeX output always sits in,
+                    // without an unbounded closest() per candidate.
+                    let anc = parent;
+                    for (let depth = 0; anc && depth < 6; depth++) {
+                        if (anc.classList && anc.classList.contains('katex')) return NodeFilter.FILTER_REJECT;
+                        if (anc.nodeType === Node.ELEMENT_NODE && anc.hasAttribute('data-math-rendered')) return NodeFilter.FILTER_REJECT;
+                        anc = anc.parentNode;
+                    }
                     return NodeFilter.FILTER_ACCEPT;
                 }
             }
@@ -10148,6 +10195,43 @@ function processElementMath(element) {
 // Watches the entire workspace subtree for added nodes (new modals, freshly
 // rendered practice questions, dynamic banners, etc.) and pipes them through
 // processElementMath() so LaTeX is hydrated the instant it enters the DOM.
+//
+// PERF [measured]: this handler used to call processElementMath SYNCHRONOUSLY
+// per added node — and the TEXT_NODE branch swept whole large subtrees every
+// time any counter/clock ticked. On a big vault board that meant continuous
+// full-subtree TreeWalkers several times per second (30%+ total CPU, seconds
+// of main-thread blocking). Now: candidates are deduped into a Set and
+// flushed ONCE per animation frame; oversized roots defer to idle time so a
+// frame is never hijacked.
+const _mathQueue = new Set();
+let _mathFlushScheduled = false;
+function _flushMathQueue() {
+    _mathFlushScheduled = false;
+    const big = [];
+    for (const el of _mathQueue) {
+        _mathQueue.delete(el);
+        if (!el || !el.isConnected) continue;
+        // Cheap size probe — huge roots (whole-view re-renders) go to idle
+        // time instead of hijacking this frame.
+        let count = 0;
+        try { count = el.getElementsByTagName('*').length; } catch (_) { count = 0; }
+        if (count > 2500) { big.push(el); continue; }
+        processElementMath(el);
+    }
+    if (big.length) {
+        setTimeout(function () {
+            for (const el of big) { try { processElementMath(el); } catch (_) {} }
+        }, 300);
+    }
+}
+function _queueMath(el) {
+    _mathQueue.add(el);
+    if (!_mathFlushScheduled) {
+        _mathFlushScheduled = true;
+        requestAnimationFrame(_flushMathQueue);
+    }
+}
+
 const globalMathObserver = new MutationObserver(function (mutations) {
     // If KaTeX isn't loaded yet, defer — the initial body sweep in initApp()
     // will catch any pre-existing fragments once it arrives.
@@ -10163,7 +10247,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
                 if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
                 if (node.classList && node.classList.contains('katex')) continue;
                 if (node.hasAttribute && node.hasAttribute('data-math-rendered')) continue;
-                processElementMath(node);
+                _queueMath(node);
             } else if (node.nodeType === Node.TEXT_NODE) {
                 // A raw text node was injected (e.g. element.textContent = ...).
                 // Process its parent — but first clear any stale render stamp
@@ -10173,7 +10257,7 @@ const globalMathObserver = new MutationObserver(function (mutations) {
                 if (parent.hasAttribute('data-math-rendered')) {
                     parent.removeAttribute('data-math-rendered');
                 }
-                processElementMath(parent);
+                _queueMath(parent);
             }
         }
     }

@@ -176,8 +176,13 @@ await page.screenshot({ path: path.join(SHOTS, '01-vault-overview.png') });
 // ── 2 · Card anatomy ──────────────────────────────────────────────────────
 const firstCard = cards.first();
 assert(await firstCard.locator('.sr-due-badge.sr-due--ready').count() === 1, 'ready card has Due-now badge');
-assert((await firstCard.locator('.sr-due-badge').textContent()).trim() === 'Due now', 'badge reads plain-language Due now');
-assert(await firstCard.locator('.sr-stat i').first().textContent() === 'interval', 'stats have labels');
+// Cortex v3: an item sitting past its schedule quantifies HOW late it is.
+const dueTxt = (await firstCard.locator('.sr-due-badge').textContent()).trim();
+assert(/^Due now( · \d+d late)?$/.test(dueTxt), 'badge reads plain-language Due now (+' + JSON.stringify(dueTxt) + ')');
+// Cortex v3: live recall % leads the stats row, every stat keeps a label.
+assert(await firstCard.locator('.sr-stat i').first().textContent() === 'recall', 'stats have labels (recall first)');
+const statLabels = await firstCard.locator('.sr-stat i').allTextContents();
+assert(statLabels.length >= 3 && statLabels.every(l => l && l.trim()), 'all stat chips labeled (' + statLabels.join('|') + ')');
 assert(await page.locator('#error-list-container .sr-attempt-dot').count() === 3, 'attempt dots rendered (3 history logs)');
 assert(await firstCard.locator('.sr-practice-btn .sr-btn-arrow').count() === 1, 'hero CTA with arrow');
 const railColor = await firstCard.evaluate(el => getComputedStyle(el, '::before').backgroundColor);

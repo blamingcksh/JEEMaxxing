@@ -396,6 +396,17 @@ export function buildMistakeReport(questions, opts) {
     }
 
     const tagRows = aggregateTags(facts, { elo: o.elo });
+    // ── Cognitive Cortex v3: optional per-tag leak enrichment. Callers pass
+    // tagLeakFn(label) → [0,1] | null; absent ⇒ rows render exactly as
+    // before (all legacy consumers/tests unaffected). ──
+    if (typeof o.tagLeakFn === 'function') {
+        for (const r of tagRows) {
+            try {
+                const L = o.tagLeakFn(r.tag);
+                r.leak = (typeof L === 'number' && isFinite(L)) ? Math.max(0, Math.min(1, L)) : null;
+            } catch (_) { r.leak = null; }
+        }
+    }
     const bandRows = aggregateBands(facts);
 
     // Subject rollup.
@@ -603,8 +614,15 @@ export function renderReportHtml(report, opts) {
                 : r.trend === 'better'
                     ? ' <span class="rp-trend-good" title="fewer mistakes in the last 30 days than the 30 before">↓</span>'
                     : '';
+            // Cortex v3 leak chip — only present when the caller supplied a
+            // leak lookup; keeps the table byte-identical otherwise.
+            const leakChip = (typeof r.leak === 'number')
+                ? ' <span class="rp-chip ' + (r.leak >= 0.6 ? 'rp-chip-warn' : '') +
+                  '" title="Cortex leakiness — how often your attempts on this tag fail, recency-weighted">' +
+                  Math.round(r.leak * 100) + '% leak</span>'
+                : '';
             html += '<tr>' +
-                '<td class="rp-tagcell">' + _esc(r.tag) + trendMark + '</td>' +
+                '<td class="rp-tagcell">' + _esc(r.tag) + trendMark + leakChip + '</td>' +
                 '<td>' + r.questions + '</td>' +
                 '<td class="' + (r.mistakes > 0 ? 'rp-bad' : 'rp-good') + '">' + r.mistakes + '</td>' +
                 '<td>' + (r.accuracyPct != null ? r.accuracyPct + '%' : '—') + '</td>' +
