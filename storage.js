@@ -520,6 +520,7 @@ export const AppState = {
     currentSubject: 'physics',
     currentChapter: '',
     currentChapterQuestions: [],
+    currentChapterSelection: null,
     practiceQuestions: [],
     currentPracticeIndex: 0,
     practiceSeconds: 0,

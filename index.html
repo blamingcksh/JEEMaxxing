@@ -612,7 +612,11 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                 <div class="practice-header">
                     <button class="btn btn-secondary" onclick="goToSubjects()">← Dip</button>
                     <h2 id="chapters-subject-title">Chapters</h2>
-                    <button class="btn btn-primary" onclick="openModal('add-chapter-modal')">+ New Chapter</button>
+                    <div class="chapter-actions" role="group" aria-label="Chapter actions">
+                        <button class="btn btn-primary" onclick="openModal('add-chapter-modal')">+ New Chapter</button>
+                        <button class="btn btn-mode-flow" onclick="openMultiChapterMode('flow')" title="Flow State across selected chapters">🎯 Flow</button>
+                        <button class="btn btn-mode-hardcore" onclick="openMultiChapterMode('hardcore')" title="Hardcore across selected chapters">⚡ Hardcore</button>
+                    </div>
                 </div>
                 <div class="chapter-list" id="chapters-list-container"></div>
             </div>
@@ -1108,6 +1112,20 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
         <div style="display:flex;gap:12px;margin-top:16px">
             <button class="btn btn-secondary" onclick="closeModalStr('edit-question-modal')">Nvm</button>
             <button class="btn btn-primary" onclick="saveEditQuestion()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Multi-chapter mode picker -->
+<div id="multi-chapter-mode-modal" class="modal-overlay" onclick="closeModal(event, 'multi-chapter-mode-modal')">
+    <div class="modal-content multi-chapter-modal">
+        <button class="close-btn" onclick="closeModalStr('multi-chapter-mode-modal')" aria-label="Close">✕</button>
+        <h2 id="multi-chapter-mode-title">Select chapters</h2>
+        <p class="box-desc">Choose the chapters this run should draw questions from.</p>
+        <div id="multi-chapter-options" class="multi-chapter-options"></div>
+        <div class="multi-chapter-footer">
+            <button class="btn btn-secondary" onclick="closeModalStr('multi-chapter-mode-modal')">Cancel</button>
+            <button id="multi-chapter-start" class="btn btn-primary" onclick="startMultiChapterMode()">Start</button>
         </div>
     </div>
 </div>

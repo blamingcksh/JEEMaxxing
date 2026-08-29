@@ -1855,7 +1855,48 @@ export function goToChapterDetail() {
     showPracticeSubview('practice-chapter-detail-view');
 }
 
+let _multiChapterMode = null;
+
+export function openMultiChapterMode(mode) {
+    if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return;
+    _multiChapterMode = mode;
+    const subject = AppState.currentSubject;
+    const chapters = AppState.chapters[subject] || [];
+    const options = document.getElementById('multi-chapter-options');
+    const title = document.getElementById('multi-chapter-mode-title');
+    if (!options) return;
+    if (title) title.textContent = `${mode === 'flow' ? '🎯 Flow State' : '⚡ Hardcore'} · Select chapters`;
+    options.innerHTML = '';
+    chapters.forEach((chapter, index) => {
+        const label = document.createElement('label');
+        label.className = 'multi-chapter-option';
+        label.innerHTML = `<input type="checkbox" value="${escapeAttribute(chapter)}"${index === 0 ? ' checked' : ''}> <span>${escapeHtml(chapter)}</span>`;
+        options.appendChild(label);
+    });
+    if (!chapters.length) {
+        options.innerHTML = '<p class="box-desc">No chapters yet. Add a chapter first.</p>';
+        const start = document.getElementById('multi-chapter-start');
+        if (start) start.disabled = true;
+    } else {
+        const start = document.getElementById('multi-chapter-start');
+        if (start) start.disabled = false;
+    }
+    openModal('multi-chapter-mode-modal');
+}
+
+export function startMultiChapterMode() {
+    const options = document.querySelectorAll('#multi-chapter-options input[type="checkbox"]:checked');
+    const chapters = Array.from(options).map(input => input.value);
+    if (!_multiChapterMode || !chapters.length) return;
+    AppState.currentChapter = chapters.join(' • ');
+    AppState.currentChapterSelection = chapters;
+    AppState.currentFilter = 'all';
+    closeModalStr('multi-chapter-mode-modal');
+    _setPracticeMode(_multiChapterMode);
+}
+
 export function openChapterDetail(ch) {
+    AppState.currentChapterSelection = null;
     AppState.currentChapter = ch;
     AppState.currentFilter = 'all';
     // ── Go directly to question list — the chapter detail view is deprecated.
@@ -4383,7 +4424,9 @@ export function showQuestionList() {
     // state even when questions exist.
     AppState.currentFilter = AppState.currentFilter || 'all';
 
-    let chapterQuestions = AppState.questionBank.filter(q => q.subject === AppState.currentSubject && _chaptersMatch(q.chapter, AppState.currentChapter));
+    const selectedChapters = Array.isArray(AppState.currentChapterSelection) && AppState.currentChapterSelection.length
+        ? AppState.currentChapterSelection : [AppState.currentChapter];
+    let chapterQuestions = AppState.questionBank.filter(q => q.subject === AppState.currentSubject && selectedChapters.some(ch => _chaptersMatch(q.chapter, ch)));
     if (!chapterQuestions.length) {
         // ── Empty chapter: MUST wipe the previous chapter's content ──
         // The old early-return left the last rendered chapter's cards + stats
@@ -5889,7 +5932,9 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
     // normalized keys, so this is a no-op for valid input.
     subject = _normalizeSubjectKey(subject);
     let bank = AppState.questionBank.filter(q =>
-        q.subject === subject && _chaptersMatch(q.chapter, chapter) &&
+        q.subject === subject && (Array.isArray(AppState.currentChapterSelection) && AppState.currentChapterSelection.length
+            ? AppState.currentChapterSelection.some(ch => _chaptersMatch(q.chapter, ch))
+            : _chaptersMatch(q.chapter, chapter)) &&
         _isUnexecutedModeQuestion(q) &&
         (!seenSet || !seenSet.has(q)) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
@@ -7820,7 +7865,9 @@ function _computeDefaultQEloForCurrentChapter() {
         const subject = AppState.currentSubject;
         const chapter = AppState.currentChapter;
         const qs = AppState.questionBank.filter(q =>
-            q.subject === subject && _chaptersMatch(q.chapter, chapter) && !q.isAnomaly
+            q.subject === subject && (Array.isArray(AppState.currentChapterSelection) && AppState.currentChapterSelection.length
+            ? AppState.currentChapterSelection.some(ch => _chaptersMatch(q.chapter, ch))
+            : _chaptersMatch(q.chapter, chapter)) && !q.isAnomaly
         );
         if (qs.length === 0) return 1200;
         const sum = qs.reduce((acc, q) => acc + _safeQElo(q), 0);
@@ -9700,6 +9747,8 @@ window.toggleMcqOption = toggleMcqOption;
 window.escapeAttribute = escapeAttribute;
 window.renderCalendar = renderCalendar;
 window.selectSubject = selectSubject;
+window.openMultiChapterMode = openMultiChapterMode;
+window.startMultiChapterMode = startMultiChapterMode;
 window.goToSubjects = goToSubjects;
 window.goToChapters = goToChapters;
 window.goToChapterDetail = goToChapterDetail;
