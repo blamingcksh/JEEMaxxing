@@ -1198,6 +1198,22 @@ export async function updateUI() {
     const tpStrokeEl = document.getElementById('tp-total-bar');
     if (tpStrokeEl && totalTgt > 0) tpStrokeEl.style.width = `${Math.min(100, (totalSolved / totalTgt) * 100)}%`;
 
+    // ── Output Meter completion states (visual only): .tp-sub-done on each
+    // subject row at/over its target, .tp-day-done on the card when the
+    // combined target is hit. styles-daily.css keys the lit-off states to
+    // these classes; guard hard — cosmetics must never block the counters. ──
+    try {
+        const trackerCard = document.querySelector('.dash-card-tracker');
+        if (trackerCard) {
+            ['physics', 'chemistry', 'maths'].forEach(sub => {
+                const row = trackerCard.querySelector(`.compact-subject-card[data-subject="${sub}"]`);
+                if (row) row.classList.toggle('tp-sub-done',
+                    AppState.activeTargets[sub] > 0 && solved[sub] >= AppState.activeTargets[sub]);
+            });
+            trackerCard.classList.toggle('tp-day-done', totalTgt > 0 && totalSolved >= totalTgt);
+        }
+    } catch (_) { /* cosmetic only */ }
+
     // ── Contribution graph: use the same daily variance definition as the
     // live strip above, but keep the historical grid on the dashboard ledger.
     try {

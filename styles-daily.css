@@ -1,157 +1,233 @@
 /* ═══════════════════════════════════════════════════════════════
    styles-daily.css
-   Scope: .dash-card-tracker (Today's Progress) — Agent DAILY redesign.
-   Loaded AFTER styles.css. Everything is namespaced under the card's
-   ancestry (#view-dashboard .dash-card-tracker …); never global.
+   Scope: .dash-card-tracker (Today's Progress) — "OUTPUT METER"
+   redesign, written from scratch. Loaded AFTER styles.css; every
+   rule is namespaced under #view-dashboard .dash-card-tracker.
 
-   Composition — "the ledger":
-     header (kicker · title · variance readout)
-     hero figure (one big numeral, its target, one unified stroke)
-     three ledger entries (caps name · count pair · bare steppers),
-     each closed by a 2px hairline that IS the subject's progress bar.
+   Idea: daily progress here is DISCRETE — whole questions — so the
+   day is drawn as a segmented LED meter, not a smeared bar. One big
+   tabular readout states the total; three ledger strips carry the
+   per-subject breakdown in the app's fixed series colours
+   (physics cyan · chemistry green · maths amber).
 
-   Rules of the redesign: no glows, no gradients, no chips-in-boxes,
-   no emoji, no icon soup. Hairlines carry structure; whitespace
-   carries rhythm; type carries hierarchy. One accent (--accent) is
-   reserved for the single key signal: today's combined progress.
-   Theme tokens only — all seven themes × midnight/dusk must hold.
+   Rules: theme tokens for everything that must re-skin across the
+   seven accents × midnight/dusk; series colours are data colours and
+   stay fixed (like the variance heatmap's green). Motion only on
+   state change — fill sweeps, press feedback, one-shot completion
+   pop. No infinite loops, no glows-for-glows-sake.
+
+   JS contracts (do not break):
+     app.js updateUI writes  #tp-total · #tp-total-tgt · #tp-total-bar
+     (width%) · #variance-val (text + inline color) · {sub}-count ·
+     tgt-{phys|chem|math}-lbl · {sub}-bar (width%), and toggles
+     .tp-day-done (card) / .tp-sub-done (row).
+     app.js injects .elo-monitor into .tp-row-top before .tp-count.
+     Deficit lockdown pulses .compact-subject-card.lowest-subject-pulse.
    ═══════════════════════════════════════════════════════════════ */
 
 #view-dashboard .dash-card.dash-card-tracker {
     --tp-ease: cubic-bezier(0.22, 1, 0.36, 1);
-    --tp-ink-fill: color-mix(in srgb, var(--text-primary) 58%, transparent);
-    padding: 32px 36px;
+    --tp-cell: 10px;      /* lit segment width  */
+    --tp-gap: 4px;        /* dark segment gap   */
+    --tp-slant: 100deg;   /* segment rake angle */
+    --tp-track-cell: color-mix(in srgb, var(--text-primary) 9%, transparent);
+    /* The bento pass in styles.css forces padding: var(--card-pad) !important
+       on every card — feed the variable instead of fighting the !important. */
+    --card-pad: 26px 28px;
 }
-#view-dashboard .dash-grid.bento-density-compact .dash-card.dash-card-tracker { padding: 24px 26px; }
-#view-dashboard .dash-grid.bento-density-spacious .dash-card.dash-card-tracker { padding: 38px 42px; }
+#view-dashboard .dash-grid.bento-density-compact .dash-card.dash-card-tracker { --card-pad: 20px 22px; }
+#view-dashboard .dash-grid.bento-density-spacious .dash-card.dash-card-tracker { --card-pad: 32px 34px; }
 
-/* ── Header: kicker + title left, variance readout right ───────────── */
+/* ── Header: kicker + title left, live variance pill right ─────────── */
 #view-dashboard .dash-card.dash-card-tracker .tp-head {
-    align-items: baseline;
-    gap: 16px;
+    align-items: flex-start;
+    gap: 12px;
     margin-bottom: 0;
 }
 #view-dashboard .dash-card-tracker .kicker {
-    margin-bottom: 7px;
-    color: var(--text-muted) !important;          /* beats furnace/amber kickers */
-    font-size: 10px !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.16em !important;
+    margin-bottom: 6px;
+    color: var(--accent) !important;   /* theme QA expects the accent here */
+    font-size: 9.5px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.22em !important;
 }
 #view-dashboard .dash-card-tracker .box-title {
     margin-bottom: 0;
-    font-size: 15px;
-    font-weight: 500;
-    letter-spacing: -0.01em;
+    font-family: var(--font-display) !important;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
     color: var(--text-primary);
 }
+/* Variance pill tints itself from the inline color app.js sets
+   (green over target, red under) via currentColor mixes. */
 #view-dashboard .dash-card-tracker .tp-variance {
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    background: none;
+    padding: 5px 11px;
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border-radius: var(--r-full);
+    background: color-mix(in srgb, currentColor 10%, transparent);
     font-family: var(--font-num);
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 500;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    transition: color 0.3s var(--tp-ease), background-color 0.3s var(--tp-ease), border-color 0.3s var(--tp-ease);
 }
 #view-dashboard .dash-card-tracker .tp-variance::before { content: none; }
 
-/* ── Hero figure: the day, stated once ──────────────────────────────── */
-#view-dashboard .dash-card-tracker .tp-hero { margin-top: 30px; }
-#view-dashboard .dash-card-tracker .tp-hero-figure {
+/* ── Meterboard: the day, stated once, then lit ─────────────────────── */
+#view-dashboard .dash-card-tracker .tp-meterboard { margin-top: 26px; }
+
+#view-dashboard .dash-card-tracker .tp-meter-reading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+}
+#view-dashboard .dash-card-tracker .tp-meter-figure {
     margin: 0;
     display: flex;
     align-items: baseline;
-    gap: 10px;
+    gap: 9px;
     min-width: 0;
 }
-#view-dashboard .dash-card-tracker .tp-hero-count {
+#view-dashboard .dash-card-tracker .tp-meter-figure #tp-total {
     font-family: var(--font-num);
-    font-size: 46px;
+    font-size: 44px;
     font-weight: 500;
     line-height: 1;
     letter-spacing: -0.03em;
     font-variant-numeric: tabular-nums;
     color: var(--text-primary);
+    transition: color 0.4s var(--tp-ease);
 }
-#view-dashboard .dash-card-tracker .tp-hero-target {
+#view-dashboard .dash-card-tracker .tp-meter-target {
     font-family: var(--font-num);
-    font-size: 15px;
+    font-size: 14.5px;
     font-weight: 500;
     letter-spacing: 0.02em;
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
 }
-#view-dashboard .dash-card-tracker .tp-hero-caption {
-    display: block;
-    margin-top: 12px;
+#view-dashboard .dash-card-tracker .tp-meter-caption {
     font-family: var(--font-display);
     font-size: 9.5px;
     font-weight: 500;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--text-muted);
+    white-space: nowrap;
+    transition: color 0.4s var(--tp-ease);
 }
 
-/* The one accent moment: combined progress as a whisper-thin stroke. */
-#view-dashboard .dash-card-tracker .tp-hero-stroke,
-#view-dashboard .dash-card-tracker .tp-entry-stroke {
-    height: 2px;
-    border-radius: 1px;
+/* Segmented LED meter — track of dim cells, fill of lit ones. The fill
+   carries a smooth accent→accent-2 gradient; a slanted mask carves it
+   into segments so both layers read as one physical meter. */
+#view-dashboard .dash-card-tracker .tp-meter {
+    position: relative;
+    margin-top: 16px;
+    height: 12px;
+    border-radius: 5px;
     overflow: hidden;
+    background: repeating-linear-gradient(
+        var(--tp-slant),
+        var(--tp-track-cell) 0 var(--tp-cell),
+        transparent var(--tp-cell) calc(var(--tp-cell) + var(--tp-gap))
+    );
 }
-#view-dashboard .dash-card-tracker .tp-hero-stroke {
-    margin-top: 14px;
-    background: var(--line-strong);
-}
-#view-dashboard .dash-card-tracker .tp-hero-fill,
-#view-dashboard .dash-card-tracker .tp-entry-fill {
-    height: 100%;
+#view-dashboard .dash-card-tracker .tp-meter-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
     width: 0%;
-    border-radius: inherit;
-    transition: width 0.45s var(--tp-ease);
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-mask-image: repeating-linear-gradient(
+        var(--tp-slant),
+        #000 0 var(--tp-cell),
+        transparent var(--tp-cell) calc(var(--tp-cell) + var(--tp-gap))
+    );
+    mask-image: repeating-linear-gradient(
+        var(--tp-slant),
+        #000 0 var(--tp-cell),
+        transparent var(--tp-cell) calc(var(--tp-cell) + var(--tp-gap))
+    );
+    transition: width 0.5s var(--tp-ease);
 }
-#view-dashboard .dash-card-tracker .tp-hero-fill { background: var(--accent); }
 
-/* ── Ledger: three entries, hairlines instead of boxes ─────────────── */
+/* Day complete: the meter and readout flip to the universal "hit" green. */
+#view-dashboard .dash-card.dash-card-tracker.tp-day-done .tp-meter-fill {
+    background: linear-gradient(90deg, var(--glow-green), color-mix(in srgb, var(--glow-green) 72%, #b9f6ca));
+}
+#view-dashboard .dash-card.dash-card-tracker.tp-day-done .tp-meter-figure #tp-total,
+#view-dashboard .dash-card.dash-card-tracker.tp-day-done .tp-meter-caption {
+    color: var(--glow-green);
+}
+
+/* ── Ledger: three subject strips ──────────────────────────────────────
+   Series colours are data colours — fixed across themes, same contract
+   as the heatmap / focus-island dots elsewhere in the app. */
+#view-dashboard .dash-card-tracker .compact-subject-card[data-subject="physics"]   { --subj: #3ddcff; --subj-2: #3b82f6; }
+#view-dashboard .dash-card-tracker .compact-subject-card[data-subject="chemistry"] { --subj: #2dd4bf; --subj-2: #22c55e; }
+#view-dashboard .dash-card-tracker .compact-subject-card[data-subject="maths"]     { --subj: #ffb224; --subj-2: #ff7a1a; }
+
 #view-dashboard .dash-card-tracker .tp-ledger {
-    margin-top: 30px;
+    margin-top: 26px;
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: 10px;
     min-width: 0;
 }
-#view-dashboard .dash-card-tracker .compact-subject-card {
-    background: none !important;
-    border: none !important;
-    border-radius: 0 !important;
+/* The strip itself. The html[data-mode] twin outranks the production
+   surface layer in styles.css that also claims these cards. */
+#view-dashboard .dash-card-tracker .compact-subject-card,
+html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card {
+    padding: 12px 14px 13px;
+    background: color-mix(in srgb, var(--text-primary) 3.5%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent) !important;
+    border-radius: 12px !important;
     box-shadow: none !important;
-    padding: 0 !important;
-    transition: none !important;
-    animation: none !important;
-    min-width: 0;
+    transition: border-color 0.25s var(--tp-ease), background-color 0.25s var(--tp-ease);
 }
-#view-dashboard .dash-card-tracker .compact-subject-card:hover {
-    transform: none !important;
-    background: none !important;
-    border-color: transparent !important;
+#view-dashboard .dash-card-tracker .compact-subject-card:hover,
+html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card:hover {
+    transform: none;
+    background: color-mix(in srgb, var(--text-primary) 5.5%, transparent) !important;
+    border-color: color-mix(in srgb, var(--subj) 38%, transparent) !important;
     box-shadow: none !important;
 }
+
+/* Deficit Lockdown Protocol must out-shout the strip's own border:
+   keep the alarm border when app.js pulses the lowest subject. */
+#view-dashboard .dash-card-tracker .compact-subject-card.lowest-subject-pulse,
+html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-subject-pulse {
+    border-color: rgba(248, 113, 113, 0.75) !important;
+}
+
 #view-dashboard .dash-card-tracker .tp-row-top {
     display: flex;
-    align-items: baseline;
-    gap: 12px;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+#view-dashboard .dash-card-tracker .tp-dot {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--subj);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--subj) 55%, transparent);
 }
 #view-dashboard .dash-card-tracker .tp-row-top h4 {
     flex: 1 1 auto;
     margin: 0;
-    font-family: var(--font-body);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.1em;
+    font-family: var(--font-display);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--text-secondary);
     white-space: nowrap;
@@ -166,7 +242,7 @@
 }
 #view-dashboard .dash-card-tracker .tp-num {
     font-family: var(--font-num);
-    font-size: 19px;
+    font-size: 17.5px;
     font-weight: 500;
     line-height: 1;
     letter-spacing: -0.01em;
@@ -175,20 +251,21 @@
     filter: none;
     background: none;
     -webkit-text-fill-color: currentColor;
+    transition: color 0.35s var(--tp-ease);
 }
 #view-dashboard .dash-card-tracker .tp-tgt {
     font-family: var(--font-num);
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
 }
 
-/* Steppers — bare glyphs. No boxes; emphasis lives in the type. */
+/* Steppers — real bordered keys with a subject-tinted hover. */
 #view-dashboard .dash-card-tracker .tp-steppers {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
+    gap: 6px;
     flex: 0 0 auto;
 }
 #view-dashboard .dash-card-tracker .tp-step-btn {
@@ -199,43 +276,66 @@
     padding: 0;
     display: grid;
     place-items: center;
-    background: none;
-    border: none;
-    border-radius: 7px;
+    background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-sm);
     font-family: var(--font-num);
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 500;
     line-height: 1;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     cursor: pointer;
-    transition: color 0.3s var(--tp-ease), transform 0.3s var(--tp-ease);
+    transition: color 0.18s var(--tp-ease), border-color 0.18s var(--tp-ease),
+                background-color 0.18s var(--tp-ease), transform 0.18s var(--tp-ease);
 }
 #view-dashboard .dash-card-tracker .tp-step-btn:hover {
     color: var(--text-primary);
+    border-color: color-mix(in srgb, var(--subj) 55%, transparent);
+    background: color-mix(in srgb, var(--subj) 11%, transparent);
 }
-#view-dashboard .dash-card-tracker .tp-step-btn:active { transform: scale(0.88); }
+#view-dashboard .dash-card-tracker .tp-step-btn:active { transform: scale(0.9); }
 #view-dashboard .dash-card-tracker .tp-step-btn:focus-visible {
-    outline: 1px solid var(--accent);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--ring-focus);
 }
 
-/* Entry strokes sit under each entry — the hairline doubles as data. */
-#view-dashboard .dash-card-tracker .tp-entry-stroke {
-    margin-top: 12px;
-    background: var(--line);
+/* Per-subject meter — continuous (hierarchy: only the day is segmented). */
+#view-dashboard .dash-card-tracker .tp-sub-meter {
+    margin-top: 11px;
+    height: 5px;
+    border-radius: var(--r-full);
+    background: color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
-#view-dashboard .dash-card-tracker .tp-entry-fill { background: var(--tp-ink-fill); }
+#view-dashboard .dash-card-tracker .tp-sub-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--subj), var(--subj-2));
+    transition: width 0.45s var(--tp-ease);
+}
 
-/* ── Elo monitor rides inline in the row header — quiet meta, no chip ── */
+/* Subject target hit: the count lights in the series colour and the dot
+   pops once (animation fires when the class lands). */
+#view-dashboard .dash-card-tracker .compact-subject-card.tp-sub-done .tp-num { color: var(--subj); }
+#view-dashboard .dash-card-tracker .compact-subject-card.tp-sub-done .tp-dot {
+    animation: tp-dot-pop 0.55s var(--tp-ease);
+}
+@keyframes tp-dot-pop {
+    0%   { transform: scale(1); }
+    45%  { transform: scale(1.65); }
+    100% { transform: scale(1); }
+}
+
+/* ── Elo monitor rides inline in the row — quiet chip, no glow ───────── */
 #view-dashboard .dash-card-tracker .elo-monitor {
     margin-top: 0;
-    padding: 1px 8px 2px;
+    padding: 2px 9px 3px;
     background: none;
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: var(--r-full);
     gap: 5px;
     flex: 0 0 auto;
-    transition: border-color 0.3s var(--tp-ease);
+    transition: border-color 0.25s var(--tp-ease);
 }
 #view-dashboard .dash-card-tracker .elo-monitor:hover {
     border-color: var(--line-strong);
@@ -258,19 +358,25 @@
     font-family: var(--font-body);
 }
 
-/* ── Narrow cards (container queries — the bento cell, not viewport) ── */
-@container card (max-width: 480px) {
-    #view-dashboard .dash-card.dash-card-tracker { padding: 26px 24px; }
-    #view-dashboard .dash-card-tracker .tp-hero { margin-top: 24px; }
-    #view-dashboard .dash-card-tracker .tp-hero-count { font-size: 40px; }
-    #view-dashboard .dash-card-tracker .tp-ledger { margin-top: 24px; gap: 19px; }
+/* ── Narrow cells (container queries — the bento cell, not viewport) ── */
+@container card (max-width: 520px) {
+    #view-dashboard .dash-card-tracker .tp-meterboard { margin-top: 22px; }
+    #view-dashboard .dash-card-tracker .tp-meter-figure #tp-total { font-size: 38px; }
+    #view-dashboard .dash-card-tracker .tp-ledger { margin-top: 22px; }
+    #view-dashboard .dash-card-tracker .tp-row-top { gap: 8px; }
 }
-@container card (max-width: 400px) {
-    #view-dashboard .dash-card.dash-card-tracker { padding: 22px 20px; }
-    #view-dashboard .dash-card-tracker .tp-hero-count { font-size: 38px; }
-    #view-dashboard .dash-card-tracker .tp-ledger { gap: 17px; }
-    #view-dashboard .dash-card-tracker .tp-row-top { gap: 9px; }
-    #view-dashboard .dash-card-tracker .tp-step-btn { width: 28px; height: 28px; font-size: 15px; }
+/* A container query can never match the container element itself, so the
+   card's own narrow padding rides a viewport rule (still fed through
+   --card-pad); the internals below keep using the card container. */
+@media (max-width: 560px) {
+    #view-dashboard .dash-card.dash-card-tracker { --card-pad: 18px 16px; }
+}
+@container card (max-width: 420px) {
+    #view-dashboard .dash-card-tracker .tp-meter-figure #tp-total { font-size: 34px; }
+    #view-dashboard .dash-card-tracker .tp-meter-caption { display: none; }
+    #view-dashboard .dash-card-tracker .tp-step-btn { width: 28px; height: 28px; font-size: 14px; }
+    #view-dashboard .dash-card-tracker .elo-monitor .elo-monitor-tier { display: none; }
+    #view-dashboard .dash-card-tracker .tp-num { font-size: 16px; }
 }
 
 /* ── Calm mode: honour both reduced-motion escape hatches ──────────── */

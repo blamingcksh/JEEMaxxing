@@ -206,7 +206,13 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
         <section id="view-dashboard" class="view-section active">
             <div class="dash-grid">
 
-                <!-- Daily Grind Tracker -->
+                <!-- Daily Grind Tracker · "Output Meter" redesign.
+                     Contracts (app.js updateUI): #tp-total, #tp-total-tgt,
+                     #tp-total-bar (width%), #variance-val (text + inline color),
+                     per subject {sub}-count / tgt-{phys|chem|math}-lbl / {sub}-bar.
+                     app.js toggles .tp-day-done on the card and .tp-sub-done on a
+                     row at/over target. app.js also injects .elo-monitor into
+                     .tp-row-top before .tp-count; keep both hooks intact. -->
                 <div class="dash-card dash-card-tracker">
                     <div class="dash-card-head tp-head">
                         <div class="tp-head-text">
@@ -216,17 +222,20 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                         <span class="tp-variance" id="variance-val" title="Solved vs target today">0.0%</span>
                     </div>
 
-                    <div class="tp-hero">
-                        <p class="tp-hero-figure"><span class="tp-hero-count" id="tp-total">0</span><span class="tp-hero-target" id="tp-total-tgt">/ 30</span></p>
-                        <span class="tp-hero-caption">Solved today</span>
-                        <div class="tp-hero-stroke" role="img" aria-label="Questions solved today versus your combined target">
-                            <div class="tp-hero-fill" id="tp-total-bar"></div>
+                    <div class="tp-meterboard">
+                        <div class="tp-meter-reading">
+                            <p class="tp-meter-figure"><span id="tp-total">0</span><span class="tp-meter-target" id="tp-total-tgt">/ 30</span></p>
+                            <span class="tp-meter-caption">Solved today</span>
+                        </div>
+                        <div class="tp-meter" role="img" aria-label="Questions solved today versus your combined target">
+                            <div class="tp-meter-fill" id="tp-total-bar"></div>
                         </div>
                     </div>
 
                     <div class="tp-ledger">
                         <div class="compact-subject-card" data-subject="physics">
                             <div class="tp-row-top">
+                                <span class="tp-dot" aria-hidden="true"></span>
                                 <h4>Physics</h4>
                                 <span class="tp-count"><span class="tp-num" id="physics-count">0</span><span class="tp-tgt" id="tgt-phys-lbl">/ 10</span></span>
                                 <span class="tp-steppers">
@@ -234,11 +243,12 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                                     <button class="tp-step-btn" type="button" onclick="changeCount('physics', 1)" aria-label="Increment physics">+</button>
                                 </span>
                             </div>
-                            <div class="tp-entry-stroke"><div class="tp-entry-fill" id="physics-bar" style="width:0%"></div></div>
+                            <div class="tp-sub-meter"><div class="tp-sub-fill" id="physics-bar" style="width:0%"></div></div>
                         </div>
 
                         <div class="compact-subject-card" data-subject="chemistry">
                             <div class="tp-row-top">
+                                <span class="tp-dot" aria-hidden="true"></span>
                                 <h4>Chemistry</h4>
                                 <span class="tp-count"><span class="tp-num" id="chemistry-count">0</span><span class="tp-tgt" id="tgt-chem-lbl">/ 10</span></span>
                                 <span class="tp-steppers">
@@ -246,11 +256,12 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                                     <button class="tp-step-btn" type="button" onclick="changeCount('chemistry', 1)" aria-label="Increment chemistry">+</button>
                                 </span>
                             </div>
-                            <div class="tp-entry-stroke"><div class="tp-entry-fill" id="chemistry-bar" style="width:0%"></div></div>
+                            <div class="tp-sub-meter"><div class="tp-sub-fill" id="chemistry-bar" style="width:0%"></div></div>
                         </div>
 
                         <div class="compact-subject-card" data-subject="maths">
                             <div class="tp-row-top">
+                                <span class="tp-dot" aria-hidden="true"></span>
                                 <h4>Maths</h4>
                                 <span class="tp-count"><span class="tp-num" id="maths-count">0</span><span class="tp-tgt" id="tgt-math-lbl">/ 10</span></span>
                                 <span class="tp-steppers">
@@ -258,7 +269,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                                     <button class="tp-step-btn" type="button" onclick="changeCount('maths', 1)" aria-label="Increment maths">+</button>
                                 </span>
                             </div>
-                            <div class="tp-entry-stroke"><div class="tp-entry-fill" id="maths-bar" style="width:0%"></div></div>
+                            <div class="tp-sub-meter"><div class="tp-sub-fill" id="maths-bar" style="width:0%"></div></div>
                         </div>
                     </div>
                 </div>
