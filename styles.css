@@ -41,7 +41,18 @@
     --grad-furnace: linear-gradient(100deg, #ffb224, #ff7a1a);
     --grad-flow: linear-gradient(90deg, #ffb224, #ff7a1a, #3ddcff, #ffb224);
 
-    /* ── Accent aliases — components consume THESE, never a hardcoded
+    .chapter-actions { display:flex; gap:6px; flex-wrap:wrap; margin-left:auto; }
+.btn-mode-flow, .btn-mode-hardcore { border:1px solid transparent; }
+.btn-mode-flow { border-color:rgba(0,200,255,.35); color:#8eeaff; }
+.btn-mode-hardcore { border-color:rgba(255,80,80,.35); color:#ff9b9b; }
+.multi-chapter-modal { max-width:520px; }
+.multi-chapter-options { display:grid; gap:8px; max-height:45vh; overflow:auto; margin-top:16px; }
+.multi-chapter-option { display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:8px; cursor:pointer; }
+.multi-chapter-option:hover { border-color:var(--accent); }
+.multi-chapter-option input { accent-color:var(--accent); }
+.multi-chapter-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+
+/* ── Accent aliases — components consume THESE, never a hardcoded
           rgba(255,178,36,…), so all seven themes re-skin correctly ── */
     --accent: var(--furnace);
     --accent-2: var(--furnace-hot);
