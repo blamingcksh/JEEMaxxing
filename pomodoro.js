@@ -69,6 +69,11 @@ function _ledgerCompleteBlock(secsDeep) {
     focusLedger.best = Math.max(focusLedger.best, focusLedger.chain);
     focusLedger.deep += Math.max(0, secsDeep | 0);
     _saveFocusLedger();
+    // Daily Directive: a completed deep-focus block pays +2 LU to the active
+    // subject (capped at 3 blocks/day/subject inside directive.js).
+    import('./directive.js').then(m => {
+        try { m.Directive.awardFocus(typeof studySubject !== 'undefined' ? studySubject : null); } catch (_) {}
+    }).catch(() => {});
 }
 
 function _ledgerForfeit(secsDeep) {

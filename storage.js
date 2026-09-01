@@ -680,6 +680,9 @@ export function changeCount(subject, delta) {
     // that then persists through every save.
     const key = normSubjKey(subject);
     solved[key] = Math.max(0, (Number(solved[key]) || 0) + (Number(delta) || 0));
+    // Daily Directive LU pricing: every solve unit flows through here so no
+    // logging path (steppers, practice, SR fix, mock, bounty) can be missed.
+    if (delta > 0) _ui('onSolveLogged', key, delta);
     saveAllAsync().catch(console.error);
     
     // ⚡ INSTANT DASHBOARD HOT-RELOAD: Push data updates live to the UI without forcing a page refresh
@@ -1893,9 +1896,14 @@ export async function loadDataAsync() {
     if (baseChem !== null) baseTargets.chemistry = parseInt(baseChem);
     if (baseMath !== null) baseTargets.maths = parseInt(baseMath);
 
-    document.getElementById('set-tgt-phys').value = baseTargets.physics;
-    document.getElementById('set-tgt-chem').value = baseTargets.chemistry;
-    document.getElementById('set-tgt-math').value = baseTargets.maths;
+    // Legacy quota inputs were removed with the Daily Directive (v2) — guard
+    // the hydration so a missing element can never abort loadDataAsync.
+    const _tgtPhysEl = document.getElementById('set-tgt-phys');
+    const _tgtChemEl = document.getElementById('set-tgt-chem');
+    const _tgtMathEl = document.getElementById('set-tgt-math');
+    if (_tgtPhysEl) _tgtPhysEl.value = baseTargets.physics;
+    if (_tgtChemEl) _tgtChemEl.value = baseTargets.chemistry;
+    if (_tgtMathEl) _tgtMathEl.value = baseTargets.maths;
 
     // ── Load error resolution targets from separate IndexedDB keys ──
     if (errPhys !== null) baseErrorTargets.physics = parseInt(errPhys);

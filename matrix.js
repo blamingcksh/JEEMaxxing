@@ -31,6 +31,10 @@ import {
     SessionFocus,
 } from './storage.js';
 
+// Daily Directive: SR fix completions price at 1.4 LU via the pending-detail
+// handshake (directive.js must not import this module — no cycle).
+import { Directive } from './directive.js';
+
 // Memory Kernel v2 — canonical pure implementation (imported directly; the
 // kernel has zero dependencies so this cannot form a cycle).
 import {
@@ -1469,6 +1473,16 @@ export function submitPracticeLog() {
     // ✅ FIXED: Restored legacy status fields & balanced structural brackets
     if (_drawerState.result === 'correct' && q.status !== 'solved') {
         q.status = 'solved';
+        // Cortex fix completion → price this unit at 1.4 LU (memory work).
+        try {
+            Directive.markPending({
+                type: 'fix',
+                subject: normSubjKey(q.subject),
+                chapter: q.chapter,
+                qElo: q.qElo || 0,
+                timeMins: Number(_drawerState.timeSpentMins) || undefined,
+            });
+        } catch (_) { /* Directive must never block the fix path */ }
         changeCount(normSubjKey(q.subject), 1);   // canonical key — NaN guard
     } else if (_drawerState.result === 'incorrect') {
         q.status = 'error';

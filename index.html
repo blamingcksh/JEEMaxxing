@@ -52,6 +52,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
 <link rel="stylesheet" href="styles-daily.css">
 <link rel="stylesheet" href="styles-retention.css">
 <link rel="stylesheet" href="styles-chapters.css">
+<link rel="stylesheet" href="directive.css">
 <!-- ── iPad / coarse-pointer hardening layer (must stay LAST — see file header) ── -->
 <link rel="stylesheet" href="styles-ipad.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
@@ -272,6 +273,19 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                             <div class="tp-sub-meter"><div class="tp-sub-fill" id="maths-bar" style="width:0%"></div></div>
                         </div>
                     </div>
+                </div>
+
+                <!-- ── DAILY DIRECTIVE (target-system v2): headline quest, side
+                     quests, keys and the Voltage Spin trigger. directive.js
+                     renders into #directive-card-body on every updateUI tick
+                     while the dashboard view is active. ── -->
+                <div class="dash-card dash-card-directive" data-bento-span="6">
+                    <div class="dash-card-head">
+                        <span class="kicker">// DAILY DIRECTIVE</span>
+                        <h2 class="box-title">Directive</h2>
+                        <p class="box-desc">Three things a day. Clear them, open the box.</p>
+                    </div>
+                    <div id="directive-card-body" class="directive-card-body"></div>
                 </div>
 
                 <!-- Momentum Tracker (candlestick engine target) -->
@@ -712,25 +726,13 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                     <button class="btn btn-primary" onclick="saveProfile()">Save Build</button>
                 </div>
 
-                <!-- Daily Output Quota -->
+                <!-- ── DAILY DIRECTIVE (target-system v2) — replaces the old
+                     "Daily Grind Quota" + "Daily Fix Quota" cards. Contracts
+                     are computed, not set; no 24h lock. ── -->
                 <div class="settings-card">
-                    <h3>🎯 Daily Grind Quota</h3>
-                    <span class="lock-indicator" id="target-lock-lbl">🔒 LOCKED (24h)</span>
-                    <div class="input-group"><label for="set-tgt-phys">Physics Quota</label><input id="set-tgt-phys" class="pomo-input" type="number" value="10" min="1"></div>
-                    <div class="input-group"><label for="set-tgt-chem">Chemistry Quota</label><input id="set-tgt-chem" class="pomo-input" type="number" value="10" min="1"></div>
-                    <div class="input-group"><label for="set-tgt-math">Maths Quota</label><input id="set-tgt-math" class="pomo-input" type="number" value="10" min="1"></div>
-                    <button id="btn-save-settings" class="btn btn-primary" onclick="saveTargets()">Lock In Quotas</button>
+                    <h3>⚡ Daily Directive</h3>
+                    <div id="directive-settings-body"></div>
                     <button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="window.scheduleDeloadFromUi()">🌿 Schedule Earned Rest</button>
-                </div>
-
-                <!-- Daily Fix Quota -->
-                <div class="settings-card">
-                    <h3>🩹 Daily Fix Quota</h3>
-                    <span class="lock-indicator" id="err-target-lock-lbl">🔒 LOCKED (24h)</span>
-                    <div class="input-group"><label for="set-err-phys">Physics Fix Quota</label><input id="set-err-phys" class="pomo-input" type="number" value="5" min="1"></div>
-                    <div class="input-group"><label for="set-err-chem">Chemistry Fix Quota</label><input id="set-err-chem" class="pomo-input" type="number" value="5" min="1"></div>
-                    <div class="input-group"><label for="set-err-math">Maths Fix Quota</label><input id="set-err-math" class="pomo-input" type="number" value="5" min="1"></div>
-                    <button id="btn-save-err-settings" class="btn btn-primary" onclick="saveErrTargets()">Lock In Fix Quotas</button>
                 </div>
 
                 <!-- Gemini API -->

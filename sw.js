@@ -10,6 +10,11 @@
  * ============================================================================ */
 'use strict';
 
+// v46 — DAILY DIRECTIVE (target-system v2): directive.js + directive.css join
+//        the shell precache (directive.js is statically imported by app.js and
+//        matrix.js — a first offline launch without it would hard-fail). The
+//        static 10/10/10 + 5/5/5 quotas and their 24h lock are replaced by a
+//        computed LU contract (see docs/daily-directive-design.md).
 // v45 — KaTeX practice-view hotfix: the math engine's ancestor-stamp walk
 //        escaped the scan root, so document.body's init-sweep stamp vetoed
 //        every math fragment in shallow modals — practice-modal question
@@ -53,7 +58,7 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v45';
+const VERSION = 'jeemax-v46';
 const SHELL = [
   './',
   './index.html',
@@ -63,8 +68,10 @@ const SHELL = [
   './styles-retention.css',
   './styles-chapters.css',
   './styles-ipad.css',
+  './directive.css',
   './app.js',
   './storage.js',
+  './directive.js',
   './memory.js',
   './chapter-weights.js',
   './mock.js',
