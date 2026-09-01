@@ -1,0 +1,189 @@
+/* ============================================================================
+   directive.css — DAILY DIRECTIVE (target-system v2.1, simplification pass)
+   The user-facing surface is deliberately tiny: three plain-sentence items,
+   one "today" line, a box. Everything clever lives in directive.js.
+   ============================================================================ */
+
+/* ── Dashboard card body ─────────────────────────────────────────────────── */
+.directive-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dir-kicker {
+    font-family: 'Chakra Petch', var(--font-display, sans-serif);
+    font-size: 0.62rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent, #5eead4);
+    opacity: 0.85;
+}
+
+/* "Today: ~10 problems" + cleared status */
+.dir-today-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+.dir-today {
+    font-family: 'Chakra Petch', var(--font-display, sans-serif);
+    font-weight: 600;
+    font-size: 1.05rem;
+    line-height: 1.2;
+}
+.dir-today-recovery { color: var(--glow-yellow, #fbbf24); }
+.dir-status {
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    color: var(--text-dim, #94a3b8);
+    white-space: nowrap;
+}
+.dir-status-cleared {
+    color: var(--glow-green, #34d399);
+    text-shadow: 0 0 12px rgba(52, 211, 153, 0.4);
+}
+
+/* The checklist — three plain sentences */
+.dir-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.dir-item {
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 0.8rem;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--panel-2, rgba(148, 163, 184, 0.04));
+}
+.dir-item-headline {
+    border-left: 3px solid var(--accent, #5eead4);
+    background: var(--panel-2, rgba(94, 234, 212, 0.06));
+}
+.dir-item-check {
+    font-size: 0.8rem;
+    color: var(--glow-green, #34d399);
+    text-align: center;
+}
+.dir-item-label { color: var(--text, #e2e8f0); line-height: 1.35; }
+.dir-item-meta {
+    font-size: 0.66rem;
+    color: var(--text-dim, #94a3b8);
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+.dir-item-done .dir-item-label {
+    color: var(--text-dim, #94a3b8);
+    text-decoration: line-through;
+    text-decoration-color: rgba(52, 211, 153, 0.55);
+}
+.dir-item-done .dir-item-meta { color: var(--glow-green, #34d399); }
+
+/* Footer: box + night calm */
+.dir-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 26px;
+}
+.dir-box-btn {
+    font-size: 0.75rem;
+    padding: 6px 16px;
+    animation: dir-pulse 1.8s ease-in-out infinite;
+}
+.dir-box-hint { font-size: 0.68rem; color: var(--text-dim, #94a3b8); opacity: 0.75; }
+@keyframes dir-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(94, 234, 212, 0.3); }
+    50% { box-shadow: 0 0 16px 2px rgba(94, 234, 212, 0.4); }
+}
+.dir-night-calm {
+    font-size: 0.72rem;
+    color: var(--text-dim, #94a3b8);
+    font-style: italic;
+    opacity: 0.85;
+}
+.dir-mock-line { font-size: 0.8rem; line-height: 1.5; color: var(--text, #e2e8f0); margin: 0; }
+
+/* Golden Flame cosmetic (7 days) */
+body.directive-golden .dash-card-tracker,
+body.directive-golden .dash-card-directive {
+    border-color: rgba(251, 191, 36, 0.55);
+    box-shadow: 0 0 22px rgba(251, 191, 36, 0.12) inset, 0 0 12px rgba(251, 191, 36, 0.18);
+}
+
+/* ── Pace tick (tracker bars) ────────────────────────────────────────────── */
+/* Injected by app.js _updatePaceTick into .tp-meter / .tp-sub-meter. */
+.tp-pace {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    border-radius: 1px;
+    background: rgba(226, 232, 240, 0.55);
+    pointer-events: none;
+}
+.tp-meter, .tp-sub-meter { position: relative; }
+
+/* ── Settings panel ──────────────────────────────────────────────────────── */
+.dir-set-note { font-size: 0.72rem; line-height: 1.55; color: var(--text-dim, #94a3b8); margin: 6px 0 10px; }
+.dir-set-actions { display: flex; gap: 8px; }
+.dir-set-actions .btn { flex: 1; font-size: 0.72rem; }
+
+/* ── The Box modal ───────────────────────────────────────────────────────── */
+.dir-spin-overlay { z-index: 12000; }
+.dir-spin-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+    min-width: 300px;
+    max-width: 380px;
+}
+.dir-spin-title {
+    font-family: 'Chakra Petch', var(--font-display, sans-serif);
+    font-size: 1rem;
+    margin: 0;
+}
+.dir-spin-reel {
+    width: 100%;
+    padding: 26px 12px;
+    border: 1px solid var(--border, rgba(148, 163, 184, 0.3));
+    border-radius: 10px;
+    background: rgba(2, 6, 23, 0.55);
+}
+.dir-spin-cell {
+    font-family: 'Chakra Petch', var(--font-display, sans-serif);
+    font-weight: 700;
+    font-size: 1.4rem;
+    letter-spacing: 0.08em;
+    color: var(--accent, #5eead4);
+}
+.dir-spin-rolling .dir-spin-cell { animation: dir-roll 0.12s linear infinite; opacity: 0.8; }
+@keyframes dir-roll {
+    0% { transform: translateY(-3px); filter: blur(0.5px); }
+    50% { transform: translateY(3px); filter: blur(1px); }
+    100% { transform: translateY(-3px); filter: blur(0.5px); }
+}
+.dir-tier-rest .dir-spin-cell { color: var(--glow-green, #34d399); text-shadow: 0 0 16px rgba(52, 211, 153, 0.5); }
+.dir-tier-lighter .dir-spin-cell { color: #60a5fa; text-shadow: 0 0 18px rgba(96, 165, 250, 0.6); }
+.dir-tier-golden .dir-spin-cell {
+    color: #fbbf24;
+    text-shadow: 0 0 10px rgba(251, 191, 36, 0.8), 0 0 30px rgba(251, 191, 36, 0.4);
+}
+.dir-spin-desc { font-size: 0.78rem; line-height: 1.5; color: var(--text-dim, #94a3b8); margin: 0; max-width: 320px; }
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .dir-spin-rolling .dir-spin-cell { animation: none; }
+    .dir-box-btn { animation: none; }
+}

@@ -54,6 +54,25 @@ import {
     setAiChapterWeight,
 } from './storage.js';
 
+// ── Daily Directive (target-system v2) ──
+import { Directive } from './directive.js';
+
+/** Stage full LU pricing context for the next solve unit logged through
+ *  changeCount(). One-shot; silently ignored if the Directive isn't live. */
+function _directiveMarkSolve(q, isCorrect, timeMins) {
+    try {
+        Directive.markPending({
+            type: 'solve',
+            subject: q.subject,
+            chapter: q.chapter,
+            qElo: (typeof _safeQElo === 'function' && _safeQElo(q)) || q.qElo || 0,
+            timeMins: timeMins != null ? timeMins : (AppState._frozenTextQSeconds || AppState.practiceSeconds || 0) / 60,
+            firstTry: q.firstAttemptResult === 'correct',
+            isCorrect,
+        });
+    } catch (_) { /* Directive must never break the solve path */ }
+}
+
 // Memory Kernel v2 — canonical pure implementation (zero-dep module).
 import {
     hydrateMemory,
@@ -1091,9 +1110,9 @@ export async function calibrateMood(mood) {
         }
     } catch (_) {}
 
-    AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
-    AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
-    AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
+    // ── Daily Directive: the mood/sleep capacity just changed — recompute the
+    // contract against it (replaces the old baseTargets × mood arithmetic). ──
+    try { await Directive.recalibrateCapacity(); } catch (_) {}
 
     await idbSet('jeemax_mood_multiplier', AppState.moodMultiplier);
     // NOTE: jeemax_last_calibrated_date is intentionally NO LONGER the daily
@@ -1155,18 +1174,57 @@ export async function calibrateMood(mood) {
     }
 })();
 
+/** Pace tick: "where you'd want to be by now" marker on a progress bar.
+ *  Purely cosmetic — never blocks the counters. */
+function _updatePaceTick(barId) {
+    try {
+        const bar = document.getElementById(barId);
+        if (!bar) return;
+        const meter = bar.parentElement;
+        if (!meter) return;
+        let tick = meter.querySelector('.tp-pace');
+        if (Directive.hasContract && !Directive.isNightCalm()) {
+            const frac = Math.round(Directive.getPaceFraction() * 1000) / 10;
+            if (!tick) {
+                tick = document.createElement('i');
+                tick.className = 'tp-pace';
+                meter.appendChild(tick);
+            }
+            tick.style.left = `${Math.min(100, frac)}%`;
+            tick.style.display = 'block';
+        } else if (tick) {
+            tick.style.display = 'none';
+        }
+    } catch (_) { /* cosmetic only */ }
+}
+
 export async function updateUI() {
-    let pctP = AppState.activeTargets.physics > 0 ? Math.min(100, (solved.physics / AppState.activeTargets.physics) * 100) : 0;
-    let pctC = AppState.activeTargets.chemistry > 0 ? Math.min(100, (solved.chemistry / AppState.activeTargets.chemistry) * 100) : 0;
-    let pctM = AppState.activeTargets.maths > 0 ? Math.min(100, (solved.maths / AppState.activeTargets.maths) * 100) : 0;
+    // ── Daily Directive heat (v2): meters are denominated in Load Units once
+    // the Directive has computed today's contract; the legacy count/target
+    // rendering stays as the fallback so the UI never blanks pre-bootstrap. ──
+    const _dirLive = Directive.hasContract;
+    const _prog = {};
+    ['physics', 'chemistry', 'maths'].forEach(sub => {
+        _prog[sub] = _dirLive ? Directive.getSubjectProgress(sub) : null;
+    });
 
     ['physics', 'chemistry', 'maths'].forEach(sub => {
+        const prog = _prog[sub];
+        // Native language (v2.1): counts + "to go", smart weighting invisible.
+        // The BAR is still the heat fraction — a hard weighted solve consumes
+        // more of it than an easy one, but the user only ever reads problems.
         document.getElementById(`${sub}-count`).textContent = solved[sub];
         let tgtLbl = document.getElementById(`tgt-${sub.substring(0, 4)}-lbl`);
-        if (tgtLbl) tgtLbl.textContent = `/ ${AppState.activeTargets[sub]}`;
-        let pct = sub === 'physics' ? pctP : (sub === 'chemistry' ? pctC : pctM);
+        if (tgtLbl) tgtLbl.textContent = prog
+            ? (prog.heat >= 1 ? '· done' : `· ${Directive.problemsRemaining(sub)} to go`)
+            : `/ ${AppState.activeTargets[sub]}`;
+        const pct = prog
+            ? Math.min(100, prog.heat * 100)
+            : (AppState.activeTargets[sub] > 0 ? Math.min(100, (solved[sub] / AppState.activeTargets[sub]) * 100) : 0);
         document.getElementById(`${sub}-bar`).style.width = `${pct}%`;
+        _updatePaceTick(`${sub}-bar`);
     });
+    _updatePaceTick('tp-total-bar');
 
     persistDailyCountsFromSolved();
 
@@ -1190,27 +1248,46 @@ export async function updateUI() {
 
     // ── Today's Progress ledger: each subject renders through its own
     // hairline stroke ({sub}-bar, written above); the hub drives ONE
-    // unified whisper-thin stroke — combined solved ÷ combined target. ──
+    // unified whisper-thin stroke — combined heat (LU ÷ contract) when the
+    // Directive is live, combined solved ÷ derived target otherwise. ──
+    const totalLU = _dirLive
+        ? ['physics', 'chemistry', 'maths'].reduce((a, s) => a + _prog[s].lu, 0)
+        : null;
+    const totalContractLU = _dirLive
+        ? ['physics', 'chemistry', 'maths'].reduce((a, s) => a + _prog[s].contract, 0)
+        : null;
+    const totalHeat = _dirLive && totalContractLU > 0 ? totalLU / totalContractLU : 0;
     const tpTotalEl = document.getElementById('tp-total');
     if (tpTotalEl) tpTotalEl.textContent = totalSolved;
     const tpTgtEl = document.getElementById('tp-total-tgt');
-    if (tpTgtEl) tpTgtEl.textContent = `/ ${totalTgt}`;
+    if (tpTgtEl) tpTgtEl.textContent = _dirLive
+        ? (totalHeat >= 1 ? '· day done' : `· ~${Directive.problemsRemaining()} to go`)
+        : `/ ${totalTgt}`;
     const tpStrokeEl = document.getElementById('tp-total-bar');
-    if (tpStrokeEl && totalTgt > 0) tpStrokeEl.style.width = `${Math.min(100, (totalSolved / totalTgt) * 100)}%`;
+    if (tpStrokeEl) tpStrokeEl.style.width = `${Math.min(100, (_dirLive ? totalHeat : (totalTgt > 0 ? totalSolved / totalTgt : 0)) * 100)}%`;
 
     // ── Output Meter completion states (visual only): .tp-sub-done on each
-    // subject row at/over its target, .tp-day-done on the card when the
-    // combined target is hit. styles-daily.css keys the lit-off states to
-    // these classes; guard hard — cosmetics must never block the counters. ──
+    // subject row at/over its contract heat, .tp-day-done on the card when
+    // the combined contract is hit (subjects may trade — aggregate rule). ──
     try {
         const trackerCard = document.querySelector('.dash-card-tracker');
         if (trackerCard) {
             ['physics', 'chemistry', 'maths'].forEach(sub => {
                 const row = trackerCard.querySelector(`.compact-subject-card[data-subject="${sub}"]`);
-                if (row) row.classList.toggle('tp-sub-done',
-                    AppState.activeTargets[sub] > 0 && solved[sub] >= AppState.activeTargets[sub]);
+                if (row) row.classList.toggle('tp-sub-done', _dirLive ? _prog[sub].heat >= 1
+                    : (AppState.activeTargets[sub] > 0 && solved[sub] >= AppState.activeTargets[sub]));
             });
-            trackerCard.classList.toggle('tp-day-done', totalTgt > 0 && totalSolved >= totalTgt);
+            trackerCard.classList.toggle('tp-day-done', _dirLive ? totalHeat >= 1 : (totalTgt > 0 && totalSolved >= totalTgt));
+        }
+    } catch (_) { /* cosmetic only */ }
+
+    // ── Directive card + Golden Flame cosmetic ──
+    try {
+        document.body.classList.toggle('directive-golden', Directive.isGolden());
+    } catch (_) {}
+    try {
+        if (document.getElementById('view-dashboard') && document.getElementById('view-dashboard').classList.contains('active')) {
+            Directive.renderDashboardCard();
         }
     } catch (_) { /* cosmetic only */ }
 
@@ -1485,11 +1562,16 @@ export async function updateStreakDisplay() {
     }
 
     const streakEl = document.getElementById('top-streak');
+    // "On pace" framing (v2.1): the chain is about the goal, not the game.
+    // Same number, same ledger walk — just what it means to the user.
+    const streakLabel = streak > 0
+        ? `${streak} on pace`
+        : 'start today';
     if (streakEl) {
-        streakEl.textContent = `${streak} Day${streak !== 1 ? 's' : ''}`;
+        streakEl.textContent = streakLabel;
     }
     // Live bridge for headless consumers — see note above.
-    try { window.__jmaxStreak = { days: streak, label: `${streak} Day${streak !== 1 ? 's' : ''}` }; } catch (_) {}
+    try { window.__jmaxStreak = { days: streak, label: streakLabel }; } catch (_) {}
 }
 
 // ==================== FRICTION-INVERSE COGNITIVE YIELD (Y_day) ====================
@@ -1988,81 +2070,34 @@ export async function saveProfile() {
     else alert("Profile data locked in. Your build has been updated.");
 }
 
+// ── Legacy quota entry points (kept as safe no-ops for old call sites) ──────
+// v2 targets are computed by the Daily Directive (directive.js); the manual
+// quota inputs and the 24h lock were removed. window.saveTargets and the
+// registerUiCallbacks('lockTargetsOnly') bridge stay for compatibility.
+
 export async function saveTargets() {
-    const parseTarget = v => {
-        const n = parseInt(v, 10);
-        return isFinite(n) && n > 0 ? n : 10; // 0/negative/empty fall back to 10
-    };
-    baseTargets.physics = parseTarget(document.getElementById('set-tgt-phys').value);
-    baseTargets.chemistry = parseTarget(document.getElementById('set-tgt-chem').value);
-    baseTargets.maths = parseTarget(document.getElementById('set-tgt-math').value);
-    await idbSet('basePhys', baseTargets.physics);
-    await idbSet('baseChem', baseTargets.chemistry);
-    await idbSet('baseMath', baseTargets.maths);
-    await idbSet('jeeTargetLockDate', new Date().toISOString());
-    AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
-    AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
-    AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
-    updateUI();
-    lockTargetsOnly();
-    alert("Symmetry constraints locked for the next 24h. No escaping now. Get to work.");
+    try {
+        await Directive.ensureToday();
+        Directive.renderSettingsPanel();
+        if (typeof window.__jmaxAppToast === 'function') {
+            window.__jmaxAppToast('⚡ Directive recalibrated from your ledger. Contracts are computed — not set.');
+        }
+    } catch (e) { console.error('Directive recalibrate fault:', e); }
 }
 
-/**
- * NEW: Save Daily Error Resolution Targets and lock for 24 hours.
- * Reads from #set-err-phys, #set-err-chem, #set-err-math.
- */
 window.saveErrTargets = async function saveErrTargets() {
-    // Same parse discipline as saveTargets' parseTarget: radix 10, reject
-    // <=0/NaN — parseInt||5 accepted negatives verbatim and turned 0 into 5.
-    const parseErrTarget = (v) => {
-        const n = parseInt(v, 10);
-        return (Number.isFinite(n) && n > 0) ? n : 5;
-    };
-    const phys = parseErrTarget(document.getElementById('set-err-phys').value);
-    const chem = parseErrTarget(document.getElementById('set-err-chem').value);
-    const math = parseErrTarget(document.getElementById('set-err-math').value);
-
-    baseErrorTargets.physics = phys;
-    baseErrorTargets.chemistry = chem;
-    baseErrorTargets.maths = math;
-
-    await idbSet('baseErrPhys', phys);
-    await idbSet('baseErrChem', chem);
-    await idbSet('baseErrMath', math);
-
-    // Shared lock date (both target sets lock together)
-    await idbSet('jeeTargetLockDate', new Date().toISOString());
-
-    lockTargetsOnly();
-    renderErrorResolutionDashboard();
-    if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
+    // Dead since v2: fix quotas are priced into the Directive contract
+    // (Cortex fixes pay 1.4 LU) and the Debt Collector quest. Kept as a no-op
+    // for any stale callers.
+    try { Directive.renderSettingsPanel(); } catch (_) {}
 };
 
 /**
- * Lock target inputs (daily output AND error resolution) when lock date is active.
+ * Lock target inputs — no-op since v2 (contracts are computed each morning,
+ * nothing to lock). Retained because storage.js's cloud-restore path calls
+ * it via registerUiCallbacks.
  */
-export function lockTargetsOnly() {
-    // Daily output target inputs
-    document.getElementById('set-tgt-phys').disabled = true;
-    document.getElementById('set-tgt-chem').disabled = true;
-    document.getElementById('set-tgt-math').disabled = true;
-    document.getElementById('btn-save-settings').disabled = true;
-    document.getElementById('target-lock-lbl').classList.add('visible');
-
-    // Error resolution target inputs (NEW)
-    const errPhysIn = document.getElementById('set-err-phys');
-    const errChemIn = document.getElementById('set-err-chem');
-    const errMathIn = document.getElementById('set-err-math');
-    const btnErrSave = document.getElementById('btn-save-err-settings');
-    const errLockLbl = document.getElementById('err-target-lock-lbl');
-
-    if (errPhysIn) errPhysIn.disabled = true;
-    if (errChemIn) errChemIn.disabled = true;
-    if (errMathIn) errMathIn.disabled = true;
-    if (btnErrSave) btnErrSave.disabled = true;
-    if (errLockLbl) errLockLbl.classList.add('visible');
-}
+export function lockTargetsOnly() { /* v2: nothing to lock */ }
 
 export async function testGeminiKey() {
     const key = document.getElementById('gemini-key').value;
@@ -4901,6 +4936,7 @@ export function evaluateBountyOutcome(wasCorrect) {
         // Lock first-attempt result — only the first attempt counts for accuracy.
         if (!q.firstAttemptResult) q.firstAttemptResult = 'correct';
         q.status = 'solved';
+        _directiveMarkSolve(q, true);
         changeCount(q.subject, 1);
         AppState.bounty.payoffCount = 3;
         AppState.practiceCorrectStreak = Math.max(AppState.practiceCorrectStreak, 5);
@@ -4910,15 +4946,12 @@ export function evaluateBountyOutcome(wasCorrect) {
         q.bountyLockUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         q.criticalDeficit = true;
 
-        baseTargets[q.subject] = (baseTargets[q.subject] || 10) + 5;
-        let inputId = q.subject === 'physics' ? 'set-tgt-phys' : (q.subject === 'chemistry' ? 'set-tgt-chem' : 'set-tgt-math');
-        document.getElementById(inputId).value = baseTargets[q.subject];
-
-        AppState.activeTargets[q.subject] = Math.round(baseTargets[q.subject] * AppState.moodMultiplier);
-        saveTargets();
+        // Directive-era bounty tax: the failing subject's contract +25% for
+        // today (replaces the old baseTargets +=5 / re-lock behaviour).
+        try { Directive.applyBountyTax(q.subject); } catch (_) {}
         updateUI();
 
-        (window.__jmaxAppToast || alert)('❌ COOKED. Bounty timed out — problem locked out 24h, targets amplified as a tax on failure.');
+        (window.__jmaxAppToast || alert)('❌ COOKED. Bounty timed out — problem locked out 24h, contract amplified as a tax on failure.');
     }
 
     AppState.bounty.done = true;
@@ -8049,6 +8082,7 @@ export function practiceSubmit() {
         const wasAlreadySolved = (AppState.currentQ.status === 'solved');
         AppState.currentQ.status = 'solved';
         if (!wasAlreadySolved && !AppState.bountyMode) {
+            _directiveMarkSolve(AppState.currentQ, true);
             changeCount(AppState.currentQ.subject, 1);
         }
     } else {
@@ -8175,6 +8209,7 @@ export function addTextQuestionFollowUp() {
             return;
         }
         if (!wasAlreadySolved) {
+            _directiveMarkSolve(AppState.currentQ, true);
             changeCount(AppState.currentQ.subject, 1);
         }
         btnContainer.remove();
@@ -9106,6 +9141,10 @@ async function runNewDayCycle(todayStr) {
     const _prevDay = new Date();
     _prevDay.setDate(_prevDay.getDate() - 1);
     try { await settleDayCounters(_prevDay.getFullYear() + '-' + String(_prevDay.getMonth() + 1).padStart(2, '0') + '-' + String(_prevDay.getDate()).padStart(2, '0')); } catch (_) {}
+    // ── Daily Directive: grade + archive yesterday's contract, retune DDA ──
+    // Must run AFTER the ledger settles (final LU is already in) and BEFORE
+    // the new day's state exists; ensureToday() recomputes the contract.
+    try { await Directive.settle(); } catch (_) {}
     solved.physics = 0;
     solved.chemistry = 0;
     solved.maths = 0;
@@ -9118,6 +9157,10 @@ async function runNewDayCycle(todayStr) {
     // mid-cycle must not skip the next boot's cycle (re-running is idempotent:
     // settleDayCounters takes a max, and the counters are already zero).
     try { await _markDaySettled(todayStr); } catch (_) {}
+    // ── Daily Directive: compute the NEW day's contract (capacity uses the
+    // persisted mood until the briefing recalibrates it). Must run after
+    // settle() so the retired day is archived first. ──
+    try { await Directive.ensureToday(); } catch (_) {}
     updateUI();
 
     // ── Daily Briefing boot sequence ──
@@ -9169,6 +9212,11 @@ async function initApp() {
     registerUiCallbacks({
         lockTargetsOnly,
         updateUI,
+        // Daily Directive chokepoint: every changeCount unit flows through here
+        // so LU pricing can't miss a path (practice, SR fix, stepper, mock, bounty).
+        onSolveLogged: (subject, delta) => {
+            try { Directive.onSolveLogged(subject, delta); } catch (_) { /* never block counters */ }
+        },
         updateStudyTimeHeader: () => {
             import('./pomodoro.js').then(m => m.updateStudyTimeHeader());
         },
@@ -9189,49 +9237,36 @@ async function initApp() {
     // chapter-scoped dedupe spread across chapters. Idempotent + non-blocking.
     _autoPurgeDuplicateQuestions();
 
-    // Check active target locks
-    const lockDate = await idbGet('jeeTargetLockDate');
-    if (lockDate) {
-        const diff = (new Date() - new Date(lockDate)) / (1000 * 60 * 60 * 24);
-        if (diff < 1) lockTargetsOnly();
-    }
-
-    // Set daily output target inputs
-    document.getElementById('set-tgt-phys').value = baseTargets.physics;
-    document.getElementById('set-tgt-chem').value = baseTargets.chemistry;
-    document.getElementById('set-tgt-math').value = baseTargets.maths;
-
-    // NEW: load and set error resolution target inputs — one transaction
-    const errKeys = ['baseErrPhys', 'baseErrChem', 'baseErrMath'];
-    const errVals = await idbGetMany(errKeys);
-    const errPhys = errVals['baseErrPhys'] ?? 5;
-    const errChem = errVals['baseErrChem'] ?? 5;
-    const errMath = errVals['baseErrMath'] ?? 5;
-    baseErrorTargets.physics = errPhys;
-    baseErrorTargets.chemistry = errChem;
-    baseErrorTargets.maths = errMath;
-    const errPhysIn = document.getElementById('set-err-phys');
-    const errChemIn = document.getElementById('set-err-chem');
-    const errMathIn = document.getElementById('set-err-math');
-    if (errPhysIn) errPhysIn.value = errPhys;
-    if (errChemIn) errChemIn.value = errChem;
-    if (errMathIn) errMathIn.value = errMath;
-
     // Verify day rollover — gated on the LAST ACTUALLY-SETTLED day, NOT the
     // mood-calibration date. The old gate (jeemax_last_calibrated_date) is
     // only written when the user completes the vibe check; a same-day reopen
     // after skipping the briefing left it stale and runNewDayCycle() wiped
     // today's solved/studySecs counters in IndexedDB.
+    // NOTE: the Directive boot below must stay AFTER this check — on a day
+    // turn, runNewDayCycle settles (archives) the directive state, and an
+    // ensureToday() that ran first would create an empty "today" that then
+    // got archived as a false miss.
     const todayStr = todayLocalKey();
     const lastSettled = await _readLastSettledDay();
 
     if (lastSettled !== todayStr) {
         await runNewDayCycle(todayStr);
-    } else {
-        AppState.activeTargets.physics = Math.round(baseTargets.physics * AppState.moodMultiplier);
-        AppState.activeTargets.chemistry = Math.round(baseTargets.chemistry * AppState.moodMultiplier);
-        AppState.activeTargets.maths = Math.round(baseTargets.maths * AppState.moodMultiplier);
     }
+
+    // ── Daily Directive: compute (or restore) today's contract. This replaces
+    // the old manual quota inputs + 24h lock — contracts are derived from the
+    // trailing ledger, mood/sleep capacity and Cortex due-pressure, then
+    // AppState.activeTargets is derived from the contract so every legacy
+    // visual (heatmap, candles, streak) flows from v2 targets. Idempotent:
+    // after a rollover, runNewDayCycle already created today's state. ──
+    try {
+        await Directive.ensureToday();
+        Directive.renderSettingsPanel();
+    } catch (e) { console.error('Directive boot fault:', e); }
+    try {
+        document.addEventListener('jmax:directive-updated', () => { updateUI().catch(() => {}); });
+    } catch (_) {}
+
     restoreDailyCountsIntoSolved();
     // Boot-perf [AUDIT P2]: don't block the rest of init (graph, HUD, widgets)
     // on the save coalescer's 600ms trailing window. The commit still lands —
@@ -9734,6 +9769,26 @@ window.openPracticeImageLightbox = function(src) {
 window.previewImage = previewImage;
 window.saveProfile = saveProfile;
 window.saveTargets = saveTargets;
+
+// ── Daily Directive UI surface (inline onclick handlers in index.html) ──────
+window.DIRECTIVE_UI = {
+    spin: () => { try { Directive.openSpin('The box opens…'); } catch (_) {} },
+    recalibrate: async () => {
+        try {
+            await Directive.recalibrateCapacity();
+            Directive.renderSettingsPanel();
+            if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('⚡ Contracts recomputed from your trailing ledger + capacity.');
+        } catch (_) {}
+    },
+    useRestToken: () => {
+        try {
+            if (!Directive.consumeRestToken()) return;
+            if (typeof window.scheduleDeloadFromUi === 'function') window.scheduleDeloadFromUi();
+            else if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('🌿 Rest Token spent — schedule your Earned Rest from the Config panel.');
+            Directive.renderSettingsPanel();
+        } catch (_) {}
+    },
+};
 window.testGeminiKey = testGeminiKey;
 window.toggleVisualizer = toggleVisualizer;
 window.startTimer = startTimer;
