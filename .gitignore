@@ -5,3 +5,6 @@ node_modules/.bin/
 # Redesign QA artifacts (screenshots + captured output)
 .redesign-shots/
 .qa-shots/
+
+# ZCode CLI local state (plans/session artifacts)
+.zcode/

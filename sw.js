@@ -10,6 +10,11 @@
  * ============================================================================ */
 'use strict';
 
+// v47 — SPROUT ISLE: the dashboard forest is replaced. grove-islands.js is
+//        out of the precache; sprout-isle.js (living study island engine +
+//        app bridge) takes its place. The engine loads the vendored
+//        vendor/three/three.module.min.js FIRST (CDNs are only fallbacks),
+//        so offline launches still get the 3D isle.
 // v46 — DAILY DIRECTIVE (target-system v2): directive.js + directive.css join
 //        the shell precache (directive.js is statically imported by app.js and
 //        matrix.js — a first offline launch without it would hard-fail). The
@@ -58,7 +63,7 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v46';
+const VERSION = 'jeemax-v47';
 const SHELL = [
   './',
   './index.html',
@@ -85,7 +90,7 @@ const SHELL = [
   './theme.js',
   './dashboard-clean.js',
   './forest-bg.js',
-  './grove-islands.js',
+  './sprout-isle.js',
   './gallery-break.js',
   './candlestick-engine.js',
   './cns-load.js',
