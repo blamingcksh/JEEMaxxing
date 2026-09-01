@@ -816,6 +816,7 @@ function _finalizeQuit(countForfeit) {
     if (countForfeit && pomoState === 'STUDY') {
         const elapsed = isPaused ? pausedElapsed : Math.max(0, Math.floor((Date.now() - timerStartTime) / 1000));
         _ledgerForfeit(elapsed);
+        try { window.dispatchEvent(new CustomEvent('jmax:pomo-forfeit')); } catch (_) {}   // sprout-isle: gentle forfeit cue
     } else if (pomoState === 'STOPWATCH') {
         // Stopping a stopwatch is finishing it — real minutes were logged.
         // _ledgerCompleteBlock owns the deep tally for qualifying runs; adding
@@ -921,6 +922,7 @@ function handleTimerEnd() {
         // the block was paused along the way.
         const deepSecs = Math.max(0, Math.min(_blockCreditedSecs | 0, timerTotalSeconds | 0));
         _ledgerCompleteBlock(deepSecs);
+        try { window.dispatchEvent(new CustomEvent('jmax:pomo-block-done')); } catch (_) {}   // sprout-isle: rain moment
         const receipt = _blockCompletionReceipt(timerTotalSeconds);
         _blockEloSnap = null;
         hydrateFocusStats();
