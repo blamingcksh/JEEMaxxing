@@ -10,6 +10,33 @@
  * ============================================================================ */
 'use strict';
 
+// v51 — FAIR DIFFICULTY MIX: auto-build and the weak-points drill now allot
+//        questions across Easy/Medium/Hard qElo tiers (<1300 / 1300–1699 /
+//        1700+) with mix presets (JEE Main, Advanced, Foundation, Balanced)
+//        plus editable custom percentages. Largest-remainder allotment
+//        degrades to neighbouring tiers when one runs dry so papers still
+//        fill; the From-bank picker gains tier filter chips with counts.
+// v50 — WEAK POINTS IN THE STUDIO: the chapter-selection + mistake-analysis
+//        engine (Smart Mistake Report) is now embeddable — the Mocks view
+//        gains a "Weak points & analysis" screen with the mock-loss map
+//        (AppState.mockFocus was write-only before), weak-chapter pre-ticks,
+//        and a one-click targeted paper builder scoped to the selected
+//        chapters. The modal + sidebar entry keep working (shared internals).
+// v49 — DUMP-LINK FIX + GEM PROMPT: mock builder "Link AI dumps" opens the
+//        real Feed Questions modal on the Gem Text Track (it used to open
+//        the Smart Mistake Report modal — an export screen with nowhere to
+//        paste). Adds a copyable GEM_DUMP_PROMPT (schema, letter answers,
+//        LaTeX double-backslash escaping, difficulty mix) into the text-track
+//        panel + a mock-link banner in the upload modal; option "A)" prefixes
+//        are stripped at ingest and cross-subject dumps no longer pollute a
+//        linked panel. index.html + app.js + mock.js + styles.css changed.
+// v48 — MOCK MODE v2: grading now scores against the PAPER'S OWN answer key
+//        (sections.keys) instead of the bank's stored answers; builder gains
+//        a bank picker + one-click auto-build; key pass gains bulk paste and
+//        stays editable after finalize; results gain per-question review with
+//        one-tap Vault logging; runner gains exit-while-clock-runs, HH:MM:SS
+//        clock, palette legend, keyboard shortcuts. mock.js + styles.css
+//        changed in place — no new files, cache bump forces the swap.
 // v47 — SPROUT ISLE: the dashboard forest is replaced. grove-islands.js is
 //        out of the precache; sprout-isle.js (living study island engine +
 //        app bridge) takes its place. The engine loads the vendored
@@ -63,7 +90,7 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v47';
+const VERSION = 'jeemax-v51';
 const SHELL = [
   './',
   './index.html',

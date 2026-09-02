@@ -974,8 +974,15 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                         <input type="file" id="json-dump-file" accept=".json,application/json,.txt" style="display:none" onchange="loadJsonDumpFile(this)">
                     </label>
                 </div>
-                <textarea id="text-add-terminal" class="pomo-input text-track-terminal-input" rows="8" placeholder='[{"extractedText":"...","options":["A) ..."],"correctAnswer":"C","type":"mcq","solution":"..."}] — or upload a .json file above' aria-label="Gem text dump JSON input"></textarea>
+                <textarea id="text-add-terminal" class="pomo-input text-track-terminal-input" rows="8" placeholder='[{"extractedText":"...","options":["..."],"correctAnswer":"C","type":"mcq","solution":"..."}] — or upload a .json file above' aria-label="Gem text dump JSON input"></textarea>
             </div>
+            <details class="gem-map-instructions" style="margin-top:10px;">
+                <summary>📋 Prompt for your Gem — copy this so dumps parse cleanly</summary>
+                <div class="gem-map-instr-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="window.copyGemDumpPrompt()">📋 Copy prompt</button>
+                </div>
+                <pre id="gem-dump-prompt-text" class="gem-map-instruction-text"></pre>
+            </details>
             <div style="display:flex;gap:12px;margin-top:16px">
                 <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Nvm</button>
                 <button class="btn btn-primary" onclick="processGemTextDump()">Execute Ingestion Track →</button>
