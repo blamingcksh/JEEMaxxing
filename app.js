@@ -7244,7 +7244,7 @@ function _renderCalibrationReport() {
     if (log.length < 5) {
         el.innerHTML =
             '<span class="calib-kicker">CALIBRATION</span>' +
-            '<span class="calib-warmup">Tap your confidence before locking in an answer — honesty readout unlocks after ~5 graded solves.</span>';
+            '<span class="calib-warmup">Tap your confidence before locking in an answer; the honesty readout unlocks after ~5 graded solves.</span>';
         return;
     }
     const recent = log.slice(-60);

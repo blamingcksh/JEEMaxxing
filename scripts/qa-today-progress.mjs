@@ -68,7 +68,7 @@ const card = page.locator('.dash-card-tracker');
 assert(await card.isVisible(), 'tracker card visible');
 
 // ── Structure (v2 redesign: hero figure + compact ledger, no SVG ring) ──
-assert(await page.locator('.dash-card-tracker .tp-hero-stroke').isVisible(), 'hero stroke present');
+assert(await page.locator('.dash-card-tracker .tp-meter').isVisible(), 'hero stroke present');
 assert(await page.locator('#tp-total-bar').count() === 1, 'hero fill bar present');
 assert(await page.locator('.dash-card-tracker .compact-subject-card').count() === 3, 'three subject cards');
 assert(await page.locator('.dash-card-tracker .tp-variance').isVisible(), 'variance chip in header');
@@ -93,7 +93,7 @@ assert(physFill === '70%', `physics fill at 70% (width ${physFill})`);
 const total = await page.locator('#tp-total').textContent();
 assert(total.trim() === '8', `hub total = 8 (${total})`);
 const tgt = await page.locator('#tp-total-tgt').textContent();
-assert(tgt.trim() === '/ 30', `hub target label (${tgt})`);
+assert(/^· ~\d+ to go$|^\/ 30$/.test(tgt.trim()), `hub target label (${tgt})`); // directive-v2 live or legacy fallback
 const variance = await page.locator('#variance-val').textContent();
 assert(variance.includes('-'), `variance negative while under target (${variance})`);
 

@@ -248,7 +248,7 @@ function _afterActivity(kind) {
     // Never block the solve path on UI work.
     Promise.resolve().then(() => {
         try { window.dispatchEvent(new CustomEvent('jmax:directive-updated')); } catch (_) {}
-        if (!wasCleared && state.fullCleared) _openSpin('FULL CLEAR — Voltage Spin unlocked');
+        if (!wasCleared && state.fullCleared) _openSpin('FULL CLEAR : Voltage Spin unlocked');
     });
 }
 
@@ -505,13 +505,13 @@ async function _toastDirective() {
             parts.push(`Yesterday: ${probs} problems${acc}.`);
         }
     } catch (_) {}
-    if (state.recoveryDay) parts.push('Recovery day — smaller target, the chain is alive.');
+    if (state.recoveryDay) parts.push('Recovery day : smaller target, the chain is alive.');
     const totalRemaining = Math.max(0, SUBJECTS.reduce((a, s) => a + state.contract[s], 0));
     parts.push(`Today: ~${Math.max(1, Math.round(totalRemaining / EXPECTED_LU_PER_SOLVE))} problems.`);
     if (state.headline && (state.headline.due || 0) > 0) {
         parts.push(`Something\u2019s leaking in ${state.headline.chapter}.`);
     }
-    if (state.mockDay) parts.push('Mock day — the mock IS today\u2019s target.');
+    if (state.mockDay) parts.push('Mock day : the mock IS today\u2019s target.');
     if (meta.weeklyLine) { parts.push(meta.weeklyLine); meta.weeklyLine = null; _save(); }
     window.__jmaxAppToast(`⚡ ${parts.join(' ')}`);
 }
@@ -629,8 +629,8 @@ function _daysToAdvanced() {
 // variance is what drives the dopamine, not a visible table.
 
 const BOX_PRIZES = [
-    { tier: 'rest',    w: 0.45, title: 'REST TOKEN',   desc: 'An Earned Rest is now claimable — spend it before burnout spends you.' },
-    { tier: 'lighter', w: 0.40, title: 'LIGHTER TOMORROW', desc: 'Tomorrow\u2019s target shrinks by a fifth. Bank it or bank rest — both are wins.' },
+    { tier: 'rest',    w: 0.45, title: 'REST TOKEN',   desc: 'An Earned Rest is now claimable; spend it before burnout spends you.' },
+    { tier: 'lighter', w: 0.40, title: 'LIGHTER TOMORROW', desc: 'Tomorrow\u2019s target shrinks by a fifth. Bank it or bank rest; both are wins.' },
     { tier: 'golden',  w: 0.15, title: 'GOLDEN FLAME', desc: 'Seven days of golden fire + bounty payoff ×3. Legendary week begins.' },
 ];
 
@@ -730,7 +730,7 @@ function renderDashboardCard() {
         host.innerHTML = `
             <div class="dir-today-row"><span class="dir-today">Today is a mock day.</span></div>
             <p class="dir-mock-line">${state.mockDay.done
-                ? 'Mock banked. Day cleared — the box is ready.'
+                ? 'Mock banked. Day cleared; the box is ready.'
                 : 'The mock IS today\u2019s target. Nothing else is asked of you.'}</p>
             ${state.spinPending ? `<div class="dir-foot"><button class="btn btn-primary dir-box-btn" onclick="window.DIRECTIVE_UI.spin()">🎁 Open the box</button></div>` : ''}`;
         return;

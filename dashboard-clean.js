@@ -65,22 +65,6 @@
     card.appendChild(cluster);
   }
 
-  /* ── Momentum legend ────────────────────────────────────────────────── */
-  function buildMomentumLegend() {
-    var mom = dash.querySelector('.dash-card-momentum');
-    if (!mom || mom.querySelector('.dc-mom-legend')) return;
-    var gd = mom.querySelector('.graph-display');
-    if (!gd) return;
-    var lg = document.createElement('div');
-    lg.className = 'dc-mom-legend';
-    lg.innerHTML =
-      '<span class="dc-lg"><i class="lg-bull"></i>Bull</span>' +
-      '<span class="dc-lg"><i class="lg-bear"></i>Bear</span>' +
-      '<span class="dc-lg"><i class="lg-target"></i>Target lock</span>' +
-      '<span class="dc-lg"><i class="lg-proj"></i>Projection</span>';
-    gd.insertAdjacentElement('afterend', lg);
-  }
-
   /* ── Pencil FAB + floating layout panel (unchanged from v1) ─────────── */
   function buildFab() {
     fab = document.createElement('button');
@@ -133,7 +117,6 @@
     }
     syncDashFlag();
     if (dash && !fab) buildFab();
-    buildMomentumLegend();
     if (!panel) {
       var tb = (dash && dash.querySelector('.bento-toolbar')) ||
                document.querySelector('.bento-toolbar');

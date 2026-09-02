@@ -1,0 +1,804 @@
+/* ════════════════════════════════════════════════════════════════════════
+   JEEMAXXING · DASHBOARD OVERHAUL v3 — "quiet surface" skin
+   Loaded last: overrides the legacy chamfered-HUD dashboard styles.
+
+   Design contract
+   ───────────────
+   · One hierarchy: Today → Directive → Retention → Momentum → History.
+   · Soft 20px radii (var(--r-xl)), hairline borders, no chamfers, no
+     corner ticks, no hover lifts — surfaces stay still, data moves.
+   · Every colour rides the design tokens so all seven themes + the dusk
+     mode re-skin automatically. Subject hues are the app's fixed data
+     channels (--telemetry / --glow-green / --furnace), same contract as
+     the heatmap and the isle.
+   · JS hydration contracts are unchanged — see the comment atop
+     #view-dashboard in index.html for the full list.
+
+   Sections: shell · heads · tracker · directive · momentum · variance ·
+   progress · header · bento chrome · responsive · a11y
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1 · GRID + CARD SHELL ─────────────────────────────────────────────── */
+
+#view-dashboard .dash-grid {
+    gap: 20px;
+}
+
+#view-dashboard .dash-grid > .dash-card {
+    clip-path: none;
+    border-radius: var(--r-xl);
+    padding: 26px 28px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    box-shadow: var(--e-1);
+    transition: border-color var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease);
+}
+#view-dashboard .dash-grid > .dash-card::before { content: none; }
+#view-dashboard .dash-grid > .dash-card:hover {
+    transform: none;
+    border-color: var(--line-strong);
+    box-shadow: var(--e-1);
+}
+
+/* Column spans — wide layout (the bento packer pins these inline while
+   active; below its 901px breakpoint this CSS takes over). 7/5 · 7/5 ·
+   12 · 12 gives the page an alternating rhythm instead of a uniform tile
+   wall. */
+#view-dashboard .dash-card-tracker  { grid-column: span 7; }
+#view-dashboard .dash-card-directive{ grid-column: span 5; }
+#view-dashboard .dash-card-decay    { grid-column: span 7; }
+#view-dashboard .dash-card-momentum { grid-column: span 5; }
+#view-dashboard .dash-card-variance { grid-column: span 12; }
+#view-dashboard .dash-card-progress { grid-column: span 12; }
+
+/* Entry cascade — the legacy fxRise handles 1-4; extend to six cards. */
+.view-section.active .dash-card:nth-child(5) { animation-delay: 0.22s; }
+.view-section.active .dash-card:nth-child(6) { animation-delay: 0.26s; }
+
+/* ── 2 · CARD HEADS ────────────────────────────────────────────────────── */
+
+#view-dashboard .dv-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    min-height: 24px;
+}
+#view-dashboard .dv-head-stack {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+#view-dashboard .dv-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--text-primary);
+}
+#view-dashboard .dv-sub {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+#view-dashboard .dv-note {
+    font-size: 11px;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+}
+
+/* Three-state retention legend — swatches only, no chip boxes. */
+#view-dashboard .dv-legend {
+    display: flex;
+    gap: 14px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+#view-dashboard .dv-legend span { display: inline-flex; align-items: center; gap: 6px; }
+#view-dashboard .dv-legend i { width: 8px; height: 8px; border-radius: 3px; }
+#view-dashboard .dv-legend i[data-h="ok"]   { background: var(--glow-green); }
+#view-dashboard .dv-legend i[data-h="fade"] { background: var(--glow-yellow); }
+#view-dashboard .dv-legend i[data-h="crit"] { background: var(--glow-red); }
+
+/* ── 3 · TODAY'S PROGRESS ──────────────────────────────────────────────── */
+
+/* Reading — the one number that matters. */
+#view-dashboard .tp-reading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 2px 0 16px;
+}
+#view-dashboard .tp-figure {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 0;
+    min-width: 0;
+}
+#view-dashboard .tp-num-big {
+    font-family: var(--font-num);
+    font-size: 54px;
+    font-weight: 700;
+    line-height: 0.9;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    transition: color 0.45s var(--ease);
+}
+#view-dashboard .tp-figure-tgt {
+    font-family: var(--font-num);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+#view-dashboard .tp-caption {
+    font-size: 11.5px;
+    letter-spacing: 0.2px;
+    color: var(--text-muted);
+    padding-bottom: 5px;
+    white-space: nowrap;
+}
+
+/* Hub meter — one whisper-thin stroke. Kills the legacy segmented mask
+   (styles-daily.css carves the track + fill with slanted masks at higher
+   specificity, so these selectors must match it). */
+#view-dashboard .dash-card-tracker .tp-meter,
+#view-dashboard .dash-card-tracker .tp-sub-meter {
+    position: relative;
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+    -webkit-mask-image: none;
+    mask-image: none;
+    overflow: visible;
+}
+#view-dashboard .dash-card-tracker .tp-meter { margin: 0 0 6px; }
+#view-dashboard .dash-card-tracker .tp-sub-meter { height: 3px; margin-top: 10px; }
+#view-dashboard .dash-card-tracker .tp-meter-fill,
+#view-dashboard .dash-card-tracker .tp-sub-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: var(--accent);
+    -webkit-mask-image: none;
+    mask-image: none;
+    box-shadow: none;
+    transition: width 0.55s var(--ease), background 0.45s var(--ease);
+}
+
+/* Pace tick (app.js injects .tp-pace into both meter types). */
+#view-dashboard .tp-pace {
+    top: -4px;
+    bottom: -4px;
+    width: 2px;
+    background: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+/* Subject ledger — flat rows over hairlines, no boxes-in-boxes. */
+#view-dashboard .dash-card-tracker .tp-ledger {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+}
+#view-dashboard .dash-card-tracker .compact-subject-card,
+html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card {
+    position: static;
+    padding: 13px 2px 14px !important;
+    background: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+#view-dashboard .dash-card-tracker .compact-subject-card + .compact-subject-card,
+html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card + .compact-subject-card {
+    border-top: 1px solid var(--line) !important;
+}
+#view-dashboard .dash-card-tracker .compact-subject-card:hover,
+html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card:hover {
+    background: none !important;
+    border-color: var(--line) !important;
+    box-shadow: none !important;
+    transform: none;
+}
+/* Deficit Lockdown keeps its alarm accent, quieted to the dot. */
+#view-dashboard .dash-card-tracker .compact-subject-card.lowest-subject-pulse,
+html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-subject-pulse {
+    border-color: var(--line) !important;
+    animation: none !important;
+}
+#view-dashboard .dash-card-tracker .compact-subject-card.lowest-subject-pulse .tp-dot {
+    animation: dvSubPulse 2.2s var(--ease) infinite;
+}
+@keyframes dvSubPulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--subj) 45%, transparent); }
+    50%      { box-shadow: 0 0 0 5px transparent; }
+}
+
+/* Subject hues — the app's fixed data channels. */
+#view-dashboard .dash-card-tracker .compact-subject-card[data-subject="physics"]   { --subj: var(--telemetry); }
+#view-dashboard .dash-card-tracker .compact-subject-card[data-subject="chemistry"] { --subj: var(--glow-green); }
+#view-dashboard .dash-card-tracker .compact-subject-card[data-subject="maths"]     { --subj: var(--furnace); }
+
+#view-dashboard .dash-card-tracker .tp-row-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: 28px;
+}
+#view-dashboard .dash-card-tracker .tp-dot {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--subj);
+    box-shadow: none;
+}
+#view-dashboard .dash-card-tracker .tp-row-top h4 {
+    flex: 1 1 auto;
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+    text-transform: none;
+    color: var(--text-secondary);
+    transition: color 0.2s var(--ease);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#view-dashboard .dash-card-tracker .compact-subject-card:hover .tp-row-top h4 {
+    color: var(--text-primary);
+}
+
+#view-dashboard .dash-card-tracker .tp-count {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    flex: 0 0 auto;
+}
+#view-dashboard .dash-card-tracker .tp-num {
+    font-family: var(--font-num);
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    filter: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    transition: color 0.35s var(--ease);
+}
+#view-dashboard .dash-card-tracker .tp-tgt {
+    font-family: var(--font-num);
+    font-size: 11.5px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+
+/* Steppers — quiet round ghost keys. */
+#view-dashboard .dash-card-tracker .tp-steppers {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    margin-left: 2px;
+}
+#view-dashboard .dash-card-tracker .tp-step-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--r-full);
+    font-family: var(--font-num);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.15s var(--ease), border-color 0.15s var(--ease),
+                background-color 0.15s var(--ease), transform 0.1s var(--ease);
+}
+#view-dashboard .dash-card-tracker .tp-step-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--line-strong);
+    background: var(--bg-surface-hover);
+}
+#view-dashboard .dash-card-tracker .tp-step-btn:active { transform: scale(0.9); }
+#view-dashboard .dash-card-tracker .tp-step-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--ring-focus);
+}
+
+/* Elo monitor — inline stat chip, no chrome. */
+#view-dashboard .tp-row-top .elo-monitor {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+    box-shadow: none;
+    font-family: var(--font-num);
+    flex: 0 0 auto;
+    cursor: default;
+}
+#view-dashboard .tp-row-top .elo-monitor:hover { box-shadow: none; border-color: transparent; }
+#view-dashboard .tp-row-top .elo-monitor::after { content: none; }
+#view-dashboard .elo-monitor-rating {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+#view-dashboard .elo-monitor-tier {
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* Completion states — the whole reading flips to the hit green. */
+#view-dashboard .dash-card.dash-card-tracker.tp-day-done .tp-meter-fill,
+#view-dashboard .dash-card.dash-card-tracker.tp-day-done .tp-sub-fill {
+    background: var(--glow-green);
+}
+#view-dashboard .dash-card.dash-card-tracker.tp-day-done .tp-num-big { color: var(--glow-green); }
+#view-dashboard .dash-card-tracker .compact-subject-card.tp-sub-done .tp-sub-fill { background: var(--glow-green); }
+#view-dashboard .dash-card-tracker .compact-subject-card.tp-sub-done .tp-num { color: var(--glow-green); }
+
+/* ── 4 · DIRECTIVE ─────────────────────────────────────────────────────── */
+
+/* The body hydrates async (IDB); a floor on the card keeps the masonry
+   packer from ever measuring it as a sliver and stacking the isle on top. */
+#view-dashboard .dash-card-directive {
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+}
+#view-dashboard .directive-card-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+#view-dashboard .dir-today-row {
+    align-items: baseline;
+    margin-bottom: 4px;
+}
+#view-dashboard .dir-today {
+    font-family: var(--font-num);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+#view-dashboard .dir-status {
+    font-family: var(--font-num);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+#view-dashboard .dir-status-cleared { color: var(--glow-green); text-shadow: none; }
+
+#view-dashboard .dir-list {
+    gap: 0;
+    margin-top: 6px;
+}
+#view-dashboard .dir-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 0;
+    border-radius: 0;
+    background: none;
+    border-top: 1px solid var(--line);
+}
+#view-dashboard .dir-item:first-child { border-top: none; padding-top: 10px; }
+#view-dashboard .dir-item-headline {
+    border-left: none;
+    background: none;
+    border-top: none;
+}
+#view-dashboard .dir-item-check {
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-full);
+    border: 1.5px solid var(--line-strong);
+    font-size: 11px;
+    font-weight: 700;
+    color: transparent;
+    background: none;
+    transition: background 0.25s var(--ease), border-color 0.25s var(--ease), color 0.25s var(--ease);
+}
+#view-dashboard .dir-item-done .dir-item-check {
+    background: var(--glow-green);
+    border-color: var(--glow-green);
+    color: var(--bg-base);
+}
+#view-dashboard .dir-item-label {
+    flex: 1;
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: var(--text-primary);
+}
+#view-dashboard .dir-item-done .dir-item-label {
+    color: var(--text-muted);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--text-muted) 55%, transparent);
+}
+#view-dashboard .dir-item-meta {
+    font-family: var(--font-num);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+#view-dashboard .dir-item-done .dir-item-meta { color: var(--glow-green); }
+
+#view-dashboard .dir-foot {
+    margin-top: auto;
+    padding-top: 14px;
+    min-height: 0;
+}
+#view-dashboard .dir-box-hint { font-size: 11.5px; color: var(--text-muted); opacity: 1; }
+#view-dashboard .dir-night-calm { font-size: 11.5px; color: var(--text-muted); font-style: italic; opacity: 1; }
+#view-dashboard .dir-mock-line { font-size: 12.5px; color: var(--text-secondary); }
+#view-dashboard .dir-box-btn { animation: none; }
+#view-dashboard .dir-box-btn.dir-box-btn { font-size: 12.5px; padding: 8px 18px; }
+
+/* ── 5 · MOMENTUM — isle + pace chart in one card ──────────────────────── */
+
+#view-dashboard .dash-card-momentum.mom-card { display: flex; flex-direction: column; }
+
+/* Head survives the isle takeover via [data-isle-keep]; it reads as a
+   media-card header bar. */
+#view-dashboard .mom-card .mom-head {
+    margin-bottom: 0;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--line);
+    flex: 0 0 auto;
+}
+#view-dashboard .mom-card .mom-head .dv-title { font-size: 15px; }
+
+#view-dashboard .mom-toggle {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--r-full);
+    background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+#view-dashboard .mom-tab {
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 5px 13px;
+    border-radius: var(--r-full);
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.18s var(--ease), background 0.18s var(--ease);
+}
+#view-dashboard .mom-tab:hover { color: var(--text-primary); }
+#view-dashboard .mom-tab.active {
+    background: color-mix(in srgb, var(--accent) 17%, transparent);
+    color: var(--accent);
+}
+#view-dashboard .mom-tab:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+
+/* Isle lens — the canvas fills the card body under the head. */
+#view-dashboard #isle-root.isle-host { min-height: 320px; flex: 1; }
+#view-dashboard #isle-root.isle-host::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(10, 12, 20, 0.14);
+}
+#view-dashboard .isle-fallback {
+    background: var(--bg-raise);
+    color: var(--text-muted);
+}
+
+/* Pace lens — swap the canvas for the candlestick chart. */
+#view-dashboard .dash-card-momentum.mom-pace,
+#view-dashboard .dash-card-momentum.isle-active.mom-pace {
+    display: block;
+    overflow: visible;
+    padding: 26px 28px !important;
+}
+#view-dashboard .dash-card-momentum.mom-pace .mom-head {
+    padding: 0 0 16px;
+    border-bottom: none;
+    margin-bottom: 16px;
+}
+#view-dashboard .dash-card-momentum.mom-pace #isle-root.isle-host { display: none !important; }
+#view-dashboard .dash-card-momentum.mom-pace .mom-body {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+}
+#view-dashboard .mom-body .graph-display {
+    position: relative;
+    flex: 1;
+    min-height: 296px;
+    border-radius: var(--r-lg) !important;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg-inset) 60%, transparent);
+    overflow: hidden;
+}
+#view-dashboard .mom-body .graph-display svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+#view-dashboard .mom-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 10.5px;
+    color: var(--text-secondary);
+}
+#view-dashboard .mom-legend span { display: inline-flex; align-items: center; gap: 6px; }
+#view-dashboard .mom-legend i { width: 12px; height: 3px; border-radius: 2px; }
+#view-dashboard .mom-legend .lg-bull   { background: var(--glow-green); }
+#view-dashboard .mom-legend .lg-bear   { background: var(--glow-red); }
+#view-dashboard .mom-legend .lg-target { background: var(--accent); }
+#view-dashboard .mom-legend .lg-proj {
+    background: repeating-linear-gradient(90deg, #8b5cf6 0 3px, transparent 3px 6px);
+}
+
+/* ── 6 · CONSISTENCY — the year grid ───────────────────────────────────── */
+
+/* Accent ramp replaces the fixed green: the year reads in the theme's
+   own colour, peak cells stay the brightest step. */
+#view-dashboard .dash-card-variance {
+    --dv-track: color-mix(in srgb, var(--text-primary) 6%, transparent);
+    --dv-1: color-mix(in srgb, var(--accent) 28%, transparent);
+    --dv-2: color-mix(in srgb, var(--accent) 50%, transparent);
+    --dv-3: color-mix(in srgb, var(--accent) 76%, transparent);
+    --dv-4: var(--accent);
+    --dv-glow: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+#view-dashboard .daily-variance-scroll { padding: 0 2px 4px; }
+#view-dashboard .daily-variance-month {
+    font-family: var(--font-num);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+#view-dashboard .daily-variance-dot {
+    border-radius: 2.5px;
+    box-shadow: none;
+}
+#view-dashboard .daily-variance-swatch {
+    border-radius: 2.5px;
+}
+#view-dashboard .daily-variance-dot[data-today="true"] {
+    outline: 1px solid color-mix(in srgb, var(--text-primary) 60%, transparent);
+    outline-offset: 1px;
+}
+#view-dashboard .daily-variance-dot:hover {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 65%, transparent);
+}
+#view-dashboard .daily-variance-legend { gap: 7px; }
+#view-dashboard .daily-variance-legend .daily-variance-swatch { width: 9px; height: 9px; }
+#view-dashboard .daily-variance-legend-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin: 0 2px;
+}
+
+/* ── 7 · RETENTION + CHAPTER PROGRESS (ledger containers) ──────────────── */
+
+#view-dashboard #chapter-decay-grid { padding: 0; }
+#view-dashboard #chapter-progress-list { padding: 0; }
+
+/* ── 8 · PAGE HEADER — quiet identity row ──────────────────────────────── */
+
+.main-content .header-section h1 {
+    font-size: clamp(20px, 2vw, 23px);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+.main-content .header-section p {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    opacity: 1;
+}
+.main-content .header-section { align-items: center; }
+
+/* Calibration readout — borderless metric group, not a pill. The legacy
+   glass layer sets badge chrome with !important, so this must match it. */
+.main-content .badge.calib-strip {
+    background: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 4px 0 !important;
+    gap: 12px;
+    cursor: default;
+}
+.main-content .badge.calib-strip:hover {
+    transform: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+.main-content .calib-strip .calib-kicker {
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.6px;
+    color: var(--text-muted);
+}
+.main-content .calib-strip .calib-metric { display: inline-flex; align-items: baseline; gap: 4px; }
+.main-content .calib-strip .calib-metric b {
+    font-family: var(--font-num);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.main-content .calib-strip .calib-metric i {
+    font-style: normal;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+}
+.main-content .calib-strip .calib-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--line);
+}
+.main-content .calib-strip .calib-meter {
+    width: 72px;
+    height: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+    overflow: hidden;
+    position: relative;
+}
+.main-content .calib-strip .calib-meter-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: inherit;
+}
+.main-content .calib-strip .calib-verdict {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    padding: 2px 8px;
+    border-radius: var(--r-full);
+    border: 1px solid;
+    background: none;
+    white-space: nowrap;
+}
+.main-content .calib-strip .calib-warmup { font-size: 11px; color: var(--text-muted); }
+
+/* Sync chip — quieter hover. */
+.main-content .header-badges .badge { border-radius: var(--r-md); }
+.main-content .header-badges .badge:hover {
+    transform: none;
+    border-color: var(--line-strong);
+    box-shadow: none;
+}
+
+/* ── 9 · BENTO EDITOR CHROME — quiet tools ─────────────────────────────── */
+
+/* Resize grips surface on card hover or in edit mode; never as permanent
+   furniture. Hit areas stay live — only the visual fades. */
+#view-dashboard .dash-card .bento-handle::before,
+#view-dashboard .dash-card .bento-handle-v::before,
+#view-dashboard .dash-card .bento-card-ctrls { opacity: 0; transition: opacity 0.18s var(--ease); }
+#view-dashboard .dash-card:hover .bento-handle::before,
+#view-dashboard .dash-card:hover .bento-handle-v::before,
+#view-dashboard .dash-card:hover .bento-card-ctrls,
+#view-dashboard.bento-edit .bento-handle::before,
+#view-dashboard.bento-edit .bento-handle-v::before,
+#view-dashboard.bento-edit .bento-card-ctrls { opacity: 1; }
+
+#dc-layout-fab {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    color: var(--text-secondary);
+    border-radius: var(--r-md);
+    box-shadow: var(--e-2);
+    transition: color 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+#dc-layout-fab:hover { color: var(--text-primary); border-color: var(--line-strong); }
+#dc-layout-fab.active { color: var(--accent); border-color: var(--accent-a30); }
+.bento-toolbar.dc-fab-panel {
+    background: var(--bg-raise);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--e-3);
+}
+
+/* ── 10 · RESPONSIVE ───────────────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+    #view-dashboard .dash-card-tracker,
+    #view-dashboard .dash-card-directive,
+    #view-dashboard .dash-card-decay,
+    #view-dashboard .dash-card-momentum,
+    #view-dashboard .dash-card-variance,
+    #view-dashboard .dash-card-progress { grid-column: span 12; }
+}
+
+@media (max-width: 700px) {
+    #view-dashboard .dash-grid > .dash-card { padding: 20px; }
+    #view-dashboard .dash-grid { gap: 14px; }
+    #view-dashboard .tp-num-big { font-size: 44px; }
+    #view-dashboard .tp-reading { flex-wrap: wrap; }
+    #view-dashboard .dv-head { margin-bottom: 16px; }
+    #view-dashboard .dv-legend { gap: 10px; }
+    #view-dashboard .mom-card .mom-head { padding: 16px 16px 12px; }
+    #view-dashboard #isle-root.isle-host { min-height: 260px; }
+    #view-dashboard .mom-body .graph-display { min-height: 240px; }
+    #view-dashboard .dash-card-momentum.mom-pace { padding: 20px !important; }
+    #view-dashboard .elo-monitor-tier { display: none; }
+    .main-content .badge.calib-strip { gap: 9px; }
+    .main-content .calib-strip .calib-meter { display: none; }
+}
+
+@media (max-width: 480px) {
+    #view-dashboard .dash-grid > .dash-card { padding: 18px 16px; }
+    #view-dashboard .dv-note { display: none; }
+    #view-dashboard .tp-caption { display: none; }
+    #view-dashboard .dir-item { gap: 9px; }
+    #view-dashboard .dir-item-meta { font-size: 10px; }
+    #view-dashboard .mom-toggle .mom-tab { padding: 5px 10px; }
+}
+
+/* ── 11 · MOTION + A11Y ────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+    #view-dashboard .dash-card,
+    #view-dashboard .compact-subject-card,
+    #view-dashboard .dir-box-btn,
+    #view-dashboard .compact-subject-card.lowest-subject-pulse .tp-dot {
+        animation: none !important;
+    }
+    #view-dashboard .tp-meter-fill,
+    #view-dashboard .tp-sub-fill,
+    #view-dashboard .dir-item-check,
+    #view-dashboard .daily-variance-dot {
+        transition: none !important;
+    }
+}
