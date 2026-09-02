@@ -3298,6 +3298,7 @@ export function switchIngestionTrack(track) {
         multicropPanel.classList.remove('active');
         texttrackBtn.classList.add('active');
         multicropBtn.classList.remove('active');
+        ensureGemDumpPromptRendered();
     }
 }
 
@@ -3502,8 +3503,12 @@ function _compileDumpObject(obj) {
     if (typeof rawText !== 'string' || !rawText.trim()) return null;
 
     const rawOpts = pick('options');
+    // Gems love emitting "A) 10 m/s" / "(B) v/2" prefixes — the app renders
+    // its own letter badges, so strip any leading "(X)" / "X)" / "X." marker
+    // (whitespace after it required, so "A-level" survives untouched).
+    const _stripOptionLetter = (s) => String(s).replace(/^\(?[A-Da-d][)\.]\s+/, '').trim();
     const options = Array.isArray(rawOpts)
-        ? rawOpts.map(o => _repairLatexParsed(typeof o === 'string' ? o : (o && typeof o.text === 'string' ? o.text : ''))).filter(Boolean)
+        ? rawOpts.map(o => _stripOptionLetter(_repairLatexParsed(typeof o === 'string' ? o : (o && typeof o.text === 'string' ? o.text : '')))).filter(Boolean)
         : [];
 
     const rawAns = pick('correctAnswer', 'answer', 'correctOption', 'correct', 'sol');
@@ -3564,7 +3569,9 @@ function _compileDumpObject(obj) {
         qEloStampedAt: new Date().toISOString(),
         tags,
         difficulty: typeof obj.difficulty === 'string' ? obj.difficulty : null,
-        subject: _normalizeSubjectKey(AppState.currentSubject || 'physics'),
+        // Placement (subject/chapter) is owned by saveAllQuestions — the
+        // session context ALWAYS wins there; the Gem's own stamps survive as
+        // gemSubject/gemChapter provenance (mock routing reads gemSubject).
         chapter: (typeof AppState.currentChapter === 'string' && AppState.currentChapter.trim())
             ? AppState.currentChapter.trim() : null,
         gemSubject: _normalizeSubjectKey(String(pick('subject', 'gemSubject') || '')),
@@ -4417,6 +4424,99 @@ function copyGemImageInstructions() {
         ta.remove();
         done();
     }
+}
+
+// ==================== GEM DUMP PROMPT (text track) ====================
+// The instruction block users paste into their Gemini Gem so dumps arrive in
+// the exact schema processGemTextDump expects. The crop-mapping block
+// (GEM_MAP_INSTRUCTION_BLOCK above) is a companion addendum for diagrams.
+// Backslashes in this template literal are doubled deliberately: the COPIED
+// text must show the user literal examples like "\\frac" (what raw JSON
+// needs) and "$\frac" (what the app receives after parsing).
+const GEM_DUMP_PROMPT = `You are the question-bank ingestion engine for a JEE prep app. Your output is ingested VERBATIM — every response must be EITHER a raw JSON array of question objects OR nothing.
+
+OUTPUT CONTRACT
+- Return ONLY the JSON array. No markdown fences, no prose, no trailing comments.
+- One object per question. Never merge multi-part problems into one object (split them, or use type "text").
+- Do NOT invent "id" fields — the app assigns ids.
+
+SCHEMA (one object per question)
+{
+  "extractedText": "Full question stem, self-contained.",
+  "options": ["bare option text", "...", "...", "..."],
+  "correctAnswer": "B",
+  "type": "mcq",
+  "solution": "Step-by-step reasoning.",
+  "hint": "one-line nudge, no spoiler",
+  "chapter": "Rotational Motion",
+  "qElo": 1350,
+  "targetTimeMins": 4,
+  "tags": ["rotational motion", "moment of inertia"]
+}
+
+FIELD RULES
+- extractedText (required): all math in LaTeX ($...$ inline, $$...$$ display).
+- options: MCQ only — EXACTLY 4 for JEE. BARE text, NO "A)" or "(A)" prefixes; the app renders its own letter badges. Omit the field entirely for numeric/text questions.
+- correctAnswer:
+    single-choice -> ONE letter "A"-"D".
+    multi-correct -> sorted array of letters, e.g. ["A","C"].
+    numeric       -> plain number as a STRING: "42", "-0.5", "3.75". No units, no ranges, no fractions; leading zero for decimals ("0.5", not ".5").
+    text          -> the model answer as a phrase.
+- type: "mcq" (options present) | "numeric" (integer/decimal answer) | "text" (subjective/self-eval). Omit and the app infers it.
+- chapter: the JEE chapter name ("Kinematics", "Chemical Bonding", "Definite Integration").
+- qElo: difficulty 800-2550 (800 = foundation, 1200 = board level, 1600 = advanced, 2300+ = olympiad).
+- targetTimeMins: minutes an average serious student needs (2-15).
+- tags: max 5 short lowercase topic tags.
+
+MATHEMATICS RULES (violating these corrupts the dump)
+- Wrap EVERY expression in LaTeX: $\\frac{1}{2}$, $\\vec{F} = m\\vec{a}$, $\\int_0^{\\pi}$, $x^2$.
+- NEVER output raw unicode math — no π √ × ² ° Δ; write $\\pi$, $\\sqrt{x}$, $\\times$, $x^2$, $^\\circ$, $\\Delta$.
+- CRITICAL JSON ESCAPING: inside a JSON string every backslash must be DOUBLE-escaped. The raw JSON must contain "\\\\frac{x}{y}" so the app receives "\\frac{x}{y}". A single "\\frac" breaks the parser. Applies to EVERY field containing math (extractedText, options, solution, hint).
+- Multi-line derivations: use $$...$$ display blocks with \\\\ line breaks and & alignment.
+
+CONTENT RULES
+- JEE style: exactly one unambiguous answer, realistic values, solvable without a calculator where feasible.
+- The stem alone must carry everything needed (or reference a diagram via imageRef/cropBox — see the app's CROP MAPPING block).
+- SI units unless stated; use g = 10 m/s² only when the question says so.
+
+DIFFICULTY SPREAD (for mock papers)
+- Default mix when asked for a paper: ~30% below 1200, ~40% in 1200-1600, ~30% above 1600.
+- If I request a specific mix ("20 questions, mostly 1300-1700"), follow it exactly and keep the answer keys consistent.
+
+DIAGRAMS
+- Prefer text-only questions. If a figure is truly unavoidable, ALSO follow the app's CROP MAPPING instruction block and attach imageRef + cropBox to that question — a prose description of a figure is useless to the app.`;
+
+/** Copy the Gem dump prompt (clipboard with execCommand fallback). */
+window.copyGemDumpPrompt = function () {
+    const el = document.getElementById('gem-dump-prompt-text');
+    const text = (el && el.textContent) ? el.textContent : GEM_DUMP_PROMPT;
+    const done = () => {
+        if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('📋 Gem prompt copied — paste it into your Gem\'s instructions.');
+        else console.log('[gem-prompt] copied');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => _fallbackCopyGemDumpPrompt(text, done));
+    } else _fallbackCopyGemDumpPrompt(text, done);
+};
+
+function _fallbackCopyGemDumpPrompt(text, done) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        done();
+    } catch (_) {}
+}
+
+/** One-time render of the prompt into the text-track panel's <pre>. */
+function ensureGemDumpPromptRendered() {
+    const pre = document.getElementById('gem-dump-prompt-text');
+    if (pre && !pre.textContent) pre.textContent = GEM_DUMP_PROMPT;
 }
 
 // ==================== PRACTICE: QUESTION LIST ====================
@@ -9352,11 +9452,14 @@ document.addEventListener('DOMContentLoaded', initApp);
  * Populate the AI Dump modal with subject→chapter checkboxes.
  * Called lazily when the modal opens.
  */
-window.populateAiDumpChapters = function () {
-    const listEl = document.getElementById('ai-dump-chapter-list');
+/**
+ * Shared chapter-scope picker renderer. Used by the Smart Mistake Report
+ * modal (#ai-dump-chapter-list) and the Mock Studio weak-points panel — both
+ * need the same subject-grouped checkbox list over the bank's chapters.
+ * opts: { ctxSubject, precheckWeak, onChange }
+ */
+function _renderChapterScopePicker(listEl, opts = {}) {
     if (!listEl) return;
-
-    // Collect ALL unique subject+chapter combos from the full question bank
     const map = {};
     AppState.questionBank.forEach(q => {
         const subj = q.subject || 'Uncategorized';
@@ -9375,7 +9478,6 @@ window.populateAiDumpChapters = function () {
         return;
     }
 
-    // Group by subject
     const bySubject = {};
     entries.forEach(e => {
         if (!bySubject[e.subject]) bySubject[e.subject] = [];
@@ -9383,19 +9485,25 @@ window.populateAiDumpChapters = function () {
     });
 
     const icons = { physics: '🌌', chemistry: '🧪', maths: '📐' };
-    // Mock Studio linking context → pre-check only that subject's chapters so the
-    // report (and any dump pasted next) scopes to the panel being filled.
-    const ctxSubj = AppState.mockDraftContext ? String(AppState.mockDraftContext.subject || '').toLowerCase() : null;
-    let html = ctxSubj
-        ? '<div class="rp-banner">🔗 Mock-link active — scoping to <b>' + escapeHtml(ctxSubj.toUpperCase()) + '</b>; other subjects unchecked.</div>'
-        : '';
+    const ctxSubj = opts.ctxSubject ? String(opts.ctxSubject).toLowerCase() : null;
+    // Weak-first pre-check: chapters that already produced logged errors get
+    // ticked automatically (capped) so the analysis is never empty on arrival.
+    const weakSet = new Set(
+        entries.filter(e => e.errorCount > 0)
+            .sort((a, b) => b.errorCount - a.errorCount)
+            .slice(0, 8)
+            .map(e => e.subject.toLowerCase() + '||' + String(e.chapter).toLowerCase())
+    );
+    let html = '';
     for (const [subj, chapters] of Object.entries(bySubject)) {
         html += `<div style="margin-bottom:12px;">`;
         html += `<div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--accent-primary);">${icons[subj]||'📋'} ${escapeHtml(subj.toUpperCase())}</div>`;
         chapters.forEach(c => {
-            const id = `dump-${subj}-${String(c.chapter).replace(/[^a-zA-Z0-9]/g,'_')}`;
+            const checked = ctxSubj
+                ? (subj.toLowerCase() === ctxSubj)
+                : (opts.precheckWeak && weakSet.has(subj.toLowerCase() + '||' + String(c.chapter).toLowerCase()));
             html += `<label style="display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:13px;cursor:pointer;border-radius:4px;">
-                <input type="checkbox" ${(!ctxSubj || subj.toLowerCase() === ctxSubj) ? 'checked' : ''} data-dump-subj="${escapeAttribute(subj)}" data-dump-chapter="${escapeAttribute(c.chapter)}" id="${escapeAttribute(id)}" style="accent-color:var(--accent-primary);">
+                <input type="checkbox" ${checked ? 'checked' : ''} data-dump-subj="${escapeAttribute(subj)}" data-dump-chapter="${escapeAttribute(c.chapter)}" style="accent-color:var(--accent-primary);">
                 ${escapeHtml(c.chapter)} <span style="color:var(--text-muted);font-size:11px;margin-left:auto;">${c.count} Qs${c.errorCount > 0 ? ' · ' + c.errorCount + ' err' : ''}</span>
             </label>`;
         });
@@ -9403,11 +9511,32 @@ window.populateAiDumpChapters = function () {
     }
     listEl.innerHTML = html;
 
-    // Live smart-report preview: recompute whenever the scope checkboxes change.
-    if (!listEl.dataset.rpWired) {
+    if (opts.onChange && !listEl.dataset.rpWired) {
         listEl.dataset.rpWired = '1';
-        listEl.addEventListener('change', () => window.renderAiDumpPreview());
+        listEl.addEventListener('change', () => opts.onChange());
     }
+}
+
+window.populateAiDumpChapters = function () {
+    const listEl = document.getElementById('ai-dump-chapter-list');
+    if (!listEl) return;
+
+    // Mock Studio linking context → pre-check only that subject's chapters so
+    // the report (and any dump pasted next) scopes to the panel being filled.
+    const ctxSubj = AppState.mockDraftContext ? String(AppState.mockDraftContext.subject || '').toLowerCase() : null;
+    let bannerEl = document.getElementById('ai-dump-mock-banner');
+    if (ctxSubj) {
+        if (!bannerEl) {
+            bannerEl = document.createElement('div');
+            bannerEl.id = 'ai-dump-mock-banner';
+            bannerEl.className = 'rp-banner';
+            listEl.parentElement.insertBefore(bannerEl, listEl);
+        }
+        bannerEl.innerHTML = '🔗 Mock-link active — scoping to <b>' + escapeHtml(ctxSubj.toUpperCase()) + '</b>; other subjects unchecked.';
+    } else if (bannerEl) {
+        bannerEl.remove();
+    }
+    _renderChapterScopePicker(listEl, { ctxSubject: ctxSubj, onChange: () => window.renderAiDumpPreview() });
     window.renderAiDumpPreview();
 };
 
@@ -9424,8 +9553,13 @@ window.selectAllDumpChapters = function (select) {
  * Returns null when nothing is selected (alerts unless silent=true — the
  * live preview passes silent and shows an inline nudge instead).
  */
-function _gatherDumpScopeQuestions(silent) {
-    const checks = document.querySelectorAll('#ai-dump-chapter-list input[type="checkbox"]:checked');
+function _gatherDumpScopeQuestions(silent, listEl) {
+    if (!listEl) listEl = document.getElementById('ai-dump-chapter-list');
+    if (!listEl) {
+        if (!silent) alert('Select at least one chapter to export.');
+        return null;
+    }
+    const checks = listEl.querySelectorAll('input[type="checkbox"][data-dump-subj]:checked');
     if (checks.length === 0) {
         if (!silent) alert('Select at least one chapter to export.');
         return null;
@@ -9524,6 +9658,62 @@ window.renderAiDumpPreview = function () {
         },
     });
     box.innerHTML = renderReportHtml(report, { maxTags: 12 });
+};
+
+// ═══ Weak-points panel — embeddable chapter-scope analysis (Mock Studio) ═══
+// Same chapter picker + mistake engine as the Smart Mistake Report modal,
+// rendered inline in the mocks view so "pick chapters → see what's weak →
+// build a targeted paper" is one flow. The modal stays for exports.
+
+/**
+ * Mount a chapter picker + live mistake analysis into `root`. The panel owns
+ * two child slots: .wp-chapters (checkbox list) and .wp-preview (report).
+ */
+window.renderWeakPointsPanel = function (root) {
+    if (!root) return;
+    root.innerHTML =
+        '<div class="mk-note" style="margin-top:0;">Tick the chapters you care about — chapters with logged Vault errors are pre-ticked. The mistake engine builds the tag × difficulty analysis below, live.</div>' +
+        '<div class="wp-chapters mk-wp-chapters"></div>' +
+        '<div class="wp-preview rp-preview" aria-live="polite"></div>';
+    const chaptersEl = root.querySelector('.wp-chapters');
+    const previewEl = root.querySelector('.wp-preview');
+    const refresh = () => {
+        const scope = _gatherDumpScopeQuestions(true, chaptersEl);
+        if (!scope) {
+            previewEl.innerHTML = '<div class="rp-empty">Tick some chapters above — the analysis builds itself here.</div>';
+            return;
+        }
+        const scopeLabel = scope.selected.map(s => s.subject + ' › ' + s.chapter).join(', ');
+        const report = buildMistakeReport(scope.raw, {
+            scopeText: scopeLabel,
+            elo: AppState.elo || {},
+            tagLeakFn: (label) => {
+                try {
+                    const { profiles } = computeTagProfiles(scope.raw, {});
+                    return leakOf(profiles, 'p:' + normalizeTag(label));
+                } catch (_) { return null; }
+            },
+        });
+        previewEl.innerHTML = renderReportHtml(report, { maxTags: 12 });
+        try {
+            previewEl.removeAttribute('data-math-rendered');
+            if (typeof window.processElementMath === 'function') window.processElementMath(previewEl);
+        } catch (_) {}
+    };
+    _renderChapterScopePicker(chaptersEl, { precheckWeak: true, onChange: refresh });
+    refresh();
+};
+
+/** Checked chapters of a mounted weak-points panel: [{subject, chapter}] | null. */
+window.getWeakPointsScope = function (root) {
+    const chaptersEl = root && root.querySelector ? root.querySelector('.wp-chapters') : null;
+    if (!chaptersEl) return null;
+    const checks = chaptersEl.querySelectorAll('input[type="checkbox"][data-dump-subj]:checked');
+    if (!checks.length) return null;
+    return Array.from(checks).map(cb => ({
+        subject: cb.getAttribute('data-dump-subj'),
+        chapter: cb.getAttribute('data-dump-chapter'),
+    }));
 };
 
 /** Download the compact aggregated mistake report (.txt) — bounded size. */
