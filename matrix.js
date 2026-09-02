@@ -2637,7 +2637,7 @@ export function renderChapterDecayGrid() {
     // Most exam-dangerous chapter first.
     chapters.sort((a, b) => b.risk - a.risk);
     if (chapters.length === 0) {
-        container.innerHTML = '<div class="rh-empty">No retention data yet — log errors and they will surface here.</div>';
+        container.innerHTML = '<div class="rh-empty">No retention data yet; log errors and they will surface here.</div>';
         return;
     }
 

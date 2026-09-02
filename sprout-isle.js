@@ -40,6 +40,7 @@ function mountHost() {
     var kids = Array.prototype.slice.call(card.children);
     kids.forEach(function (c) {
       if (c.id === 'isle-root') return;
+      if (c.hasAttribute && c.hasAttribute('data-isle-keep')) return;  /* card chrome that survives the takeover */
       c.classList.add('isle-orig');
     });
     var host = document.createElement('div');

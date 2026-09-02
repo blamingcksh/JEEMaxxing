@@ -55,6 +55,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
 <link rel="stylesheet" href="directive.css">
 <!-- ── iPad / coarse-pointer hardening layer (must stay LAST — see file header) ── -->
 <link rel="stylesheet" href="styles-ipad.css">
+<link rel="stylesheet" href="styles-dashboard.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
 <body>
@@ -184,7 +185,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
         <header class="header-section" id="main-header">
             <div class="header-copy">
                 <h1 id="view-title">Grind Hub</h1>
-                <p class="header-sub">Welcome back · <span id="top-date">Today</span> · locked in and loaded.</p>
+                <p class="header-sub">Welcome back · <span id="top-date">Today</span></p>
             </div>
             <div class="header-badges">
                 <!-- Calibration Report — slim always-on header readout (was a full dash
@@ -202,35 +203,41 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
         </header>
 
         <!-- ═══════════════════════════════════════════
-             VIEW · DASHBOARD
+             VIEW · DASHBOARD  (overhaul v3 — "quiet surface" rebuild)
+             One hierarchy: Today → Directive → Retention → Momentum →
+             History → Conquest. All JS hydration contracts unchanged:
+               · app.js updateUI  → #tp-total, #tp-total-tgt, #tp-total-bar,
+                 #variance-val, per subject {sub}-count / tgt-{phys|chem|math}-lbl
+                 / {sub}-bar, .tp-day-done, .tp-sub-done, .elo-monitor injection
+                 into .tp-row-top, .tp-pace ticks into the meters.
+               · directive.js     → #directive-card-body
+               · matrix.js        → #chapter-progress-list, #chapter-decay-grid
+               · candlestick/app  → #dynamic-graph
+               · sprout-isle.js   → takes over .dash-card-momentum (children
+                 with [data-isle-keep] survive the takeover)
+             Skin lives in styles-dashboard.css (loaded last).
         ════════════════════════════════════════════ -->
         <section id="view-dashboard" class="view-section active">
             <div class="dash-grid">
 
-                <!-- Daily Grind Tracker · "Output Meter" redesign.
-                     Contracts (app.js updateUI): #tp-total, #tp-total-tgt,
-                     #tp-total-bar (width%), #variance-val (text + inline color),
-                     per subject {sub}-count / tgt-{phys|chem|math}-lbl / {sub}-bar.
-                     app.js toggles .tp-day-done on the card and .tp-sub-done on a
-                     row at/over target. app.js also injects .elo-monitor into
-                     .tp-row-top before .tp-count; keep both hooks intact. -->
-                <div class="dash-card dash-card-tracker">
-                    <div class="dash-card-head tp-head">
-                        <div class="tp-head-text">
-                            <span class="kicker">Daily output</span>
-                            <h2 class="box-title">Today’s Progress</h2>
-                        </div>
+                <!-- ── TODAY'S PROGRESS · the one number that matters, three
+                     subject ledgers under it. Steppers are the quick-log. ── -->
+                <div class="dash-card dash-card-tracker" data-bento-span="7">
+                    <div class="dv-head">
+                        <h2 class="dv-title">Today’s Progress</h2>
                         <span class="tp-variance" id="variance-val" title="Solved vs target today">0.0%</span>
                     </div>
 
-                    <div class="tp-meterboard">
-                        <div class="tp-meter-reading">
-                            <p class="tp-meter-figure"><span id="tp-total">0</span><span class="tp-meter-target" id="tp-total-tgt">/ 30</span></p>
-                            <span class="tp-meter-caption">Solved today</span>
-                        </div>
-                        <div class="tp-meter" role="img" aria-label="Questions solved today versus your combined target">
-                            <div class="tp-meter-fill" id="tp-total-bar"></div>
-                        </div>
+                    <div class="tp-reading">
+                        <p class="tp-figure">
+                            <span class="tp-num-big" id="tp-total">0</span>
+                            <span class="tp-figure-tgt" id="tp-total-tgt">/ 30</span>
+                        </p>
+                        <span class="tp-caption">problems solved today</span>
+                    </div>
+
+                    <div class="tp-meter" role="img" aria-label="Questions solved today versus your combined target">
+                        <div class="tp-meter-fill" id="tp-total-bar"></div>
                     </div>
 
                     <div class="tp-ledger">
@@ -275,34 +282,59 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                     </div>
                 </div>
 
-                <!-- ── DAILY DIRECTIVE (target-system v2): headline quest, side
-                     quests, keys and the Voltage Spin trigger. directive.js
-                     renders into #directive-card-body on every updateUI tick
-                     while the dashboard view is active. ── -->
-                <div class="dash-card dash-card-directive" data-bento-span="6">
-                    <div class="dash-card-head">
-                        <span class="kicker">// DAILY DIRECTIVE</span>
-                        <h2 class="box-title">Directive</h2>
-                        <p class="box-desc">Three things a day. Clear them, open the box.</p>
+                <!-- ── DIRECTIVE — target-system v2. directive.js renders the
+                     day's headline quest + side quests into the body. ── -->
+                <div class="dash-card dash-card-directive" data-bento-span="5">
+                    <div class="dv-head dv-head-stack">
+                        <h2 class="dv-title">Directive</h2>
+                        <p class="dv-sub">Three things a day. Clear them, open the box.</p>
                     </div>
                     <div id="directive-card-body" class="directive-card-body"></div>
                 </div>
 
-                <!-- Momentum Tracker (candlestick engine target) -->
-                <div class="dash-card dash-card-momentum">
-                    <div class="dash-card-head">
-                        <span class="kicker">// MOMENTUM</span>
-                        <h2 class="box-title">Momentum</h2>
-                        <p class="box-desc">Recent output and projected pace against your target.</p>
+                <!-- ── RETENTION HEALTH — matrix.js renders the chapter ledger
+                     (most exam-dangerous first) into the grid. ── -->
+                <div class="dash-card dash-card-decay" data-bento-span="7">
+                    <div class="dv-head dv-head-wrap">
+                        <h2 class="dv-title">Retention Health</h2>
+                        <div class="dv-legend" aria-hidden="true">
+                            <span><i data-h="ok"></i>Exam-ready</span>
+                            <span><i data-h="fade"></i>Fading</span>
+                            <span><i data-h="crit"></i>Critical</span>
+                        </div>
                     </div>
-                    <div class="graph-display">
-                        <svg id="dynamic-graph" preserveAspectRatio="none"></svg>
+                    <div id="chapter-decay-grid"></div>
+                </div>
+
+                <!-- ── MOMENTUM — one card, two lenses: the living Isle
+                     (sprout-isle.js takes over this card) and the pace chart
+                     (#dynamic-graph). The toggle is device-local. ── -->
+                <div class="dash-card dash-card-momentum mom-card" id="mom-card" data-bento-span="5">
+                    <div class="dv-head mom-head" data-isle-keep>
+                        <h2 class="dv-title">Momentum</h2>
+                        <div class="mom-toggle" role="tablist" aria-label="Momentum view">
+                            <button type="button" class="mom-tab" data-mom-view="isle" role="tab" aria-selected="true" onclick="setMomentumView('isle')">Isle</button>
+                            <button type="button" class="mom-tab" data-mom-view="pace" role="tab" aria-selected="false" onclick="setMomentumView('pace')">Pace</button>
+                        </div>
+                    </div>
+                    <div class="mom-body">
+                        <div class="graph-display">
+                            <svg id="dynamic-graph" preserveAspectRatio="none"></svg>
+                        </div>
+                        <div class="mom-legend" aria-hidden="true">
+                            <span><i class="lg-bull"></i>Bull</span>
+                            <span><i class="lg-bear"></i>Bear</span>
+                            <span><i class="lg-target"></i>Target lock</span>
+                            <span><i class="lg-proj"></i>Projection</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Daily variance contribution graph -->
+                <!-- ── CONSISTENCY — a year of daily output vs target
+                     (app.js renderDailyVarianceHeatmap fills months + grid). ── -->
                 <div class="dash-card dash-card-variance" data-bento-span="12">
-                    <div class="daily-variance-head">
+                    <div class="dv-head dv-head-wrap">
+                        <h2 class="dv-title">Consistency</h2>
                         <span class="daily-variance-legend" aria-hidden="true">
                             <span class="daily-variance-legend-label">Less</span>
                             <i class="daily-variance-swatch" data-level="0"></i>
@@ -315,33 +347,17 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                     </div>
                     <div class="daily-variance-scroll">
                         <div id="daily-variance-months" class="daily-variance-months" aria-hidden="true"></div>
-                        <div id="daily-variance-grid" class="daily-variance-grid" role="img" aria-label="Daily solved questions relative to your daily target, one cell per day. Denser green means more output."></div>
+                        <div id="daily-variance-grid" class="daily-variance-grid" role="img" aria-label="Daily solved questions relative to your daily target, one cell per day. Denser colour means more output."></div>
                     </div>
                 </div>
 
-                <!-- Chapter Progress (weakest first) -->
-                <div class="dash-card dash-card-progress">
-                    <div class="dash-card-head">
-                        <span class="kicker">// CONQUEST</span>
-                        <h2 class="box-title">Chapter Progress</h2>
-                        <p class="box-desc">Completion by chapter, ordered from least complete.</p>
+                <!-- ── CHAPTER PROGRESS — matrix.js, weakest chapter first
+                     (the list carries its own column header). ── -->
+                <div class="dash-card dash-card-progress" data-bento-span="12">
+                    <div class="dv-head">
+                        <h2 class="dv-title">Chapter Progress</h2>
                     </div>
                     <div id="chapter-progress-list"></div>
-                </div>
-
-                <!-- Chapter Health Grid -->
-                <div class="dash-card dash-card-decay">
-                    <div class="dash-card-head">
-                        <span class="kicker">// MEMORY DECAY</span>
-                        <h2 class="box-title">Retention Health</h2>
-                        <p class="box-desc">Retention by chapter, so you can prioritise at-risk topics.</p>
-                        <div class="decay-legend">
-                            <span class="legend-chip legend-green">Exam-ready ≥90%</span>
-                            <span class="legend-chip legend-yellow">Fading 80–90%</span>
-                            <span class="legend-chip legend-red">Critical &lt;80%</span>
-                        </div>
-                    </div>
-                    <div id="chapter-decay-grid"></div>
                 </div>
 
             </div>
@@ -1282,12 +1298,15 @@ window.clearMatrixFilters = function () {
    storage.js / cloud / IndexedDB are intentionally untouched.
    ════════════════════════════════════════════════════════════════════════ */
 (function () {
-    const LS = 'jeemax_bento_layout';
+    const LS = 'jeemax_bento_layout_v2';  // v2: dashboard overhaul changed the default spans/order
     const BP = 901;                       // resize / masonry is a wide-screen feature
     const BP2 = 1101;                     // mirrors the themed 2-col ↔ 1-col breakpoint
     const V_MIN = 140, V_MAX = 1600;
     const COLS = 12;
-    const IDS = ['tracker', 'variance', 'momentum', 'progress', 'decay'];
+    const IDS = ['tracker', 'directive', 'variance', 'momentum', 'progress', 'decay'];
+    // 'directive' is tracked so persist/restore order stays deterministic —
+    // an untracked card was omitted from saved order and drifted one slot per
+    // save/restore cycle.
 
     const wide     = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
     const twoCol   = () => window.matchMedia(`(min-width: ${BP2}px)`).matches;
@@ -1355,15 +1374,15 @@ window.clearMatrixFilters = function () {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  HEIGHT-MAP MASONRY PACKER — the vertical-compaction engine.
-    //  For each card (in DOM order) we know its column WIDTH (tracks). We
-    //  choose the leftmost column band whose tracks are all free earliest,
-    //  place the card there with an explicit grid-column (PINNED — this is
-    //  what stops cards ever migrating sideways), then advance a per-column
-    //  "next free row" map by the card's pixel height + the vertical gap.
-    //  Result: each column stacks from the top independently; shortening a
-    //  card lowers its columns' next-free-row, so the card below it in that
-    //  same column rises flush underneath. No cross-column surprises.
+    //  RELAYOUT v6 (overhaul) — WIDTHS ONLY, rows flow naturally.
+    //  The v5 height-map packer assumed six uniform cards whose heights were
+    //  known early. The overhauled dashboard uses asymmetric 7/5 rows and a
+    //  Directive body that hydrates late from IDB; pinning explicit rows from
+    //  point-in-time heights produced overlaps and holes. Now each card only
+    //  carries its span (`span N`, no explicit start) — CSS auto-flow packs
+    //  flush rows in DOM order, immune to hydration timing. The editor's
+    //  width + reorder tools are unaffected; height resize still works via
+    //  the .bento-scroll wrapper (the row just doesn't re-compact).
     // ══════════════════════════════════════════════════════════════════════
     function relayout(){
         const grid = gridOf(); if (!grid) return;
@@ -1373,38 +1392,12 @@ window.clearMatrixFilters = function () {
             [...grid.children].forEach(c => { c.style.gridRow = ''; c.style.gridColumn = ''; });
             return;
         }
-        grid.style.gridAutoRows = '1px';   // 1px implicit rows = 1px packing granularity
-        grid.style.rowGap = '0px';         // vertical rhythm is baked into each span instead
-        const cs = getComputedStyle(grid);
-        const colGap = parseFloat(cs.columnGap) || parseFloat(cs.gap) || 22;
-        const gap = colGap > 0 ? colGap : 22;
-
-        const cards = [...grid.children].filter(c => c.classList.contains('dash-card'));
-        // Step A — assign each card its WIDTH and measure its natural height.
-        // (A temp grid-column start is fine; width depends only on the span.)
-        const info = cards.map(c => {
-            const w = widthOf(c);
-            const wantCol = '1 / span ' + w;
-            if (c.style.gridColumn !== wantCol) c.style.gridColumn = wantCol;
-            return { c, w, h: 0 };
-        });
-        void grid.offsetHeight;                       // single forced layout
-        info.forEach(o => { o.h = o.c.offsetHeight; });
-
-        // Step B — pack top-down with the per-column height map.
-        const hmap = new Array(COLS + 1).fill(1);     // 1-based next-free row line per track
-        info.forEach(o => {
-            const w = o.w; let bestC = 1, bestR = Infinity;
-            for (let c = 1; c <= COLS - w + 1; c++) {
-                let r = 1; for (let k = c; k < c + w; k++) r = Math.max(r, hmap[k]);
-                if (r < bestR) { bestR = r; bestC = c; }   // earliest row, leftmost on tie
-            }
-            const rows = o.h + gap;                   // card height + gap baked as empty tracks
-            const colStr = bestC + ' / span ' + w;
-            const rowStr = bestR + ' / span ' + rows;
-            if (o.c.style.gridColumn !== colStr) o.c.style.gridColumn = colStr;  // compare → no spurious RO
-            if (o.c.style.gridRow !== rowStr) o.c.style.gridRow = rowStr;
-            for (let k = bestC; k < bestC + w; k++) hmap[k] = bestR + rows;
+        grid.style.gridAutoRows = ''; grid.style.rowGap = '';
+        [...grid.children].forEach(c => {
+            if (!c.classList.contains('dash-card')) return;
+            const want = 'span ' + widthOf(c);
+            if (c.style.gridColumn !== want) c.style.gridColumn = want;
+            if (c.style.gridRow) c.style.gridRow = '';
         });
     }
     let _rlRaf = 0;
@@ -1577,15 +1570,28 @@ window.clearMatrixFilters = function () {
     function applySaved(){
         if (document.body.classList.contains('bento-dragging')) return;
         const o = load(); const grid = gridOf(); if (!grid) return;
+        // Fresh device (nothing saved yet) → keep the markup's data-bento-span
+        // defaults; only a real saved layout may override/strip them.
+        const hasSavedLayout = (Array.isArray(o.order) && o.order.length > 0) ||
+                               (o.spans && Object.keys(o.spans).length > 0) ||
+                               (o.heights && Object.keys(o.heights).length > 0);
         if (Array.isArray(o.order) && o.order.length) {
-            const seen = new Set();
-            o.order.forEach(id => { const c = cardById(id); if (c) { grid.appendChild(c); seen.add(id); } });
-            IDS.forEach(id => { if (!seen.has(id)) { const c = cardById(id); if (c) grid.appendChild(c); } });
+            // Re-append every card in saved order. Cards the editor doesn't
+            // track (Directive) must ride along in their original relative
+            // slot — re-appending only tracked ids used to orphan them to
+            // the front of the grid on every restore.
+            const pos = new Map(o.order.map((id, i) => [id, i]));
+            [...grid.children]
+                .filter(c => c.classList.contains('dash-card'))
+                .map((c, i) => ({ c, key: pos.has(idOf(c)) ? pos.get(idOf(c)) : i + 0.5 }))
+                .sort((a, b) => a.key - b.key)
+                .forEach(({ c }) => grid.appendChild(c));
         }
         const spans = o.spans || {}, heights = o.heights || {};
         IDS.forEach(id => {
             const c = cardById(id); if (!c) return;
-            if (typeof spans[id] === 'number') c.dataset.bentoSpan = String(spans[id]); else delete c.dataset.bentoSpan;
+            if (typeof spans[id] === 'number') c.dataset.bentoSpan = String(spans[id]);
+            else if (hasSavedLayout) delete c.dataset.bentoSpan;
             if (wide() && heights[id]) ensureWrap(c).style.height = heights[id] + 'px'; else clearWrap(c);
         });
         relayout();
@@ -1617,6 +1623,51 @@ window.clearMatrixFilters = function () {
 
 <script src="forest-bg.js" defer></script>
 <script src="sprout-isle.js" defer></script>
+
+<!-- ── MOMENTUM VIEW TOGGLE — the Momentum card carries two lenses: the
+     living Isle (sprout-isle.js) and the pace chart (#dynamic-graph).
+     Flips .mom-pace on the card + persists the choice device-local. The
+     isle bridge auto-pauses its render loop whenever #isle-root leaves the
+     screen, so no engine coupling lives here. Charts re-render on switch
+     (they were drawn into a hidden container while the Isle was up). ── -->
+<script>
+(function () {
+    var KEY = 'jeemax_momentum_view';
+    function apply(view, rerender) {
+        var card = document.getElementById('mom-card');
+        if (!card) return;
+        var pace = view === 'pace';
+        card.classList.toggle('mom-pace', pace);
+        card.querySelectorAll('.mom-tab').forEach(function (t) {
+            var on = t.getAttribute('data-mom-view') === view;
+            t.classList.toggle('active', on);
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        if (rerender) {
+            requestAnimationFrame(function () {
+                try { if (typeof window.renderGraph === 'function') window.renderGraph(); } catch (e) {}
+                try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (e) {}
+            });
+        }
+    }
+    function saved() {
+        var v = null;
+        try { v = localStorage.getItem(KEY); } catch (e) {}
+        return v === 'pace' ? 'pace' : 'isle';
+    }
+    window.setMomentumView = function (view) {
+        apply(view, true);
+        try { localStorage.setItem(KEY, view === 'pace' ? 'pace' : 'isle'); } catch (e) {}
+    };
+    function boot() {
+        apply(saved(), false);
+        // Late re-assert: candlestick engine may register after DOMContentLoaded.
+        if (saved() === 'pace') { setTimeout(function () { apply('pace', true); }, 900); }
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
+})();
+</script>
 
 <!-- ── View identity: the header H1, document.title and nav aria-current
      follow the active view. Pure observation — no app.js contract touched. -->
