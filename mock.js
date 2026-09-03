@@ -1141,6 +1141,7 @@ function renderBuilder(root) {
             const q = qById(qid);
             const title = q ? (q.extractedText || '(image question)').slice(0, 70) : '(deleted)';
             return '<div class="mk-qrow"><span class="mk-qnum">' + (i + 1) + '</span><span class="mk-qtitle">' + _esc(title) + '</span>' +
+                '<button class="mk-qpv" onclick="event.stopPropagation();window.mockPreview(\'' + qid + '\')" type="button" title="Preview question">👁</button>' +
                 '<button class="mk-qdel" onclick="window.mockUnlink(\'' + m.id + '\',\'' + qid + '\')" type="button" title="Remove from paper">✕</button></div>';
         }).join('');
         return '<div class="mk-subj-panel' + (active ? ' active' : '') + '">' +
@@ -1372,7 +1373,8 @@ function renderPickerList() {
         return '<div class="mk-pk-row' + sel + '" data-qid="' + q.id + '" onclick="window.mockPickToggle(\'' + q.id + '\', this)" role="button">' +
             '<span class="mk-pk-tick">✓</span>' +
             '<span class="mk-pk-main"><span class="mk-pk-meta">' + meta + '</span>' +
-            '<span class="mk-pk-title">' + _esc(title) + '</span></span></div>';
+            '<span class="mk-pk-title">' + _esc(title) + '</span></span>' +
+            '<button class="mk-pk-pv" onclick="event.stopPropagation();window.mockPreview(\'' + q.id + '\')" type="button" title="Preview question">👁</button></div>';
     }).join('');
 }
 
@@ -1385,6 +1387,82 @@ function getEloTierShort(qElo) {
     if (e >= 1300) return '3';
     if (e >= 1100) return '2';
     return '1';
+}
+
+// ── Question preview (builder + bank picker + key pass) ──
+// Full read-only render: meta, images, LaTeX text, options, key, solution.
+// Display-only — never mutates the question or the paper.
+
+/** Local mirror of app.js's _gemOptionImageUrl (letter-keyed figure lookup). */
+function _pvOptImg(q, letter) {
+    if (!q || !q.optionImageUrls || typeof letter !== 'string') return null;
+    return q.optionImageUrls[letter]
+        || q.optionImageUrls[letter.toUpperCase()]
+        || q.optionImageUrls[letter.toLowerCase()]
+        || null;
+}
+
+function mockPreviewBodyHtml(q) {
+    const pattern = getPatternForQuestion(q);
+    const stDot = { solved: '🟢', wrong: '🔴', error: '🗂', unsolved: '⚪' };
+    const meta = _esc(String(q.chapter || 'Uncategorized')) + ' · ' + _esc(String(q.subject || '')) +
+        ' · ' + (stDot[q.status] || '⚪') + ' ' + _esc(q.status || 'unsolved') +
+        ' · ' + TIER_GLYPH[TIER_OF(q.qElo)].split(' ')[0] + ' T' + _esc(getEloTierShort(q.qElo)) +
+        ' · ' + _num(q.qElo, 1200) + ' Elo · ' + pattern.toUpperCase();
+    let h = '<div class="mk-pv-meta">' + meta + '</div>';
+    if (q.imageDataUrl) h += '<img class="mr-img" src="' + q.imageDataUrl + '">';
+    else if (q.driveImageId) h += '<div class="mk-pv-note">📷 Photo stored on Drive — visible in the exam runner.</div>';
+    if (q.diagramImageUrl) h += '<img class="mr-img" src="' + q.diagramImageUrl + '">';
+    if (q.extractedText) h += '<div class="mr-text latex">' + _esc(q.extractedText) + '</div>';
+    else if (!q.imageDataUrl && !q.diagramImageUrl) h += '<div class="mk-pv-note">(no text captured)</div>';
+    if (pattern === 'numeric' || !(q.options && q.options.length)) {
+        const key = prefillKeyFor(q);
+        const keyStr = Array.isArray(key) ? key.join(', ') : (key != null ? String(key) : '');
+        const bankStr = (q.correctAnswer != null && !Array.isArray(q.correctAnswer)) ? String(q.correctAnswer) : keyStr;
+        h += '<div class="mk-pv-keyline">Key: <b>' + _esc(keyStr || bankStr || '?') + '</b>' +
+            ' <span class="mk-pv-sub">(' + _esc(pattern) + ')</span></div>';
+    } else {
+        const key = prefillKeyFor(q);
+        const keySet = new Set(Array.isArray(key) ? key : []);
+        h += '<div class="mr-opts">' + (q.options || []).map((o, i) => {
+            const L = String.fromCharCode(65 + i);
+            const img = _pvOptImg(q, L);
+            return '<div class="mr-rev-opt' + (keySet.has(L) ? ' correct' : '') + '"><b>' + L + '</b>' + _esc(o) +
+                (img ? '<br><img class="mk-pv-optimg" src="' + img + '">' : '') + '</div>';
+        }).join('') + '</div>';
+        if (keySet.size) h += '<div class="mk-pv-keyline">Key: <b>' + _esc([...keySet].join(', ')) + '</b></div>';
+    }
+    if (q.hint) h += '<div class="mk-pv-hint">💡 Hint: ' + _esc(q.hint) + '</div>';
+    if (q.solution) h += '<div class="mr-rev-sol"><b>💡 Solution</b><br>' + _esc(q.solution) + '</div>';
+    if (q.solutionImageUrl) h += '<img class="mr-img" src="' + q.solutionImageUrl + '">';
+    return h;
+}
+
+win.mockPreview = function (qid) {
+    const q = qById(qid);
+    if (!q) { _toast('That question is no longer in the bank.'); return; }
+    document.getElementById('mk-preview') && document.getElementById('mk-preview').remove();
+    const ov = document.createElement('div');
+    ov.id = 'mk-preview';
+    ov.className = 'mk-preview';
+    ov.onclick = (e) => { if (e.target === ov) win.mockPreviewClose(); };
+    ov.innerHTML = '<div class="mk-preview-card" role="dialog" aria-label="Question preview">' +
+        '<div class="mk-pv-head"><b>👁 Question preview</b>' +
+        '<button class="mk-pk-close" onclick="window.mockPreviewClose()" type="button">✕</button></div>' +
+        '<div class="mk-pv-body">' + mockPreviewBodyHtml(q) + '</div></div>';
+    document.body.appendChild(ov);
+    try { if (typeof win.processElementMath === 'function') win.processElementMath(ov); } catch (_) {}
+};
+
+win.mockPreviewClose = function () {
+    const ov = document.getElementById('mk-preview');
+    if (ov) ov.remove();
+};
+
+if (typeof document !== 'undefined') {
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('mk-preview')) win.mockPreviewClose();
+    });
 }
 
 // ── Key pass + finalize ──
@@ -1416,7 +1494,8 @@ function renderKeyPass(root) {
             const shown = Array.isArray(cur) ? cur.join('') : (cur != null ? String(cur) : '');
             return '<tr><td>' + n + '</td><td>' + s + '</td><td>' + pattern + '</td>' +
                 '<td><input class="mk-key-in" data-mock="' + m.id + '" data-subj="' + s + '" data-qid="' + qid + '" data-pattern="' + pattern + '" value="' + _esc(shown) + '" onchange="window.mockKeyChange(this)" placeholder="' + (pattern === 'numeric' ? 'e.g. 42' : 'e.g. A / AC') + '"></td>' +
-                '<td>' + (hasKey(cur) ? '✅' : '⬜') + '</td></tr>';
+                '<td>' + (hasKey(cur) ? '✅' : '⬜') + '</td>' +
+                '<td><button class="mk-qpv" onclick="window.mockPreview(\'' + qid + '\')" type="button" title="Preview question">👁</button></td></tr>';
         }).join('');
     }).join('');
     const isBuilding = m.status === 'building';
@@ -1428,7 +1507,7 @@ function renderKeyPass(root) {
         '<textarea id="mk-bulk" rows="3" placeholder="1 A&#10;2) 42&#10;3 AC"></textarea>' +
         '<div class="mk-bulk-row"><button class="btn btn-secondary btn-sm" onclick="window.mockBulkApply()" type="button">Apply keys</button>' +
         '<span class="mk-keynote">One line per question: row number + answer ("1 A", "2) AC", "3: 42").</span></div></div>' +
-        '<table class="mk-key-table"><thead><tr><th>#</th><th>Subj</th><th>Type</th><th>Correct answer</th><th></th></tr></thead><tbody>' + secHtml + '</tbody></table>' +
+        '<table class="mk-key-table"><thead><tr><th>#</th><th>Subj</th><th>Type</th><th>Correct answer</th><th></th><th></th></tr></thead><tbody>' + secHtml + '</tbody></table>' +
         '<div style="text-align:center; margin:16px 0 30px;">' +
         (isBuilding
             ? '<button class="btn btn-primary" ' + (ready ? '' : 'disabled style="opacity:.45; cursor:not-allowed;" ') + 'onclick="window.mockDoFinalize()" type="button">🔒 Finalize paper (' + (ready ? 'all keys set' : 'missing keys') + ')</button>'
