@@ -2566,6 +2566,17 @@ body {
 }
 .sr-result-banner.correct { color: #bbf7d0; background: rgba(16, 185, 129, 0.13); border: 1px solid var(--glow-green); box-shadow: 0 0 18px rgba(16, 185, 129, 0.28); }
 .sr-result-banner.incorrect { color: #fecaca; background: rgba(239, 68, 68, 0.13); border: 1px solid var(--glow-red); box-shadow: 0 0 18px rgba(239, 68, 68, 0.28); }
+/* keep-going nudge — one quiet line under a correct banner */
+.sr-keep-going, .pm-keep-going {
+    margin-top: 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    color: var(--text-secondary);
+    animation: fadeIn 0.25s ease;
+}
+.pm-keep-going { margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .sr-keep-going, .pm-keep-going { animation: none; } }
 
 .sr-tag-stage { display: flex; flex-direction: column; gap: 18px; padding-top: 4px; }
 .sr-tag-divider {
