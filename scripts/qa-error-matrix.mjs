@@ -135,10 +135,12 @@ assert(await page.locator('#daily-queue-btn').isVisible(), 'queue mode button li
 assert(await page.locator('.rail-actions .btn-primary').isVisible(), 'capture actions live in rail');
 const deck = await page.evaluate(() => {
     const shell = document.querySelector('.vault-shell');
-    const cols = getComputedStyle(shell).gridTemplateColumns.split(' ').length;
     const toolbar = document.querySelector('.error-filters');
     return {
-        cols,
+        v2: shell.classList.contains('vault-v2'),
+        singleCol: getComputedStyle(shell).display === 'flex' && getComputedStyle(shell).flexDirection === 'column',
+        topbar: !!document.querySelector('.vault-topbar'),
+        singleRow: !!document.querySelector('.emf-row-single'),
         sticky: getComputedStyle(toolbar).position === 'sticky',
         stripBoxGone: !document.getElementById('erm-today-total'),
         railToday: document.getElementById('rail-today-total')?.textContent,
@@ -146,7 +148,10 @@ const deck = await page.evaluate(() => {
         railChemZero: document.getElementById('rail-today-chemistry')?.classList.contains('is-zero'),
     };
 });
-assert(deck.cols === 2, 'desktop deck is rail + stage (' + deck.cols + ' cols)');
+assert(deck.v2, 'vault V2 topbar layout active');
+assert(deck.singleCol, 'desktop deck is single-column topbar + stage');
+assert(deck.topbar, 'topbar present (rail became header)');
+assert(deck.singleRow, 'filter toolbar is a single row');
 assert(deck.sticky, 'filter toolbar is sticky');
 assert(deck.stripBoxGone, 'top bugs-squashed-today box removed from stage strip');
 assert(deck.railToday === '1', 'rail shows total squashed today = 1 (got ' + deck.railToday + ')');
@@ -192,7 +197,7 @@ assert(railColor.includes('248') || railColor.includes('239') || railColor.inclu
 await page.click('.matrix-pill[data-emf-value="ready"]');
 await page.waitForTimeout(250);
 assert(await page.locator('#error-list-container .error-block:not(.hidden)').count() === 2, 'Due-now pill filters to 2 cards');
-assert(await page.evaluate(() => document.querySelector('.error-filters').getAttribute('data-active')) === '🟢 Due now', 'docked echo carries active filter label');
+assert(await page.evaluate(() => document.querySelector('.error-filters').getAttribute('data-active')) === '🟢 Due', 'docked echo carries active filter label');
 assert(await page.locator('#error-list-container .em-group-head:not([hidden])').count() === 1, 'only the Due Now section remains visible');
 assert((await page.locator('#error-list-container .em-group-head[data-group-status="mastered"] .emg-count').textContent()) === '0', 'hidden sections count to 0');
 assert(await meta.locator('.matrix-meta-clear').isVisible(), 'Clear-filters escape appears');
@@ -223,7 +228,8 @@ await page.click('#matrix-search-clear');
 await page.waitForTimeout(250);
 
 // ── 5 · "/" hotkey focuses search ─────────────────────────────────────────
-// -- 4b - Scroll dock: toolbar collapses to search-only ----------------------
+// -- 4b - Scroll dock: V2 toolbar is already one slim row, so docking only
+// tightens padding (single row stays visible) ------------------------------
 await page.evaluate(() => { const m = document.querySelector('.main-content'); if (m) m.scrollTop = 0; });
 await page.waitForTimeout(300);
 assert(await page.evaluate(() => !document.querySelector('.error-filters').classList.contains('emf-docked')), 'toolbar undocked at board top');
@@ -231,18 +237,16 @@ await page.evaluate(() => { const m = document.querySelector('.main-content'); m
 await page.waitForTimeout(450);
 const dock = await page.evaluate(() => {
     const f = document.querySelector('.error-filters');
-    const searchRow = f.querySelector('.emf-row-search');
-    const pillRows = Array.from(f.querySelectorAll('.emf-row:not(.emf-row-search)'));
+    const singleRow = f.querySelector('.emf-row-single');
     return {
         moved: document.querySelector('.main-content').scrollTop > 0,
         cls: f.classList.contains('emf-docked'),
-        searchShown: !!(searchRow && searchRow.offsetParent),
-        pillsGone: pillRows.every(r => !r.offsetParent || getComputedStyle(r).display === 'none')
+        rowShown: !!(singleRow && singleRow.offsetParent),
     };
 });
 assert(dock.moved, 'board scrolls inside .main-content');
 assert(dock.cls, 'toolbar docks (.emf-docked) once scrolled');
-assert(dock.searchShown && dock.pillsGone, 'docked toolbar shows chapter search only');
+assert(dock.rowShown, 'docked V2 toolbar keeps its single row visible');
 await page.screenshot({ path: path.join(SHOTS, '07-docked-search.png') });
 await page.evaluate(() => { const m = document.querySelector('.main-content'); m.scrollTop = 0; });
 await page.waitForTimeout(450);

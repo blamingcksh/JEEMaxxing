@@ -191,7 +191,8 @@ export function openErrorMatrix(subject, element) {
         if (btn) btn.classList.remove('active');
         const badge = document.getElementById('daily-queue-badge');
         if (badge) badge.style.display = 'none';
-        document.querySelectorAll('.subject-folder').forEach(f => f.style.opacity = '1');
+        const shell = document.querySelector('.vault-shell');
+        if (shell) shell.classList.remove('queue-active');
         const allPill = document.querySelector('.emf-pill-group[data-emf-filter="status"] .matrix-pill[data-emf-value="all"]');
         if (allPill) allPill.classList.add('active');
         const statusCarrier = document.getElementById('filter-status');
@@ -1742,11 +1743,11 @@ function _showDailyQueue() {
     const btn = document.getElementById('daily-queue-btn');
     const title = document.getElementById('error-matrix-title');
     const badge = document.getElementById('daily-queue-badge');
-    const folders = document.querySelectorAll('.subject-folder');
     if (btn) btn.classList.add('active');
     if (title) title.textContent = '⚡ Daily Core Queue';
     if (badge) badge.style.display = 'inline';
-    folders.forEach(f => f.style.opacity = '0.35');
+    const shell = document.querySelector('.vault-shell');
+    if (shell) shell.classList.add('queue-active');
     document.querySelectorAll('.emf-pill-group[data-emf-filter="status"] .matrix-pill').forEach(p => p.classList.remove('active'));
     _renderDailyQueueCards();
 }
@@ -1755,10 +1756,10 @@ function _hideDailyQueue() {
     const btn = document.getElementById('daily-queue-btn');
     const title = document.getElementById('error-matrix-title');
     const badge = document.getElementById('daily-queue-badge');
-    const folders = document.querySelectorAll('.subject-folder');
     if (btn) btn.classList.remove('active');
     if (badge) badge.style.display = 'none';
-    folders.forEach(f => f.style.opacity = '1');
+    const shell = document.querySelector('.vault-shell');
+    if (shell) shell.classList.remove('queue-active');
     const allPill = document.querySelector('.emf-pill-group[data-emf-filter="status"] .matrix-pill[data-emf-value="all"]');
     if (allPill) allPill.classList.add('active');
     const statusCarrier = document.getElementById('filter-status');
@@ -3105,11 +3106,9 @@ export function refreshErrorDashboardIfStale() {
 }
 
 // -- Filter dock ----------------------------------------------------------------
-// While reading a long board, the sticky toolbar used to follow with ALL rows
-// (search + status + mistake type), eating vertical screen space. A zero-height
-// sentinel directly above the toolbar watches the scroll: once it leaves the
-// viewport top, the toolbar docks to search-only (.emf-docked); scrolling back
-// up undocks and restores the full filter stack.
+// V2: the toolbar is already a single slim row, so docking only tightens
+// padding (.emf-docked) instead of collapsing to search-only. The sentinel
+// + observer contract is unchanged (QA asserts the class toggles).
 let _filterDockReady = false;
 function _initFilterDock() {
     if (_filterDockReady) return;   // one observer for the page's lifetime

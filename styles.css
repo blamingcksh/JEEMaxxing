@@ -2097,6 +2097,207 @@ body {
     .emg-blurb { display: none; }
 }
 
+/* ════════════════════════════════════════════════════════════════
+   VAULT V2 — refined & airy overhaul (overrides the chunky V1 above).
+   Single-column topbar + slim toolbar + light cards. All JS/QA ids
+   and classes are unchanged — this is pure presentation.
+   ════════════════════════════════════════════════════════════════ */
+.vault-shell.vault-v2 { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+
+/* ── Topbar (replaces the heavy 238px rail panel) ── */
+.vault-shell.vault-v2 .vault-rail.vault-topbar {
+    position: static;
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 0; background: none; border: none; border-radius: 0; box-shadow: none;
+}
+.vault-shell.vault-v2 .rail-label, .vault-shell.vault-v2 .rail-block { display: none; }
+.vault-shell.vault-v2 .vt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vault-shell.vault-v2 .vt-row-main { justify-content: space-between; }
+.vault-shell.vault-v2 .vt-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.vault-shell.vault-v2 .vt-title .kicker { font-size: 10px; letter-spacing: 2px; opacity: 0.7; }
+.vault-shell.vault-v2 .vt-title .box-title { font-size: 20px; letter-spacing: 0.2px; margin: 0; }
+.vault-shell.vault-v2 .stage-head { display: none; }
+
+/* today chip — one quiet inline pill, not a panel */
+.vault-shell.vault-v2 .rail-today.vt-today {
+    flex-direction: row; align-items: center; gap: 8px;
+    padding: 6px 12px 6px 14px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--line);
+}
+.vault-shell.vault-v2 .rail-today-num { font-size: 19px; }
+.vault-shell.vault-v2 .rail-today-cap { font-size: 9px; letter-spacing: 1.4px; }
+.vault-shell.vault-v2 .rail-today-headline { display: contents; }
+.vault-shell.vault-v2 .vt-today-sep { width: 1px; align-self: stretch; background: var(--line-strong); }
+.vault-shell.vault-v2 .rail-today-split { gap: 4px; }
+.vault-shell.vault-v2 .rail-today-subj { padding: 3px 8px 3px 6px; background: transparent; border-color: transparent; }
+.vault-shell.vault-v2 .rail-today-subj b { font-size: 11px; }
+
+/* actions cluster — compact, one line */
+.vault-shell.vault-v2 .rail-actions.vt-actions { flex-direction: row; align-items: center; gap: 8px; margin: 0; }
+.vault-shell.vault-v2 .vt-actions .daily-queue-master-btn { padding: 7px 12px; font-size: 11px; border-radius: 999px; }
+.vault-shell.vault-v2 .vt-actions .rail-btn { width: auto; padding: 7px 13px; font-size: 11.5px; border-radius: 999px; }
+.vault-shell.vault-v2 .vt-row-sub { justify-content: space-between; }
+.vault-shell.vault-v2 .daily-queue-badge { font-size: 9.5px; padding: 3px 10px; }
+
+/* subject tabs — light segmented row, not big folder cards */
+.vault-shell.vault-v2 .vault-subjects {
+    flex-direction: row; gap: 6px; flex: 1; flex-wrap: nowrap;
+    overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;
+}
+.vault-shell.vault-v2 .vault-subjects::-webkit-scrollbar { display: none; }
+.vault-shell.vault-v2 .subject-folder {
+    flex: 0 0 auto; gap: 7px; padding: 6px 12px 6px 7px; border-radius: 999px;
+    font-size: 12px; font-weight: 600;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--line);
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.vault-shell.vault-v2 .subject-folder::before { display: none; }
+.vault-shell.vault-v2 .subject-folder:hover { transform: none; background: rgba(255, 255, 255, 0.055); }
+.vault-shell.vault-v2 .subject-folder.active { background: rgba(255, 255, 255, 0.06); border-color: var(--folder-accent); color: #fff; }
+.vault-shell.vault-v2 .folder-icon { width: 24px; height: 24px; font-size: 13px; border-radius: 999px; border: none; background: rgba(255, 255, 255, 0.05); }
+.vault-shell.vault-v2 .subject-folder:hover .folder-icon { transform: none; }
+.vault-shell.vault-v2 .folder-count { font-size: 10.5px; padding: 3px 8px; }
+.vault-shell.vault-v2 .subject-folder.active .folder-count { background: rgba(255, 255, 255, 0.08); }
+
+/* ── Slim single-row toolbar ── */
+.vault-shell.vault-v2 .error-matrix-container { gap: 12px; }
+.vault-shell.vault-v2 #emf-scroll-sentinel { margin-top: -12px; }
+.vault-shell.vault-v2 .error-filters {
+    gap: 0; padding: 10px 12px; border-radius: 14px;
+    background: rgba(11, 14, 20, 0.9);
+    box-shadow: 0 10px 24px -20px rgba(0, 0, 0, 0.9);
+}
+.vault-shell.vault-v2 .error-filters.emf-docked { padding: 8px 10px; border-radius: 12px; gap: 0; }
+.vault-shell.vault-v2 .error-filters.emf-docked .emf-row:not(.emf-row-search) { display: none; }
+/* V2 keeps ONE row visible even when docked — undo the V1 collapse
+   (specificity must beat the `:not()` hide rule above). */
+.vault-shell.vault-v2 .error-filters.emf-docked .emf-row.emf-row-single { display: flex; }
+.vault-shell.vault-v2 .error-filters.emf-docked .emf-search-wrap::after { display: none; }
+.vault-shell.vault-v2 .emf-row-single { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.vault-shell.vault-v2 .emf-row-label { display: none; }
+.vault-shell.vault-v2 .emf-search-wrap { flex: 1 1 200px; min-width: 170px; }
+.vault-shell.vault-v2 .matrix-search { padding: 9px 36px 9px 36px; font-size: 12.5px; border-radius: 10px; }
+.vault-shell.vault-v2 .emf-search-icon { left: 12px; font-size: 13px; }
+.vault-shell.vault-v2 .emf-sep { width: 1px; align-self: stretch; min-height: 22px; background: var(--line-strong); }
+.vault-shell.vault-v2 .emf-pill-group { gap: 5px; }
+.vault-shell.vault-v2 .emf-pill-group .matrix-pill::before { display: none; }
+/* quiet pills — no neon glow */
+.vault-shell.vault-v2 .matrix-pill {
+    padding: 6px 11px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.2px; gap: 5px;
+    background: transparent; box-shadow: none;
+}
+.vault-shell.vault-v2 .matrix-pill:hover { transform: none; box-shadow: none; border-color: var(--line-strong); background: rgba(255, 255, 255, 0.05); }
+.vault-shell.vault-v2 .matrix-pill:active { transform: scale(0.97); }
+.vault-shell.vault-v2 .matrix-pill.active { box-shadow: none; }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="all"]         { color: #fff;    background: rgba(61, 220, 255, 0.10); border-color: rgba(61, 220, 255, 0.45); }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="ready"]       { color: #4ade80; background: rgba(34, 197, 94, 0.10);  border-color: rgba(34, 197, 94, 0.45); }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="due_soon"]    { color: #fbbf24; background: rgba(234, 179, 8, 0.10);  border-color: rgba(234, 179, 8, 0.45); }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="scheduled"]   { color: #93c5fd; background: rgba(59, 130, 246, 0.10); border-color: rgba(59, 130, 246, 0.45); }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="mastered"]    { color: #c4b5fd; background: rgba(139, 92, 246, 0.12); border-color: rgba(139, 92, 246, 0.5); }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="calculation"] { color: #fde047; background: rgba(234, 179, 8, 0.10);  border-color: rgba(234, 179, 8, 0.45); }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="conceptual"]  { color: #fca5a5; background: rgba(248, 113, 113, 0.10); border-color: rgba(248, 113, 113, 0.45); }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="misread"]     { color: #67e8f9; background: rgba(34, 211, 238, 0.10); border-color: rgba(34, 211, 238, 0.45); }
+/* meta lives inline at the end of the bar */
+.vault-shell.vault-v2 .matrix-meta.emf-meta { margin: 0; padding: 0; min-height: 0; margin-left: auto; font-size: 10.5px; animation: none; }
+.vault-shell.vault-v2 .matrix-meta-clear { padding: 3px 10px; font-size: 9px; }
+
+/* ── Light airy cards: ONE accent (status), no wash, ghost stats ── */
+.vault-shell.vault-v2 .error-list { gap: 10px; }
+.vault-shell.vault-v2 .em-group-head { margin: 14px 0 2px; gap: 9px; padding: 0 2px; }
+.vault-shell.vault-v2 .em-group-head:first-child { margin-top: 2px; }
+.vault-shell.vault-v2 .emg-dot { width: 7px; height: 7px; }
+.vault-shell.vault-v2 .em-group--ready .emg-dot,
+.vault-shell.vault-v2 .em-group--due_soon .emg-dot,
+.vault-shell.vault-v2 .em-group--scheduled .emg-dot,
+.vault-shell.vault-v2 .em-group--mastered .emg-dot { animation: none; box-shadow: none; }
+.vault-shell.vault-v2 .emg-label { font-size: 11px; letter-spacing: 1.3px; }
+.vault-shell.vault-v2 .emg-count { font-size: 10px; min-width: 22px; padding: 3px 7px; }
+.vault-shell.vault-v2 .emg-blurb { font-size: 10px; }
+.vault-shell.vault-v2 .error-block {
+    --rail-type: transparent;
+    grid-template-columns: 120px 1fr auto; gap: 16px;
+    padding: 13px 15px 13px 17px; border-radius: 14px;
+    background: rgba(15, 18, 26, 0.72);
+    box-shadow: none;
+    animation-name: emCardInV2;
+}
+.vault-shell.vault-v2 .error-block:nth-child(1),
+.vault-shell.vault-v2 .error-block:nth-child(2),
+.vault-shell.vault-v2 .error-block:nth-child(3),
+.vault-shell.vault-v2 .error-block:nth-child(4),
+.vault-shell.vault-v2 .error-block:nth-child(n+5) { animation-delay: 0s; }
+@keyframes emCardInV2 { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+/* status rail — the single accent */
+.vault-shell.vault-v2 .error-block::before { width: 2px; box-shadow: none; }
+.vault-shell.vault-v2 .error-block[data-sr-status="ready"]::before { background: #22c55e; }
+.vault-shell.vault-v2 .error-block[data-sr-status="due_soon"]::before { background: #eab308; }
+.vault-shell.vault-v2 .error-block[data-sr-status="scheduled"]::before { background: #60a5fa; }
+.vault-shell.vault-v2 .error-block[data-sr-status="mastered"]::before { background: #8b5cf6; }
+/* kill the corner wash */
+.vault-shell.vault-v2 .error-block::after { display: none; }
+.vault-shell.vault-v2 .error-block:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -18px rgba(0, 0, 0, 0.9); border-color: var(--line-strong); }
+/* thumbnail */
+.vault-shell.vault-v2 .error-img-box { width: 120px; height: 80px; border-radius: 10px; }
+.vault-shell.vault-v2 .error-img-box .sr-due-badge { top: 5px; left: 5px; font-size: 8.5px; padding: 2px 8px; letter-spacing: 0.5px; }
+/* details */
+.vault-shell.vault-v2 .error-details { gap: 7px; }
+.vault-shell.vault-v2 .error-chapter { font-size: 15px; }
+.vault-shell.vault-v2 .error-tag-row { gap: 6px; }
+.vault-shell.vault-v2 .error-tag { font-size: 9px; padding: 2px 9px; letter-spacing: 0.6px; }
+.vault-shell.vault-v2 .sr-due-badge { font-size: 9px; padding: 2px 9px; letter-spacing: 0.5px; }
+.vault-shell.vault-v2 .sr-due--ready::before { width: 5px; height: 5px; animation: none; }
+/* ghost stats — text pairs, not boxes */
+.vault-shell.vault-v2 .sr-stats-row { gap: 12px; }
+.vault-shell.vault-v2 .sr-stat { padding: 0; background: none; border: none; gap: 4px; }
+.vault-shell.vault-v2 .sr-stat:first-child { padding: 0; border: none; }
+.vault-shell.vault-v2 .sr-stat b { font-size: 12px; }
+.vault-shell.vault-v2 .sr-stat i { font-size: 8px; letter-spacing: 1px; }
+/* dots */
+.vault-shell.vault-v2 .sr-dots-label { font-size: 8px; }
+.vault-shell.vault-v2 .sr-attempt-dot { width: 9px; height: 9px; border-radius: 3px; }
+.vault-shell.vault-v2 .sr-attempt-dot:hover { transform: scale(1.2); }
+/* actions — compact CTA, icon-quiet secondary row */
+.vault-shell.vault-v2 .sr-card-actions { gap: 6px; }
+.vault-shell.vault-v2 .sr-practice-btn { padding: 8px 9px 8px 15px; font-size: 11px; gap: 7px; box-shadow: 0 3px 12px -6px rgba(255, 122, 26, 0.6); }
+.vault-shell.vault-v2 .sr-practice-btn:hover { box-shadow: 0 5px 16px -6px rgba(255, 122, 26, 0.65); }
+.vault-shell.vault-v2 .sr-btn-arrow { width: 19px; height: 19px; font-size: 11px; }
+.vault-shell.vault-v2 .sr-history-toggle { font-size: 10px; padding: 3px 6px; }
+.vault-shell.vault-v2 .delete-btn { width: 26px; height: 26px; font-size: 12px; }
+/* history + queue + empty states */
+.vault-shell.vault-v2 .sr-expanded-history { padding: 10px 2px 0; max-height: 240px; }
+.vault-shell.vault-v2 .daily-queue-subject-divider { padding: 10px 2px 8px; margin: 6px 0 0; font-size: 12px; }
+.vault-shell.vault-v2 .dqs-track { height: 4px; }
+.vault-shell.vault-v2 .em-empty { padding: 40px 20px; border-radius: 14px; gap: 8px; }
+.vault-shell.vault-v2 .em-empty-icon { font-size: 32px; }
+.vault-shell.vault-v2 .em-empty-title { font-size: 15px; }
+/* queue mode — tabs recede, active queue button leads */
+.vault-shell.vault-v2.queue-active .vault-subjects { opacity: 0.45; }
+.vault-shell.vault-v2.queue-active .vault-subjects .subject-folder.active { opacity: 1; }
+
+/* ── V2 responsive ── */
+@media (max-width: 1100px) {
+    .vault-shell.vault-v2 .vault-rail.vault-topbar { position: static; }
+    .vault-shell.vault-v2 .vt-row-main { align-items: flex-start; }
+    .vault-shell.vault-v2 .rail-today.vt-today { order: 3; flex: 1 1 100%; justify-content: flex-start; }
+}
+@media (max-width: 900px) {
+    .vault-shell.vault-v2 .error-block { grid-template-columns: 96px 1fr; gap: 12px; }
+    .vault-shell.vault-v2 .error-img-box { width: 96px; height: 70px; }
+    .vault-shell.vault-v2 .sr-card-actions { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: space-between; }
+    .vault-shell.vault-v2 .emf-sep { display: none; }
+    .vault-shell.vault-v2 .matrix-meta.emf-meta { margin-left: 0; flex: 1 1 100%; justify-content: flex-start; }
+}
+@media (max-width: 560px) {
+    .vault-shell.vault-v2 .error-block { grid-template-columns: 1fr; padding: 12px 12px 12px 15px; }
+    .vault-shell.vault-v2 .error-img-box { width: 100%; height: 110px; }
+    .vault-shell.vault-v2 .vt-actions { width: 100%; }
+    .vault-shell.vault-v2 .vt-actions .rail-btn,
+    .vault-shell.vault-v2 .vt-actions .daily-queue-master-btn { flex: 1; text-align: center; }
+    .vault-shell.vault-v2 .emg-blurb { display: none; }
+}
+
 /* ── Respect reduced-motion preferences ── */
 @media (prefers-reduced-motion: reduce) {
     .error-block,
@@ -11423,4 +11624,28 @@ details.rp-advanced summary { cursor:pointer; color:var(--text-muted); font-size
 .mr-autopsy { margin-top:14px; text-align:left; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:12px 14px; }
 details.mr-autopsy summary { cursor:pointer; font-size:12px; font-weight:700; letter-spacing:.3px; user-select:none; }
 details.mr-autopsy[open] summary { margin-bottom:8px; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   VAULT V2 — final cascade. Beats the DESIGN SYSTEM v4 `!important`
+   layer above (§3 components, §8 deep-polish) without touching it.
+   ════════════════════════════════════════════════════════════════ */
+.vault-shell.vault-v2 .error-block { border-radius: 14px !important; padding: 13px 15px 13px 17px !important; gap: 16px !important; }
+.vault-shell.vault-v2 .error-block:hover { box-shadow: 0 10px 22px -18px rgba(0, 0, 0, 0.9) !important; }
+.vault-shell.vault-v2 .subject-folder { border-radius: 999px !important; }
+.vault-shell.vault-v2 .subject-folder:hover { background: rgba(255, 255, 255, 0.055) !important; }
+.vault-shell.vault-v2 .subject-folder.active { background: rgba(255, 255, 255, 0.06) !important; border-color: var(--folder-accent) !important; color: #fff !important; }
+.vault-shell.vault-v2 .matrix-pill { padding: 6px 11px !important; font-size: 11.5px !important; background: transparent !important; box-shadow: none !important; }
+.vault-shell.vault-v2 .matrix-pill:hover { background: rgba(255, 255, 255, 0.05) !important; color: #fff !important; box-shadow: none !important; border-color: var(--line-strong) !important; }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="all"]         { color: #fff !important;    background: rgba(61, 220, 255, 0.10) !important; border-color: rgba(61, 220, 255, 0.45) !important; box-shadow: none !important; }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="ready"]       { color: #4ade80 !important; background: rgba(34, 197, 94, 0.10) !important;  border-color: rgba(34, 197, 94, 0.45) !important; box-shadow: none !important; }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="due_soon"]    { color: #fbbf24 !important; background: rgba(234, 179, 8, 0.10) !important;  border-color: rgba(234, 179, 8, 0.45) !important; box-shadow: none !important; }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="scheduled"]   { color: #93c5fd !important; background: rgba(59, 130, 246, 0.10) !important; border-color: rgba(59, 130, 246, 0.45) !important; box-shadow: none !important; }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="mastered"]    { color: #c4b5fd !important; background: rgba(139, 92, 246, 0.12) !important; border-color: rgba(139, 92, 246, 0.5) !important; box-shadow: none !important; }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="calculation"] { color: #fde047 !important; background: rgba(234, 179, 8, 0.10) !important;  border-color: rgba(234, 179, 8, 0.45) !important; box-shadow: none !important; }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="conceptual"]  { color: #fca5a5 !important; background: rgba(248, 113, 113, 0.10) !important; border-color: rgba(248, 113, 113, 0.45) !important; box-shadow: none !important; }
+.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="misread"]     { color: #67e8f9 !important; background: rgba(34, 211, 238, 0.10) !important; border-color: rgba(34, 211, 238, 0.45) !important; box-shadow: none !important; }
+.vault-shell.vault-v2 .matrix-search { border-radius: 10px !important; padding: 9px 36px 9px 36px !important; }
+.vault-shell.vault-v2 .vt-actions .daily-queue-master-btn { border-radius: 999px !important; }
+/* thumbnail badge must never overflow the slim 120px thumb */
+.vault-shell.vault-v2 .error-img-box .sr-due-badge { font-size: 8px !important; padding: 2px 6px !important; max-width: calc(100% - 10px); overflow: hidden; text-overflow: ellipsis; }
 .mr-autopsy .rp-h { margin-bottom:8px; }
