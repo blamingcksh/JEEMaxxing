@@ -223,3 +223,148 @@ body.dc-active .metro-pop {
         transition: opacity 0.15s ease;
     }
 }
+
+/* ── 9. Home-Screen standalone top clearance (iPadOS 26/27, black-translucent)
+   ─────────────────────────────────────────────────────────────────────────
+   viewport-fit=cover + black-translucent draws web content UNDER the system
+   status bar / Liquid Glass blur. --sat is the single top-inset token:
+     · 0px everywhere (browser tabs, desktop) → pixel-identical;
+     · 47px when launched from Home Screen (JS .jmax-standalone class);
+     · max(env(), 47px) where the engine reports a real inset, so a future
+       WebKit fix (cf. iOS 26.1 bug #301994, env()→0) is picked up
+       automatically. All rules below are no-ops unless --sat > 0. */
+
+/* Default: no inset (browser tabs / desktop). */
+:root {
+    --sat: 0px;
+}
+
+/* JS fallback: index.html adds .jmax-standalone when
+   navigator.standalone === true or display-mode: standalone matches
+   (covers iOS versions where the media query is unsupported). */
+html.jmax-standalone {
+    --sat: 47px;
+}
+
+/* Where env() works, prefer the real OS inset but never go below 47px. */
+@supports (padding: max(0px, env(safe-area-inset-top))) {
+    html.jmax-standalone {
+        --sat: max(env(safe-area-inset-top), 47px);
+    }
+    @media (display-mode: standalone) {
+        :root {
+            --sat: max(env(safe-area-inset-top), 47px);
+        }
+    }
+}
+
+/* 9a. Glass top bar: grow the bar by --sat and push its content below the
+   OS blur. Background still extends behind the status bar (translucent
+   look); only the interactive row moves down. Replaces the dead
+   min-width:1181px rule above, which assumed a vertical rail. */
+#sidebar, .sidebar {
+    padding-top: var(--sat) !important;
+    height: calc(var(--topbar-h, 72px) + var(--sat)) !important;
+}
+#sidebar.collapsed, .sidebar.collapsed {
+    height: calc(var(--topbar-h-collapsed, 54px) + var(--sat)) !important;
+}
+
+/* 9b. Scroller breathing room: first dashboard row + anchor jumps clear
+   the glass even if the bar ever becomes an overlay. */
+.main-content {
+    scroll-padding-top: calc(var(--sat) + 12px);
+}
+
+/* 9c. Sticky rails that dock at raw top:12px / top:0 inherit the inset so
+   they never stick underneath the OS blur on landscape iPad (>1100px). */
+.vault-rail {
+    top: calc(12px + var(--sat));
+}
+.error-filters {
+    top: calc(12px + var(--sat));
+}
+.cpcc-header {
+    top: var(--sat);
+}
+.mr-res-head {
+    top: var(--sat);
+}
+
+/* 9d. Legacy top-docked mini-widget positions (currently shadowed by the
+   bottom-docked v2, kept as insurance if v2 is ever removed). */
+.pomo-mini-widget {
+    top: calc(20px + var(--sat));
+}
+#sidebar .pomo-mini-widget, .sidebar .pomo-mini-widget {
+    top: calc(var(--topbar-h, 72px) + 14px + var(--sat)) !important;
+}
+
+/* 9e. Fullscreen fixed layers: keep their backdrop at inset:0 (covers the
+   status area) but push their headers/controls below the blur. Every term
+   is 0px outside standalone, so browser-tab layout is untouched. */
+.cp-prenotify-banner {
+    padding-top: calc(12px + var(--sat));
+}
+.checkpoint-lockdown {
+    padding-top: var(--sat);
+}
+.cp-lockdown-header {
+    padding-top: calc(15px + var(--sat));
+}
+.mock-runner {
+    padding-top: var(--sat);
+}
+.mr-shell {
+    height: calc(100vh - var(--sat));
+    height: calc(100dvh - var(--sat));
+}
+.mr-topbar {
+    padding-top: calc(10px + var(--sat));
+}
+.sr-practice-overlay {
+    padding-top: calc(24px + var(--sat));
+}
+.forest-lab-actions {
+    top: calc(14px + var(--sat));
+}
+.modal-overlay {
+    padding-top: var(--sat);
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 9f. Blurry readable status bar (Maps-style): a pointer-transparent strip
+   exactly --sat tall that blurs the app behind the system clock/battery.
+   Standalone only; zero-height (invisible) everywhere else. The fade mask
+   removes the hard bottom edge of the blur. */
+@media (display-mode: standalone) {
+    body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--sat);
+        z-index: 2000;
+        pointer-events: none;
+        backdrop-filter: blur(14px) saturate(1.4);
+        -webkit-backdrop-filter: blur(14px) saturate(1.4);
+        mask: linear-gradient(to bottom, black 50%, rgba(0, 0, 0, 0.7) 75%, rgba(0, 0, 0, 0) 100%);
+        -webkit-mask: linear-gradient(to bottom, black 50%, rgba(0, 0, 0, 0.7) 75%, rgba(0, 0, 0, 0) 100%);
+    }
+}
+/* Older iPadOS without display-mode support: same strip via JS class. */
+html.jmax-standalone body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--sat);
+    z-index: 2000;
+    pointer-events: none;
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    mask: linear-gradient(to bottom, black 50%, rgba(0, 0, 0, 0.7) 75%, rgba(0, 0, 0, 0) 100%);
+    -webkit-mask: linear-gradient(to bottom, black 50%, rgba(0, 0, 0, 0.7) 75%, rgba(0, 0, 0, 0) 100%);
+}

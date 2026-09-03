@@ -90,7 +90,13 @@
 // v33 — Soundscape v4: grain-loop expansion (no splice jumps), graph-vs-graph
 // preset crossfade, headroom trims, ±8dB shelves, slider fill feedback;
 // regenerated v3 ambient WAVs (equal-power seams, AGC, matched loudness).
-const VERSION = 'jeemax-v51';
+// v52 — iPadOS standalone top clearance: styles-ipad.css gains the --sat
+//        inset token (Home-Screen status-bar/Liquid-Glass blur), the glass
+//        top bar + sticky rails + fullscreen headers inherit it, and a
+//        standalone-only blurred status strip keeps the clock readable.
+//        index.html load order fixed (ipad layer last) + pre-paint
+//        .jmax-standalone flag. Cache bump pushes it to installed bookmarks.
+const VERSION = 'jeemax-v52';
 const SHELL = [
   './',
   './index.html',

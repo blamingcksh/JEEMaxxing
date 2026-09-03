@@ -11,6 +11,11 @@ var _mds=['midnight','dusk'];
 var _rt=document.documentElement;
 _rt.setAttribute('data-theme',_ths.indexOf(_t)>=0?_t:'furnace');
 _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</script>
+<script>/* Standalone pre-boot: flag Home-Screen launches BEFORE first paint so
+   styles-ipad.css resolves --sat (status-bar inset) with no flash of
+   under-the-blur content. iOS Safari exposes navigator.standalone; modern
+   engines match (display-mode: standalone). Harmless elsewhere. */
+try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);try{_s=_s||(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);}catch(_){}if(_s)document.documentElement.classList.add('jmax-standalone');})();}catch(e){}</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#050508">
@@ -54,8 +59,8 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
 <link rel="stylesheet" href="styles-chapters.css">
 <link rel="stylesheet" href="directive.css">
 <!-- ── iPad / coarse-pointer hardening layer (must stay LAST — see file header) ── -->
-<link rel="stylesheet" href="styles-ipad.css">
 <link rel="stylesheet" href="styles-dashboard.css">
+<link rel="stylesheet" href="styles-ipad.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
 <body>
@@ -215,7 +220,8 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</scr
                · candlestick/app  → #dynamic-graph
                · sprout-isle.js   → takes over .dash-card-momentum (children
                  with [data-isle-keep] survive the takeover)
-             Skin lives in styles-dashboard.css (loaded last).
+              Skin lives in styles-dashboard.css (loaded just before styles-ipad.css,
+              which stays last so the iPad standalone hardening wins).
         ════════════════════════════════════════════ -->
         <section id="view-dashboard" class="view-section active">
             <div class="dash-grid">
