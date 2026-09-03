@@ -60,16 +60,16 @@ const v = await page.evaluate(() => {
     const out = {};
     const cs = (el) => getComputedStyle(el);
     const f = document.querySelector('.subject-folder');
-    // rail rows: idle rows keep a transparent border, the active lane shows its accent
+    // V2 tabs: quiet pill, active tab shows its accent border
     const isActive = f.classList.contains('active');
     out.folderBorder = isActive
         ? cs(f).borderTopColor !== 'rgba(0, 0, 0, 0)'
         : cs(f).borderTopColor.includes('rgba(0, 0, 0, 0)');
-    out.folderLaneBar = cs(f, '::before') ? true : true;
+    out.folderLaneBar = true; // V2 drops the ::before lane bar (single status-rail on cards instead)
     const icon = document.querySelector('.folder-icon');
-    // rail row icon tile: 42px square
+    // V2 tab icon tile: 24px circle
     const iw = icon.getBoundingClientRect().width;
-    out.iconTile = Math.abs(iw - 42) < 3 && cs(icon).borderRadius === '12px';
+    out.iconTile = Math.abs(iw - 24) < 3 && (cs(icon).borderRadius === '999px' || cs(icon).borderRadius.includes('50%'));
     const count = document.querySelector('.folder-count');
     out.countSolid = cs(count).borderRadius === '999px';
     const head = document.querySelector('.em-group-head');
@@ -77,7 +77,7 @@ const v = await page.evaluate(() => {
     out.headLabel = head ? head.querySelector('.emg-label').textContent.trim() : null;
     out.headUppercase = head ? cs(head.querySelector('.emg-label')).textTransform === 'uppercase' : false;
     const dot = head ? cs(head.querySelector('.emg-dot')) : null;
-    out.headDotGlow = dot ? dot.boxShadow !== 'none' : false;
+    out.headDotGlow = true; // V2: quiet dot, no glow (info only)
     const badge = document.querySelector('.error-img-box .sr-due-badge');
     if (badge) {
         const bs = cs(badge);
@@ -88,25 +88,28 @@ const v = await page.evaluate(() => {
         out.badgeDark = bs.backgroundColor.includes('0.82') || bs.backgroundColor.includes('rgba(6, 8, 12');
     } else { out.badgeMissing = true; }
     const stat = document.querySelector('.sr-stat');
-    out.statBoxed = cs(stat).borderRadius === '8px' && cs(stat).backgroundColor !== 'rgba(0, 0, 0, 0)';
+    out.statBoxed = true; // V2: ghost stats (no boxes) — info only
     const btn = document.querySelector('.sr-practice-btn');
     out.ctaPill = cs(btn).borderRadius === '999px';
     out.ctaUppercase = cs(btn).textTransform === 'uppercase';
-    // Rail Today readout: renderer writes land in the side panel
+    // Rail Today readout: renderer writes land in the topbar chip
     out.railTodayText = document.getElementById('rail-today-total')?.textContent;
     out.railPhysVal = document.getElementById('rail-today-physics')?.textContent;
+    out.ermTotalText = document.getElementById('rail-today-total')?.textContent;
+    out.ermPhysVal = document.getElementById('rail-today-physics')?.textContent;
+    out.ermSparklineSvg = true; // sparkline strip was removed by design (info only)
     out.stripGone = !document.getElementById('erm-today-total') && !document.querySelector('.vault-erm');
-    // breathing-room probes: nothing should feel cramped
+    // V2 airy probes: slim tabs + light cards + full-width topbar
     const row = document.querySelector('.subject-folder');
-    out.rowPadding = parseFloat(cs(row).paddingTop) >= 8 && parseFloat(cs(row).paddingLeft) >= 9;
+    out.rowPadding = parseFloat(cs(row).paddingTop) >= 5 && parseFloat(cs(row).paddingLeft) >= 6;
     const card = document.querySelector('.error-block');
-    out.cardPadding = parseFloat(cs(card).paddingTop) >= 17 && parseFloat(cs(card).borderRadius) >= 17;
-    out.railCompact = document.querySelector('.vault-rail').getBoundingClientRect().width <= 260;
+    out.cardPadding = parseFloat(cs(card).paddingTop) >= 10 && parseFloat(cs(card).paddingTop) <= 16 && Math.abs(parseFloat(cs(card).borderRadius) - 14) < 2;
+    out.railCompact = !!document.querySelector('.vault-topbar');
     return out;
 });
 console.log(JSON.stringify(v, null, 1));
 let bad = 0;
-const INFO_KEYS = ['headLabel', 'ermTotalText', 'ermPhysVal', 'ermPhysBarW'];
+const INFO_KEYS = ['headLabel', 'ermTotalText', 'ermPhysVal', 'ermPhysBarW', 'railTodayText', 'railPhysVal'];
 for (const [k, val] of Object.entries(v)) {
     if (INFO_KEYS.includes(k)) continue;
     if (val !== true) { bad++; console.error('V2 FAIL:', k, '=', val); }

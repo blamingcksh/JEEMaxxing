@@ -506,114 +506,98 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
              VIEW · THE VAULT (ERROR MATRIX)
         ════════════════════════════════════════════ -->
         <section id="view-errors" class="view-section">
-            <!-- ══ COMMAND DECK ══ rail = mode + subjects + capture · stage = stats strip + sticky toolbar + board.
-                 Every erm-* id is a live contract with matrix.js renderErrorResolutionDashboard() — do not rename. -->
-            <div class="vault-shell">
+            <!-- ══ VAULT V2 ══ topbar = title + today + subjects + capture · stage = slim toolbar + board.
+                 Every erm-* id is a live contract with matrix.js renderErrorResolutionDashboard() — do not rename.
+                 .vault-rail class is kept on the topbar for legacy selectors/QA. -->
+            <div class="vault-shell vault-v2">
 
-                <!-- ── RAIL ── -->
-                <aside class="vault-rail">
-                    <div class="rail-block rail-mode">
-                        <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()">⚡ Daily Fix Queue</button>
-                        <span class="daily-queue-badge" id="daily-queue-badge" style="display:none">20 problems · 5P + 5M + 10C</span>
-                        <!-- Daily Bounty: shown only while an assigned bounty is live
-                             (refreshBountyRail toggles it); opens the boss-fight modal. -->
-                        <button class="daily-queue-master-btn" id="bounty-rail-btn" onclick="openDailyBounty()" style="display:none">⚔️ Daily Bounty</button>
-                    </div>
-
-                    <div class="rail-label">Today</div>
-                    <!-- Squashed-today readout: headline total + per-subject split.
-                         Ids are a live contract with renderErrorResolutionDashboard(). -->
-                    <div class="rail-today" role="status" aria-label="Bugs squashed today">
-                        <div class="rail-today-headline">
+                <!-- ── TOPBAR (was RAIL) ── -->
+                <header class="vault-topbar vault-rail">
+                    <div class="vt-row vt-row-main">
+                        <div class="vt-title">
+                            <span class="kicker">// SPACED REPETITION</span>
+                            <h2 class="box-title" id="error-matrix-title">Physics Matrix</h2>
+                        </div>
+                        <!-- Squashed-today readout: inline chip (was a big panel).
+                             Ids are a live contract with renderErrorResolutionDashboard(). -->
+                        <div class="rail-today vt-today" role="status" aria-label="Bugs squashed today">
                             <span class="rail-today-num" id="rail-today-total">0</span>
-                            <span class="rail-today-cap">bugs<br>squashed</span>
+                            <span class="rail-today-cap">squashed</span>
+                            <span class="vt-today-sep" aria-hidden="true"></span>
+                            <span class="rail-today-split">
+                                <span class="rail-today-subj" data-subject="physics" title="Physics squashed today"><i>⚛️</i><b id="rail-today-physics">0</b></span>
+                                <span class="rail-today-subj" data-subject="chemistry" title="Chemistry squashed today"><i>🧪</i><b id="rail-today-chemistry">0</b></span>
+                                <span class="rail-today-subj" data-subject="maths" title="Maths squashed today"><i>📐</i><b id="rail-today-maths">0</b></span>
+                            </span>
                         </div>
-                        <div class="rail-today-split">
-                            <span class="rail-today-subj" data-subject="physics" title="Physics squashed today"><i>⚛️</i><b id="rail-today-physics">0</b></span>
-                            <span class="rail-today-subj" data-subject="chemistry" title="Chemistry squashed today"><i>🧪</i><b id="rail-today-chemistry">0</b></span>
-                            <span class="rail-today-subj" data-subject="maths" title="Maths squashed today"><i>📐</i><b id="rail-today-maths">0</b></span>
+                        <div class="rail-actions vt-actions">
+                            <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()">⚡ Fix Queue</button>
+                            <button class="daily-queue-master-btn" id="bounty-rail-btn" onclick="openDailyBounty()" style="display:none">⚔️ Bounty</button>
+                            <button class="btn btn-primary rail-btn" onclick="openModal('add-error-modal')">+ Log</button>
+                            <button class="btn btn-dump rail-btn" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')">🧠 Dump</button>
                         </div>
                     </div>
 
-                    <div class="rail-label">Subjects</div>
-                    <nav class="vault-subjects" aria-label="Error subjects">
-                        <div class="subject-folder active" data-subject="physics" onclick="openErrorMatrix('physics', this)">
-                            <span class="folder-icon">🌌</span>
-                            <span class="folder-name">Physics</span>
-                            <span class="folder-count" id="folder-count-physics" title="Mistakes tracked in this subject">0</span>
-                        </div>
-                        <div class="subject-folder" data-subject="chemistry" onclick="openErrorMatrix('chemistry', this)">
-                            <span class="folder-icon">🧪</span>
-                            <span class="folder-name">Chemistry</span>
-                            <span class="folder-count" id="folder-count-chemistry" title="Mistakes tracked in this subject">0</span>
-                        </div>
-                        <div class="subject-folder" data-subject="maths" onclick="openErrorMatrix('maths', this)">
-                            <span class="folder-icon">📐</span>
-                            <span class="folder-name">Maths</span>
-                            <span class="folder-count" id="folder-count-maths" title="Mistakes tracked in this subject">0</span>
-                        </div>
-                    </nav>
-
-                    <div class="rail-label">Capture</div>
-                    <div class="rail-actions">
-                        <button class="btn btn-primary rail-btn" onclick="openModal('add-error-modal')">+ Log Mistake</button>
-                        <button class="btn btn-dump rail-btn" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')">🧠 AI Dump</button>
+                    <div class="vt-row vt-row-sub">
+                        <nav class="vault-subjects" aria-label="Error subjects">
+                            <div class="subject-folder active" data-subject="physics" onclick="openErrorMatrix('physics', this)">
+                                <span class="folder-icon">🌌</span>
+                                <span class="folder-name">Physics</span>
+                                <span class="folder-count" id="folder-count-physics" title="Mistakes tracked in this subject">0</span>
+                            </div>
+                            <div class="subject-folder" data-subject="chemistry" onclick="openErrorMatrix('chemistry', this)">
+                                <span class="folder-icon">🧪</span>
+                                <span class="folder-name">Chemistry</span>
+                                <span class="folder-count" id="folder-count-chemistry" title="Mistakes tracked in this subject">0</span>
+                            </div>
+                            <div class="subject-folder" data-subject="maths" onclick="openErrorMatrix('maths', this)">
+                                <span class="folder-icon">📐</span>
+                                <span class="folder-name">Maths</span>
+                                <span class="folder-count" id="folder-count-maths" title="Mistakes tracked in this subject">0</span>
+                            </div>
+                        </nav>
+                        <span class="daily-queue-badge" id="daily-queue-badge" style="display:none">20 problems · 5P + 5M + 10C</span>
                     </div>
-                </aside>
+                </header>
 
                 <!-- ── STAGE ── -->
                 <div class="vault-stage">
-                    <!-- The old stage-top stat strip (per-subject bars + 15-day
-                         sparkline) was removed — the rail's Today block is the
-                         single squashed-today readout now. -->
-
-                    <div class="stage-head">
-                        <span class="kicker">// SPACED REPETITION</span>
-                        <h2 class="box-title" id="error-matrix-title">Physics Matrix</h2>
-                    </div>
 
                     <div class="error-matrix-container active" id="error-matrix-container">
-                    <!-- Tactical filter stack — hidden carriers feed matrix.js filterErrors().
-                         #emf-scroll-sentinel drives the scroll dock (search-only collapse). -->
+                    <!-- Slim single-row toolbar — hidden carriers feed matrix.js filterErrors().
+                         #emf-scroll-sentinel drives the dock tightening. -->
                     <div id="emf-scroll-sentinel" aria-hidden="true"></div>
-                    <div class="error-filters">
+                    <div class="error-filters emf-single">
                     <input type="hidden" id="filter-status" value="all">
                     <input type="hidden" id="filter-type" value="all">
                     <input type="hidden" id="filter-tag" value="">
 
-                    <div class="emf-row emf-row-search">
+                    <div class="emf-row emf-row-single">
                         <div class="emf-search-wrap">
                             <span class="emf-search-icon">⌕</span>
-                            <input class="matrix-search" id="matrix-search-input" type="text" placeholder="Hunt by chapter or tag…   (press / )" oninput="setMatrixSearch(this.value)" autocomplete="off" aria-label="Search the error matrix by chapter or tag">
+                            <input class="matrix-search" id="matrix-search-input" type="text" placeholder="Search chapter or tag…  ( / )" oninput="setMatrixSearch(this.value)" autocomplete="off" aria-label="Search the error matrix by chapter or tag">
                             <button class="emf-search-clear" id="matrix-search-clear" type="button" onclick="clearMatrixSearch()" aria-label="Clear search" hidden>✕</button>
                         </div>
-                    </div>
-
-                    <div class="emf-row">
-                        <span class="emf-row-label">Status</span>
-                        <div class="emf-pill-group" data-emf-filter="status">
+                        <span class="emf-sep" aria-hidden="true"></span>
+                        <div class="emf-pill-group" data-emf-filter="status" role="group" aria-label="Filter by status">
                             <button class="matrix-pill active" data-emf-value="all" onclick="setMatrixFilter('status','all',this)">All</button>
-                            <button class="matrix-pill" data-emf-value="ready" onclick="setMatrixFilter('status','ready',this)">🟢 Due now</button>
-                            <button class="matrix-pill" data-emf-value="due_soon" onclick="setMatrixFilter('status','due_soon',this)">⏳ Due soon</button>
+                            <button class="matrix-pill" data-emf-value="ready" onclick="setMatrixFilter('status','ready',this)">🟢 Due</button>
+                            <button class="matrix-pill" data-emf-value="due_soon" onclick="setMatrixFilter('status','due_soon',this)">⏳ Soon</button>
                             <button class="matrix-pill" data-emf-value="scheduled" onclick="setMatrixFilter('status','scheduled',this)">🗓️ Later</button>
-                            <button class="matrix-pill" data-emf-value="mastered" onclick="setMatrixFilter('status','mastered',this)">💤 Mastered</button>
+                            <button class="matrix-pill" data-emf-value="mastered" onclick="setMatrixFilter('status','mastered',this)">💤 Done</button>
                         </div>
-                    </div>
-
-                    <div class="emf-row">
-                        <span class="emf-row-label">Mistake Type</span>
-                        <div class="emf-pill-group" data-emf-filter="type">
-                            <button class="matrix-pill active" data-emf-value="all" onclick="setMatrixFilter('type','all',this)">All Types</button>
-                            <button class="matrix-pill" data-emf-value="calculation" onclick="setMatrixFilter('type','calculation',this)">Calc Fumble</button>
-                            <button class="matrix-pill" data-emf-value="conceptual" onclick="setMatrixFilter('type','conceptual',this)">Brain Fade</button>
-                            <button class="matrix-pill" data-emf-value="misread" onclick="setMatrixFilter('type','misread',this)">Read Fail</button>
+                        <span class="emf-sep" aria-hidden="true"></span>
+                        <div class="emf-pill-group" data-emf-filter="type" role="group" aria-label="Filter by mistake type">
+                            <button class="matrix-pill active" data-emf-value="all" onclick="setMatrixFilter('type','all',this)">All types</button>
+                            <button class="matrix-pill" data-emf-value="calculation" onclick="setMatrixFilter('type','calculation',this)">Calc</button>
+                            <button class="matrix-pill" data-emf-value="conceptual" onclick="setMatrixFilter('type','conceptual',this)">Concept</button>
+                            <button class="matrix-pill" data-emf-value="misread" onclick="setMatrixFilter('type','misread',this)">Misread</button>
                         </div>
+                        <!-- Live result feedback — written by matrix.js _updateMatrixMeta() -->
+                        <div class="matrix-meta emf-meta" id="matrix-meta" role="status" aria-live="polite" hidden></div>
                     </div>
 
                 </div>
-
-                <!-- Live result feedback — written by matrix.js _updateMatrixMeta() -->
-                <div class="matrix-meta" id="matrix-meta" role="status" aria-live="polite" hidden></div>
 
                 <div class="error-list" id="error-list-container"></div>
                     </div><!-- /error-matrix-container -->
