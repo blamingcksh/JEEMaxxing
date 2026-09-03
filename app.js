@@ -149,23 +149,96 @@ window.toggleDailyQueue = toggleDailyQueue;           // Daily Fix Queue button
 window.activateDailyQueue = activateDailyQueue;       // boot-flow force-arm
 window.cacheAllDriveImages = cacheAllDriveImages;     // Cache All Images button
 
-// ── Full Backup / Restore bridges (Config → Data Vault) [AUDIT P1-1] ──────
+// ── Full Backup / Restore bridges (Config → Data Vault) [AUDIT P1-1] · v3 ─
+// Export shows a per-section breakdown from the backup manifest so you can
+// SEE every corner is inside before downloading. Restore reports the
+// post-write verification (hash-checked sections) before reloading.
+function _backupStamp() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${todayLocalKey()}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+function _fmtBytes(b) {
+    if (!(b > 0)) return '0 B';
+    if (b < 1024) return `${b} B`;
+    if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / 1048576).toFixed(1)} MB`;
+}
+// Human-readable inventory lines from a built payload. Each line is
+// best-effort — a counting failure must never break the export itself.
+function _describeBackup(payload) {
+    const lines = [];
+    try {
+        const idb = new Map(payload.idb || []);
+        const get = (k) => idb.get(k);
+        const len = (v) => (Array.isArray(v) ? v.length : (v && typeof v === 'object' ? Object.keys(v).length : 0));
+        const bank = get('jeemax_question_bank');
+        if (bank !== undefined) lines.push(`· Question bank — ${len(bank)} questions`);
+        const chapters = get('jeemax_chapters');
+        if (chapters !== undefined) lines.push(`· Chapters — ${len(chapters)}`);
+        const vault = get('jeemax_image_cache');
+        if (vault !== undefined) lines.push(`· Offline images — ${len(vault)} cached`);
+        const gallery = (payload.idb || []).filter(e => typeof e[0] === 'string' && e[0].indexOf('galleryArt:') === 0).length;
+        if (gallery) lines.push(`· Gallery art — ${gallery} cached`);
+        const solved = get('jeemax_solved');
+        if (solved) lines.push(`· Today's solves — P${solved.physics || 0} / C${solved.chemistry || 0} / M${solved.maths || 0}`);
+        const secs = get('jeemax_study_secs');
+        if (typeof secs === 'number') lines.push(`· Deep-work time — ${Math.round(secs / 3600 * 10) / 10}h all-time`);
+        const elo = get('jeemax_elo');
+        if (elo && typeof elo.global === 'number') lines.push(`· ELO — ${Math.round(elo.global)} global`);
+        const mocks = get('jeemax_mocks');
+        if (mocks !== undefined) lines.push(`· Mocks — ${len(mocks)}`);
+        const calib = get('jeemax_calibration_log');
+        if (calib !== undefined) lines.push(`· Calibration log — ${len(calib)} entries`);
+        const hist = get('jeemax_daily_history');
+        if (hist !== undefined) lines.push(`· Daily history — ${len(hist)} days`);
+        const dHist = get('jeemax_directive_history');
+        if (dHist !== undefined) lines.push(`· Directive history — ${len(dHist)}`);
+        const cpRows = (payload.cpdb || []).length;
+        const cpLs = Object.keys(payload.ls || {}).filter(k => k.indexOf('checkpoint') === 0).length;
+        if (cpRows || cpLs) lines.push(`· Checkpoint — ${cpRows} lockdown rows + ${cpLs} prefs`);
+        const lsN = Object.keys(payload.ls || {}).length;
+        lines.push(`· Settings & prefs — ${lsN} entries (theme, timers, sounds, layout…)`);
+        const total = payload.manifest && payload.manifest.totalBytes;
+        if (total > 0) lines.push(`· File size — ${_fmtBytes(total)}`);
+        const sections = payload.manifest && payload.manifest.sections ? payload.manifest.sections.length : 0;
+        if (sections) lines.push(`· Integrity — ${sections} fingerprinted sections`);
+    } catch (_) { /* breakdown is cosmetic */ }
+    return lines;
+}
+function _setVaultBusy(busy, label) {
+    try {
+        const btn = document.getElementById('backup-download-btn');
+        if (btn) {
+            btn.disabled = !!busy;
+            btn.style.opacity = busy ? '0.6' : '';
+            btn.style.pointerEvents = busy ? 'none' : '';
+            if (label) btn.textContent = label;
+        }
+    } catch (_) {}
+}
 window.exportFullBackup = async function () {
+    _setVaultBusy(true, '⏳ Packing backup…');
     try {
         const payload = await buildFullBackup();
+        const lines = _describeBackup(payload);
+        const ok = confirm(`Download full backup?\n\nThis file holds your ENTIRE grind:\n${lines.join('\n')}\n\nKeep it safe — restore it on any device.`);
+        if (!ok) return;
         const blob = new Blob([JSON.stringify(payload)], { type: 'application/json;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `jeemaxxing-full-backup-${todayLocalKey()}.json`;
+        a.download = `jeemaxxing-full-backup-${_backupStamp()}.json`;
         document.body.appendChild(a);
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1500);
-        alert(`Backup downloaded (${payload.counts.idbKeys} data sections).\n\nKeep this file safe — it is your ENTIRE grind: bank, images, ELO, mocks, history and settings.`);
+        alert(`Backup downloaded (${payload.counts.idbKeys} data + ${payload.counts.cpdbKeys} checkpoint + ${payload.counts.lsKeys} prefs, ${_fmtBytes(payload.manifest.totalBytes)}).\n\nKeep this file safe — it is your ENTIRE grind: bank, images, ELO, mocks, history, checkpoint and settings.`);
     } catch (e) {
         console.error('[backup] export failed:', e);
         alert('Backup failed: ' + (e && e.message ? e.message : e));
+    } finally {
+        _setVaultBusy(false, '⬇ Download Full Backup');
     }
 };
 
@@ -187,16 +260,20 @@ window.restoreFullBackup = function (fileInput) {
                 const surl = URL.createObjectURL(sb);
                 const sa = document.createElement('a');
                 sa.href = surl;
-                sa.download = `jeemaxxing-PRE-RESTORE-safety-${todayLocalKey()}.json`;
+                sa.download = `jeemaxxing-PRE-RESTORE-safety-${_backupStamp()}.json`;
                 document.body.appendChild(sa);
                 sa.click();
                 sa.remove();
                 setTimeout(() => URL.revokeObjectURL(surl), 1500);
             } catch (_) { /* safety copy is best-effort */ }
-            const ok = confirm(`Restore backup from ${payload.exportedAt || 'unknown date'}?\n\nThis OVERWRITES everything on this device — bank, images, ELO, history, mocks, settings.\nA safety copy of the current state has just been downloaded.`);
+            const ok = confirm(`Restore backup from ${payload.exportedAt || 'unknown date'}?\n\nThis OVERWRITES everything on this device — bank, images, ELO, history, mocks, checkpoint, settings.\nA safety copy of the current state has just been downloaded.`);
             if (!ok) return;
             const res = await applyFullBackup(payload);
-            alert(`Restored ${res.keys} data sections.\n\nThe app will now reload.`);
+            if (res.ok) {
+                alert(`Restored ${res.keys} data + ${res.cpKeys} checkpoint + ${res.lsKeys} prefs.\nVerified ${res.checked} sections — every fingerprint matched.\n\nThe app will now reload.`);
+            } else {
+                alert(`Restored ${res.keys} data + ${res.cpKeys} checkpoint + ${res.lsKeys} prefs, BUT ${res.mismatchCount} check(s) failed:\n${res.mismatches.join('\n')}\n\nA safety copy of the prior state was downloaded before this restore.`);
+            }
             location.reload();
         } catch (e) {
             console.error('[backup] restore failed:', e);

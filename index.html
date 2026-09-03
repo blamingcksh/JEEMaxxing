@@ -716,8 +716,8 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <!-- Data Vault — full backup / restore [AUDIT P1-1] -->
                 <div class="settings-card">
                     <h3>🗄 Data Vault</h3>
-                    <p class="box-desc">One-file backup of EVERYTHING — question bank, images, ELO, mocks, solve history and settings. Restore it on any device. Do this regularly; cloud sync is not a backup.</p>
-                    <button class="btn btn-primary" onclick="exportFullBackup()">⬇ Download Full Backup</button>
+                    <p class="box-desc">One-file backup of EVERYTHING — question bank, images, ELO, mocks, solve history, checkpoint lockdown and settings. Every section is fingerprinted, and restore verifies each one. Do this regularly; cloud sync is not a backup.</p>
+                    <button id="backup-download-btn" class="btn btn-primary" onclick="exportFullBackup()">⬇ Download Full Backup</button>
                     <div class="file-upload-wrapper" style="margin-top:10px">
                         <label class="file-upload-label compact-upload" for="restore-backup-input">
                             <span class="file-icon">⬆</span>

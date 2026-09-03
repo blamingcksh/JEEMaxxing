@@ -96,7 +96,14 @@
 //        standalone-only blurred status strip keeps the clock readable.
 //        index.html load order fixed (ipad layer last) + pre-paint
 //        .jmax-standalone flag. Cache bump pushes it to installed bookmarks.
-const VERSION = 'jeemax-v52';
+// v53 — Backup v3: checkpoint-db joins the full backup (own cpdb section),
+//        per-section SHA-256 manifest + post-restore verification report,
+//        timed filenames, Data Vault busy state. Cache bump ships it.
+// v54 — Standalone top-inset tuning: --sat fallback 47px → 24px (iPad
+//        status-bar height; iPhones keep the real inset via max()), stale
+//        collapsed margin-top hack cancelled in standalone, dead 1181px
+//        rule removed. Cache bump pushes it to installed bookmarks.
+const VERSION = 'jeemax-v54';
 const SHELL = [
   './',
   './index.html',
