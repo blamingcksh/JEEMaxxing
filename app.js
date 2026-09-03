@@ -1436,7 +1436,8 @@ function _varianceLevel(count, target) {
     const ratio = target > 0 ? count / target : 1;
     if (ratio < 0.5) return 1;
     if (ratio < 1) return 2;
-    if (ratio < 1.25) return 3;
+    // Target reached (or beaten) → fully bright. Overshoot days share the
+    // same top dot so every on-target day reads identically.
     return 4;
 }
 
