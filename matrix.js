@@ -7,6 +7,8 @@ import {
     AppState,
     saveAllAsync,
     changeCount,
+    // Daily-solved counters (fallback leg of the keep-going nudge).
+    solved,
     fetchMediaFromDrive,
     formatTime,
     waitForDriveToken,
@@ -852,6 +854,37 @@ function _renderTagStage() {
 // Commit the result (auto-graded or self-reported) and reveal the tag stage.
 // Also freezes the stopwatch so the time recorded is when the user decided
 // their answer, not when they eventually click "Log Attempt".
+// ── Keep-going nudge ─────────────────────────────────────────────────────
+// Brief progress view on a correct solve: how many more questions till
+// today's daily target for this subject + a nudge. Text-only, no systems.
+// Mirrors the dashboard's own "N to go" language: Directive contract when
+// live, solved ÷ activeTargets fallback otherwise. `pendingDelta` covers
+// what the counters haven't absorbed yet — the drawer decides BEFORE
+// submitPracticeLog counts (+1 a fresh correct, +2 immediate under
+// overheat, +1 more at submit when fresh).
+const _KEEP_GOING_LINES = ['keep going', 'stay locked in', 'one at a time', 'keep rolling'];
+function _targetRemaining(subject, pendingDelta) {
+    try {
+        const sub = _normSubj(subject);
+        let left;
+        if (typeof Directive !== 'undefined' && Directive.hasContract) {
+            left = Directive.problemsRemaining(sub);
+        } else {
+            const tgt = (AppState.activeTargets && AppState.activeTargets[sub]) || 0;
+            const done = (solved && solved[sub]) || 0;
+            left = tgt - done;
+        }
+        return Math.max(0, left - (pendingDelta || 0));
+    } catch (_) { return null; }
+}
+function _keepGoingHTML(q, pendingDelta) {
+    const n = _targetRemaining(q && q.subject, pendingDelta);
+    if (n == null) return '<div class="sr-keep-going">💪 keep going</div>';
+    if (n === 0) return '<div class="sr-keep-going">✨ Daily target smashed</div>';
+    const line = _KEEP_GOING_LINES[n % _KEEP_GOING_LINES.length];
+    return `<div class="sr-keep-going">🎯 ${n} more to today's target — ${line}</div>`;
+}
+
 function _applyResult(result, source, q) {
     _drawerState.result = result;
     _drawerState.resultSource = source;
@@ -891,7 +924,9 @@ function _applyResult(result, source, q) {
             ? `<img class="sr-solution-img" src="${_safeImgSrc(q.solutionImageUrl)}" alt="Solution diagram">`
             : '';
         if (result === 'correct') {
-            zone.innerHTML = `<div class="sr-result-banner correct">✅ Correct${suffix}</div>${solImg}`;
+            const oh = document.body.classList.contains('overheat-active');
+            const pendingDelta = (q && q.status !== 'solved') ? (oh ? 3 : 1) : (oh ? 2 : 0);
+            zone.innerHTML = `<div class="sr-result-banner correct">✅ Correct${suffix}</div>${_keepGoingHTML(q, pendingDelta)}${solImg}`;
         } else {
             zone.innerHTML = `<div class="sr-result-banner incorrect">❌ Incorrect${suffix}</div>${solImg}`;
         }

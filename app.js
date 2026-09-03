@@ -5250,6 +5250,31 @@ window.setSolveConfidence = function (level) {
     }
 };
 
+// ── Keep-going nudge ────────────────────────────────────────────────────
+// Brief progress view on a correct solve: how many more questions till
+// today's daily target for this subject + a nudge. Text-only, no systems.
+// Mirrors the dashboard's own "N to go" language: Directive contract when
+// live, solved ÷ activeTargets fallback otherwise. By the time the correct
+// banner renders, this solve is already counted — no delta needed.
+const _PM_KEEP_GOING_LINES = ['keep going', 'stay locked in', 'one at a time', 'keep rolling'];
+function _targetKeepGoingHTML(subject) {
+    try {
+        const sub = _normalizeSubjectKey(subject);
+        let left;
+        if (typeof Directive !== 'undefined' && Directive.hasContract) {
+            left = Directive.problemsRemaining(sub);
+        } else {
+            const tgt = (AppState.activeTargets && AppState.activeTargets[sub]) || 0;
+            const done = (solved && solved[sub]) || 0;
+            left = tgt - done;
+        }
+        left = Math.max(0, left);
+        if (left === 0) return '<div class="pm-keep-going">✨ Daily target smashed</div>';
+        const line = _PM_KEEP_GOING_LINES[left % _PM_KEEP_GOING_LINES.length];
+        return `<div class="pm-keep-going">🎯 ${left} more to today's target — ${line}</div>`;
+    } catch (_) { return '<div class="pm-keep-going">💪 keep going</div>'; }
+}
+
 export function renderPracticeQuestionModal() {
     AppState.currentQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
     // ── Empty-queue guard ──
@@ -5292,8 +5317,11 @@ export function renderPracticeQuestionModal() {
     if (submitted) {
         const correctAns = answerMathHTML(AppState.currentQ.correctAnswer || 'N/A');
         html += `<div style="display:flex; justify-content:space-between; align-items:center;">`;
-        if (AppState.currentQ.status === 'solved') html +=
-            `<div class="result-banner correct" style="flex:1;">✅ Clutched! The answer was: ${correctAns}</div>`;
+        let keepGoing = '';
+        if (AppState.currentQ.status === 'solved') {
+            html += `<div class="result-banner correct" style="flex:1;">✅ Clutched! The answer was: ${correctAns}</div>`;
+            keepGoing = _targetKeepGoingHTML(AppState.currentQ.subject);
+        }
         else if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') html +=
             `<div class="result-banner wrong" style="flex:1;">❌ Fumbled. The answer was: ${correctAns}</div>`;
         else html +=
@@ -5302,7 +5330,7 @@ export function renderPracticeQuestionModal() {
             html +=
                 `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">💡 Peep Solution</button>`;
         }
-        html += `</div></div>`;
+        html += `</div>` + keepGoing + `</div>`;
         container.innerHTML = html;
         // Hydrate LaTeX synchronously (the observer is a backup). Clear any
         // stale render stamp so a re-render is never skipped.
@@ -8394,6 +8422,7 @@ export function addTextQuestionFollowUp() {
         banner.className = 'result-banner correct';
         banner.innerText = 'Clean lock. Marked correct.';
         container.appendChild(banner);
+        try { container.insertAdjacentHTML('beforeend', _targetKeepGoingHTML(AppState.currentQ.subject)); } catch (_) { /* decorative */ }
         if (_eloRes) { try { injectEloShiftChip(_eloRes); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
         if (_modePerfTxt) {
