@@ -3164,8 +3164,8 @@ body {
     white-space: pre-wrap;
 }
 
-/* Immersive focus */
-body.immersive-active #practice-modal { background: rgba(8, 9, 13, 0.95); transition: opacity 0.4s ease; }
+/* Immersive focus — Lock In makes the backdrop fully opaque */
+body.immersive-active #practice-modal { background: #05060a !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; transition: opacity 0.4s ease; }
 body.immersive-active #practice-modal .modal-card {
     box-shadow: 0 0 60px rgba(0, 0, 0, 0.9), 0 0 120px rgba(255, 178, 36, 0.12);
     border-color: rgba(255, 178, 36, 0.3);
@@ -6372,7 +6372,8 @@ html[data-mode="dusk"] #practice-modal .practice-header {
 }
 
 /* ── Immersive: keep the zone chrome but strip noise ───────────────────── */
-body.immersive-active #practice-modal .pm-timer { display: none; }
+body.immersive-active #practice-modal .pm-timer,
+body.immersive-active #practice-modal .free-response-hint { display: none; }
 
 /* ── Small screens ─────────────────────────────────────────────────────── */
 @media (max-width: 720px) {
@@ -11660,3 +11661,15 @@ details.mr-autopsy[open] summary { margin-bottom:8px; }
 /* thumbnail badge must never overflow the slim 120px thumb */
 .vault-shell.vault-v2 .error-img-box .sr-due-badge { font-size: 8px !important; padding: 2px 6px !important; max-width: calc(100% - 10px); overflow: hidden; text-overflow: ellipsis; }
 .mr-autopsy .rp-h { margin-bottom:8px; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   PRACTICE LOCK-IN — opaque backdrop. Must sit at end of cascade to beat
+   the DESIGN SYSTEM v4 `.modal-overlay !important` layer above.
+   Reversible: delete this block.
+   ════════════════════════════════════════════════════════════════════════ */
+body.immersive-active #practice-modal,
+html[data-mode="dusk"] body.immersive-active #practice-modal {
+    background: #05060a !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
