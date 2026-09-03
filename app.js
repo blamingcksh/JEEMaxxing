@@ -5832,7 +5832,7 @@ function _consumeConfidence(S) {
             AppState.calibrationLog = AppState.calibrationLog.slice(-CALIBRATION_LOG_CAP);
         }
         // Persist immediately (coalesced) — the log is durable IndexedDB state
-        // now, not session scratchpad, so it must ride every commit path.
+        // now, not session memory, so it must ride every commit path.
         saveAllAsync().catch(() => {});
     } catch (_) { /* telemetry never blocks scoring */ }
     return p;
@@ -7634,7 +7634,7 @@ function _airPopupInnerHtml(globalElo) {
             </div>
             <div class="air-pop-sec-row" style="align-items:center;">
                 <span class="air-pop-sec-label">Exam date</span>
-                <input type="date" value="${escapeHtml(examVal)}" onchange="window._setExamDate(this.value)"
+                <input type="date" class="air-pop-date-input" value="${escapeHtml(examVal)}" onchange="window._setExamDate(this.value)"
                        style="background:rgba(255,255,255,0.06); border:1px solid rgba(168,85,247,0.3); border-radius:6px; color:#e4e4e7; font-size:10px; padding:2px 4px; font-family:inherit;">
             </div>
             ${examTxt ? `<div class="air-pop-sec-row"><span class="air-pop-sec-label">Countdown</span><span class="air-pop-sec-val">${escapeHtml(examTxt)}</span></div>` : ''}
@@ -7648,7 +7648,8 @@ function _airPopupInnerHtml(globalElo) {
 /** Persist the exam date and refresh every exam-aware surface. */
 window._setExamDate = function (value) {
     try {
-        AppState.examDate = value || null;
+        const v = (typeof value === 'string') ? value.trim() : '';
+        AppState.examDate = (/^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v).getTime())) ? v : null;
         saveAllAsync().catch(() => {});
     } catch (_) {}
     _refreshAirPopupIfOpen(AppState.elo.global || 1200);
@@ -7678,6 +7679,67 @@ function _updateExamCountdownChip() {
 }
 
 /** Open the small square AIR popup, anchored near the clicked badge. */
+let _airPopupAnchorEl = null;
+function _airViewportSize() {
+    try {
+        if (window.visualViewport && isFinite(window.visualViewport.width) && isFinite(window.visualViewport.height)) {
+            return { w: window.visualViewport.width, h: window.visualViewport.height };
+        }
+    } catch (_) {}
+    return { w: window.innerWidth, h: window.innerHeight };
+}
+/** Clamp the popup fully on-screen; re-runnable after content/resize/scroll. */
+function _positionAirPopup(pop, anchorEl) {
+    if (!pop) return;
+    const gap = 8;
+    const { w: vw, h: vh } = _airViewportSize();
+    const popRect = pop.getBoundingClientRect();
+    const popW = pop.offsetWidth || popRect.width || 224;
+    const popH = pop.offsetHeight || popRect.height || 224;
+    let rect = null;
+    try { rect = anchorEl ? anchorEl.getBoundingClientRect() : null; } catch (_) { rect = null; }
+    const anchorHidden = !rect || (rect.width === 0 && rect.height === 0 && rect.left === 0 && rect.top === 0);
+    let left, top;
+    if (anchorHidden) {
+        // Sidebar badge hidden (collapsed/mobile) — pin visibly top-centered.
+        left = Math.max(12, (vw - popW) / 2);
+        top = 12;
+    } else {
+        left = rect.left;
+        top = rect.bottom + gap;
+        // If it overflows the bottom, flip it above the badge
+        if (top + popH > vh - 12) {
+            top = rect.top - popH - gap;
+        }
+    }
+    // Clamp fully on-screen (small viewport: pin to 12, CSS max-* + scroll handles the rest)
+    const maxLeft = vw - popW - 12;
+    const maxTop = vh - popH - 12;
+    left = (maxLeft < 12) ? 12 : Math.max(12, Math.min(left, maxLeft));
+    top = (maxTop < 12) ? 12 : Math.max(12, Math.min(top, maxTop));
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+}
+function _repositionAirPopupOnViewportChange() {
+    const pop = document.getElementById('air-popup');
+    if (pop) _positionAirPopup(pop, _airPopupAnchorEl);
+}
+function _attachAirPopupReposition() {
+    window.addEventListener('resize', _repositionAirPopupOnViewportChange);
+    window.addEventListener('orientationchange', _repositionAirPopupOnViewportChange);
+    document.addEventListener('scroll', _repositionAirPopupOnViewportChange, true);
+    try {
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', _repositionAirPopupOnViewportChange);
+    } catch (_) {}
+}
+function _detachAirPopupReposition() {
+    window.removeEventListener('resize', _repositionAirPopupOnViewportChange);
+    window.removeEventListener('orientationchange', _repositionAirPopupOnViewportChange);
+    document.removeEventListener('scroll', _repositionAirPopupOnViewportChange, true);
+    try {
+        if (window.visualViewport) window.visualViewport.removeEventListener('resize', _repositionAirPopupOnViewportChange);
+    } catch (_) {}
+}
 function _openAirPopup(globalElo, anchorEl) {
     // If already open, just close it (toggle behaviour).
     const existing = document.getElementById('air-popup');
@@ -7695,25 +7757,9 @@ function _openAirPopup(globalElo, anchorEl) {
 
     // ── Smart positioning: place the square just below the badge, aligned to
     // the badge's left edge. Flip above / clamp to viewport if it would clip.
-    const rect = anchorEl.getBoundingClientRect();
-    const popRect = pop.getBoundingClientRect();
-    const gap = 8;
-    let left = rect.left;
-    let top = rect.bottom + gap;
-
-    // Horizontal clamp (keep fully on-screen, min 12px margin)
-    const maxLeft = window.innerWidth - popRect.width - 12;
-    left = Math.max(12, Math.min(left, maxLeft));
-
-    // If it overflows the bottom, flip it above the badge
-    if (top + popRect.height > window.innerHeight - 12) {
-        top = rect.top - popRect.height - gap;
-    }
-    // Final vertical clamp
-    top = Math.max(12, Math.min(top, window.innerHeight - popRect.height - 12));
-
-    pop.style.left = left + 'px';
-    pop.style.top = top + 'px';
+    _airPopupAnchorEl = anchorEl || null;
+    _positionAirPopup(pop, _airPopupAnchorEl);
+    _attachAirPopupReposition();
 
     // Entrance animation
     requestAnimationFrame(() => { pop.classList.add('air-pop-visible'); });
@@ -7730,6 +7776,8 @@ function _openAirPopup(globalElo, anchorEl) {
 function _closeAirPopup() {
     const pop = document.getElementById('air-popup');
     if (!pop) return;
+    _airPopupAnchorEl = null;
+    _detachAirPopupReposition();
     pop.classList.remove('air-pop-visible');
     setTimeout(() => { if (pop && pop.parentNode) pop.parentNode.removeChild(pop); }, 180);
     document.removeEventListener('click', _airPopupOutsideClick, true);
@@ -7748,12 +7796,13 @@ function _airPopupEsc(e) {
 /** If the popup is open, refresh its numbers with the latest elo. */
 function _refreshAirPopupIfOpen(globalElo) {
     const pop = document.getElementById('air-popup');
-    if (pop) pop.innerHTML = _airPopupInnerHtml(globalElo);
+    if (!pop) return;
+    pop.innerHTML = _airPopupInnerHtml(globalElo);
     // Re-wire the close button after innerHTML refresh
-    if (pop) {
-        const cb = pop.querySelector('.air-pop-close');
-        if (cb) cb.addEventListener('click', _closeAirPopup);
-    }
+    const cb = pop.querySelector('.air-pop-close');
+    if (cb) cb.addEventListener('click', _closeAirPopup);
+    // Content height may have grown (cone/countdown rows) — re-clamp on-screen.
+    _positionAirPopup(pop, _airPopupAnchorEl);
 }
 
 // ── One-time CSS injection for the AIR popup + badge hover ──
@@ -7771,6 +7820,9 @@ function _injectAirPopupStyles() {
         .air-popup {
             position: fixed; z-index: 99999;
             width: 224px; min-height: 224px;
+            max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px);
+            overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
+            overscroll-behavior: contain;
             background: linear-gradient(160deg, #18181b 0%, #12121a 100%);
             border: 1px solid rgba(168,85,247,0.35);
             border-radius: 16px;
@@ -7803,6 +7855,7 @@ function _injectAirPopupStyles() {
             font-size: 34px; font-weight: 800; color: #4ade80;
             line-height: 1.1; letter-spacing: -0.5px;
             text-shadow: 0 0 18px rgba(74,222,128,0.3);
+            overflow-wrap: anywhere; word-break: break-word;
         }
         .air-pop-air.air-low { color: #f87171; text-shadow: 0 0 18px rgba(248,113,113,0.3); }
         .air-pop-air-label {
@@ -7815,20 +7868,23 @@ function _injectAirPopupStyles() {
         .air-pop-divider {
             height: 1px; background: rgba(255,255,255,0.08); margin: 8px 0;
         }
-        .air-pop-secondary { display: flex; flex-direction: column; gap: 4px; }
+        .air-pop-secondary { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
         .air-pop-sec-row {
             display: flex; justify-content: space-between; align-items: center;
+            gap: 8px; min-width: 0;
             font-size: 12px;
         }
-        .air-pop-sec-label { color: #71717a; }
-        .air-pop-sec-val { color: #d4d4d8; font-weight: 600; }
+        .air-pop-sec-label { color: #71717a; flex: none; }
+        .air-pop-sec-val { color: #d4d4d8; font-weight: 600; min-width: 0; text-align: right; overflow-wrap: anywhere; }
+        .air-pop-date-input { min-width: 0; max-width: 100%; flex: 1 1 auto; }
         .air-pop-foot {
             display: flex; justify-content: space-between; align-items: center;
+            gap: 8px;
             margin-top: 10px; padding-top: 8px;
             border-top: 1px solid rgba(255,255,255,0.06);
         }
-        .air-pop-tier { font-size: 11px; color: #c4b5fd; font-weight: 600; }
-        .air-pop-elo { font-size: 11px; color: #71717a; font-weight: 600; }
+        .air-pop-tier { font-size: 11px; color: #c4b5fd; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .air-pop-elo { font-size: 11px; color: #71717a; font-weight: 600; flex: none; }
     `;
     document.head.appendChild(style);
 }
@@ -10796,1157 +10852,9 @@ document.addEventListener('DOMContentLoaded', function () {
     processElementMath(document.body);
 });
 
-// ============================================================================
-// FULL-VIEWPORT SCRATCHPAD HUD — Perfect-Freehand + Apple Pencil optimized
-// ============================================================================
-// Drawing engine: perfect-freehand (the library Excalidraw / tldraw use) for
-// smooth, tapered, pressure-sensitive stroke outlines. Loaded dynamically from
-// CDN with a graceful fallback to simple line drawing if unreachable, so the
-// app NEVER crashes if the CDN is down.
-//
-// FIXES for the three reported iPad/Apple-Pencil issues:
-//
-//  1. "Gap gets bigger the more I write" — ROOT CAUSE: the canvas was sized
-//     with CSS `100vw/100vh`, which on iPadOS Safari does NOT equal
-//     `window.innerWidth/innerHeight` (Safari's dynamic browser chrome makes
-//     100vh taller than the visible area). That mismatch meant the canvas
-//     rendered taller than its internal drawable buffer, so the coordinate
-//     error grew LINEARLY with distance from the top-left corner — exactly the
-//     "grows as I write" symptom.
-//     FIX: size the canvas with JS using `window.innerWidth/innerHeight` for
-//     BOTH the CSS size and the DPR-scaled internal resolution → 1:1 match.
-//
-//  2. "Sometimes selects text" — FIX: `user-select:none` +
-//     `-webkit-touch-callout:none` on body while active, plus document-level
-//     `selectstart`/`dragstart` blockers.
-//
-//  3. "Sometimes zooms the page" — iPadOS Safari IGNORES `user-scalable=no`
-//     since iOS 10. FIX: block `gesturestart`/`gesturechange`/`gestureend`
-//     (Safari pinch-zoom) + `dblclick` (double-tap zoom) at the document level
-//     while active.
-//
-// Plus: coalesced events for full 240 Hz Pencil sampling, palm rejection,
-// getBoundingClientRect() coordinate mapping (robust to any offset), and
-// perfect-freehand for gorgeous pressure-variable strokes.
-//
-// Color UX: toolbar color swatch → dropdown of up to 8 quick colors + "+" →
-// square palette to pick any color and manage the quick list (add/remove ×).
-// Persisted in localStorage.
-// ============================================================================
-(function _initScratchpad() {
-    if (window.__scratchpadInit) return;
-    window.__scratchpadInit = true;
-
-    // ── Configuration ──────────────────────────────────────────────────────
-    const STORAGE_QUICK = 'scratchpad:quickColors';
-    const STORAGE_SELECTED = 'scratchpad:selectedColor';
-
-    const DEFAULT_QUICK_COLORS = ['#ffffff', '#ef4444', '#facc15', '#22c55e', '#06b6d4'];
-    const PRESET_COLORS = [
-        '#ffffff', '#d4d4d8', '#71717a', '#27272a', '#000000',
-        '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
-        '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
-        '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
-        '#ec4899', '#f43f5e', '#dc2626', '#7c3aed',
-    ];
-    const MAX_QUICK = 8;
-    const DRAG_THRESHOLD = 6;
-
-    // perfect-freehand options, tuned for Apple Pencil (1st gen included).
-    const STROKE_PEN = {
-        size: 6, thinning: 0.6, smoothing: 0.5, streamline: 0.2,
-        simulatePressure: false,
-        start: { taper: 0, cap: true }, end: { taper: 0, cap: true }, last: true,
-    };
-    const STROKE_MOUSE = {
-        size: 4, thinning: 0.5, smoothing: 0.5, streamline: 0.5,
-        simulatePressure: true,
-        start: { taper: 0, cap: true }, end: { taper: 0, cap: true }, last: true,
-    };
-
-    // ── Dynamic import of perfect-freehand (with fallback) ──────────────────
-    let getStrokeFn = null;
-    import('https://esm.sh/perfect-freehand@1.2.3').then(function (mod) {
-        getStrokeFn = mod.default || mod.getStroke;
-    }).catch(function () {
-        // CDN unreachable — fall back to simple line drawing. The app still
-        // works; strokes just won't have perfect-freehand's tapered smoothing.
-        getStrokeFn = null;
-    });
-
-    // ── State ──────────────────────────────────────────────────────────────
-    let root, toolbar, pencilBtn, colorBtn, clearBtn, dropdown;
-    let paletteOverlay, paletteBox, bigSwatch, hexInput, nativeInput;
-    let presetGrid, quickManageRow, addBtn;
-    let canvas, ctx, bgCanvas, bgCtx;  // fg (live) + bg (bitmap accumulator)
-
-    let isActive = false;
-    let isDrawing = false;
-    let currentPointerType = '';
-    let currentPoints = [];           // [[x, y, pressure], ...] for the in-progress stroke
-    // Compact committed-stroke cache. Stores ONLY the lightweight raw points
-    // array, a shallow-cloned opts object, and the color string. The heavy
-    // perfect-freehand outline polygon is NEVER cached here — it is computed
-    // transiently at commit time (to flatten onto bgCanvas) and again lazily
-    // only when a window resize/orientation change forces a full re-render.
-    // This keeps the heap footprint flat during high-frequency tap cadences
-    // and avoids GC pauses that paralyze the input thread mid-stroke.
-    let committedOutlines = [];       // [{points:[[x,y,p]...], opts, color, fallback?}, ...]
-    let currentStrokeOpts = STROKE_PEN;
-    // Fallback stroke state (when perfect-freehand isn't loaded)
-    let fallbackLastX = 0, fallbackLastY = 0;
-
-    let quickColors = [];
-    let selectedColor = '#ffffff';
-
-    let dropdownOpen = false;
-    let paletteOpen = false;
-
-    let dragPointerId = null;
-    let dragMoved = false;
-    let dragOffsetX = 0, dragOffsetY = 0;
-    let dragStartX = 0, dragStartY = 0;
-    let pressedBtn = null;
-
-    // rAF render-throttle state — decouples 240Hz Apple Pencil input
-    // from the 60Hz/120Hz ProMotion display refresh cycle.
-    let renderRequested = false;
-    let rafId = 0;
-
-    let blockGesture, blockSelect, blockDblClick, blockTouchStart;
-
-    // ── Storage ────────────────────────────────────────────────────────────
-    function loadColors() {
-        try {
-            const qRaw = localStorage.getItem(STORAGE_QUICK);
-            const q = qRaw ? JSON.parse(qRaw) : null;
-            if (Array.isArray(q) && q.length) {
-                quickColors = q.filter(function (c) {
-                    return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
-                });
-            }
-            if (!quickColors || !quickColors.length) quickColors = DEFAULT_QUICK_COLORS.slice();
-            const s = localStorage.getItem(STORAGE_SELECTED);
-            selectedColor = (s && /^#[0-9a-fA-F]{6}$/.test(s)) ? s : quickColors[0];
-            if (!quickColors.includes(selectedColor)) selectedColor = quickColors[0];
-        } catch (_) {
-            quickColors = DEFAULT_QUICK_COLORS.slice();
-            selectedColor = quickColors[0];
-        }
-    }
-    function saveColors() {
-        try {
-            localStorage.setItem(STORAGE_QUICK, JSON.stringify(quickColors));
-            localStorage.setItem(STORAGE_SELECTED, selectedColor);
-        } catch (_) { /* ignore */ }
-    }
-
-    // ── DOM helper ─────────────────────────────────────────────────────────
-    function el(tag, attrs, children) {
-        attrs = attrs || {}; children = children || [];
-        const node = document.createElement(tag);
-        for (const k in attrs) {
-            const v = attrs[k];
-            if (k === 'style' && typeof v === 'object' && v) Object.assign(node.style, v);
-            else if (k === 'class') node.className = v;
-            else if (k === 'html') node.innerHTML = v;
-            else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v);
-            else if (v !== undefined && v !== null) node.setAttribute(k, String(v));
-        }
-        for (const c of children) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-        return node;
-    }
-    function svg(paths, size, sw) {
-        size = size || 20; sw = sw || 2;
-        return '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" ' +
-            'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + sw + '" ' +
-            'stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
-    }
-    const ICON_PENCIL = svg('M12 20h9 M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z', 20, 2);
-    const ICON_PLUS = svg('M12 5v14 M5 12h14', 18, 2.2);
-    const ICON_CLOSE = svg('M18 6 6 18 M6 6l12 12', 16, 2);
-    const ICON_TRASH = svg('M3 6h18 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M10 11v6 M14 11v6', 18, 1.8);
-    const GLASS = {
-        background: 'rgba(16,16,24,0.92)',
-        backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: '0 10px 34px rgba(0,0,0,0.55)',
-    };
-
-    // ── Drawing ────────────────────────────────────────────────────────────
-    function pressureFor(e) {
-        if (e.pointerType === 'pen') return e.pressure > 0 ? e.pressure : 0.5;
-        return 0.5;
-    }
-    // ── Cached canvas bounding rect ────────────────────────────────────────
-    // getBoundingClientRect() forces a synchronous layout flush. Calling it
-    // on every pointermove (and every coalesced 240Hz sub-event) during a fast
-    // Apple Pencil stroke injects forced reflow into the input critical path,
-    // which is exactly the mid-stroke stutter on WebKit. We snapshot the rect
-    // ONCE at pointerdown and reuse it for the whole stroke, invalidating it
-    // only on resize / orientationchange. The canvas is position:fixed at the
-    // viewport origin while active, so its rect is stable for the stroke
-    // lifetime — provably correct, and removes N-1 layout flushes per stroke.
-    let _canvasRectCache = null;
-    function invalidateCanvasRect() { _canvasRectCache = null; }
-    function getCanvasRect() {
-        if (_canvasRectCache) return _canvasRectCache;
-        _canvasRectCache = canvas.getBoundingClientRect();
-        return _canvasRectCache;
-    }
-    function getCanvasPoint(e) {
-        // Map pointer into canvas coordinate space via the cached bounding rect.
-        // Robust to any offset/zoom/containing-block drift; the cache is
-        // snapped at pointerdown so rapid coalesced pointermoves never force a
-        // layout flush, keeping the drawing offset gap-free even under fast
-        // horizontal Pencil dashes.
-        const rect = getCanvasRect();
-        return [e.clientX - rect.left, e.clientY - rect.top, pressureFor(e)];
-    }
-
-    // Fill a perfect-freehand outline polygon onto an arbitrary context.
-    // `targetCtx` defaults to the foreground ctx when omitted.
-    function fillOutline(outline, color, targetCtx) {
-        if (!outline || !outline.length) return;
-        var c = targetCtx || ctx;
-        c.save();
-        c.fillStyle = color;
-        c.beginPath();
-        if (outline.length === 1) {
-            c.arc(outline[0][0], outline[0][1], 1.5, 0, Math.PI * 2);
-        } else {
-            c.moveTo(outline[0][0], outline[0][1]);
-            for (var i = 1; i < outline.length; i++) c.lineTo(outline[i][0], outline[i][1]);
-            c.closePath();
-        }
-        c.fill();
-        c.restore();
-    }
-    
-
-    // O(1) live repaint — only the single in-progress stroke is drawn on the
-    // foreground canvas. Historical strokes live permanently on the background
-    // bitmap accumulator and are never revisited during pointermove.
-    function render() {
-        if (!canvas || !ctx) return;
-        var dpr = window.devicePixelRatio || 1;
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.restore();
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        // Draw ONLY the single active stroke on the live foreground layer
-        if (currentPoints.length) {
-            if (getStrokeFn) {
-                var outline = getStrokeFn(currentPoints, currentStrokeOpts);
-                fillOutline(outline, selectedColor, ctx);
-            } else {
-                drawFallbackStroke(currentPoints, selectedColor, ctx);
-            }
-        }
-    }
-
-    // Fallback line renderer (when perfect-freehand CDN is unavailable).
-    // `targetCtx` defaults to the foreground ctx when omitted.
-    function drawFallbackStroke(points, color, targetCtx) {
-        if (points.length < 1) return;
-        var c = targetCtx || ctx;
-        c.save();
-        c.strokeStyle = color;
-        c.fillStyle = color;
-        c.lineCap = 'round';
-        c.lineJoin = 'round';
-        c.lineWidth = currentPointerType === 'pen' ? 2.5 : 2.4;
-        if (points.length === 1) {
-            c.beginPath();
-            c.arc(points[0][0], points[0][1], 1.5, 0, Math.PI * 2);
-            c.fill();
-        } else {
-            c.beginPath();
-            c.moveTo(points[0][0], points[0][1]);
-            for (var i = 1; i < points.length; i++) c.lineTo(points[i][0], points[i][1]);
-            c.stroke();
-        }
-        c.restore();
-    }
-
-    // ── Asynchronous non-blocking stroke commit queue ─────────────────────
-    // Rapid tap-and-lift sequences (dotting i's, crossing t's) fire pointerup
-    // in quick succession. Running the mathematically intensive perfect-freehand
-    // getStroke() synchronously inside onCanvasPointerUp jams the event loop
-    // and makes Safari drop the next incoming pointerdown. Instead, finished
-    // strokes are snapshotted here and their outline computation + background
-    // flattening are deferred to a decoupled idle task that never blocks the
-    // pointer-event critical path. This also relieves GC pressure: the huge
-    // [[x,y]...] outline arrays are allocated during idle frames, not while a
-    // tap is imminent, so GC pauses no longer paralyze the input thread.
-    let strokeCommitQueue = [];        // [{points, opts, color}, ...]
-    let isProcessingQueue = false;
-    let queueScheduledId = null;
-
-    // Hybrid scheduler: prefer requestIdleCallback for low-priority idle
-    // frames; fall back gracefully to a decoupled setTimeout(..., 0) macrotask
-    // on Safari builds that ship without requestIdleCallback. Either way the
-    // heavy perfect-freehand work runs OFF the input thread.
-    const hasIdleCallback = (typeof window.requestIdleCallback === 'function');
-    function scheduleIdleTask(fn) {
-        if (hasIdleCallback) return window.requestIdleCallback(fn, { timeout: 200 });
-        return window.setTimeout(fn, 0);
-    }
-    function cancelIdleTask(id) {
-        if (id === null || id === undefined) return;
-        if (hasIdleCallback) window.cancelIdleCallback(id);
-        else window.clearTimeout(id);
-    }
-
-    // Isolated O(1) background-layer flattening. Flatten ONE completed stroke
-    // onto the permanent background bitmap. It writes only to bgCanvas and
-    // appends a COMPACT entry to committedOutlines (raw points + opts + color).
-    // The heavy perfect-freehand outline polygon is computed TRANSIENTLY here
-    // for the immediate paint, then discarded — it is never cached, so the
-    // committedOutlines array stays lightweight and the heap doesn't churn
-    // during high-frequency tap cadences. The outline is recomputed lazily
-    // only inside resizeCanvas() when a layout change forces a full re-render.
-    // The foreground canvas is untouched — it continues to show only the
-    // single active in-progress stroke via render().
-    function processCommitJob(job) {
-        if (!bgCanvas || !bgCtx) return;
-        if (!job.points || !job.points.length) return;
-        var dpr = window.devicePixelRatio || 1;
-        bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        bgCtx.lineCap = 'round';
-        bgCtx.lineJoin = 'round';
-        if (getStrokeFn) {
-            // Transient outline — painted onto bgCtx, then dropped. Not cached.
-            var outline = getStrokeFn(job.points, job.opts);
-            fillOutline(outline, job.color, bgCtx);
-            committedOutlines.push({
-                points: job.points,           // already a slice owned by the job
-                opts: job.opts,               // already a shallow clone
-                color: job.color,
-            });
-        } else {
-            // Fallback path (perfect-freehand CDN unreachable).
-            drawFallbackStroke(job.points, job.color, bgCtx);
-            committedOutlines.push({
-                points: job.points,
-                opts: job.opts,
-                color: job.color,
-                fallback: true,
-            });
-        }
-    }
-
-    // Recurring drain: yields to the event loop between commits so incoming
-    // pointerdown events are always serviced promptly. On the requestIdleCallback
-    // path it keeps draining while the idle deadline has budget remaining; on
-    // the setTimeout path it commits exactly one stroke per macrotask, then
-    // re-schedules — guaranteeing the input thread is never held for long.
-    function drainCommitQueue(deadline) {
-        queueScheduledId = null;
-        isProcessingQueue = true;
-        try {
-            const hasDeadline = deadline && typeof deadline.timeRemaining === 'function';
-            while (strokeCommitQueue.length) {
-                processCommitJob(strokeCommitQueue.shift());
-                if (hasDeadline) {
-                    if (deadline.timeRemaining() <= 0) break;
-                } else {
-                    break; // setTimeout path: one commit per tick, then yield
-                }
-            }
-        } finally {
-            isProcessingQueue = false;
-        }
-        if (strokeCommitQueue.length) scheduleQueueDrain();
-    }
-
-    function scheduleQueueDrain() {
-        if (isProcessingQueue || queueScheduledId !== null) return;
-        queueScheduledId = scheduleIdleTask(drainCommitQueue);
-    }
-
-    function onCanvasPointerDown(e) {
-        if (!isActive) return;
-        if (dropdownOpen || paletteOpen) return;
-        // ── Apple Pencil drawing lock ──
-        // Rejects mouse / finger / eraser — only 'pen' may draw on the canvas.
-        // HUD toolbar buttons remain fully touch-friendly (no guard there).
-        if (e.pointerType !== 'pen') return;
-        if (isDrawing) return;
-        if (e.cancelable) e.preventDefault();
-        isDrawing = true;
-        currentPointerType = 'pen';
-        currentStrokeOpts = STROKE_PEN;
-        // NOTE: setPointerCapture is deliberately omitted. On iPadOS Safari the
-        // acquire/release pair on every tap-and-lift forces a synchronous
-        // capture-state transition that clashes with high-frequency Pencil
-        // input and causes the browser to drop subsequent pointerdown events.
-        // The canvas is full-viewport with touch-action:none, so pointer
-        // capture is redundant for pen tracking anyway.
-        // ── Snap the bounding rect for the entire stroke. Every subsequent
-        //    pointermove (incl. all coalesced 240Hz sub-events) will reuse this
-        //    cached rect instead of forcing a fresh getBoundingClientRect()
-        //    layout flush on the input critical path.
-        invalidateCanvasRect();
-        currentPoints = [getCanvasPoint(e)];
-        render();
-    }
-    function onCanvasPointerMove(e) {
-        if (!isActive || !isDrawing) return;
-        // ── Apple Pencil drawing lock ──
-        if (e.pointerType !== 'pen') return;
-        if (e.cancelable) e.preventDefault();
-
-        // Ingest all coalesced Apple Pencil sub-frame events at hardware rate (240Hz)
-        // without triggering any canvas path computation on the event thread.
-        const coalesced = (typeof e.getCoalescedEvents === 'function')
-            ? e.getCoalescedEvents()
-            : null;
-        const queue = (coalesced && coalesced.length) ? coalesced : [e];
-
-        for (let i = 0; i < queue.length; i++) {
-            currentPoints.push(getCanvasPoint(queue[i]));
-        }
-
-        // Telemetry: sample only the latest coordinate once per event batch,
-        // moved outside the inner coalesced loop to minimize overhead.
-        if (window.__checkpoint && typeof window.__checkpoint.reportDrawingActivity === 'function') {
-            var latest = currentPoints[currentPoints.length - 1];
-            if (latest) window.__checkpoint.reportDrawingActivity(latest[0], latest[1]);
-        }
-
-        // Decoupled rAF render: schedule at most ONE render per display frame.
-        // This lets the render() call (perfect-freehand O(N^2) path computation)
-        // scale naturally to the ProMotion refresh rate instead of firing at
-        // every 240Hz hardware event.
-        if (!renderRequested) {
-            renderRequested = true;
-            rafId = requestAnimationFrame(function () {
-                renderRequested = false;
-                rafId = 0;
-                render();
-            });
-        }
-    }
-    // On pointer release, snapshot the raw stroke and defer the expensive
-    // perfect-freehand outline computation + background flattening to the
-    // asynchronous commit queue. This keeps the pointerup handler O(n) in
-    // point count only (a shallow clone) and never blocks the event loop, so
-    // the next pointerdown is never dropped.
-    //
-    // The live foreground canvas is intentionally NOT cleared here: the
-    // just-finished stroke's pixels remain visible as a preview until the
-    // queue flattens them onto the background bitmap. The next render() (on
-    // the following pointerdown) then wipes the foreground. This yields a
-    // flicker-free handoff with zero synchronous heavy work on the input
-    // thread. The committedOutlines array is maintained solely for resize
-    // recovery and is never accessed during active pointer-tracking frames.
-    function onCanvasPointerUp(e) {
-        if (!isActive) return;
-        // ── Apple Pencil drawing lock ──
-        if (e.pointerType !== 'pen') return;
-        if (!isDrawing) return;
-
-        // Cancel any pending rAF render — the stroke is finished; its pixels
-        // will be re-rendered onto the background layer by the commit queue.
-        if (renderRequested) {
-            cancelAnimationFrame(rafId);
-            renderRequested = false;
-            rafId = 0;
-        }
-
-        isDrawing = false;
-        currentPointerType = '';
-
-        // Snapshot clone of the raw points + a shallow copy of the stroke
-        // options + the active color. The queue owns this copy; the live
-        // currentPoints array is reset below for the next stroke. The points
-        // are immutable [x,y,p] tuples, so a shallow slice is a faithful
-        // snapshot without the GC cost of a deep clone.
-        if (currentPoints.length) {
-            strokeCommitQueue.push({
-                points: currentPoints.slice(),
-                opts: Object.assign({}, currentStrokeOpts),
-                color: selectedColor,
-            });
-            scheduleQueueDrain();
-        }
-        currentPoints = [];
-
-        // NOTE: releasePointerCapture is intentionally omitted — see the
-        // matching note in onCanvasPointerDown. Safari's capture state machine
-        // is a known source of dropped pointerdown events during rapid
-        // tap-and-lift loops, so neither acquire nor release is used here.
-    }
-
-    // ── Canvas sizing (THE fix for "gap grows as I write") ─────────────────
-    // Use window.innerWidth/Height for BOTH the CSS size AND the DPR-scaled
-    // internal resolution. CSS 100vw/100vh ≠ innerWidth/Height on iPadOS
-    // (Safari's dynamic browser chrome), and that mismatch made the coordinate
-    // error grow linearly with distance from the top-left corner.
-    // Resize BOTH canvases to match the viewport at the current DPR.
-    // After resize (which clears both bitmap buffers), redraw all committed
-    // strokes onto the background layer so nothing is lost.
-    function resizeCanvas() {
-        if (!canvas || !ctx || !bgCanvas || !bgCtx) return;
-        // A resize wipes the canvas geometry → the cached bounding rect is stale.
-        invalidateCanvasRect();
-        var dpr = window.devicePixelRatio || 1;
-        var cssW = window.innerWidth;
-        var cssH = window.innerHeight;
-        // Set CSS dimensions on both canvases
-        canvas.style.width = cssW + 'px';
-        canvas.style.height = cssH + 'px';
-        bgCanvas.style.width = cssW + 'px';
-        bgCanvas.style.height = cssH + 'px';
-        var newW = Math.round(cssW * dpr);
-        var newH = Math.round(cssH * dpr);
-        var sizeUnchanged = (canvas.width === newW && canvas.height === newH);
-        // Resize both canvas buffers (clears their bitmaps)
-        canvas.width = newW;
-        canvas.height = newH;
-        bgCanvas.width = newW;
-        bgCanvas.height = newH;
-        // Restore transforms and drawing defaults on both contexts
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        bgCtx.lineCap = 'round';
-        bgCtx.lineJoin = 'round';
-        // LAZY outline recomputation — this is the ONLY place the heavy
-        // perfect-freehand polygon metrics are recomputed from the compact
-        // committedOutlines cache. Because each entry stores only the raw
-        // points + opts + color (no cached polygon), this loop runs getStroke()
-        // per stroke solely when a resize/orientation change wipes the bgCanvas
-        // bitmap. The transient outline is painted straight onto bgCtx and
-        // discarded, keeping peak heap bounded to one outline at a time.
-        for (var i = 0; i < committedOutlines.length; i++) {
-            var s = committedOutlines[i];
-            if (s.fallback) {
-                drawFallbackStroke(s.points, s.color, bgCtx);
-            } else if (getStrokeFn) {
-                var outline = getStrokeFn(s.points, s.opts);
-                fillOutline(outline, s.color, bgCtx);
-            } else {
-                // perfect-freehand dropped mid-session — degrade gracefully.
-                drawFallbackStroke(s.points, s.color, bgCtx);
-            }
-        }
-        // If an active stroke exists, repaint it on the foreground
-        if (!sizeUnchanged) render();
-    }
-
-    // Clear BOTH canvas surfaces and empty all auxiliary memory arrays.
-    function clearCanvas() {
-        // Drop any pending async commits so they cannot re-paint strokes onto
-        // the freshly wiped background after this call returns.
-        strokeCommitQueue.length = 0;
-        if (queueScheduledId !== null) {
-            cancelIdleTask(queueScheduledId);
-            queueScheduledId = null;
-        }
-        isProcessingQueue = false;
-        committedOutlines = [];
-        currentPoints = [];
-        // Wipe the live foreground canvas
-        if (canvas && ctx) {
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.restore();
-        }
-        // Wipe the permanent background bitmap accumulator
-        if (bgCanvas && bgCtx) {
-            bgCtx.save();
-            bgCtx.setTransform(1, 0, 0, 1, 0, 0);
-            bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
-            bgCtx.restore();
-        }
-    }
-
-    // ── Gesture / selection blockers (added while active) ──────────────────
-    function installBlockers() {
-        blockGesture = function (e) { e.preventDefault(); }; // pinch-zoom (gesturestart/change/end)
-        blockSelect = function (e) { e.preventDefault(); };  // selectstart / dragstart
-        blockDblClick = function (e) { e.preventDefault(); }; // double-tap zoom
-        blockTouchStart = function (e) {
-            // Block multi-touch (pinch) so only the single drawing pointer works.
-            if (e.touches && e.touches.length > 1) e.preventDefault();
-        };
-        document.addEventListener('gesturestart', blockGesture, { passive: false });
-        document.addEventListener('gesturechange', blockGesture, { passive: false });
-        document.addEventListener('gestureend', blockGesture, { passive: false });
-        document.addEventListener('selectstart', blockSelect);
-        document.addEventListener('dragstart', blockSelect);
-        document.addEventListener('dblclick', blockDblClick);
-        document.addEventListener('touchstart', blockTouchStart, { passive: false });
-        // Window-level non-passive touchmove blocker. Reuses blockGesture so the
-        // same handler kills both gesture-events and stray touchmove scrolls /
-        // edge-swipes that iOS Safari would otherwise route to its scroll /
-        // back-forward navigation engine during fast horizontal Pencil dashes.
-        window.addEventListener('touchmove', blockGesture, { passive: false });
-    }
-    function removeBlockers() {
-        if (blockGesture) {
-            document.removeEventListener('gesturestart', blockGesture);
-            document.removeEventListener('gesturechange', blockGesture);
-            document.removeEventListener('gestureend', blockGesture);
-            window.removeEventListener('touchmove', blockGesture);
-        }
-        if (blockSelect) {
-            document.removeEventListener('selectstart', blockSelect);
-            document.removeEventListener('dragstart', blockSelect);
-        }
-        if (blockDblClick) document.removeEventListener('dblclick', blockDblClick);
-        if (blockTouchStart) document.removeEventListener('touchstart', blockTouchStart);
-    }
-
-    // ── Active toggle ──────────────────────────────────────────────────────
-    function toggleActive() {
-        isActive = !isActive;
-        if (isActive) {
-            canvas.style.pointerEvents = 'auto';
-            document.body.classList.add('scratchpad-active');
-            // Terminate the browser's horizontal history-navigation swipe
-            // gesture engine while the drawing surface is live. Without this,
-            // fast horizontal Pencil dashes (e.g. '=' or math dashes) can be
-            // intercepted by iOS Safari's back/forward swipe recognizer and
-            // swallowed before reaching the canvas pointer pipeline.
-            document.body.style.overscrollBehaviorX = 'none';
-            installBlockers();
-            pencilBtn.style.background = 'rgba(34,197,94,0.22)';
-            pencilBtn.style.boxShadow = '0 0 0 1px rgba(34,197,94,0.7), 0 0 14px rgba(34,197,94,0.45)';
-            closeDropdown();
-        } else {
-            clearCanvas();
-            canvas.style.pointerEvents = 'none';
-            document.body.classList.remove('scratchpad-active');
-            // Restore the default horizontal overscroll behavior so normal
-            // page navigation gestures work again outside the scratchpad.
-            document.body.style.overscrollBehaviorX = 'auto';
-            removeBlockers();
-            pencilBtn.style.background = 'rgba(255,255,255,0.04)';
-            pencilBtn.style.boxShadow = 'none';
-            closeDropdown();
-        }
-    }
-
-    // ── Color state ────────────────────────────────────────────────────────
-    function updateColorBtn() { if (colorBtn) colorBtn.style.background = selectedColor; }
-    function applyColor(c) {
-        selectedColor = c.toLowerCase();
-        saveColors();
-        updateColorBtn();
-        if (nativeInput) nativeInput.value = selectedColor;
-        if (hexInput) hexInput.value = selectedColor;
-        if (bigSwatch) bigSwatch.style.background = selectedColor;
-        renderPresets();
-        renderPaletteQuick();
-        renderDropdown();
-    }
-    function selectColorFromDropdown(c) { applyColor(c); closeDropdown(); }
-    function addQuick() {
-        const lc = selectedColor.toLowerCase();
-        if (quickColors.some(function (s) { return s.toLowerCase() === lc; })) return;
-        if (quickColors.length >= MAX_QUICK) return;
-        quickColors.push(selectedColor);
-        saveColors();
-        renderPaletteQuick();
-        renderDropdown();
-    }
-    function removeQuick(c) {
-        if (quickColors.length <= 1) return;
-        quickColors = quickColors.filter(function (x) { return x !== c; });
-        if (selectedColor === c) {
-            selectedColor = quickColors[0];
-            updateColorBtn();
-            if (nativeInput) nativeInput.value = selectedColor;
-            if (hexInput) hexInput.value = selectedColor;
-            if (bigSwatch) bigSwatch.style.background = selectedColor;
-        }
-        saveColors();
-        renderPaletteQuick();
-        renderDropdown();
-    }
-
-    // ── Dropdown (main color menu) ─────────────────────────────────────────
-    function toggleDropdown() { if (dropdownOpen) closeDropdown(); else openDropdown(); }
-    function openDropdown() {
-        if (paletteOpen) closePalette();
-        dropdownOpen = true;
-        renderDropdown();
-        dropdown.style.display = 'flex';
-    }
-    function closeDropdown() { dropdownOpen = false; if (dropdown) dropdown.style.display = 'none'; }
-    function renderDropdown() {
-        if (!dropdown) return;
-        dropdown.innerHTML = '';
-        quickColors.forEach(function (c) {
-            const sel = c.toLowerCase() === selectedColor.toLowerCase();
-            const sw = el('div', {
-                class: 'sp-sw', role: 'button', tabindex: '0', title: c,
-                style: {
-                    width: '34px', height: '34px', borderRadius: '50%', background: c,
-                    outline: sel ? '2px solid #fff' : '1px solid rgba(255,255,255,0.16)',
-                    outlineOffset: sel ? '1px' : '0',
-                    cursor: 'pointer', transition: 'transform 0.12s ease',
-                },
-                onclick: function () { selectColorFromDropdown(c); },
-            });
-            sw.addEventListener('pointerenter', function () { sw.style.transform = 'scale(1.12)'; });
-            sw.addEventListener('pointerleave', function () { sw.style.transform = 'scale(1)'; });
-            dropdown.appendChild(sw);
-        });
-        const plus = el('div', {
-            class: 'sp-sw sp-plus', role: 'button', tabindex: '0', title: 'More vibes',
-            style: {
-                width: '34px', height: '34px', borderRadius: '50%',
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px dashed rgba(255,255,255,0.25)',
-                color: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', transition: 'transform 0.12s ease, background 0.12s ease',
-            },
-            html: ICON_PLUS,
-            onclick: function () { closeDropdown(); openPalette(); },
-        });
-        plus.addEventListener('pointerenter', function () { plus.style.transform = 'scale(1.12)'; plus.style.background = 'rgba(255,255,255,0.12)'; });
-        plus.addEventListener('pointerleave', function () { plus.style.transform = 'scale(1)'; plus.style.background = 'rgba(255,255,255,0.06)'; });
-        dropdown.appendChild(plus);
-    }
-
-    // ── Palette square (full picker + manage quick list) ───────────────────
-    function openPalette() {
-        if (dropdownOpen) closeDropdown();
-        paletteOpen = true;
-        if (nativeInput) nativeInput.value = selectedColor;
-        if (hexInput) hexInput.value = selectedColor;
-        if (bigSwatch) bigSwatch.style.background = selectedColor;
-        renderPresets();
-        renderPaletteQuick();
-        paletteOverlay.style.display = 'flex';
-    }
-    function closePalette() { paletteOpen = false; if (paletteOverlay) paletteOverlay.style.display = 'none'; }
-    function renderPresets() {
-        if (!presetGrid) return;
-        presetGrid.innerHTML = '';
-        PRESET_COLORS.forEach(function (c) {
-            const sel = c.toLowerCase() === selectedColor.toLowerCase();
-            const cell = el('div', {
-                class: 'sp-preset', role: 'button', tabindex: '0', title: c,
-                style: {
-                    aspectRatio: '1', borderRadius: '7px', background: c,
-                    outline: sel ? '2px solid #fff' : '1px solid rgba(255,255,255,0.12)',
-                    outlineOffset: sel ? '1px' : '0',
-                    cursor: 'pointer', transition: 'transform 0.1s ease',
-                },
-                onclick: function () { applyColor(c); },
-            });
-            cell.addEventListener('pointerenter', function () { cell.style.transform = 'scale(1.12)'; });
-            cell.addEventListener('pointerleave', function () { cell.style.transform = 'scale(1)'; });
-            presetGrid.appendChild(cell);
-        });
-    }
-    function renderPaletteQuick() {
-        if (!quickManageRow) return;
-        quickManageRow.innerHTML = '';
-        quickColors.forEach(function (c) {
-            const sel = c.toLowerCase() === selectedColor.toLowerCase();
-            const wrap = el('div', { class: 'sp-qwrap', style: { position: 'relative', width: '36px', height: '36px' } });
-            const sw = el('div', {
-                class: 'sp-qsw', role: 'button', tabindex: '0', title: c,
-                style: {
-                    width: '36px', height: '36px', borderRadius: '50%', background: c,
-                    outline: sel ? '2px solid #fff' : '1px solid rgba(255,255,255,0.15)',
-                    outlineOffset: sel ? '1px' : '0', cursor: 'pointer',
-                },
-                onclick: function () { applyColor(c); },
-            });
-            const x = el('div', {
-                class: 'sp-qx', role: 'button', tabindex: '0', title: 'Yeet from quick colors',
-                style: {
-                    position: 'absolute', top: '-5px', right: '-5px',
-                    width: '16px', height: '16px', borderRadius: '50%',
-                    background: '#1f2937', color: '#f87171',
-                    border: '1px solid rgba(248,113,113,0.6)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', fontSize: '0', lineHeight: '0',
-                },
-                html: svg('M18 6 6 18 M6 6l12 12', 11, 2.4),
-                onclick: function (e) { e.stopPropagation(); removeQuick(c); },
-            });
-            wrap.appendChild(sw);
-            wrap.appendChild(x);
-            quickManageRow.appendChild(wrap);
-        });
-        if (addBtn) {
-            const lc = selectedColor.toLowerCase();
-            const dup = quickColors.some(function (s) { return s.toLowerCase() === lc; });
-            const canAdd = quickColors.length < MAX_QUICK && !dup;
-            addBtn.style.opacity = canAdd ? '1' : '0.4';
-            addBtn.style.pointerEvents = canAdd ? 'auto' : 'none';
-        }
-    }
-
-    // ── HUD drag + button dispatch ─────────────────────────────────────────
-    function onHudPointerDown(e) {
-        if (dragPointerId !== null) return;
-        dragPointerId = e.pointerId;
-        try { toolbar.setPointerCapture(e.pointerId); } catch (_) { /* pointer gone */ }
-        dragMoved = false;
-        const rootRect = root.getBoundingClientRect();
-        dragOffsetX = e.clientX - rootRect.left;
-        dragOffsetY = e.clientY - rootRect.top;
-        dragStartX = e.clientX;
-        dragStartY = e.clientY;
-        const target = e.target;
-        if (pencilBtn.contains(target)) pressedBtn = 'pencil';
-        else if (colorBtn.contains(target)) pressedBtn = 'color';
-        else if (clearBtn.contains(target)) pressedBtn = 'clear';
-        else pressedBtn = null;
-    }
-    function onHudPointerMove(e) {
-        if (e.pointerId !== dragPointerId) return;
-        if (!dragMoved) {
-            if (Math.abs(e.clientX - dragStartX) > DRAG_THRESHOLD ||
-                Math.abs(e.clientY - dragStartY) > DRAG_THRESHOLD) {
-                dragMoved = true;
-                if (dropdownOpen) closeDropdown();
-            }
-        }
-        if (dragMoved) {
-            const newX = e.clientX - dragOffsetX;
-            const newY = e.clientY - dragOffsetY;
-            const w = root.offsetWidth, h = root.offsetHeight;
-            const cx = Math.max(0, Math.min(window.innerWidth - w, newX));
-            const cy = Math.max(0, Math.min(window.innerHeight - h, newY));
-            root.style.left = cx + 'px';
-            root.style.top = cy + 'px';
-            root.style.right = 'auto';
-        }
-    }
-    function onHudPointerUp(e) {
-        if (e.pointerId !== dragPointerId) return;
-        try { toolbar.releasePointerCapture(e.pointerId); } catch (_) { /* released */ }
-        dragPointerId = null;
-        if (dragMoved) { dragMoved = false; pressedBtn = null; return; }
-        const btn = pressedBtn;
-        pressedBtn = null;
-        if (btn === 'pencil') toggleActive();
-        else if (btn === 'color') toggleDropdown();
-        else if (btn === 'clear') clearCanvas();
-    }
-
-    // ── DOM injection ──────────────────────────────────────────────────────
-    function injectDOM() {
-        // ── Double-canvas layering system ──────────────────────────────────
-        // Bottom layer: permanent bitmap accumulator for committed strokes.
-        // pointer-events: none always — this canvas is never interacted with.
-        bgCanvas = el('canvas', {
-            id: 'scratchpad-bg-canvas',
-            style: {
-                position: 'fixed', top: '0', left: '0',
-                zIndex: '999994', pointerEvents: 'none', display: 'block',
-                touchAction: 'none', overscrollBehavior: 'none',
-                WebkitUserSelect: 'none', userSelect: 'none',
-                WebkitTouchCallout: 'none',
-            },
-        });
-        document.body.appendChild(bgCanvas);
-
-        // Top layer: live foreground for the single in-progress stroke.
-        // pointer-events: none unless scratchpad is active (toggled by toggleActive).
-        // CRITICAL: width/height are set by resizeCanvas() to window.innerWidth/
-        // innerHeight in PX (NOT 100vw/100vh — those mismatch on iPadOS and
-        // cause the gap to grow as you draw further from the top-left).
-        canvas = el('canvas', {
-            id: 'scratchpad-canvas',
-            style: {
-                position: 'fixed', top: '0', left: '0',
-                zIndex: '999995', pointerEvents: 'none', display: 'block',
-                touchAction: 'none', overscrollBehavior: 'none',
-                WebkitUserSelect: 'none', userSelect: 'none',
-                WebkitTouchCallout: 'none',
-            },
-        });
-        document.body.appendChild(canvas);
-
-        root = el('div', {
-            id: 'scratchpad-root',
-            style: {
-                position: 'fixed', top: '20px', right: '20px', zIndex: '999999',
-                userSelect: 'none', WebkitUserSelect: 'none',
-            },
-        });
-
-        toolbar = el('div', {
-            id: 'scratchpad-toolbar',
-            style: Object.assign({
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                gap: '6px', padding: '6px', borderRadius: '16px',
-                touchAction: 'none', cursor: 'grab',
-            }, GLASS),
-        });
-
-        pencilBtn = el('div', {
-            class: 'sp-btn', role: 'button', tabindex: '0', title: 'Toggle doodle pad',
-            style: {
-                width: '42px', height: '42px', borderRadius: '12px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: '#e5e7eb', background: 'rgba(255,255,255,0.04)',
-                transition: 'background 0.15s ease, box-shadow 0.15s ease',
-            },
-            html: ICON_PENCIL,
-        });
-        pencilBtn.addEventListener('pointerenter', function () {
-            if (!dragMoved) pencilBtn.style.background = isActive ? 'rgba(34,197,94,0.32)' : 'rgba(255,255,255,0.1)';
-        });
-        pencilBtn.addEventListener('pointerleave', function () {
-            if (!dragMoved) pencilBtn.style.background = isActive ? 'rgba(34,197,94,0.22)' : 'rgba(255,255,255,0.04)';
-        });
-
-        colorBtn = el('div', {
-            class: 'sp-btn', role: 'button', tabindex: '0', title: 'Grab color',
-            style: {
-                width: '42px', height: '42px', borderRadius: '50%', cursor: 'pointer',
-                border: '2px solid rgba(255,255,255,0.22)',
-                boxShadow: 'inset 0 0 0 2px rgba(0,0,0,0.45)',
-                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-            },
-        });
-        colorBtn.addEventListener('pointerenter', function () {
-            if (!dragMoved) {
-                colorBtn.style.transform = 'scale(1.08)';
-                colorBtn.style.boxShadow = 'inset 0 0 0 2px rgba(0,0,0,0.45), 0 0 0 3px rgba(255,255,255,0.12)';
-            }
-        });
-        colorBtn.addEventListener('pointerleave', function () {
-            if (!dragMoved) {
-                colorBtn.style.transform = 'scale(1)';
-                colorBtn.style.boxShadow = 'inset 0 0 0 2px rgba(0,0,0,0.45)';
-            }
-        });
-
-        clearBtn = el('div', {
-            class: 'sp-btn', role: 'button', tabindex: '0', title: 'Nuke canvas',
-            style: {
-                width: '42px', height: '42px', borderRadius: '12px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: '#94a3b8', background: 'rgba(255,255,255,0.04)',
-                transition: 'background 0.15s ease, color 0.15s ease',
-            },
-            html: ICON_TRASH,
-        });
-        clearBtn.addEventListener('pointerenter', function () {
-            if (!dragMoved) { clearBtn.style.background = 'rgba(248,113,113,0.18)'; clearBtn.style.color = '#fca5a5'; }
-        });
-        clearBtn.addEventListener('pointerleave', function () {
-            if (!dragMoved) { clearBtn.style.background = 'rgba(255,255,255,0.04)'; clearBtn.style.color = '#94a3b8'; }
-        });
-
-        toolbar.appendChild(pencilBtn);
-        toolbar.appendChild(colorBtn);
-        toolbar.appendChild(clearBtn);
-        root.appendChild(toolbar);
-
-        dropdown = el('div', {
-            id: 'scratchpad-dropdown',
-            style: Object.assign({
-                position: 'absolute', top: 'calc(100% + 10px)', right: '0',
-                display: 'none', flexDirection: 'row', flexWrap: 'wrap',
-                gap: '8px', padding: '10px', borderRadius: '14px', maxWidth: '270px',
-            }, GLASS),
-        });
-        root.appendChild(dropdown);
-
-        document.body.appendChild(root);
-        updateColorBtn();
-
-        // ── Palette overlay (the square) ──
-        paletteOverlay = el('div', {
-            id: 'scratchpad-palette-overlay',
-            style: {
-                position: 'fixed', inset: '0', display: 'none',
-                alignItems: 'center', justifyContent: 'center', zIndex: '999998',
-                background: 'rgba(0,0,0,0.55)',
-                backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
-            },
-        });
-        paletteOverlay.addEventListener('pointerdown', function (e) {
-            if (e.target === paletteOverlay) closePalette();
-        });
-
-        paletteBox = el('div', {
-            id: 'scratchpad-palette',
-            style: Object.assign({
-                width: '308px', borderRadius: '18px', padding: '16px',
-                display: 'flex', flexDirection: 'column', gap: '14px',
-            }, GLASS),
-        });
-
-        const header = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } });
-        header.appendChild(el('div', { style: { fontWeight: '600', fontSize: '14px', color: '#f1f5f9' } }, ['Pick your vibe']));
-        const closeBtn = el('div', {
-            role: 'button', tabindex: '0', title: 'Close',
-            style: {
-                width: '28px', height: '28px', borderRadius: '8px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: '#94a3b8', background: 'rgba(255,255,255,0.04)',
-            },
-            html: ICON_CLOSE, onclick: closePalette,
-        });
-        header.appendChild(closeBtn);
-        paletteBox.appendChild(header);
-
-        const mainRow = el('div', { style: { display: 'flex', gap: '12px', alignItems: 'center', position: 'relative' } });
-        bigSwatch = el('div', {
-            class: 'sp-big', role: 'button', tabindex: '0', title: 'Full color picker',
-            style: {
-                width: '56px', height: '56px', borderRadius: '12px', cursor: 'pointer',
-                border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.4)', flexShrink: '0',
-            },
-            onclick: function () { nativeInput.click(); },
-        });
-        nativeInput = el('input', {
-            type: 'color', tabindex: '-1', 'aria-hidden': 'true',
-            style: { position: 'absolute', width: '1px', height: '1px', opacity: '0', pointerEvents: 'none', top: '0', left: '0' },
-        });
-        nativeInput.addEventListener('input', function () { applyColor(nativeInput.value); });
-
-        const hexBox = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px', flex: '1' } });
-        hexInput = el('input', {
-            type: 'text', maxlength: '7', spellcheck: 'false', title: 'Hex code',
-            style: {
-                width: '100%', background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px',
-                padding: '7px 10px', color: '#e5e7eb', fontSize: '13px',
-                fontFamily: 'ui-monospace, monospace', outline: 'none',
-            },
-        });
-        hexInput.addEventListener('change', function () {
-            let v = hexInput.value.trim();
-            if (!v.startsWith('#')) v = '#' + v;
-            if (/^#[0-9a-fA-F]{6}$/.test(v)) applyColor(v.toLowerCase());
-            else hexInput.value = selectedColor;
-        });
-        hexInput.addEventListener('focus', function () { hexInput.style.borderColor = 'rgba(255,255,255,0.3)'; });
-        hexInput.addEventListener('blur', function () { hexInput.style.borderColor = 'rgba(255,255,255,0.12)'; });
-        hexBox.appendChild(hexInput);
-        hexBox.appendChild(el('div', { style: { fontSize: '11px', color: '#64748b' } }, ['Tap the swatch for the full picker']));
-
-        mainRow.appendChild(bigSwatch);
-        mainRow.appendChild(nativeInput);
-        mainRow.appendChild(hexBox);
-        paletteBox.appendChild(mainRow);
-
-        presetGrid = el('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '5px' } });
-        paletteBox.appendChild(presetGrid);
-
-        paletteBox.appendChild(el('div', { style: { height: '1px', background: 'rgba(255,255,255,0.08)' } }));
-
-        const qmHeader = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } });
-        qmHeader.appendChild(el('div', { style: { fontSize: '12px', color: '#94a3b8', fontWeight: '500' } }, ['Stash Colors']));
-        addBtn = el('div', {
-            role: 'button', tabindex: '0', title: 'Stash this color',
-            style: {
-                display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px',
-                color: '#e5e7eb', background: 'rgba(255,255,255,0.08)',
-                padding: '5px 10px', borderRadius: '8px', cursor: 'pointer',
-                transition: 'background 0.12s ease',
-            },
-            html: '<span style="display:flex;align-items:center">' + ICON_PLUS + '</span> Stash it',
-            onclick: addQuick,
-        });
-        addBtn.addEventListener('pointerenter', function () { addBtn.style.background = 'rgba(255,255,255,0.16)'; });
-        addBtn.addEventListener('pointerleave', function () { addBtn.style.background = 'rgba(255,255,255,0.08)'; });
-        qmHeader.appendChild(addBtn);
-        paletteBox.appendChild(qmHeader);
-
-        quickManageRow = el('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap', minHeight: '36px' } });
-        paletteBox.appendChild(quickManageRow);
-
-        paletteBox.appendChild(el('div', { style: { fontSize: '11px', color: '#475569' } }, ['Up to 8 stashed colors · tap × to yeet · auto-saved']));
-
-        paletteOverlay.appendChild(paletteBox);
-        document.body.appendChild(paletteOverlay);
-    }
-
-    // ── Initialization ─────────────────────────────────────────────────────
-    function init() {
-        if (!document.body) { requestAnimationFrame(init); return; }
-        loadColors();
-        injectDOM();
-        // ── Accelerated 2D contexts for both scratchpad surfaces ──
-        // { alpha:true }      → keep transparency so the dimmed workspace shows
-        //                       through the ink layers.
-        // { desynchronized:true } → bypass the DOM event-loop presentation
-        //                       queue; the GPU presents each framebuffer out-of-
-        //                       band, minimising pencil-tip→ink latency.
-        // { willReadFrequently:false } → keep each canvas on the GPU texture
-        //                       fast-path. The scratchpad never calls
-        //                       getImageData() during drawing, so a readback-CPU
-        //                       bitmap would only stall the compositor.
-        ctx = canvas.getContext('2d', {
-            alpha: true, desynchronized: true, willReadFrequently: false,
-        });
-        bgCtx = bgCanvas.getContext('2d', {
-            alpha: true, desynchronized: true, willReadFrequently: false,
-        });
-        if (!ctx || !bgCtx) return;
-        resizeCanvas();
-
-        toolbar.addEventListener('pointerdown', onHudPointerDown);
-        toolbar.addEventListener('pointermove', onHudPointerMove);
-        toolbar.addEventListener('pointerup', onHudPointerUp);
-        toolbar.addEventListener('pointercancel', onHudPointerUp);
-
-        canvas.addEventListener('pointerdown', onCanvasPointerDown);
-        canvas.addEventListener('pointermove', onCanvasPointerMove);
-        canvas.addEventListener('pointerup', onCanvasPointerUp);
-        canvas.addEventListener('pointerleave', onCanvasPointerUp);
-        canvas.addEventListener('pointercancel', onCanvasPointerUp);
-
-        // GESTURE BYPASS — explicit non-passive touchstart on the foreground
-        // canvas. iOS Safari layers system-level hold/tap-delay/zoom-intercept
-        // buffers over elements with default touch handling; during fast
-        // horizontal Pencil dashes these buffers can swallow the touch that
-        // would have become a pointerdown, causing the dropped-input bug.
-        // An unconditional cancelable preventDefault on touchstart forces the
-        // web view to stand down its gesture recognizers over the drawing
-        // surface so the Pointer Events pipeline receives every contact.
-        canvas.addEventListener('touchstart', function (e) {
-            if (e.cancelable) e.preventDefault();
-        }, { passive: false });
-
-        window.addEventListener('resize', resizeCanvas);
-        window.addEventListener('orientationchange', function () { setTimeout(resizeCanvas, 250); });
-
-        document.addEventListener('pointerdown', function (e) {
-            if (!dropdownOpen) return;
-            if (e.target && !root.contains(e.target)) closeDropdown();
-        }, true);
-
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') { closePalette(); closeDropdown(); }
-        });
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
-
-    window.__scratchpad = {
-        getActive: function () { return isActive; },
-        getColor: function () { return selectedColor; },
-        getQuick: function () { return quickColors.slice(); },
-        toggle: toggleActive,
-        clear: clearCanvas,
-    };
-})();
+// ----------------------------------------------------------------------------
+// SCRATCHPAD (Apple Pencil draw HUD) REMOVED — deleted as unused.
+// ----------------------------------------------------------------------------
 
 // ============================================================================
 //  LOOP-RAIL NAVIGATION  (append-only, self-wiring)
