@@ -5374,7 +5374,7 @@ export function renderPracticeQuestionModal() {
         document.getElementById('practice-submit-btn').innerText = 'Lock In Answer';
     } else {
         html +=
-            `<p style="margin-top:16px; color:#cbd5e1;">This is a free-response question. No multiple choice here.</p>`;
+            `<p class="free-response-hint" style="margin-top:16px; color:#cbd5e1;">This is a free-response question. No multiple choice here.</p>`;
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
         document.getElementById('practice-submit-btn').innerText = 'Reveal Answer';
     }
