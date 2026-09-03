@@ -70,11 +70,63 @@ assert(bankEntry && Array.isArray(bankEntry[1]), 'backup holds the question bank
 const lsKeys = Object.keys(payload.ls || {});
 assert(lsKeys.some(k => k.includes('jeemax')), `localStorage snapshot captured (${lsKeys.length} keys)`);
 
+// ── 2b. v3 manifest: every corner fingerprinted ──
+assert(payload.version === 3, `backup format is v3 (${payload.version})`);
+const sections = (payload.manifest && payload.manifest.sections) || [];
+assert(sections.length >= payload.idb.length + lsKeys.length, `manifest fingerprints ${sections.length} sections`);
+assert(sections.every(s => s && typeof s.k === 'string' && typeof s.b === 'number' && ('h' in s)), 'every section has key + bytes + hash');
+assert(payload.manifest.totalBytes > 0, `manifest totals ${payload.manifest.totalBytes} bytes`);
+assert(Array.isArray(payload.cpdb), 'backup carries the checkpoint-db section');
+
+// ── 2c. Seed a checkpoint-db probe row (separate DB must round-trip too) ──
+await page.evaluate(() => new Promise((resolve) => {
+    try {
+        const req = indexedDB.open('checkpoint-db', 1);
+        req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+        };
+        req.onsuccess = () => {
+            try {
+                const tx = req.result.transaction('kv', 'readwrite');
+                tx.objectStore('kv').put({ probe: 'audit-v3', at: Date.now() }, 'audit:probe');
+                tx.oncomplete = () => { try { req.result.close(); } catch {} resolve(); };
+                tx.onerror = () => resolve();
+            } catch { resolve(); }
+        };
+        req.onerror = () => resolve();
+    } catch { resolve(); } }));
+const payload2 = await page.evaluate(async () => {
+    const m = await import('./storage.js');
+    return m.buildFullBackup();
+});
+const probeEntry = payload2.cpdb.find(e => e[0] === 'audit:probe');
+assert(probeEntry && probeEntry[1] && probeEntry[1].probe === 'audit-v3', 'backup holds the checkpoint-db probe row');
+
 // ── 3. Destroy EVERYTHING (simulated lost device / corruption) ──
 await page.evaluate(async () => {
     const m = await import('./storage.js');
     const entries = await m.idbGetAllEntries();
     for (const [k] of entries) await m.idbRemove(k);
+    try {
+        const cps = await m.cpdbGetAllEntries();
+        if (cps.length) {
+            await new Promise((resolve) => {
+                try {
+                    const req = indexedDB.open('checkpoint-db', 1);
+                    req.onsuccess = () => {
+                        try {
+                            const tx = req.result.transaction('kv', 'readwrite');
+                            tx.objectStore('kv').clear();
+                            tx.oncomplete = () => { try { req.result.close(); } catch {} resolve(); };
+                            tx.onerror = () => resolve();
+                        } catch { resolve(); }
+                    };
+                    req.onerror = () => resolve();
+                } catch { resolve(); }
+            });
+        }
+    } catch (_) {}
     try { localStorage.clear(); } catch (_) {}
 });
 const afterWipe = await page.evaluate(async () => {
@@ -83,12 +135,28 @@ const afterWipe = await page.evaluate(async () => {
 });
 assert(afterWipe === 0, `store emptied (${afterWipe} keys left)`);
 
-// ── 4. Restore from the payload ──
+// ── 4. Restore from the payload (use payload2 — it includes the cpdb probe) ──
 const restored = await page.evaluate(async (p) => {
     const m = await import('./storage.js');
     return m.applyFullBackup(p);
-}, payload);
+}, payload2);
 assert(restored && typeof restored.keys === 'number' && restored.keys > 10, `restore wrote ${restored?.keys} sections`);
+assert(restored.ok === true && restored.mismatchCount === 0, `restore verified ${restored?.checked} sections, 0 mismatches`);
+const probeBack = await page.evaluate(async () => {
+    const m = await import('./storage.js');
+    const rows = await m.cpdbGetAllEntries();
+    return (rows.find(e => e[0] === 'audit:probe') || [])[1] || null;
+});
+assert(probeBack && probeBack.probe === 'audit-v3', 'checkpoint-db probe row survived the round-trip');
+
+// ── 4b. v2 payloads (pre-manifest) still restore ──
+const v2ok = await page.evaluate(async (p) => {
+    const m = await import('./storage.js');
+    const v2 = { __jmaxBackup: true, version: 2, exportedAt: p.exportedAt, idb: p.idb, ls: p.ls };
+    const r = await m.applyFullBackup(v2);
+    return r && r.keys > 10;
+}, payload2);
+assert(v2ok, 'v2 (legacy, no manifest/cpdb) payloads still restore');
 
 // ── 5. Reload → real boot must rehydrate the seeded state ──
 await page.reload({ waitUntil: 'domcontentloaded' });

@@ -299,14 +299,26 @@ export async function idbGetMany(keys) {
     });
 }
 
-// ── Full Backup / Restore [AUDIT P1-1] ─────────────────────────────────────
+// ── Full Backup / Restore [AUDIT P1-1] · format v3 ─────────────────────────
 // Until now the only exports were a lossy analytics .txt and a Gem-feed .json
 // projection — no ids, no images, no counters/ELO/mocks/history/vault, and no
 // import at all. A lost iPad meant total loss. This dumps EVERYTHING this app
-// persists (the whole IndexedDB key-value store incl. the image vault, plus a
-// full localStorage snapshot) into one portable .json and puts it back.
+// persists into one portable .json and puts it back:
+//   · the whole main IndexedDB key-value store (bank, chapters, image vault,
+//     gallery blobs, ELO, mocks, ledgers, directive, tokens) — idb[]
+//   · the checkpoint subsystem's OWN database (checkpoint-db/kv), which used
+//     to survive only via its localStorage dual-writes — cpdb[]
+//   · a full localStorage snapshot (themes, prefs, soundscape, ledger…) — ls{}
+//   · a manifest: per-section byte sizes + SHA-256 hashes, so restore can
+//     PROVE nothing was left behind — manifest{}
+// Deliberately NOT included (no user data there): ServiceWorker caches,
+// sessionStorage, in-memory-only state (live streak, drafts), Drive-side
+// blobs (their driveImageId refs + offline vault copies ARE included).
 const BACKUP_MARKER = '__jmaxBackup';
-const BACKUP_VERSION = 2;
+const BACKUP_VERSION = 3;
+// Rows above this size skip re-hashing on verify (byte-length compare
+// instead) so an 80MB image vault doesn't stall the restore report.
+const BACKUP_HASH_CAP = 8 * 1024 * 1024;
 
 export async function idbGetAllEntries() {
     const db = await openDB();
@@ -333,24 +345,133 @@ function _lsSnapshot() {
     return out;
 }
 
+// ── checkpoint-db access (kept HERE, not imported from checkpoint.js — that
+// module imports storage.js, so importing it back would be circular). Same
+// shape as the main store dump: [[key, value], …], values stored raw.
+const CPDB_NAME = 'checkpoint-db';
+const CPDB_STORE = 'kv';
+let _cpDbPromise = null;
+
+function openCpDb() {
+    if (_cpDbPromise) return _cpDbPromise;
+    _cpDbPromise = new Promise((resolve) => {
+        try {
+            const req = indexedDB.open(CPDB_NAME, 1);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(CPDB_STORE)) db.createObjectStore(CPDB_STORE);
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => { _cpDbPromise = null; resolve(null); };
+            req.onblocked = () => { /* a second tab holds it — caller treats as empty */ };
+        } catch (_) { _cpDbPromise = null; resolve(null); }
+    });
+    return _cpDbPromise;
+}
+
+export async function cpdbGetAllEntries() {
+    const db = await openCpDb();
+    if (!db) return [];
+    return new Promise((resolve) => {
+        try {
+            const tx = db.transaction(CPDB_STORE, 'readonly');
+            const store = tx.objectStore(CPDB_STORE);
+            const keys = [], vals = [];
+            const kreq = store.getAllKeys(), vreq = store.getAll();
+            kreq.onsuccess = () => keys.push(...(kreq.result || []));
+            vreq.onsuccess = () => vals.push(...(vreq.result || []));
+            tx.oncomplete = () => {
+                try { db.close(); } catch (_) {}
+                _cpDbPromise = null;
+                resolve(keys.map((k, i) => [k, vals[i] ?? null]));
+            };
+            tx.onerror = () => resolve([]);
+        } catch (_) { resolve([]); }
+    });
+}
+
+async function cpdbSetMany(entries) {
+    const db = await openCpDb();
+    if (!db) throw new Error('checkpoint store unavailable');
+    return new Promise((resolve, reject) => {
+        try {
+            const tx = db.transaction(CPDB_STORE, 'readwrite');
+            const store = tx.objectStore(CPDB_STORE);
+            for (const [key, value] of entries) store.put(value, key);
+            tx.oncomplete = () => {
+                try { db.close(); } catch (_) {}
+                _cpDbPromise = null;
+                resolve();
+            };
+            tx.onerror = () => reject(tx.error || new Error('checkpoint restore failed'));
+        } catch (e) { reject(e); }
+    });
+}
+
+// ── Backup integrity primitives ──────────────────────────────────────────
+const _te = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
+function _bytesOf(str) {
+    try {
+        if (_te) return _te.encode(str).length;
+        return (str || '').length;
+    } catch (_) { return 0; }
+}
+
+// SHA-256 over the canonical JSON of a section. Falls back to FNV-1a (tagged
+// so a fallback hash can never compare equal to a real one) on non-secure
+// contexts where crypto.subtle is unavailable (e.g. file://).
+async function _hashSection(value) {
+    const str = (typeof value === 'string') ? value : JSON.stringify(value);
+    try {
+        if (typeof crypto !== 'undefined' && crypto.subtle) {
+            const digest = await crypto.subtle.digest('SHA-256', _te.encode(str));
+            return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+    } catch (_) { /* fall through to FNV-1a */ }
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return 'fnv1a-' + h.toString(16).padStart(8, '0');
+}
+
 export async function buildFullBackup() {
     flushSaves().catch(() => {});          // fold any pending coalesced save in
     await new Promise(r => setTimeout(r, 650)); // > 600ms coalesce window
-    const idbEntries = await idbGetAllEntries();
+    const [idbEntries, cpEntries] = await Promise.all([idbGetAllEntries(), cpdbGetAllEntries()]);
+    const ls = _lsSnapshot();
+    // Manifest: one fingerprint per section. Giant rows record bytes only.
+    const sections = [];
+    let totalBytes = 0;
+    const fingerprint = async (store, key, value) => {
+        const str = (typeof value === 'string') ? value : JSON.stringify(value);
+        const b = _bytesOf(str);
+        totalBytes += b;
+        sections.push({ s: store, k: key, b, h: b > BACKUP_HASH_CAP ? null : await _hashSection(value) });
+    };
+    for (const [k, v] of idbEntries) await fingerprint('idb', k, v);
+    for (const [k, v] of cpEntries) await fingerprint('cpdb', k, v);
+    for (const k of Object.keys(ls)) await fingerprint('ls', k, ls[k]);
     return {
         [BACKUP_MARKER]: true,
         version: BACKUP_VERSION,
+        app: 'JEEMaxxing',
         exportedAt: new Date().toISOString(),
-        counts: { idbKeys: idbEntries.length },
+        counts: { idbKeys: idbEntries.length, cpdbKeys: cpEntries.length, lsKeys: Object.keys(ls).length },
+        manifest: { sections, totalBytes },
+        cpdb: cpEntries,
         idb: idbEntries,
-        ls: _lsSnapshot(),
+        ls,
     };
 }
 
 /**
  * Validate + apply a backup payload. Writes straight through to IndexedDB /
  * localStorage (NOT through _doSaveAll), then the caller reloads so every
- * module re-hydrates from the restored rows.
+ * module re-hydrates from the restored rows. Accepts v2 payloads (no
+ * manifest/cpdb) and v3. Never prunes: keys created after the backup stay.
+ * Returns a verification report (see _verifyBackupAgainst).
  */
 export async function applyFullBackup(payload) {
     if (!payload || payload[BACKUP_MARKER] !== true) throw new Error('Not a JEEMaxxing backup file');
@@ -361,15 +482,96 @@ export async function applyFullBackup(payload) {
             throw new Error('Backup data section is malformed');
         }
     }
+    if (payload.cpdb !== undefined) {
+        if (!Array.isArray(payload.cpdb)) throw new Error('Backup checkpoint section is malformed');
+        for (const entry of payload.cpdb) {
+            if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string') {
+                throw new Error('Backup checkpoint section is malformed');
+            }
+        }
+    }
     if (payload.ls && typeof payload.ls !== 'object') throw new Error('Backup prefs section is malformed');
     await idbSetMany(payload.idb);
+    let cpRestored = 0, cpError = null;
+    if (Array.isArray(payload.cpdb) && payload.cpdb.length) {
+        try { await cpdbSetMany(payload.cpdb); cpRestored = payload.cpdb.length; }
+        catch (e) { cpError = (e && e.message) || String(e); }
+    }
     try {
         localStorage.clear();
         for (const k of Object.keys(payload.ls || {})) {
             try { localStorage.setItem(k, String(payload.ls[k])); } catch (_) {}
         }
     } catch (_) {}
-    return { keys: payload.idb.length };
+    const report = await _verifyBackupAgainst(payload);
+    report.cpKeys = cpRestored;
+    if (cpError) report.mismatches.push('cpdb: write failed (' + cpError + ')');
+    return { keys: payload.idb.length, lsKeys: Object.keys(payload.ls || {}).length, ...report };
+}
+
+/**
+ * Re-read every store and compare against the backup's manifest (v3) or, for
+ * v2 payloads, against the payload's own key sets. Extra live keys are NOT
+ * mismatches (restore never prunes). Giant rows compare by byte length.
+ */
+async function _verifyBackupAgainst(payload) {
+    const mismatches = [];
+    let checked = 0;
+    const note = (m) => { if (mismatches.length < 12) mismatches.push(m); mismatches.total = (mismatches.total || 0) + 1; };
+    try {
+        const liveIdb = new Map(await idbGetAllEntries());
+        const liveCpdb = new Map(await cpdbGetAllEntries());
+        let liveLs = {};
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                liveLs[k] = localStorage.getItem(k);
+            }
+        } catch (_) {}
+        const liveOf = (s) => (s === 'idb' ? liveIdb : s === 'cpdb' ? liveCpdb : null);
+        const checkOne = async (store, key, wantHash, wantBytes) => {
+            checked++;
+            let live;
+            if (store === 'ls') {
+                if (!(key in liveLs)) { note('ls: missing "' + key + '"'); return; }
+                live = liveLs[key];
+            } else {
+                const map = liveOf(store);
+                if (!map.has(key)) { note(store + ': missing "' + key + '"'); return; }
+                live = map.get(key);
+            }
+            if (wantHash) {
+                const got = await _hashSection(live);
+                if (got !== wantHash) note(store + ': content differs for "' + key + '"');
+            } else if (typeof wantBytes === 'number' && wantBytes > 0) {
+                const str = (typeof live === 'string') ? live : JSON.stringify(live);
+                if (_bytesOf(str) !== wantBytes) note(store + ': size differs for "' + key + '"');
+            }
+        };
+        const manifestSections = payload.manifest && Array.isArray(payload.manifest.sections)
+            ? payload.manifest.sections : null;
+        if (manifestSections) {
+            for (const sec of manifestSections) {
+                if (!sec || typeof sec.k !== 'string') continue;
+                await checkOne(sec.s, sec.k, sec.h || null, sec.b);
+            }
+        } else {
+            // v2 payloads: prove presence of every backed-up key.
+            for (const [k] of payload.idb) {
+                checked++;
+                if (!liveIdb.has(k)) note('idb: missing "' + k + '"');
+            }
+            for (const k of Object.keys(payload.ls || {})) {
+                checked++;
+                if (!(k in liveLs)) note('ls: missing "' + k + '"');
+            }
+        }
+    } catch (e) {
+        note('verify crashed: ' + ((e && e.message) || String(e)));
+    }
+    const bad = mismatches.total || 0;
+    delete mismatches.total;
+    return { checked, mismatches: mismatches, mismatchCount: bad, ok: bad === 0 };
 }
 
 export async function idbRemove(key) {

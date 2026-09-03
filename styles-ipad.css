@@ -86,13 +86,8 @@ body.dc-active .metro-pop {
 .gi-full-top, .fi-full-top {
     top: calc(16px + env(safe-area-inset-top));
 }
-/* Expanded sidebar (≥1181px widths) clears the standalone status bar;
-   the collapsed rail already had its own clearance hack in styles.css. */
-@media (min-width: 1181px) {
-    .sidebar {
-        padding-top: calc(22px + env(safe-area-inset-top));
-    }
-}
+/* NOTE: the old min-width:1181px sidebar clearance lived here; it assumed a
+   vertical rail and is replaced by §9a below — removed so it can't mislead. */
 
 /* ── 5. Wide modals clipped in Slide Over [AUDIT P2] ───────────────────────
    .modal-content.wide (0,2,0) beat the phone-width rescue (0,1,0) at every
@@ -229,8 +224,10 @@ body.dc-active .metro-pop {
    viewport-fit=cover + black-translucent draws web content UNDER the system
    status bar / Liquid Glass blur. --sat is the single top-inset token:
      · 0px everywhere (browser tabs, desktop) → pixel-identical;
-     · 47px when launched from Home Screen (JS .jmax-standalone class);
-     · max(env(), 47px) where the engine reports a real inset, so a future
+     · 24px when launched from Home Screen (JS .jmax-standalone class —
+       iPad status-bar height; iPhones get their larger real inset via
+       max() below);
+     · max(env(), 24px) where the engine reports a real inset, so a future
        WebKit fix (cf. iOS 26.1 bug #301994, env()→0) is picked up
        automatically. All rules below are no-ops unless --sat > 0. */
 
@@ -243,31 +240,38 @@ body.dc-active .metro-pop {
    navigator.standalone === true or display-mode: standalone matches
    (covers iOS versions where the media query is unsupported). */
 html.jmax-standalone {
-    --sat: 47px;
+    --sat: 24px;
 }
 
-/* Where env() works, prefer the real OS inset but never go below 47px. */
+/* Where env() works, prefer the real OS inset but never go below 24px. */
 @supports (padding: max(0px, env(safe-area-inset-top))) {
     html.jmax-standalone {
-        --sat: max(env(safe-area-inset-top), 47px);
+        --sat: max(env(safe-area-inset-top), 24px);
     }
     @media (display-mode: standalone) {
         :root {
-            --sat: max(env(safe-area-inset-top), 47px);
+            --sat: max(env(safe-area-inset-top), 24px);
         }
     }
 }
 
 /* 9a. Glass top bar: grow the bar by --sat and push its content below the
    OS blur. Background still extends behind the status bar (translucent
-   look); only the interactive row moves down. Replaces the dead
-   min-width:1181px rule above, which assumed a vertical rail. */
+   look); only the interactive row moves down. */
 #sidebar, .sidebar {
     padding-top: var(--sat) !important;
     height: calc(var(--topbar-h, 72px) + var(--sat)) !important;
 }
 #sidebar.collapsed, .sidebar.collapsed {
     height: calc(var(--topbar-h-collapsed, 54px) + var(--sat)) !important;
+}
+/* The inset already extends the translucent bar, so the old coarse-pointer
+   blank band (styles.css margin-top = half collapsed height) would stack a
+   redundant gap and make collapse TALLER than expanded — cancel it here.
+   Later file + !important tie + higher specificity wins over that rule. */
+html.jmax-standalone #sidebar.collapsed,
+html.jmax-standalone .sidebar.collapsed {
+    margin-top: 0 !important;
 }
 
 /* 9b. Scroller breathing room: first dashboard row + anchor jumps clear
