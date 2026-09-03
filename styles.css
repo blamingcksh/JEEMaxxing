@@ -3919,7 +3919,7 @@ select.pomo-select, select.pomo-input {
 .cp-selfreport-correct:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(34, 197, 94, 0.45); }
 .cp-selfreport-wrong { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 6px 18px rgba(239, 68, 68, 0.35); }
 .cp-selfreport-wrong:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(239, 68, 68, 0.45); }
-.cp-scratchpad-hint { margin-top: 18px; font-size: 11.5px; color: var(--text-muted); }
+.cp-activity-hint { margin-top: 18px; font-size: 11.5px; color: var(--text-muted); }
 .cp-footer-spacer { flex: 1; }
 .cp-lockdown-footer {
     padding: 15px 26px;
@@ -4353,28 +4353,6 @@ select.pomo-select, select.pomo-input {
     transition: background 0.15s;
 }
 .cp-prenotify-dismiss:hover { background: rgba(0, 0, 0, 0.4); }
-
-/* ════════════════════════════════════════════════════════════════════════
-   SCRATCHPAD HUD
-   ════════════════════════════════════════════════════════════════════════ */
-body.scratchpad-active .app-container { opacity: 0.6; transition: opacity 0.25s ease; }
-body.scratchpad-active,
-body.scratchpad-active html {
-    overflow: hidden !important;
-    overscroll-behavior: none !important;
-    touch-action: none !important;
-    -webkit-user-select: none !important;
-    user-select: none !important;
-    -webkit-touch-callout: none !important;
-}
-#scratchpad-canvas, #scratchpad-bg-canvas {
-    touch-action: none;
-    image-rendering: auto;
-    will-change: transform;
-}
-body.scratchpad-active #scratchpad-canvas { cursor: crosshair; }
-#scratchpad-root { z-index: 999999; }
-#scratchpad-toolbar:active { cursor: grabbing; }
 
 /* ════════════════════════════════════════════════════════════════════════
    RESPONSIVE — 1440px → 375px
@@ -4894,12 +4872,6 @@ body::before {
 .glow-wrapper::before { background: conic-gradient(from 0deg, transparent 20%, var(--aes-amber) 42%, var(--aes-amber2) 55%, var(--aes-cyan) 72%, transparent 92%) !important; }
 .text-track-badge { background: linear-gradient(90deg, var(--aes-amber), var(--aes-amber2)) !important; }
 
-/* ── 7. DOODLE-PAD TOOLBAR — make it look intentional, dim when idle ────── */
-#scratchpad-toolbar { background: rgba(14,16,24,0.8) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border: 1px solid var(--aes-line) !important; box-shadow: 0 10px 30px -12px rgba(0,0,0,0.8) !important; }
-body:not(.scratchpad-active) #scratchpad-root { opacity: 0.4; transition: opacity .25s; }
-body:not(.scratchpad-active) #scratchpad-root:hover { opacity: 1; }
-.sp-btn { border: 1px solid var(--aes-line) !important; }
-
 /* ── 8. CALM MOTION for reduced-motion users ───────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
     body::before, #view-dashboard .dash-card-tracker { animation: none !important; }
@@ -5383,9 +5355,6 @@ body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
 
 /* ── Floating HUDs: dock below the bar instead of overlapping it ───────── */
 .pomo-mini-widget { top: calc(var(--topbar-h) + 14px) !important; }
-/* Scratchpad rail sits BELOW the header band (bar 64 + gap + header 56 +
-   breathing room) so the doodle toggle never covers the action cluster. */
-#scratchpad-root  { top: calc(var(--topbar-h) + var(--sp-6) + 64px) !important; }
 
 /* ── Responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 1080px) {
@@ -10735,12 +10704,6 @@ html[data-mode="dusk"] .loading-overlay { background: rgba(28, 30, 48, 0.62) !im
     .calib-strip { gap: 8px; padding: 6px 11px; }
     .calib-meter { display: none; }
     .sync-cluster .val { display: none; }
-    /* Mobile: park the doodle rail above the sprint widget so it never
-       lands on the wrapped header rows. First drag re-anchors via top/left. */
-    #scratchpad-root {
-        top: auto !important;
-        bottom: calc(150px + env(safe-area-inset-bottom, 0px)) !important; /* clears the sprint widget's mobile dock */
-    }
 }
 
 /* ════════════════════════════════════════════════════════════════════════

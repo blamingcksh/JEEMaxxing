@@ -744,6 +744,9 @@ export const AppState = {
     practiceFlowMode: 'standard',
     hardcoreDailyCount: 0,
     hardcoreDailyDate: null,
+    // Target exam date (YYYY-MM-DD) for the countdown chip + AIR popup.
+    // Persisted to IDB (jeemax_exam_date); null = not set.
+    examDate: null,
     // Additional cross-module mutable state
     questionBank: [],
     practiceTimer: null,
@@ -1800,6 +1803,8 @@ async function _doSaveAll() {
     entries.push(['jeemax_chapter_weights_user', _isObj(AppState.userChapterWeights) ? AppState.userChapterWeights : {}]);
     entries.push(['jeemax_mocks', Array.isArray(AppState.mocks) ? AppState.mocks : []]);
     entries.push(['jeemax_mock_focus', _isObj(AppState.mockFocus) ? AppState.mockFocus : {}]);
+    // Target exam date (YYYY-MM-DD) — validated so a corrupt value can never persist.
+    entries.push(['jeemax_exam_date', (typeof AppState.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(AppState.examDate) && !isNaN(new Date(AppState.examDate).getTime())) ? AppState.examDate : null]);
     // Guarded DOM read: a missing element used to throw mid-commit and
     // reject the ENTIRE save transaction (every key, not just the username).
     entries.push(['jeemax_username', (document.getElementById('display-username') || {}).textContent || AppState.username || 'Grindset']);
@@ -1906,6 +1911,7 @@ export async function loadDataAsync() {
             'jeemax_calibration_log', 'jeemax_chapter_theta',
             'jeemax_chapter_weights_ai', 'jeemax_chapter_weights_user',
             'jeemax_mocks', 'jeemax_mock_focus',
+            'jeemax_exam_date',
             'jeemax_username', 'jeemax_profile_pic', 'gemini_api_key',
             'jeeTargetLockDate', 'basePhys', 'baseChem', 'baseMath',
             'baseErrPhys', 'baseErrChem', 'baseErrMath',
@@ -1956,6 +1962,7 @@ export async function loadDataAsync() {
     const errPhys = g['baseErrPhys'];
     const errChem = g['baseErrChem'];
     const errMath = g['baseErrMath'];
+    const savedExamDate = g['jeemax_exam_date'];
 
     if (bank) AppState.questionBank = bank;
     _repairQuestionBank();
@@ -2057,6 +2064,8 @@ export async function loadDataAsync() {
     }
     const savedMocks = g['jeemax_mocks'];
     if (Array.isArray(savedMocks)) AppState.mocks = savedMocks;
+    // Target exam date — strict YYYY-MM-DD, otherwise null (never corrupt state).
+    AppState.examDate = (typeof savedExamDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(savedExamDate) && !isNaN(new Date(savedExamDate).getTime())) ? savedExamDate : null;
     const savedMockFocus = g['jeemax_mock_focus'];
     if (savedMockFocus && typeof savedMockFocus === 'object' && !Array.isArray(savedMockFocus)) {
         AppState.mockFocus = savedMockFocus;
@@ -2412,6 +2421,12 @@ export async function executeUnifiedSync() {
                     }
                     // ── Elo Matrix: last-write-wins via eloUpdatedAt stamp ──
                     _mergeEloFromCloud(cloudState.elo, cloudState.eloUpdatedAt);
+                    // Target exam date: adopt from cloud only when local is unset, so a
+                    // stale/empty cloud snapshot can never wipe a locally chosen date.
+                    if (!AppState.examDate && typeof cloudState.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cloudState.examDate) && !isNaN(new Date(cloudState.examDate).getTime())) {
+                        AppState.examDate = cloudState.examDate;
+                        try { saveAllAsync().catch(() => {}); } catch (_) {}
+                    }
                 }
             }
         }
@@ -2438,7 +2453,7 @@ export async function executeUnifiedSync() {
         }
         // Strip inline images from the cloud payload (mirrors syncStateToCloud)
         // — driveImageId re-fetches them on demand; keeps Drive JSON lean.
-        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(_stripBankImages), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())] };
+        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(_stripBankImages), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, examDate: AppState.examDate || null, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())] };
         if (!fileId) {
             let createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
                 method: 'POST', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' },
@@ -2595,7 +2610,7 @@ export async function syncStateToCloud(force = false) {
             await persistImageCacheIfChanged();
         }
         if (subText) subText.textContent = "Syncing system state...";
-        const payload = { date: todayLocalKey(), questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())] };
+        const payload = { date: todayLocalKey(), questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, examDate: AppState.examDate || null, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())] };
         // fileId cache [AUDIT P1-11 staging]: every push used to re-run the
         // Drive file-search round-trip. Cache per session; invalidate on 404
         // (folder/file deleted mid-session) so the next push recreates it.

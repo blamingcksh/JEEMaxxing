@@ -447,8 +447,8 @@ function tick() {
     // actually crossed the 2-hour idle mark at 12:30. The popup never showed.
     //
     // NEW LOGIC:
-    //   • If the user was active AFTER the checkpoint time (e.g. drew on the
-    //     scratchpad at 11:05), they "engaged" with the checkpoint — mark as
+    //   • If the user was active AFTER the checkpoint time (e.g. solved
+    //     something at 11:05), they "engaged" with the checkpoint — mark as
     //     passed, do not fire.
     //   • Else if the user has now been idle >= threshold, ARM the checkpoint
     //     (show the popup) and mark as processed.
@@ -623,7 +623,7 @@ export function initiateCheckpoint() {
             options: [],
             imageDataUrl: null,
             driveImageId: null,
-            extractedText: 'No due error questions found in your Chapter Decay Grid. Use this checkpoint to self-direct your study. Draw your work on the scratchpad, then honestly self-report whether you used the full Proof-of-Work window productively.',
+            extractedText: 'No due error questions found in your Chapter Decay Grid. Use this checkpoint to self-direct your study. Work through it, then honestly self-report whether you used the full Proof-of-Work window productively.',
         });
     }
     persistState();
@@ -904,12 +904,12 @@ function showLockdown(q) {
     lockdownOverlay.innerHTML = '\
         <div class="cp-lockdown-header"> \
             <div class="cp-lockdown-title">🔒 CHECKPOINT LOCKDOWN</div> \
-            <div class="cp-lockdown-sub">' + typeLabel + ' · answer + draw to exit</div> \
+            <div class="cp-lockdown-sub">' + typeLabel + ' · answer to exit</div> \
         </div> \
         <div class="cp-lockdown-timer-zone"> \
             <div class="cp-timer-label">Proof-of-Work Timer</div> \
             <div class="cp-timer-value" id="cp-timer-value">' + formatClock(remaining) + '</div> \
-            <div class="cp-timer-paused" id="cp-timer-paused" style="display:none;">⏸ PAUSED — DRAW ON SCRATCHPAD</div> \
+            <div class="cp-timer-paused" id="cp-timer-paused" style="display:none;">⏸ PAUSED — ANSWER OR TYPE TO RESUME</div> \
         </div> \
         <div class="cp-lockdown-body"> \
             <div class="cp-question-meta">⚠ ' + escapeForHtml(q.chapter || 'Unknown') + ' · EF ' + escapeForHtml(String(Number(q.easeFactor) || 2.5)) + ' · ' + escapeForHtml(q.subject || '') + '</div> \
@@ -918,12 +918,12 @@ function showLockdown(q) {
             ' + (showOptions ? '<div class="cp-options" id="cp-options">' + optionsHTML + '</div>' : '') + ' \
             ' + (showInteger ? '<div class="cp-integer-zone" id="cp-integer-zone"><input type="number" id="cp-integer-input" placeholder="Enter your numeric answer" class="cp-integer-input" /></div>' : '') + ' \
             ' + (showSelfReport ? '<div class="cp-selfreport-zone" id="cp-selfreport-zone">' +
-                '<div class="cp-selfreport-hint">No answer key on file for this question. Solve it on the scratchpad, then honestly self-evaluate. Lying only hurts you.</div>' +
+                '<div class="cp-selfreport-hint">No answer key on file for this question. Solve it, then honestly self-evaluate. Lying only hurts you.</div>' +
                 '<div class="cp-selfreport-btns">' +
                 '<button class="cp-selfreport-correct" id="cp-sr-correct">✓ I solved it correctly</button>' +
                 '<button class="cp-selfreport-wrong" id="cp-sr-wrong">✗ I got it wrong</button>' +
                 '</div></div>' : '') + ' \
-            <div class="cp-scratchpad-hint">✏️ Draw on the scratchpad (outside lockdown) to keep the timer ticking. Only movement &gt; 4px counts.</div> \
+            <div class="cp-activity-hint">✏️ Interact (answer / type) to keep the timer ticking.</div> \
         </div> \
         <div class="cp-lockdown-footer"> \
             <button class="cp-abandon" id="cp-abandon">Abandon (triggers Protocol Zero)</button> \
@@ -940,7 +940,7 @@ function showLockdown(q) {
             const tryFetch = function () {
                 const token = AppState && AppState.driveAccessToken;
                 if (!token && attempts < 20) { attempts++; return setTimeout(tryFetch, 500); }
-                if (!token) return; // give up silently; user still has text + scratchpad
+                if (!token) return; // give up silently; user still has the text
                 fetchMediaFromDrive(q.driveImageId, token).then(function (b64) {
                     if (b64) {
                         imgEl.classList.remove('cp-img-pending');
@@ -1078,7 +1078,7 @@ let cpPanel = null;     // the control panel modal
 let cpIgnite = null;    // prominent INITIATE button (appears when grace arms)
 
 function injectControlCenter() {
-    // Floating hub button (bottom-left so it doesn't clash with scratchpad top-right)
+    // Floating hub button (bottom-left)
     
 
     // The control panel
