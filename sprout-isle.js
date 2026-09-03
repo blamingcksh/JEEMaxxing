@@ -1245,10 +1245,27 @@ function normalizeState(s){
     clock:typeof s.clock==='number'?s.clock:null
   };
 }
+/* Daily reset: each new calendar day clears normal study trees so the isle
+   starts fresh, while golden trophy trees (full-clear rewards) survive. */
+function clearDailyTrees(ceremony){
+  const kept=[];
+  for(const t of W.trees){
+    if(t.gold){ kept.push(t); continue; }
+    try{ scene.remove(t.g); }catch(e){}
+    try{ if(t.seed) scene.remove(t.seed); }catch(e){}
+  }
+  W.trees=kept;
+  W.plantedToday=0;
+  if(ceremony&&W.ready){
+    try{ Petals.spawn(24,[0,8,0],8,[2,4]); }catch(e){}
+    try{ floater('a fresh morning 🌱',new THREE.Vector3(0,10,0),1.0); }catch(e){}
+  }
+}
 function checkRollover(){
   const dk=dayKeyOf(Date.now());
   if(dk===W.dayKey) return;
-  W.dayKey=dk; W.focusHighWater=0; W.plantedToday=0;
+  W.dayKey=dk; W.focusHighWater=0;
+  clearDailyTrees(true);
   for(const t of W.trees){ if(t.maturePopped&&t.harvestedDay!==dk) t.fruitP=0; }
   queueSave();
 }
@@ -1438,6 +1455,14 @@ if(SAVE&&SAVE.v===1){
   W.owned.forEach(applyCosmetic);
   if(SAVE.hat) setHat(SAVE.hat);
   if(SAVE.sound) AudioKit.on=true;
+  /* Fresh day on boot: yesterday's normal trees don't carry over — silently
+     drop them (gold trophy trees survive). No ceremony here; the fresh-day
+     welcome floater below covers the greeting. */
+  if(SAVE.day!==dayKeyOf(Date.now())){
+    W.dayKey=dayKeyOf(Date.now());
+    clearDailyTrees(false);
+    queueSave();
+  }
 }
 
 /* ---------- demo panel ---------- */
