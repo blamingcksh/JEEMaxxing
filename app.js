@@ -9426,10 +9426,10 @@ async function runNewDayCycle(todayStr) {
     try { await Directive.ensureToday(); } catch (_) {}
     updateUI();
 
-    // ── Daily Briefing boot sequence ──
-    // The cyberpunk intro overlay (mood step folds in from P3) replaces the
-    // bare Vibe Check popup after the daily reset. Falls back to the Vibe
-    // Check modal if the module isn't ready, so calibration never drops.
+    // ── Daily Mood Check popup ──
+    // The pastel mood popup (boot-sequence.js) replaces the bare Vibe Check
+    // popup after the daily reset. Falls back to the Vibe Check modal if the
+    // module isn't ready, so calibration never drops.
     if (window.BootSequence && typeof window.BootSequence.maybeShow === 'function') {
         try { window.BootSequence.maybeShow(); } catch (_) { openModal('mood-modal'); }
     } else {
