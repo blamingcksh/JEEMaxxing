@@ -146,8 +146,15 @@
     left: 0;
     margin-top: -1px;
     height: 2px;
+    border-radius: 1px;
     background: color-mix(in srgb, var(--text-primary) 62%, transparent);
 }
+/* Health-colored bars: same 3-band contract as the dot + legend
+   (matrix.js: ready ≥90 / fading 80–89 / critical <80). Bar only —
+   numerals, coverage slab and the --accent exam tick stay untouched. */
+.rh-ready .rh-line    { background: var(--glow-green);  box-shadow: 0 0 6px color-mix(in srgb, var(--glow-green) 55%, transparent); }
+.rh-fading .rh-line   { background: var(--glow-yellow); box-shadow: 0 0 6px color-mix(in srgb, var(--glow-yellow) 55%, transparent); }
+.rh-critical .rh-line { background: var(--glow-red);    box-shadow: 0 0 6px color-mix(in srgb, var(--glow-red) 55%, transparent); }
 .rh-fc {
     width: 2px;
     height: 11px;

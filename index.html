@@ -228,7 +228,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
                 <!-- ── TODAY'S PROGRESS · the one number that matters, three
                      subject ledgers under it. Steppers are the quick-log. ── -->
-                <div class="dash-card dash-card-tracker" data-bento-span="7">
+                <div class="dash-card dash-card-tracker" data-bento-span="12">
                     <div class="dv-head">
                         <h2 class="dv-title">Today’s Progress</h2>
                         <span class="tp-variance" id="variance-val" title="Solved vs target today">0.0%</span>
@@ -288,19 +288,9 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     </div>
                 </div>
 
-                <!-- ── DIRECTIVE — target-system v2. directive.js renders the
-                     day's headline quest + side quests into the body. ── -->
-                <div class="dash-card dash-card-directive" data-bento-span="5">
-                    <div class="dv-head dv-head-stack">
-                        <h2 class="dv-title">Directive</h2>
-                        <p class="dv-sub">Three things a day. Clear them, open the box.</p>
-                    </div>
-                    <div id="directive-card-body" class="directive-card-body"></div>
-                </div>
-
                 <!-- ── RETENTION HEALTH — matrix.js renders the chapter ledger
                      (most exam-dangerous first) into the grid. ── -->
-                <div class="dash-card dash-card-decay" data-bento-span="7">
+                <div class="dash-card dash-card-decay" data-bento-span="12">
                     <div class="dv-head dv-head-wrap">
                         <h2 class="dv-title">Retention Health</h2>
                         <div class="dv-legend" aria-hidden="true">
@@ -310,30 +300,6 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         </div>
                     </div>
                     <div id="chapter-decay-grid"></div>
-                </div>
-
-                <!-- ── MOMENTUM — one card, two lenses: the living Isle
-                     (sprout-isle.js takes over this card) and the pace chart
-                     (#dynamic-graph). The toggle is device-local. ── -->
-                <div class="dash-card dash-card-momentum mom-card" id="mom-card" data-bento-span="5">
-                    <div class="dv-head mom-head" data-isle-keep>
-                        <h2 class="dv-title">Momentum</h2>
-                        <div class="mom-toggle" role="tablist" aria-label="Momentum view">
-                            <button type="button" class="mom-tab" data-mom-view="isle" role="tab" aria-selected="true" onclick="setMomentumView('isle')">Isle</button>
-                            <button type="button" class="mom-tab" data-mom-view="pace" role="tab" aria-selected="false" onclick="setMomentumView('pace')">Pace</button>
-                        </div>
-                    </div>
-                    <div class="mom-body">
-                        <div class="graph-display">
-                            <svg id="dynamic-graph" preserveAspectRatio="none"></svg>
-                        </div>
-                        <div class="mom-legend" aria-hidden="true">
-                            <span><i class="lg-bull"></i>Bull</span>
-                            <span><i class="lg-bear"></i>Bear</span>
-                            <span><i class="lg-target"></i>Target lock</span>
-                            <span><i class="lg-proj"></i>Projection</span>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- ── CONSISTENCY — a year of daily output vs target
@@ -1300,10 +1266,10 @@ window.clearMatrixFilters = function () {
     const BP2 = 1101;                     // mirrors the themed 2-col ↔ 1-col breakpoint
     const V_MIN = 140, V_MAX = 1600;
     const COLS = 12;
-    const IDS = ['tracker', 'directive', 'variance', 'momentum', 'progress', 'decay'];
-    // 'directive' is tracked so persist/restore order stays deterministic —
-    // an untracked card was omitted from saved order and drifted one slot per
-    // save/restore cycle.
+    const IDS = ['tracker', 'variance', 'progress', 'decay'];
+    // 'directive' + 'momentum' cards were removed from the dashboard markup —
+    // their backends (directive.js, sprout-isle.js, candlestick engine) still
+    // run; only the dashboard boxes are gone, so they stay untracked here.
 
     const wide     = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
     const twoCol   = () => window.matchMedia(`(min-width: ${BP2}px)`).matches;
