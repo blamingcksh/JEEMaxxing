@@ -6129,6 +6129,9 @@ html[data-mode="dusk"] #practice-modal .modal-card {
 html[data-mode="dusk"] #practice-modal .practice-header {
   background: linear-gradient(180deg, rgba(46,50,76,0.94), rgba(46,50,76,0.72));
 }
+html[data-mode="dusk"] #practice-modal .pm-footer {
+  background: linear-gradient(180deg, rgba(34,38,60,0), rgba(34,38,60,0.97) 45%);
+}
 #practice-modal .pm-status {
   display: flex;
   align-items: center;
