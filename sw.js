@@ -103,7 +103,15 @@
 //        status-bar height; iPhones keep the real inset via max()), stale
 //        collapsed margin-top hack cancelled in standalone, dead 1181px
 //        rule removed. Cache bump pushes it to installed bookmarks.
-const VERSION = 'jeemax-v54';
+// v55 — TRANSPARENT BOXES: the four Grind-Hub cards (Today's Progress,
+//        Consistency, Retention Health, Chapter Progress) drop the dark glass
+//        fill + backdrop-filter and become true see-through boxes, with an
+//        inherited ink shadow for legibility and a ~18% scrim only while the
+//        World wallpaper is on. Card fill lives in styles.css (appended at EOF,
+//        (1,3,1), so it beats the DESIGN SYSTEM v4 / forest / drag / iPad-diet
+//        fills); styles-ipad.css gains comment notes about the superseded fill
+//        — its backdrop-filter kill is still load-bearing. No new files.
+const VERSION = 'jeemax-v55';
 const SHELL = [
   './',
   './index.html',
