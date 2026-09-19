@@ -11639,3 +11639,84 @@ html[data-mode="dusk"] body.immersive-active #practice-modal {
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
 }
+/* ════════════════════════════════════════════════════════════════════════
+   TRANSPARENT BOXES — the four Grind-Hub cards lose their dark glass
+   ------------------------------------------------------------------------
+   Tracker (Today's Progress) · Variance (Consistency) · Decay (Retention
+   Health) · Progress (Chapter Progress) now paint NO fill at all:
+   `background: none` + no backdrop-filter, so the page backdrop (grid +
+   ambient glow + aurora) reads straight through them. Identity is carried by
+   the hairline border and the existing accent corner tick — not by a surface.
+
+   Why this selector: the fill lives in FIVE layers of the cascade, all of
+   them !important —
+     · DESIGN SYSTEM v4 ......... #view-dashboard .dash-card   (1,1,0)  10556
+     · the tracker's own fill ... #view-dashboard .dash-card-tracker 10577
+     · production surface ...... html[data-mode] #view-dashboard …     9442
+     · Living-World glass ...... body.forest-bg-on #view-dashboard …   6483
+     · mid-drag re-flash ....... body.bento-dragging … (1,3,1)         5014
+     · iPad filter diet ........ styles-ipad.css §6/§6b (pointer:coarse)
+   `.dash-card.dash-card` (class doubled — the repo's own specificity trick)
+   under `html[data-mode]` scores (1,3,1): it out-ranks every one of them, and
+   this block is last in the file so it also wins the (1,3,1) ties. Nothing
+   above needs editing, and the whole change reverses by deleting this block.
+
+   The iPad diet SURVIVES: its real cost was the per-card blur pass, and
+   `backdrop-filter: none` below keeps it off — a transparent card is cheaper
+   to composite than the opaque gradient it replaces. Drag SURVIVES: with no
+   fill left to repaint, `bento-dragging` has nothing to re-rasterise (the
+   tracker also stops flashing its dead rainbow ring mid-drag).
+
+   Legibility — the removed fill WAS the contrast, so it is replaced, not just
+   taken away: hairline lifted 10%→16%, a soft ink shadow on the card
+   (text-shadow inherits, so one declaration guards every descendant: hero
+   numeral, ledger rows, subject counts, month labels, legends), a tight drop
+   shadow instead of the 48px black bloom a see-through box can't justify, and
+   a ~18% scrim that appears ONLY while the 🌲 World wallpaper is on.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1 · The four boxes: fill gone, blur gone, hairline + tick kept ─────── */
+#view-dashboard .dash-card.dash-card,
+html[data-mode] #view-dashboard .dash-card.dash-card {
+    background: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 14px 34px -30px rgba(0, 0, 0, 0.70) !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75), 0 0 10px rgba(0, 0, 0, 0.45);
+}
+
+/* Hover: the DESIGN SYSTEM v4 hover border/shadow lose to rule 1 above, so
+   the lift is restated here at matching weight — box stays see-through. */
+#view-dashboard .dash-card.dash-card:hover,
+html[data-mode] #view-dashboard .dash-card.dash-card:hover {
+    border-color: rgba(255, 255, 255, 0.30) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.09),
+        0 18px 40px -32px rgba(0, 0, 0, 0.75) !important;
+}
+
+/* ── 2 · 🌲 World wallpaper ON → the ONE case that gets a scrim ───────────
+   The forest canvas is a live, animated, coloured backdrop; the ink needs a
+   floor over it. ~18% dark layer — still 82% see-through. Same specificity as
+   rule 1 and later in the file, so it wins there and only there. */
+body.forest-bg-on #view-dashboard .dash-card.dash-card {
+    background: linear-gradient(180deg, rgba(10, 12, 18, 0.22), rgba(8, 10, 15, 0.17)) !important;
+}
+
+/* ── 3 · In-card buttons: the guard has to be re-applied by hand ─────────
+   `text-shadow` is inherited, and the probe confirms the chain holds for every
+   element inside the card — EXCEPT <button>. Blink does not inherit
+   text-shadow into form controls: `.tp-step-btn` computes `none` while its own
+   parent `.tp-steppers` computes the guard, and no stylesheet declares
+   text-shadow for it. Those steppers are bare +/− glyphs in --text-secondary
+   painted on a now-transparent surface, i.e. the least contrast of anything in
+   the card, so the guard is restored explicitly. (Icon chips such as
+   `.bento-ctrl-btn` carry their own opaque rgba(8,9,13,.85) fill and are
+   unaffected either way.) */
+#view-dashboard .dash-card.dash-card :is(button, [role="button"]) {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75), 0 0 10px rgba(0, 0, 0, 0.45);
+}
+
