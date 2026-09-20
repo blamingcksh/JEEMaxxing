@@ -5302,8 +5302,8 @@ export function renderPracticeQuestionModal() {
         `<div class="latex" id="latex-render">${escapeHtml(AppState.currentQ.extractedText)}</div>` : '';
     let html = `<div class="pq-solve-wrap" style="text-align:center;">`;
     if (_hasMedia && _hasText) {
-        html += `<div class="pq-qa-grid"><div class="pq-qa-media">${questionImageHtml}${diagramHtml}</div>` +
-            `<div class="pq-qa-text">${_textHtml}</div></div>`;
+        html += `<div class="pq-qa-grid"><div class="pq-qa-text">${_textHtml}</div>` +
+            `<div class="pq-qa-media">${questionImageHtml}${diagramHtml}</div></div>`;
     } else {
         html += `${questionImageHtml}${diagramHtml}${_textHtml}`;
     }
@@ -5402,8 +5402,8 @@ export function toggleMcqOption(element, optionText) {
 }
 
 // ── Practice Stage HUD: Q counter + progress + rail dots ─────────────
-// Fullscreen stage chrome. Pure presentation — never touches grading,
-// Elo, timers or queues. Safe to call on every render/submit/advance.
+// Fullscreen stage chrome (Q counter + progress). Pure presentation — never
+// touches grading, Elo, timers or queues. Safe to call on every render.
 function _updatePracticeHUD() {
     try {
         const qs = AppState.practiceQuestions || [];
@@ -5415,64 +5415,8 @@ function _updatePracticeHUD() {
         if (totEl) totEl.textContent = String(total);
         const fill = document.getElementById('pq-progress-fill');
         if (fill) fill.style.width = ((cur / total) * 100).toFixed(1) + '%';
-        _renderPracticeDots();
     } catch (_) {}
 }
-
-function _renderPracticeDots() {
-    try {
-        const wrap = document.getElementById('pq-dots');
-        if (!wrap) return;
-        const qs = AppState.practiceQuestions || [];
-        const flags = AppState.practiceSubmittedFlags || [];
-        if (!qs.length) { wrap.innerHTML = ''; return; }
-        // Cap dots for huge queues (still navigable via Prev/Next).
-        const cap = 60;
-        const list = qs.length > cap ? qs.slice(0, cap) : qs;
-        let html = '';
-        list.forEach((q, i) => {
-            let cls = 'pq-dot';
-            if (i === AppState.currentPracticeIndex) cls += ' is-current';
-            if (flags[i] || (q && (q.status === 'solved' || q.status === 'wrong' || q.status === 'error'))) {
-                if (q && q.status === 'solved') cls += ' is-correct';
-                else if (q && (q.status === 'wrong' || q.status === 'error')) cls += ' is-wrong';
-                else cls += ' is-seen';
-            }
-            html += `<button class="${cls}" data-i="${i}" aria-label="Go to question ${i + 1}" title="Q ${i + 1}"></button>`;
-        });
-        wrap.innerHTML = html;
-        wrap.querySelectorAll('.pq-dot').forEach(d => {
-            d.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                const i = parseInt(d.getAttribute('data-i'), 10);
-                if (Number.isFinite(i)) window.pqGoTo(i);
-            });
-        });
-        const curDot = wrap.querySelector('.pq-dot.is-current');
-        if (curDot) curDot.scrollIntoView({ block: 'nearest' });
-    } catch (_) {}
-}
-
-window.pqGoTo = function (i) {
-    try {
-        if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
-        const qs = AppState.practiceQuestions || [];
-        if (i < 0 || i >= qs.length) return;
-        AppState.currentPracticeIndex = i;
-        AppState.practiceSeconds = 0;
-        updatePracticeTimerDisplay();
-        if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
-        if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) {
-            AppState.practiceTimer = setInterval(() => {
-                AppState.practiceSeconds++;
-                updatePracticeTimerDisplay();
-            }, 1000);
-        } else {
-            AppState.practiceTimer = null;
-        }
-        renderPracticeQuestionModal();
-    } catch (_) {}
-};
 
 window.__pqZoomCurrent = function () {
     try {
