@@ -60,7 +60,7 @@ try {
     assert(await page.evaluate(() => typeof window.getChapterTheta === 'function'), 'theta accessor bridged');
     assert(await page.evaluate(() => typeof window.openDecayDrilldown === 'function'), 'drilldown bridged');
     assert(await page.evaluate(() => typeof window._applyAutonomyClawback === 'function'), 'clawback bridged');
-    assert(await page.evaluate(() => typeof window.setSolveConfidence === 'function'), 'confidence setter bridged');
+    assert(await page.evaluate(() => typeof window.setSolveConfidence === 'undefined'), 'practice confidence setter removed');
     assert(await page.evaluate(() => typeof window._setExamDate === 'function'), 'exam date setter bridged');
 
     // Grid renders (empty state or rows — must never crash)

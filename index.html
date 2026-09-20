@@ -60,6 +60,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <link rel="stylesheet" href="directive.css">
 <!-- ── iPad / coarse-pointer hardening layer (must stay LAST — see file header) ── -->
 <link rel="stylesheet" href="styles-dashboard.css">
+<link rel="stylesheet" href="styles-practice-fullscreen.css?v=3">
 <link rel="stylesheet" href="styles-ipad.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
@@ -1009,35 +1010,50 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     </div>
 </div>
 
-<!-- Practice Modal -->
-<div id="practice-modal" class="modal-overlay" onclick="closeModal(event, 'practice-modal')">
-    <div class="modal-card">
-        <div class="practice-header">
-            <div class="pm-status">
-                <div class="streak-visualizer" id="streak-visualizer">
-                    <canvas id="streak-canvas" width="16" height="16"></canvas>
-                    <span class="streak-number" id="streak-number">0</span>
+<!-- Practice Stage — fullscreen immersive (replaces popup) -->
+<div id="practice-modal" class="modal-overlay pq-stage" onclick="closeModal(event, 'practice-modal')">
+    <div class="pq-bg" aria-hidden="true"><span class="pq-glow pq-glow-a"></span><span class="pq-glow pq-glow-b"></span></div>
+    <button class="pq-corner-moon" id="immersive-focus-btn" onclick="toggleImmersive()" aria-label="Toggle focus">☾</button>
+    <button class="pq-corner-close" onclick="closePracticeModal()" aria-label="Close practice">✕</button>
+    <div class="pq-shell">
+        <header class="pq-top">
+            <div class="pq-count" id="pq-count"><span class="pq-qicon">◔</span><span>&nbsp;Q&nbsp;&nbsp;<b id="pq-cur">1</b><span class="pq-dim"> / <span id="pq-total">1</span></span></span></div>
+            <div class="pq-progress"><div class="pq-progress-fill" id="pq-progress-fill"></div></div>
+            <div class="pq-timer"><span class="pq-timer-ico">◷</span><span class="timer-display-sm" id="question-timer">00:00</span></div>
+        </header>
+        <div class="pq-mini-status">
+            <div class="streak-visualizer" id="streak-visualizer">
+                <canvas id="streak-canvas" width="16" height="16"></canvas>
+                <span class="streak-number" id="streak-number">0</span>
+            </div>
+            <div id="elo-header-slot" class="elo-header-slot"></div>
+        </div>
+        <div class="pq-body">
+            <aside class="pq-rail" aria-label="Question progress">
+                <div class="pq-rail-icon">☰</div>
+                <div id="pq-dots" class="pq-dots"></div>
+                <div class="pq-rail-icon pq-rail-foot">▅▃</div>
+            </aside>
+            <main class="pq-card">
+                <div class="pq-card-head">
+                    <span class="pq-q-label"><span class="pq-spark">✦</span> QUESTION</span>
+                    <span class="pq-card-tools">
+                        <button class="pq-tool" id="hide-photo-toggle" onclick="toggleOriginalPhoto()">🖼&nbsp;&nbsp;Hide Image</button>
+                        <button class="pq-tool pq-zoom" id="pq-zoom-btn" onclick="window.__pqZoomCurrent()" aria-label="Zoom image">⤢</button>
+                    </span>
                 </div>
-                <div id="elo-header-slot" class="elo-header-slot"></div>
-            </div>
-            <div class="pm-timer">
-                <span class="pm-timer-label">Time</span>
-                <span class="timer-display-sm" id="question-timer">00:00</span>
-            </div>
-            <div class="pm-actions">
-                <button class="hide-toggle" id="hide-photo-toggle" onclick="toggleOriginalPhoto()">📷 Hide</button>
-                <button class="hide-toggle" id="immersive-focus-btn" onclick="toggleImmersive()">🕶 Lock In</button>
-                <button class="hide-toggle pm-close" onclick="closePracticeModal()" aria-label="Close practice">✕</button>
-            </div>
+                <div id="practice-modal-content"></div>
+            </main>
         </div>
-        <div id="practice-modal-content"></div>
-        <div class="pm-footer" id="practice-footer">
-            <button class="btn btn-secondary" id="practice-prev-btn" onclick="practicePrev()">← Prev</button>
-            <button class="btn btn-secondary" id="practice-skip-btn" onclick="window.openSkipPopover()" style="display:none">Skip ⏭</button>
-            <button class="btn btn-primary" id="practice-submit-btn" onclick="practiceSubmit()">Lock In Answer</button>
-            <button class="btn btn-secondary" id="practice-continue-btn" onclick="window.continuePractice()" style="display:none">Continue →</button>
-            <button class="btn btn-secondary" id="practice-next-btn" onclick="practiceNext()">Next →</button>
-        </div>
+        <footer class="pq-nav" id="practice-footer">
+            <button class="pq-prev" id="practice-prev-btn" onclick="practicePrev()">←&nbsp;&nbsp;Previous</button>
+            <span class="pq-center-actions">
+                <button class="btn btn-secondary" id="practice-skip-btn" onclick="window.openSkipPopover()" style="display:none">Skip ⏭</button>
+                <button class="pq-submit" id="practice-submit-btn" onclick="practiceSubmit()">Lock In Answer</button>
+                <button class="btn btn-secondary" id="practice-continue-btn" onclick="window.continuePractice()" style="display:none">Continue →</button>
+            </span>
+            <button class="pq-next" id="practice-next-btn" onclick="practiceNext()">Next&nbsp;&nbsp;→</button>
+        </footer>
     </div>
 </div>
 

@@ -945,6 +945,17 @@ export function openModal(id) {
         try { _ensureStreakLoop(); } catch (_) {}
         // Own the user's attention while a solve is on stage (P0-1 gate).
         SessionFocus.acquire('practice');
+        try { document.body.classList.add('pq-active'); } catch (_) {}
+        // Default to moon-pressed (opaque focus backdrop) on every open.
+        // Render/Next/Prev never touch this — a mid-session moon toggle sticks.
+        try {
+            document.body.classList.add('immersive-active');
+            if (typeof _syncImmersiveBtn === 'function') _syncImmersiveBtn();
+            else {
+                const _mb = document.getElementById('immersive-focus-btn');
+                if (_mb && _mb.classList.contains('pq-corner-moon')) { _mb.textContent = '◑'; _mb.style.color = '#38bdf8'; }
+            }
+        } catch (_) {}
     }
     // Manual Log-a-Mistake form: restore any unsaved draft [AUDIT P1-9].
     if (id === 'add-error-modal' && typeof window.__restoreAddErrorDraft === 'function') {
@@ -1013,6 +1024,8 @@ export function closeModal(e, id, force) {
         setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
         if (id === 'practice-modal') {
             SessionFocus.release('practice');
+            try { document.body.classList.remove('pq-active'); } catch (_) {}
+            try { document.body.classList.remove('immersive-active'); } catch (_) {}
             if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
             // Parity with closePracticeModal(): a backdrop dismiss used to
             // leak the run's Flow/Hardcore navigation stacks into the next
@@ -1026,7 +1039,7 @@ export function closeModal(e, id, force) {
 export function closeModalStr(id) {
     const m = document.getElementById(id);
     if (!m) return;
-    if (id === 'practice-modal') SessionFocus.release('practice');
+    if (id === 'practice-modal') { SessionFocus.release('practice'); try { document.body.classList.remove('pq-active'); } catch (_) {} try { document.body.classList.remove('immersive-active'); } catch (_) {} }
     _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
@@ -1051,7 +1064,7 @@ export function closeModalStr(id) {
 function forceHideModal(id) {
     const m = document.getElementById(id);
     if (!m) return;
-    if (id === 'practice-modal') SessionFocus.release('practice');
+    if (id === 'practice-modal') { SessionFocus.release('practice'); try { document.body.classList.remove('pq-active'); } catch (_) {} try { document.body.classList.remove('immersive-active'); } catch (_) {} }
     _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     m.style.display = 'none';
@@ -4973,7 +4986,7 @@ export function startPracticeWithQuestion(questions, index) {
     _renderModeFooter();
     openModal('practice-modal');
     AppState.photoHidden = false;
-    document.getElementById('hide-photo-toggle').textContent = '📷 Hide Image';
+    { const _hb = document.getElementById('hide-photo-toggle'); if (_hb) _hb.innerHTML = '🖼&nbsp;&nbsp;Hide Image'; }
 }
 
 // ==================== BOUNTY HUNT ====================
@@ -5068,7 +5081,7 @@ export function tryAssignDailyBounty(questionId) {
     renderPracticeQuestionModal();
     openModal('practice-modal');
     AppState.photoHidden = false;
-    document.getElementById('hide-photo-toggle').textContent = '📷 Hide Image';
+    { const _hb3 = document.getElementById('hide-photo-toggle'); if (_hb3) _hb3.innerHTML = '🖼&nbsp;&nbsp;Hide Image'; }
     closeModalStr('bounty-modal');
 }
 
@@ -5197,8 +5210,8 @@ export function updatePracticeTimerDisplay() {
 
 export function toggleOriginalPhoto() {
     AppState.photoHidden = !AppState.photoHidden;
-    document.getElementById('hide-photo-toggle').textContent = AppState.photoHidden ?
-        '📷 Reveal' : '📷 Hide';
+    const t = document.getElementById('hide-photo-toggle');
+    if (t) t.innerHTML = AppState.photoHidden ? '🖼&nbsp;&nbsp;Show Image' : '🖼&nbsp;&nbsp;Hide Image';
     renderPracticeQuestionModal();
 }
 
@@ -5218,38 +5231,6 @@ export function answerMathHTML(raw) {
     if (/\\[a-zA-Z]{2,}/.test(s) || /[\^_][{}0-9a-zA-Z]/.test(s)) return '$' + esc + '$'; // bare LaTeX — wrap
     return esc;                                                   // plain text
 }
-
-/**
- * Pre-reveal confidence capture for the standard practice modal (Calibration
- * layer). Selection is stored on window._pendingSolveConfidence and consumed
- * synchronously by calculateEloMigration at submit; cleared on close/advance
- * so it can never leak into an unrelated solve. Pre-reveal timing measures
- * FORESIGHT — the metacognitive signal that actually predicts top-100 ranks.
- */
-function _renderPracticeConfidenceSeg() {
-    const levels = [
-        { key: 'sure', label: '😎 Sure' },
-        { key: 'likely', label: '🤔 Likely' },
-        { key: 'guess', label: '🎲 Guess' },
-    ];
-    const cur = window._pendingSolveConfidence || null;
-    const btns = levels.map(l =>
-        '<button type="button" class="pconf-btn' + (cur === l.key ? ' selected' : '') + '" data-conf="' + l.key + '"' +
-        " onclick=\"window.setSolveConfidence('" + l.key + "')\">" + l.label + '</button>'
-    ).join('');
-    return '<div class="pconf-seg" id="practice-conf-seg">' +
-        '<span class="pconf-label">Confidence?</span>' + btns + '</div>';
-}
-
-window.setSolveConfidence = function (level) {
-    window._pendingSolveConfidence = level;
-    const seg = document.getElementById('practice-conf-seg');
-    if (seg) {
-        seg.querySelectorAll('.pconf-btn').forEach(b => {
-            b.classList.toggle('selected', b.getAttribute('data-conf') === level);
-        });
-    }
-};
 
 // ── Keep-going nudge ────────────────────────────────────────────────────
 // Brief progress view on a correct solve: how many more questions till
@@ -5288,6 +5269,7 @@ export function renderPracticeQuestionModal() {
     const container = document.getElementById('practice-modal-content');
     if (!container) return;
     container.scrollTop = 0;
+    try { document.getElementById('practice-modal').scrollTop = 0; } catch (_) {}
     let questionImageHtml = '';
     if (!AppState.photoHidden) {
         if (AppState.currentQ.imageDataUrl) {
@@ -5308,12 +5290,23 @@ export function renderPracticeQuestionModal() {
         }
     }
     let diagramHtml = AppState.currentQ.diagramImageUrl ?
-        `<div><div class="diagram-hint">📐 Diagram:</div><img src="${_safeImgSrc(AppState.currentQ.diagramImageUrl)}" style="max-width:100%; max-height:300px; border-radius:12px;"></div>` :
+        `<div class="pq-media-block"><img src="${_safeImgSrc(AppState.currentQ.diagramImageUrl)}" style="max-width:100%; max-height:300px; border-radius:12px;"></div>` :
         '';
-    let html =
-        `<div style="text-align:center;">${questionImageHtml}${diagramHtml}`;
-    if (AppState.currentQ.extractedText) html +=
-        `<div class="latex" id="latex-render">${escapeHtml(AppState.currentQ.extractedText)}</div>`;
+    // ── Side-by-side Q&A grid (100%-zoom fit): media left, text right. Only when
+    // BOTH exist — text-only questions render exactly as before (zero solving
+    // impact). All solving UI (options/numeric/confidence/result) stays
+    // full-width BELOW the grid.
+    const _hasMedia = !!(questionImageHtml || diagramHtml);
+    const _hasText = !!(AppState.currentQ.extractedText);
+    const _textHtml = _hasText ?
+        `<div class="latex" id="latex-render">${escapeHtml(AppState.currentQ.extractedText)}</div>` : '';
+    let html = `<div class="pq-solve-wrap" style="text-align:center;">`;
+    if (_hasMedia && _hasText) {
+        html += `<div class="pq-qa-grid"><div class="pq-qa-media">${questionImageHtml}${diagramHtml}</div>` +
+            `<div class="pq-qa-text">${_textHtml}</div></div>`;
+    } else {
+        html += `${questionImageHtml}${diagramHtml}${_textHtml}`;
+    }
 
     if (submitted) {
         const correctAns = answerMathHTML(AppState.currentQ.correctAnswer || 'N/A');
@@ -5348,20 +5341,22 @@ export function renderPracticeQuestionModal() {
             });
         });
         document.getElementById('practice-submit-btn').style.display = 'none';
+        try { _updatePracticeHUD(); } catch (_) {}
         return;
     }
 
     if (AppState.currentQ.type === 'mcq' && AppState.currentQ.options.length) {
         const isMulti = Array.isArray(AppState.currentQ.correctAnswer);
-        html += `<div style="margin-top:16px;"><strong>${isMulti ? 'Pick all that hit' : 'Lock in your answer'}:</strong><br>`;
-        AppState.currentQ.options.forEach(opt => {
+        html += `<div class="pq-opts" style="margin-top:6px;">`;
+        const _letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+        AppState.currentQ.options.forEach((opt, _oi) => {
             const optImg = _gemOptionImageUrl(AppState.currentQ, opt)
                 ? `<img src="${_safeImgSrc(_gemOptionImageUrl(AppState.currentQ, opt))}" alt="Option figure" style="display:block; max-width:140px; max-height:140px; border-radius:8px; margin:8px auto 0; border:1px solid rgba(59,130,246,0.5);">`
                 : '';
-            html += `<div class="mcq-option ${isMulti ? 'multi-option' : ''}"
+            const _ltr = _letters[_oi] || String(_oi + 1);
+            html += `<div class="mcq-option has-letter ${isMulti ? 'multi-option' : ''}"
                           data-option="${escapeAttribute(opt)}">
-                    ${escapeHtml(opt)}
-                    ${optImg}
+                    <span class="pq-opt-letter">${_ltr}</span><span class="pq-opt-text">${escapeHtml(opt)}${optImg}</span>
                   </div>`;
         });
         html += `</div>`;
@@ -5379,7 +5374,6 @@ export function renderPracticeQuestionModal() {
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
         document.getElementById('practice-submit-btn').innerText = 'Reveal Answer';
     }
-    html += _renderPracticeConfidenceSeg();
     html += `</div>`;
     container.innerHTML = html;
     container.removeAttribute('data-math-rendered');
@@ -5390,6 +5384,7 @@ export function renderPracticeQuestionModal() {
             toggleMcqOption(this, optionText);
         });
     });
+    try { _updatePracticeHUD(); } catch (_) {}
 }
 
 export function toggleMcqOption(element, optionText) {
@@ -5405,6 +5400,86 @@ export function toggleMcqOption(element, optionText) {
         AppState.selectedMcq = Array.from(allSelected).map(el => el.dataset.option);
     }
 }
+
+// ── Practice Stage HUD: Q counter + progress + rail dots ─────────────
+// Fullscreen stage chrome. Pure presentation — never touches grading,
+// Elo, timers or queues. Safe to call on every render/submit/advance.
+function _updatePracticeHUD() {
+    try {
+        const qs = AppState.practiceQuestions || [];
+        const total = qs.length || 1;
+        const cur = Math.min((AppState.currentPracticeIndex || 0) + 1, total);
+        const curEl = document.getElementById('pq-cur');
+        const totEl = document.getElementById('pq-total');
+        if (curEl) curEl.textContent = String(cur);
+        if (totEl) totEl.textContent = String(total);
+        const fill = document.getElementById('pq-progress-fill');
+        if (fill) fill.style.width = ((cur / total) * 100).toFixed(1) + '%';
+        _renderPracticeDots();
+    } catch (_) {}
+}
+
+function _renderPracticeDots() {
+    try {
+        const wrap = document.getElementById('pq-dots');
+        if (!wrap) return;
+        const qs = AppState.practiceQuestions || [];
+        const flags = AppState.practiceSubmittedFlags || [];
+        if (!qs.length) { wrap.innerHTML = ''; return; }
+        // Cap dots for huge queues (still navigable via Prev/Next).
+        const cap = 60;
+        const list = qs.length > cap ? qs.slice(0, cap) : qs;
+        let html = '';
+        list.forEach((q, i) => {
+            let cls = 'pq-dot';
+            if (i === AppState.currentPracticeIndex) cls += ' is-current';
+            if (flags[i] || (q && (q.status === 'solved' || q.status === 'wrong' || q.status === 'error'))) {
+                if (q && q.status === 'solved') cls += ' is-correct';
+                else if (q && (q.status === 'wrong' || q.status === 'error')) cls += ' is-wrong';
+                else cls += ' is-seen';
+            }
+            html += `<button class="${cls}" data-i="${i}" aria-label="Go to question ${i + 1}" title="Q ${i + 1}"></button>`;
+        });
+        wrap.innerHTML = html;
+        wrap.querySelectorAll('.pq-dot').forEach(d => {
+            d.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const i = parseInt(d.getAttribute('data-i'), 10);
+                if (Number.isFinite(i)) window.pqGoTo(i);
+            });
+        });
+        const curDot = wrap.querySelector('.pq-dot.is-current');
+        if (curDot) curDot.scrollIntoView({ block: 'nearest' });
+    } catch (_) {}
+}
+
+window.pqGoTo = function (i) {
+    try {
+        if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
+        const qs = AppState.practiceQuestions || [];
+        if (i < 0 || i >= qs.length) return;
+        AppState.currentPracticeIndex = i;
+        AppState.practiceSeconds = 0;
+        updatePracticeTimerDisplay();
+        if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
+        if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) {
+            AppState.practiceTimer = setInterval(() => {
+                AppState.practiceSeconds++;
+                updatePracticeTimerDisplay();
+            }, 1000);
+        } else {
+            AppState.practiceTimer = null;
+        }
+        renderPracticeQuestionModal();
+    } catch (_) {}
+};
+
+window.__pqZoomCurrent = function () {
+    try {
+        const img = document.getElementById('practice-modal-img');
+        if (img && img.src) openPracticeImageLightbox(img.src);
+    } catch (_) {}
+};
 
 // Returns a data-option value verbatim. getAttribute()/dataset ALREADY
 // entity-decode the value at parse time (escapeAttribute's single encode is
@@ -6664,7 +6739,7 @@ function _setPracticeMode(mode) {
         openModal('practice-modal');
         AppState.photoHidden = false;
         const hideBtn = document.getElementById('hide-photo-toggle');
-        if (hideBtn) hideBtn.textContent = '📷 Hide Image';
+        if (hideBtn) hideBtn.innerHTML = '🖼&nbsp;&nbsp;Hide Image';
         // ── Start the practice-question timer ──
         // Lives INSIDE the non-empty-queue branch: a failed mode refill used
         // to leave this 1s interval running with no modal — and a non-null
@@ -8709,12 +8784,21 @@ export function triggerRedFlash() {
     overlay.addEventListener('animationend', () => overlay.remove());
 }
 
+function _syncImmersiveBtn() {
+    const btn = document.getElementById('immersive-focus-btn');
+    if (!btn) return;
+    const on = document.body.classList.contains('immersive-active');
+    if (btn.classList.contains('pq-corner-moon')) {
+        btn.textContent = on ? '◑' : '☾';
+        btn.style.color = on ? '#38bdf8' : '';
+    } else {
+        btn.textContent = on ? '🔲 Exit' : '🕶 Lock In';
+    }
+}
+
 export function toggleImmersive() {
     document.body.classList.toggle('immersive-active');
-    const btn = document.getElementById('immersive-focus-btn');
-    if (btn) {
-        btn.textContent = document.body.classList.contains('immersive-active') ? '🔲 Exit' : '🕶 Lock In';
-    }
+    _syncImmersiveBtn();
 }
 
 // ==================== EFFECTS & VISUALS ====================
