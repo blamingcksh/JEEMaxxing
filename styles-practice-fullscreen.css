@@ -112,6 +112,15 @@ body.pq-active { overflow: hidden; }
   display: flex; align-items: center; justify-content: center; gap: 10px;
   min-height: 0;
 }
+/* Streak flash: visible only for 10s after a graded answer, then fades out.
+   JS adds .streak-flash on #streak-visualizer at answer time. */
+.pq-mini-status .streak-visualizer {
+  opacity: 0;
+  transition: opacity 420ms ease;
+}
+.pq-mini-status .streak-visualizer.streak-flash {
+  opacity: 1;
+}
 .pq-mini-status .streak-visualizer {
   width: 28px; height: 28px; border-radius: 8px;
   background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
@@ -279,6 +288,53 @@ body.pq-active { overflow: hidden; }
 }
 
 /* ── Bottom nav (sticky so Prev/Submit/Next are never cut at 100%) ── */
+
+/* Mode-aware footer: Flow/Hardcore shows Reveal centered + small Skip at bottom-right */
+#practice-modal.pq-stage[data-practice-mode="flow"] .pq-nav,
+#practice-modal.pq-stage[data-practice-mode="hardcore"] .pq-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  position: relative;
+}
+#practice-modal.pq-stage[data-practice-mode="flow"] .pq-center-actions,
+#practice-modal.pq-stage[data-practice-mode="hardcore"] .pq-center-actions {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+#practice-modal.pq-stage[data-practice-mode="flow"] .pq-submit,
+#practice-modal.pq-stage[data-practice-mode="hardcore"] .pq-submit {
+  max-width: 240px;
+  width: 100%;
+  text-align: center;
+  justify-content: center;
+}
+#practice-modal.pq-stage[data-practice-mode="flow"] #practice-skip-btn,
+#practice-modal.pq-stage[data-practice-mode="hardcore"] #practice-skip-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: rgba(230,235,247,0.85);
+  box-shadow: none;
+  line-height: 1.2;
+}
+#practice-modal.pq-stage[data-practice-mode="flow"] #practice-skip-btn:hover,
+#practice-modal.pq-stage[data-practice-mode="hardcore"] #practice-skip-btn:hover {
+  background: rgba(255,255,255,0.14);
+  border-color: rgba(255,255,255,0.28);
+  color: #fff;
+}
+
+/* standard mode keeps the original 3-col grid */
 .pq-nav {
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
   width: 100%; max-width: 100%; margin: auto auto 0;
@@ -339,4 +395,12 @@ body.immersive-active #practice-modal.pq-stage .pq-mini-status { display: flex !
   .pq-center-actions { grid-column: 1 / -1; order: 3; }
   .pq-prev { padding: 12px 18px; }
   .pq-next { padding: 12px 22px; }
+
+  /* Mode footer: smaller skip chip on mobile, pushed to bottom-right */
+  #practice-modal.pq-stage[data-practice-mode="flow"] #practice-skip-btn,
+  #practice-modal.pq-stage[data-practice-mode="hardcore"] #practice-skip-btn {
+    right: 6px;
+    padding: 7px 12px;
+    font-size: 11.5px;
+  }
 }

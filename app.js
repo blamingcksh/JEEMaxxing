@@ -6596,6 +6596,8 @@ function _renderModeFooter() {
     const next = document.getElementById('practice-next-btn');
     const skip = document.getElementById('practice-skip-btn');
     const cont = document.getElementById('practice-continue-btn');
+    const modal = document.getElementById('practice-modal');
+    if (modal) modal.setAttribute('data-practice-mode', inMode ? AppState.practiceFlowMode : 'standard');
     if (prev) prev.style.display = inMode ? 'none' : '';
     if (next) next.style.display = inMode ? 'none' : '';
     if (skip) skip.style.display = inMode ? '' : 'none';
@@ -9222,6 +9224,20 @@ export function updateStreakVisualizer() {
     if (numberEl) numberEl.textContent = AppState.practiceCorrectStreak;
 }
 
+// Show the HUD streak badge for 10s after a graded answer (correct or wrong),
+// then fade it back out. Called from the practiceSubmit / follow-up patches so
+// the streak feedback is a transient signal instead of permanent header chrome.
+function _flashStreakBadge() {
+    const viz = document.getElementById('streak-visualizer');
+    if (!viz) return;
+    viz.classList.add('streak-flash');
+    clearTimeout(window.__streakFlashTimer);
+    window.__streakFlashTimer = setTimeout(() => {
+        viz.classList.remove('streak-flash');
+        window.__streakFlashTimer = null;
+    }, 10000);
+}
+
 export function activateOverheat() {
     if (overheatActive) return;
     overheatActive = true;
@@ -9298,6 +9314,7 @@ export function deactivateOverheat() {
         }
 
         updateStreakVisualizer();
+        _flashStreakBadge();
     };
 })();
 
@@ -9342,6 +9359,7 @@ export function deactivateOverheat() {
                     }
                 }
                 updateStreakVisualizer();
+                _flashStreakBadge();
             };
         }
 
@@ -9359,6 +9377,7 @@ export function deactivateOverheat() {
                     AppState.practiceCorrectStreak = 0;
                 }
                 updateStreakVisualizer();
+                _flashStreakBadge();
 
                 if (originalWrongClick) originalWrongClick();
             };
