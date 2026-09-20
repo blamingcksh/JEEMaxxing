@@ -1,0 +1,387 @@
+/* ════════════════════════════════════════════════════════════════════
+   PRACTICE STAGE — fullscreen immersive (dark-navy only)
+   Replaces the old centered popup. Loaded after styles.css so it wins.
+   All functional IDs are preserved; this file is pure presentation.
+   ════════════════════════════════════════════════════════════════════ */
+
+body.pq-active { overflow: hidden; }
+
+/* ── Stage takeover ── */
+#practice-modal.pq-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 20px 20px;
+  background: radial-gradient(1200px 600px at 85% -10%, rgba(56,89,199,0.25), transparent 60%),
+              radial-gradient(900px 500px at -10% 110%, rgba(56,89,199,0.18), transparent 60%),
+              #04081a;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: none;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+#practice-modal.pq-stage.active { display: flex; opacity: 1; }
+
+.pq-bg { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+.pq-glow { position: absolute; border-radius: 50%; filter: blur(90px); }
+.pq-glow-a {
+  width: 520px; height: 520px; right: -140px; top: 12%;
+  background: radial-gradient(circle, rgba(64,110,255,0.28), transparent 70%);
+  border: 1px solid rgba(120,150,255,0.18);
+  border-radius: 50%;
+}
+.pq-glow-b {
+  width: 380px; height: 380px; left: -140px; bottom: -120px;
+  background: radial-gradient(circle, rgba(56,130,255,0.20), transparent 70%);
+}
+
+.pq-corner-moon, .pq-corner-close {
+  position: fixed; top: 18px; z-index: 3;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; color: #7fa0ff; font-size: 20px; cursor: pointer;
+}
+.pq-corner-moon { right: 64px; }
+.pq-corner-close {
+  right: 22px; font-size: 14px; color: rgba(230,235,247,0.6);
+  border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.03);
+}
+.pq-corner-close:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
+
+/* ── Shell ── */
+.pq-shell {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 1080px;
+  display: flex; flex-direction: column; gap: 14px;
+  margin: 0 auto;
+}
+
+/* ── Top HUD ── */
+.pq-top {
+  display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 22px;
+  width: 100%; max-width: 980px; margin: 0 auto;
+  position: sticky; top: 0; z-index: 2;
+  background: linear-gradient(180deg, #04081a 70%, transparent);
+  padding: 4px 0 10px;
+}
+.pq-count {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 18px; border-radius: 999px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  color: #e6ebf7; font-size: 14px; font-weight: 600; letter-spacing: .4px;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.pq-qicon { color: #5b6b95; font-size: 13px; }
+.pq-count b { font-weight: 800; }
+.pq-dim { color: rgba(230,235,247,0.55); font-weight: 500; }
+.pq-progress {
+  height: 7px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,0.08);
+  min-width: 120px;
+}
+.pq-progress-fill {
+  height: 100%; width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8, #6366f1);
+  box-shadow: 0 0 14px rgba(56,189,248,0.6);
+  transition: width .35s ease;
+}
+.pq-timer {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 18px; border-radius: 999px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  color: #e6ebf7; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.pq-timer-ico { color: #8ea2d8; }
+#practice-modal .timer-display-sm {
+  font-family: 'Space Grotesk', monospace; font-size: 14px; font-weight: 700;
+  letter-spacing: 1px; color: #e6ebf7;
+}
+
+/* streak + elo tucked under HUD — tiny, non-intrusive */
+.pq-mini-status {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 0;
+}
+.pq-mini-status .streak-visualizer {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+  margin: 0;
+}
+.pq-mini-status #streak-canvas { width: 28px; height: 28px; }
+.pq-mini-status .elo-header-slot { display: flex; }
+.pq-mini-status .elo-shift-chip { margin: 0; font-size: 11px; }
+
+/* ── Body: rail beside card in normal flow + sticky (proven layout).
+   Deliberately NOT position:fixed — .modal-overlay.active > * puts a transform
+   on .pq-shell, which re-anchors fixed descendants to the shell and drops the
+   rail on top of the card. Sticky stays put during scroll with zero overlap. ── */
+.pq-body {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 18px;
+  align-items: start; width: 100%; min-width: 0;
+}
+.pq-rail {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 14px 0;
+  background: rgba(8,13,32,0.85); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px; backdrop-filter: blur(12px);
+  position: sticky; top: 12px;
+  width: 100%; max-height: 560px;
+  box-shadow: 0 20px 50px -20px rgba(0,0,0,0.8);
+}
+.pq-rail-icon { color: #4f6192; font-size: 15px; }
+.pq-rail-foot { font-size: 12px; letter-spacing: 1px; }
+.pq-dots {
+  display: flex; flex-direction: column; gap: 10px; align-items: center;
+  overflow-y: auto; max-height: 52vh; padding: 4px 2px;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.pq-dot {
+  width: 11px; height: 11px; border-radius: 50%;
+  background: rgba(255,255,255,0.16); border: none; cursor: pointer; padding: 0;
+  transition: transform .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.pq-dot:hover { transform: scale(1.25); }
+.pq-dot.is-current {
+  background: #38bdf8; box-shadow: 0 0 0 4px rgba(56,189,248,0.22), 0 0 12px rgba(56,189,248,0.7);
+}
+.pq-dot.is-correct { background: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,0.5); }
+.pq-dot.is-wrong { background: #ef4444; box-shadow: 0 0 10px rgba(239,68,68,0.5); }
+.pq-dot.is-seen { background: rgba(255,255,255,0.38); }
+
+/* ── Question card ── */
+.pq-card {
+  background: linear-gradient(180deg, rgba(19,29,66,0.88), rgba(10,17,40,0.94));
+  border: 1px solid rgba(130,160,255,0.16);
+  border-radius: 20px;
+  padding: 20px 24px 18px;
+  box-shadow: 0 30px 80px -30px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06);
+  backdrop-filter: blur(22px) saturate(140%);
+  min-width: 0; width: 100%; overflow-wrap: anywhere;
+}
+.pq-card-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 14px;
+}
+.pq-q-label {
+  font-size: 11.5px; font-weight: 700; letter-spacing: 2.4px; color: #9fb0d8;
+}
+.pq-spark { color: #38bdf8; margin-right: 6px; }
+.pq-card-tools { display: flex; gap: 8px; }
+.pq-tool {
+  padding: 7px 14px; border-radius: 10px; font-size: 12px; font-weight: 600;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(230,235,247,0.85); cursor: pointer;
+}
+.pq-tool:hover { border-color: rgba(56,189,248,0.5); color: #fff; }
+.pq-tool.pq-zoom { padding: 7px 11px; }
+
+/* ── Question content (inside #practice-modal-content) ── */
+#practice-modal.pq-stage #practice-modal-content {
+  padding: 0; overflow: visible; counter-reset: pq-opt;
+  min-width: 0; width: 100%;
+}
+#practice-modal.pq-stage #practice-modal-img {
+  display: block; margin: 6px auto 16px;
+  /* !important beats the inline max-width:100% so photo questions can't blow
+     up wider than the card — click/zoom still shows full size */
+  max-width: min(100%, 680px) !important; max-height: 340px;
+  width: auto; height: auto;
+  border-radius: 14px; border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 16px 40px -20px rgba(0,0,0,0.9);
+  cursor: zoom-in;
+}
+#practice-modal.pq-stage #latex-render {
+  text-align: left; background: transparent; border: none;
+  padding: 0; margin: 2px 0 10px;
+  font-size: 15.5px; line-height: 1.65; color: #e8edf9;
+  min-width: 0; width: 100%; overflow-wrap: anywhere; word-break: break-word;
+}
+
+/* ── Side-by-side Q&A (100%-zoom fit): media left, text right ──
+   Solving UI (options / numeric / confidence / result) always renders
+   FULL-WIDTH below this grid — never inside it, never clipped. */
+.pq-solve-wrap { min-width: 0; width: 100%; }
+.pq-qa-grid {
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 20px; align-items: start; margin: 4px 0 6px;
+  min-width: 0; width: 100%;
+}
+.pq-qa-media { min-width: 0; width: 100%; text-align: center; }
+.pq-qa-text { min-width: 0; width: 100%; text-align: left; }
+.pq-media-block { margin-bottom: 10px; }
+.pq-qa-media img { max-width: 100%; height: auto; object-fit: contain; }
+.pq-qa-media #practice-modal-img { margin: 0 auto 10px; }
+@media (max-width: 899px) {
+  .pq-qa-grid { grid-template-columns: minmax(0, 1fr); }
+}
+#practice-modal.pq-stage #latex-render .katex { color: #e8edf9; }
+#practice-modal.pq-stage .katex-display {
+  max-width: 100%; overflow-x: auto; padding: 8px 0 10px;
+}
+#practice-modal.pq-stage .diagram-hint {
+  display: inline-block; font-size: 12px; margin-bottom: 8px;
+  padding: 6px 12px; border-radius: 10px;
+  background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); color: #a5ecff;
+}
+#practice-modal.pq-stage .pq-sub {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 30px; height: 26px; padding: 0 8px; margin-right: 12px;
+  border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(230,235,247,0.85); vertical-align: middle;
+}
+
+/* MCQ options — pill rows with A-D badges */
+#practice-modal.pq-stage .mcq-option {
+  display: flex; align-items: center; gap: 14px;
+  text-align: left; counter-increment: pq-opt;
+  background: rgba(255,255,255,0.028); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px; padding: 14px 16px; margin: 10px 0;
+  font-size: 14px; line-height: 1.55; color: #c9d3ea;
+  cursor: pointer; min-width: 0; overflow-wrap: anywhere;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+#practice-modal.pq-stage .mcq-option::before {
+  content: counter(pq-opt, upper-alpha);
+  flex: 0 0 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 13px; font-weight: 800;
+  color: rgba(230,235,247,0.75); background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+#practice-modal.pq-stage .mcq-option:hover {
+  background: rgba(255,255,255,0.055); border-color: rgba(255,255,255,0.16);
+  transform: translateX(3px);
+}
+#practice-modal.pq-stage .mcq-option.selected {
+  background: linear-gradient(90deg, rgba(56,189,248,0.14), rgba(99,102,241,0.08));
+  border-color: rgba(56,189,248,0.55); color: #fff;
+  box-shadow: 0 0 24px -10px rgba(56,189,248,0.7), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+#practice-modal.pq-stage .mcq-option.selected::before {
+  background: #38bdf8; color: #04141a; border-color: transparent;
+}
+#practice-modal.pq-stage .mcq-option img {
+  display: block; max-width: 140px; max-height: 140px;
+  border-radius: 8px; margin: 8px auto 0; border: 1px solid rgba(59,130,246,0.5);
+}
+/* explicit letter span (new markup) — hides counter badge to avoid double */
+#practice-modal.pq-stage .mcq-option.has-letter::before { display: none; }
+.pq-opt-letter {
+  flex: 0 0 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 13px; font-weight: 800;
+  color: rgba(230,235,247,0.75); background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.mcq-option.selected .pq-opt-letter { background: #38bdf8; color: #04141a; border-color: transparent; }
+.pq-opt-text { flex: 1 1 auto; min-width: 0; }
+
+/* numeric / text */
+#practice-modal.pq-stage #numeric-answer-input {
+  max-width: 260px; margin: 8px auto 0; text-align: center;
+  font-family: 'Space Grotesk', monospace; font-size: 18px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+  color: #fff; border-radius: 12px; padding: 12px;
+}
+#practice-modal.pq-stage .free-response-hint { color: #9fb0d8 !important; }
+#practice-modal.pq-stage .input-group label { color: #9fb0d8; }
+
+/* result banners */
+#practice-modal.pq-stage .result-banner {
+  border-radius: 14px; padding: 13px 16px; margin: 16px 0 6px; font-size: 13.5px;
+}
+#practice-modal.pq-stage .result-banner.correct {
+  background: rgba(34,197,94,0.10); border: 1px solid rgba(34,197,94,0.35); color: #bbf7d0;
+}
+#practice-modal.pq-stage .result-banner.wrong {
+  background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.35); color: #fecaca;
+}
+#practice-modal.pq-stage .show-solution-btn { border-radius: 10px; margin-top: 10px; }
+#practice-modal.pq-stage .pm-keep-going { color: #8ea2d8; font-size: 12.5px; margin-top: 8px; }
+#practice-modal.pq-stage .elo-shift-chip { margin: 14px auto 2px; }
+
+/* skip popover + undo toast stay above card */
+#practice-modal.pq-stage .skip-popover {
+  background: #0c1430; border: 1px solid rgba(130,160,255,0.2); border-radius: 14px;
+}
+
+/* ── Bottom nav (sticky so Prev/Submit/Next are never cut at 100%) ── */
+.pq-nav {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+  width: 100%; max-width: 980px; margin: 6px auto 0;
+  position: sticky; bottom: 0; z-index: 2;
+  background: linear-gradient(180deg, transparent, #04081a 35%);
+  padding: 10px 0 4px;
+}
+
+/* solving UI always full-width below the Q&A grid — never clipped */
+.pq-solve-wrap > .pq-opts,
+.pq-solve-wrap > .input-group,
+.pq-solve-wrap > .result-banner,
+.pq-solve-wrap > .free-response-hint { min-width: 0; width: 100%; }
+.pq-prev {
+  justify-self: start; padding: 13px 26px; border-radius: 999px;
+  background: transparent; border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(230,235,247,0.75); font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.pq-prev:hover { border-color: rgba(255,255,255,0.25); color: #fff; }
+.pq-next {
+  justify-self: end; padding: 13px 34px; border-radius: 999px; border: none;
+  background: linear-gradient(90deg, #7dd3fc, #818cf8);
+  color: #060b22; font-size: 14px; font-weight: 800; cursor: pointer;
+  box-shadow: 0 10px 30px -10px rgba(125,211,252,0.6);
+}
+.pq-next:hover { filter: brightness(1.06); }
+.pq-center-actions { display: flex; gap: 10px; align-items: center; justify-content: center; }
+.pq-submit {
+  padding: 13px 30px; border-radius: 999px; border: 1px solid rgba(56,189,248,0.4);
+  background: rgba(56,189,248,0.12); color: #fff;
+  font-size: 13.5px; font-weight: 700; letter-spacing: .3px; cursor: pointer;
+}
+.pq-submit:hover { background: rgba(56,189,248,0.2); }
+#practice-modal.pq-stage .pm-footer .btn { border-radius: 999px; }
+
+/* solution + error modals sit above stage */
+#solution-modal.modal-overlay.active, #error-reason-modal.modal-overlay.active { z-index: 6000; }
+#practice-image-lightbox { z-index: 7000 !important; }
+
+/* immersive focus (moon): dark opaque backdrop, keep ALL chrome visible like the mock.
+   Rail stays in flow (never display:none) so the card keeps its wide track. */
+body.immersive-active #practice-modal.pq-stage { background: #04081a; }
+body.immersive-active #practice-modal.pq-stage .pq-body { grid-template-columns: 56px minmax(0, 1fr); }
+body.immersive-active #practice-modal.pq-stage .pq-rail { display: flex !important; }
+body.immersive-active #practice-modal.pq-stage .pq-timer { display: inline-flex !important; }
+body.immersive-active #practice-modal.pq-stage .timer-display-sm { display: inline !important; }
+body.immersive-active #practice-modal.pq-stage .streak-visualizer { display: flex !important; }
+body.immersive-active #practice-modal.pq-stage .pq-mini-status { display: flex !important; }
+
+/* explicit placement: card owns the wide track, rail the narrow one */
+.pq-body > .pq-card { grid-column: 2; min-width: 0; width: 100%; }
+.pq-body > .pq-rail { grid-column: 1; }
+
+/* ── Responsive ── */
+@media (max-width: 760px) {
+  #practice-modal.pq-stage { padding: 64px 12px 18px; }
+  .pq-top { grid-template-columns: auto 1fr auto; gap: 10px; }
+  .pq-count, .pq-timer { padding: 8px 13px; font-size: 12.5px; }
+  .pq-body { grid-template-columns: minmax(0, 1fr); }
+  .pq-body > .pq-card, .pq-body > .pq-rail { grid-column: 1; }
+  .pq-rail {
+    flex-direction: row; max-height: none; padding: 10px 12px;
+    position: static; order: -1;
+  }
+  .pq-dots { flex-direction: row; max-height: none; overflow-x: auto; max-width: 100%; }
+  .pq-card { padding: 20px 18px 16px; }
+  #practice-modal.pq-stage #latex-render { font-size: 15px; }
+  .pq-nav { grid-template-columns: 1fr 1fr; }
+  .pq-center-actions { grid-column: 1 / -1; order: 3; }
+  .pq-prev { padding: 12px 18px; }
+  .pq-next { padding: 12px 22px; }
+}
