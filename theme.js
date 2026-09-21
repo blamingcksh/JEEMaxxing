@@ -19,7 +19,8 @@
     { id: 'overgrowth', name: 'Overgrowth', desc: 'Bioluminescent green',     dots: ['#34d399', '#10b981', '#a3e635'] },
     { id: 'bloodmoon',  name: 'Blood Moon', desc: 'Crimson aggression',       dots: ['#ef4444', '#f97316', '#fbbf24'] },
     { id: 'sakura',     name: 'Sakura',     desc: 'Rose quartz calm',         dots: ['#f472b6', '#fb7185', '#c4b5fd'] },
-    { id: 'stealth',    name: 'Stealth',    desc: 'Monochrome ops',           dots: ['#e5e7eb', '#9ca3af', '#4b5563'] }
+    { id: 'stealth',    name: 'Stealth',    desc: 'Monochrome ops',           dots: ['#e5e7eb', '#9ca3af', '#4b5563'] },
+    { id: 'sepia',      name: 'Sepia',      desc: 'Aged paper · warm ink',     dots: ['#b5651d', '#8b5a2b', '#d4a017'] }
   ];
 
   var MODES = [

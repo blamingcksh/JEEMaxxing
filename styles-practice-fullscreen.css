@@ -900,3 +900,211 @@ html[data-mode="dusk"] body:not(.immersive-active) #practice-modal.pq-stage {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   SEPIA STAGE — applies under data-theme="sepia" in BOTH moon states,
+   independent of the moon toggle. Placed last so it outranks the moon
+   branches, the light block, and the Dusk parity above.
+   Roast (moon-ON): dark coffee · cream ink. Parchment (moon-OFF): aged
+   paper · sepia ink.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Stage pins (opaque; also cover dusk+sepia so it can never go black) ── */
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage,
+html[data-mode="dusk"][data-theme="sepia"] body.immersive-active #practice-modal.pq-stage {
+  background:
+    radial-gradient(900px 520px at 96% 100%, rgba(201,147,39,0.10), rgba(201,147,39,0) 60%),
+    radial-gradient(700px 420px at 74% 100%, rgba(181,101,29,0.07), rgba(181,101,29,0) 60%),
+    linear-gradient(180deg, #1e150e 0%, #17100b 100%) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage,
+html[data-mode="dusk"][data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage {
+  background:
+    radial-gradient(900px 520px at 96% 100%, rgba(255,250,240,0.65), rgba(255,250,240,0) 60%),
+    radial-gradient(700px 420px at 72% 100%, rgba(255,250,240,0.35), rgba(255,250,240,0) 60%),
+    linear-gradient(180deg, #ece1c9 0%, #f0e7d2 48%, #e0d3b6 100%) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+html[data-theme="sepia"] #practice-modal.pq-stage .pq-glow-a,
+html[data-theme="sepia"] #practice-modal.pq-stage .pq-glow-b { display: none; }
+
+/* ── ROAST (sepia + moon-ON) ── */
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-top { background: transparent; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-count,
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-timer,
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-progress {
+  background: #2a1e13 !important;
+  border: 1px solid rgba(201,147,39,0.28) !important;
+  box-shadow: 0 8px 22px -16px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,240,210,0.06) !important;
+  color: #e3d4b9 !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-qicon,
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-timer-ico { color: #d4a017 !important; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-count b { color: #f0e5cd !important; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-dim { color: #b39d7d !important; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-progress-fill {
+  background: linear-gradient(90deg, #b5651d, #d4a017) !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .timer-display-sm { color: #f0e5cd !important; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-card {
+  background: linear-gradient(180deg, #2b1f14 0%, #221810 100%) !important;
+  border: 1px solid rgba(201,147,39,0.25) !important;
+  box-shadow: 0 24px 55px -28px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,240,210,0.05) !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-q-label,
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-spark { color: #d4a017 !important; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage #latex-render,
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage #latex-render .katex { color: #e3d4b9 !important; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .mcq-option {
+  background: rgba(201,147,39,0.08) !important; border: 1px solid rgba(201,147,39,0.20) !important; color: #e3d4b9 !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .mcq-option::before,
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-opt-letter {
+  background: rgba(201,147,39,0.12) !important; border: 1px solid rgba(201,147,39,0.22) !important; color: #b39d7d !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .mcq-option:hover {
+  background: rgba(201,147,39,0.14) !important; border-color: rgba(201,147,39,0.32) !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .mcq-option.selected {
+  background: linear-gradient(90deg, rgba(181,101,29,0.25), rgba(212,160,23,0.12)) !important;
+  border-color: #c97b2f !important; color: #f5ead2 !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .mcq-option.selected::before,
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .mcq-option.selected .pq-opt-letter {
+  background: #c97b2f !important; color: #1e150e !important; border-color: transparent !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage #numeric-answer-input {
+  background: rgba(201,147,39,0.10) !important; border: 1px solid rgba(201,147,39,0.28) !important; color: #f0e5cd !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .free-response-hint,
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .input-group label,
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pm-keep-going { color: #b39d7d !important; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .result-banner.reveal {
+  background: rgba(201,147,39,0.14) !important; border: 1px solid rgba(139,90,43,0.55) !important; color: #e8d5ae !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .show-solution-btn {
+  background: rgba(201,147,39,0.14) !important; border: 1px solid rgba(139,90,43,0.55) !important; color: #ecd9ac !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-nav {
+  background: #231a11 !important; border: 1px solid rgba(201,147,39,0.22) !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-prev {
+  background: transparent !important; border: 1px solid rgba(201,147,39,0.28) !important; color: #b39d7d !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-prev:hover { color: #f0e5cd !important; border-color: rgba(201,147,39,0.5) !important; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-submit {
+  background: rgba(181,101,29,0.18) !important; border: 1px solid rgba(201,147,39,0.6) !important; color: #f0e5cd !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-next {
+  background: linear-gradient(90deg, #b5651d, #8b5a2b) !important; color: #fff8ea !important;
+  box-shadow: 0 10px 26px -12px rgba(139,90,43,0.8) !important;
+}
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-corner-moon { color: #d4a017 !important; }
+html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .streak-number { color: #e3d4b9 !important; text-shadow: none !important; }
+
+/* ── PARCHMENT (sepia + moon-OFF) ── */
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-top {
+  background: #efe4cb !important; border: 1px solid rgba(90,64,32,0.25) !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-count,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-timer,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-progress {
+  background: #fffaf0 !important; border: 1px solid rgba(90,64,32,0.28) !important;
+  box-shadow: 0 4px 14px -10px rgba(90,64,32,0.4), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+  color: #3d2f23 !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-qicon,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-timer-ico { color: #8b5a2b !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-count b { color: #3d2f23 !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-dim { color: #6f5f4c !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-progress-fill {
+  background: linear-gradient(90deg, #b5651d, #8b5a2b) !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .timer-display-sm { color: #3d2f23 !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-card {
+  background: #fffaf0 !important; border: 1px solid #ddcda6 !important;
+  box-shadow: 0 20px 48px -24px rgba(90,64,32,0.35), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-q-label,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-spark { color: #8b5a2b !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage #latex-render,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage #latex-render .katex { color: #3d2f23 !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .mcq-option {
+  background: #f6efdd !important; border: 1px solid #d9c69c !important; color: #4a3828 !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .mcq-option::before,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-opt-letter {
+  background: #efe3c8 !important; border: 1px solid #cbb27f !important; color: #6f5f4c !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .mcq-option:hover {
+  background: #f0e3c4 !important; border-color: #b28c4d !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .mcq-option.selected {
+  background: #f0dfb8 !important; border-color: #8b5a2b !important; color: #3d2f23 !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .mcq-option.selected::before,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .mcq-option.selected .pq-opt-letter {
+  background: #8b5a2b !important; color: #fff8ea !important; border-color: transparent !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage #numeric-answer-input {
+  background: #fffdf6 !important; border: 1px solid #cbb27f !important; color: #3d2f23 !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage #numeric-answer-input::placeholder { color: #a08e6f !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .free-response-hint,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .input-group label,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pm-keep-going { color: #6f5f4c !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .result-banner.reveal {
+  background: #f0e3c2 !important; border: 1px solid #b28c4d !important; color: #3d2f23 !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .result-banner.correct {
+  background: #e6efdb !important; border: 1px solid #9db87f !important; color: #3d6b2f !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .result-banner.wrong {
+  background: #f3ddd2 !important; border: 1px solid #cf9377 !important; color: #8f3a22 !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .show-solution-btn {
+  background: #fffaf0 !important; border: 1px solid #b28c4d !important; color: #5a3d1e !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .elo-shift-chip.elo-up,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .elo-header-chip.elo-up {
+  background: #e6efdb !important; border: 1px solid #9db87f !important; color: #3d6b2f !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .elo-shift-chip.elo-down,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .elo-header-chip.elo-down {
+  background: #f3ddd2 !important; border: 1px solid #cf9377 !important; color: #8f3a22 !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-nav {
+  background: #f2e8d2 !important; border: 1px solid rgba(90,64,32,0.28) !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-prev,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-nav .btn,
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage #practice-continue-btn {
+  background: #fffaf0 !important; border: 1px solid rgba(90,64,32,0.30) !important; color: #4a3d2c !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-submit {
+  background: #e3cfa1 !important; border: 1px solid #b28c4d !important; color: #3d2f23 !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-next {
+  background: linear-gradient(90deg, #b5651d, #8b5a2b) !important; color: #fff8ea !important;
+  box-shadow: 0 10px 24px -12px rgba(139,90,43,0.7) !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-corner-moon { color: #8b5a2b !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-corner-close {
+  background: #fffaf0 !important; border: 1px solid rgba(90,64,32,0.30) !important; color: #6f5f4c !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .streak-number {
+  color: #3d2f23 !important; text-shadow: none !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #solution-modal .solution-modal-card {
+  background: #fffaf0 !important; border: 1px solid #ddcda6 !important; color: #3d2f23 !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #solution-modal .solution-modal-card h2 { color: #3d2f23 !important; }
+html[data-theme="sepia"] body:not(.immersive-active) #solution-modal .solution-latex,
+html[data-theme="sepia"] body:not(.immersive-active) #solution-modal #solution-content {
+  background: #f6efdd !important; border-left: 3px solid #8b5a2b !important; color: #3d2f23 !important;
+}
+html[data-theme="sepia"] body:not(.immersive-active) #solution-modal .solution-latex .katex,
+html[data-theme="sepia"] body:not(.immersive-active) #solution-modal #solution-content .katex { color: #3d2f23 !important; }
