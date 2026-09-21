@@ -5319,7 +5319,7 @@ export function renderPracticeQuestionModal() {
         else if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') html +=
             `<div class="result-banner wrong" style="flex:1;">❌ Fumbled. The answer was: ${correctAns}</div>`;
         else html +=
-            `<div class="result-banner" style="flex:1; background: rgba(61,220,255,0.10); color: #a5ecff; border: 1px solid rgba(61,220,255,0.30);">🔍 Answer revealed. It was: ${correctAns} — were you right?</div>`;
+            `<div class="result-banner reveal" style="flex:1;">🔍 Answer revealed. It was: ${correctAns} — were you right?</div>`;
         if (AppState.currentQ.solution && AppState.currentQ.solution.trim().length > 0) {
             html +=
                 `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">💡 Peep Solution</button>`;

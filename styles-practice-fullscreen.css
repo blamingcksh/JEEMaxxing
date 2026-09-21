@@ -374,8 +374,13 @@ body.pq-active { overflow: hidden; }
 #solution-modal.modal-overlay.active, #error-reason-modal.modal-overlay.active { z-index: 6000; }
 #practice-image-lightbox { z-index: 7000 !important; }
 
-/* immersive focus (moon): dark opaque backdrop, keep ALL chrome visible like the mock. */
-body.immersive-active #practice-modal.pq-stage { background: #04081a; }
+/* immersive focus (moon): dark opaque backdrop, keep ALL chrome visible like the mock.
+   Dark is the default (app.js adds immersive-active on every open). */
+body.immersive-active #practice-modal.pq-stage {
+  background: #04081a !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
 body.immersive-active #practice-modal.pq-stage .pq-timer { display: inline-flex !important; }
 body.immersive-active #practice-modal.pq-stage .timer-display-sm { display: inline !important; }
 body.immersive-active #practice-modal.pq-stage .streak-visualizer { display: flex !important; }
@@ -403,4 +408,469 @@ body.immersive-active #practice-modal.pq-stage .pq-mini-status { display: flex !
     padding: 7px 12px;
     font-size: 11.5px;
   }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   LIGHT STAGE — moon OFF. Solid opaque "paper" theme (no translucency).
+   Scoped to body WITHOUT .immersive-active so dark mode is untouched.
+   Dark remains the default: app.js adds immersive-active on every open.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Opaque stage: beats the global translucent .modal-overlay recipe ── */
+body:not(.immersive-active) #practice-modal.pq-stage {
+  background:
+    radial-gradient(900px 520px at 96% 100%, rgba(255,255,255,0.65), rgba(255,255,255,0) 60%),
+    radial-gradient(700px 420px at 72% 100%, rgba(255,255,255,0.35), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, #dbe2f2 0%, #e5ebf7 48%, #d6def0 100%) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Dark navy glows have no place on paper — swap for soft white washes. */
+body:not(.immersive-active) #practice-modal.pq-stage .pq-glow-a,
+body:not(.immersive-active) #practice-modal.pq-stage .pq-glow-b {
+  display: none;
+}
+
+/* ── Corner buttons ── */
+body:not(.immersive-active) #practice-modal.pq-stage .pq-corner-moon {
+  color: #4a7dff;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-corner-close {
+  background: #ffffff;
+  border: 1px solid #d8e1f2;
+  color: #5b6b8c;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-corner-close:hover {
+  color: #1e2e5a;
+  border-color: #b9c6e2;
+}
+
+/* ── Top HUD: one floating pill bar ── */
+body:not(.immersive-active) #practice-modal.pq-stage .pq-top {
+  background: #e9eef7;
+  border: 1px solid #d3dcf0;
+  border-radius: 22px;
+  box-shadow: 0 10px 28px -20px rgba(80,100,140,0.45), inset 0 1px 0 rgba(255,255,255,0.7);
+  padding: 10px 16px;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-count,
+body:not(.immersive-active) #practice-modal.pq-stage .pq-timer {
+  background: #ffffff;
+  border: 1px solid #dce3f2;
+  box-shadow: 0 4px 14px -10px rgba(80,100,140,0.4), inset 0 1px 0 rgba(255,255,255,0.8);
+  color: #2e3d63;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-qicon,
+body:not(.immersive-active) #practice-modal.pq-stage .pq-timer-ico {
+  color: #5b8def;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-count b {
+  color: #2e3d63;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-dim {
+  color: #7c8aa8;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-progress {
+  background: #c6d1e7;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-progress-fill {
+  background: linear-gradient(90deg, #3b82f6, #6fa5ff);
+  box-shadow: none;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .timer-display-sm {
+  color: #2e3d63;
+}
+
+/* ── Question card: solid white sheet ── */
+body:not(.immersive-active) #practice-modal.pq-stage .pq-card {
+  background: #ffffff;
+  border: 1px solid #e1e8f6;
+  box-shadow: 0 20px 48px -24px rgba(59,90,160,0.35), inset 0 1px 0 rgba(255,255,255,0.9);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-q-label {
+  color: #4a7dff;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-spark {
+  color: #4a7dff;
+}
+body:not(.immersive-active) #practice-modal.pq-stage #latex-render {
+  color: #24365e;
+}
+body:not(.immersive-active) #practice-modal.pq-stage #latex-render .katex {
+  color: #24365e;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-sub {
+  background: #eef2fa;
+  border: 1px solid #d8e1f2;
+  color: #4a5a7d;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .diagram-hint {
+  background: #e8efff;
+  border: 1px solid #c9d8fb;
+  color: #2f5bd7;
+}
+body:not(.immersive-active) #practice-modal.pq-stage #practice-modal-img {
+  border: 1px solid #e1e8f6;
+  box-shadow: 0 14px 32px -20px rgba(59,90,160,0.4);
+}
+
+/* ── MCQ options ── */
+body:not(.immersive-active) #practice-modal.pq-stage .mcq-option {
+  background: #f4f6fb;
+  border: 1px solid #e0e7f5;
+  color: #33436a;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .mcq-option::before {
+  background: #edf1f9;
+  border: 1px solid #dbe3f3;
+  color: #5b6b8c;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .mcq-option:hover {
+  background: #edf1f9;
+  border-color: #c6d3ec;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .mcq-option.selected {
+  background: #e3edff;
+  border-color: #3a86ff;
+  color: #1e2e5a;
+  box-shadow: 0 8px 22px -14px rgba(58,134,255,0.7), inset 0 1px 0 rgba(255,255,255,0.7);
+}
+body:not(.immersive-active) #practice-modal.pq-stage .mcq-option.selected::before {
+  background: #3a86ff;
+  color: #ffffff;
+  border-color: transparent;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-opt-letter {
+  background: #edf1f9;
+  border: 1px solid #dbe3f3;
+  color: #5b6b8c;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .mcq-option.selected .pq-opt-letter {
+  background: #3a86ff;
+  color: #ffffff;
+  border-color: transparent;
+}
+
+/* ── Numeric / text / feedback ── */
+body:not(.immersive-active) #practice-modal.pq-stage #numeric-answer-input {
+  background: #ffffff;
+  border: 1px solid #cbd6ea;
+  color: #1e2e5a;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .free-response-hint,
+body:not(.immersive-active) #practice-modal.pq-stage .input-group label {
+  color: #6b7a9b !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .result-banner.correct {
+  background: #e7f7ec;
+  border: 1px solid #b7e4c7;
+  color: #166534;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .result-banner.wrong {
+  background: #fdecec;
+  border: 1px solid #f5c2c2;
+  color: #991b1b;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .show-solution-btn {
+  background: #eef3ff;
+  border: 1px solid #c9d8fb;
+  color: #2f5bd7;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pm-keep-going {
+  color: #6b7a9b;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .skip-popover {
+  background: #ffffff;
+  border: 1px solid #d8e1f2;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .elo-shift-chip {
+  background: #eef3ff;
+  border: 1px solid #c9d8fb;
+  color: #2f5bd7;
+}
+
+/* ── Bottom nav: one floating pill bar ── */
+body:not(.immersive-active) #practice-modal.pq-stage .pq-nav {
+  background: #e9eef7;
+  border: 1px solid #d3dcf0;
+  border-radius: 28px;
+  box-shadow: 0 14px 32px -22px rgba(80,100,140,0.5), inset 0 1px 0 rgba(255,255,255,0.7);
+  padding: 10px 12px;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-prev {
+  background: #ffffff;
+  border: 1px solid #d8e1f2;
+  color: #5b6b8c;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-prev:hover {
+  border-color: #b9c6e2;
+  color: #1e2e5a;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-submit {
+  background: #d5e0fc;
+  border: 1px solid #bfd0f7;
+  color: #2b3a5e;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-submit:hover {
+  background: #c4d4fb;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-next {
+  background: #3a86ff;
+  color: #ffffff;
+  box-shadow: 0 10px 24px -12px rgba(58,134,255,0.8);
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-next:hover {
+  filter: brightness(1.05);
+}
+body:not(.immersive-active) #practice-modal.pq-stage[data-practice-mode="flow"] #practice-skip-btn,
+body:not(.immersive-active) #practice-modal.pq-stage[data-practice-mode="hardcore"] #practice-skip-btn {
+  background: #ffffff;
+  border: 1px solid #d8e1f2;
+  color: #5b6b8c;
+  box-shadow: none;
+}
+
+/* Streak floats bare in BOTH modes — no containing box. */
+#practice-modal.pq-stage .pq-mini-status .streak-visualizer {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-nav .btn {
+  background: #ffffff;
+  border: 1px solid #d8e1f2;
+  color: #4a5a7d;
+}
+
+/* Dark keeps its cyan neutral-reveal banner (moved out of app.js inline). */
+body.immersive-active #practice-modal.pq-stage .result-banner.reveal {
+  background: rgba(61,220,255,0.10);
+  color: #a5ecff;
+  border: 1px solid rgba(61,220,255,0.30);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   LIGHT CONTRAST PASS — fixes washed-out timer, flow footer,
+   reveal/solution/ELO and popovers on the paper stage.
+   Still scoped to moon-OFF only; dark is untouched.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Timer / HUD pop: crisp white pills, deep-navy digits ── */
+body:not(.immersive-active) #practice-modal.pq-stage .pq-count,
+body:not(.immersive-active) #practice-modal.pq-stage .pq-timer {
+  background: #ffffff !important;
+  border: 1px solid #c9d5ee !important;
+  box-shadow: 0 4px 14px -10px rgba(80,100,140,0.5), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+  color: #1e2e5a !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-qicon,
+body:not(.immersive-active) #practice-modal.pq-stage .pq-timer-ico {
+  color: #2f5bd7 !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-count b {
+  color: #1e2e5a !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-dim {
+  color: #5b6b8c !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-progress {
+  background: #bcc9e3 !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .timer-display-sm {
+  color: #1e2e5a !important;
+  font-weight: 800 !important;
+}
+
+/* ── Flow footer: skip + continue + submit all legible ── */
+body:not(.immersive-active) #practice-modal.pq-stage[data-practice-mode="flow"] #practice-skip-btn,
+body:not(.immersive-active) #practice-modal.pq-stage[data-practice-mode="hardcore"] #practice-skip-btn {
+  background: #ffffff !important;
+  border: 1px solid #c9d5ee !important;
+  color: #1e2e5a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px -10px rgba(80,100,140,0.5) !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage[data-practice-mode="flow"] #practice-skip-btn:hover,
+body:not(.immersive-active) #practice-modal.pq-stage[data-practice-mode="hardcore"] #practice-skip-btn:hover {
+  background: #eaf0fc !important;
+  border-color: #3a86ff !important;
+  color: #1e2e5a !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage #practice-continue-btn,
+body:not(.immersive-active) #practice-modal.pq-stage .pq-nav .btn {
+  background: #ffffff !important;
+  border: 1px solid #c9d5ee !important;
+  color: #1e2e5a !important;
+  font-weight: 700 !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage #practice-continue-btn:hover,
+body:not(.immersive-active) #practice-modal.pq-stage .pq-nav .btn:hover {
+  background: #eaf0fc !important;
+  border-color: #3a86ff !important;
+  color: #1e2e5a !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-submit {
+  background: #c9d6fa !important;
+  border: 1px solid #aec2f2 !important;
+  color: #1e2e5a !important;
+  font-weight: 800 !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-submit:hover {
+  background: #b9ccf9 !important;
+  color: #1e2e5a !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pq-next {
+  color: #ffffff !important;
+}
+
+/* ── Banners: neutral reveal + deepened correct/wrong ── */
+body:not(.immersive-active) #practice-modal.pq-stage .result-banner.reveal {
+  background: #e8efff !important;
+  border: 1px solid #aec2f2 !important;
+  color: #1e2e5a !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .result-banner.correct {
+  background: #e7f7ec !important;
+  border: 1px solid #9adbb2 !important;
+  color: #14532d !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .result-banner.wrong {
+  background: #fdecec !important;
+  border: 1px solid #f0aeae !important;
+  color: #7f1d1d !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .show-solution-btn {
+  background: #ffffff !important;
+  border: 1px solid #aec2f2 !important;
+  color: #1e2e5a !important;
+  font-weight: 700 !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .show-solution-btn:hover {
+  background: #eaf0fc !important;
+  border-color: #3a86ff !important;
+  color: #1e2e5a !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .pm-keep-going,
+body:not(.immersive-active) #practice-modal.pq-stage .input-group label {
+  color: #47587e !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage #numeric-answer-input::placeholder {
+  color: #8a97b5;
+}
+
+/* ── ELO + streak: light fills, dark ink (beats injected dark <style>) ── */
+body:not(.immersive-active) #practice-modal.pq-stage .elo-shift-chip.elo-up,
+body:not(.immersive-active) #practice-modal.pq-stage .elo-header-chip.elo-up {
+  background: #e7f6ec !important;
+  border: 1px solid #9adbb2 !important;
+  color: #14532d !important;
+  box-shadow: none !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .elo-shift-chip.elo-down,
+body:not(.immersive-active) #practice-modal.pq-stage .elo-header-chip.elo-down {
+  background: #fdecec !important;
+  border: 1px solid #f0aeae !important;
+  color: #7f1d1d !important;
+  box-shadow: none !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .elo-shift-chip .elo-shift-time.time-fast,
+body:not(.immersive-active) #practice-modal.pq-stage .elo-header-chip .elo-shift-time.time-fast {
+  color: #14532d !important;
+  background: #d6f0de !important;
+  border: 1px solid #9adbb2 !important;
+  box-shadow: none !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .elo-shift-chip .elo-shift-time.time-slow,
+body:not(.immersive-active) #practice-modal.pq-stage .elo-header-chip .elo-shift-time.time-slow {
+  color: #7f1d1d !important;
+  background: #f9dada !important;
+  border: 1px solid #f0aeae !important;
+  box-shadow: none !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .elo-shift-chip .elo-shift-time.time-mode,
+body:not(.immersive-active) #practice-modal.pq-stage .elo-header-chip .elo-shift-time.time-mode {
+  color: #3b2e8a !important;
+  background: #e6e2fb !important;
+  border: 1px solid #c4b8f2 !important;
+  box-shadow: none !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .streak-number {
+  color: #1e2e5a !important;
+  text-shadow: none !important;
+}
+
+/* ── Popovers + undo toast ride light on the paper stage ── */
+body:not(.immersive-active) #practice-modal.pq-stage .skip-popover,
+body:not(.immersive-active) .skip-popover {
+  background: #ffffff !important;
+  border: 1px solid #c9d5ee !important;
+  box-shadow: 0 14px 34px -18px rgba(59,90,160,0.45) !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .skip-popover .skip-popover-title,
+body:not(.immersive-active) .skip-popover .skip-popover-title {
+  color: #6b7a9b !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .skip-popover button,
+body:not(.immersive-active) .skip-popover button {
+  background: #f4f6fb !important;
+  border: 1px solid #dbe3f3 !important;
+  color: #33436a !important;
+}
+body:not(.immersive-active) #practice-modal.pq-stage .skip-popover button:hover,
+body:not(.immersive-active) .skip-popover button:hover {
+  background: #e3edff !important;
+  border-color: #3a86ff !important;
+  color: #1e2e5a !important;
+}
+body:not(.immersive-active) .skip-undo-toast {
+  background: #ffffff !important;
+  border: 1px solid #c9d5ee !important;
+  color: #1e2e5a !important;
+  box-shadow: 0 14px 34px -18px rgba(59,90,160,0.45) !important;
+}
+body:not(.immersive-active) .skip-undo-toast button {
+  background: #e3edff !important;
+  border: 1px solid #aec2f2 !important;
+  color: #1e2e5a !important;
+}
+
+/* ── Solution popup goes paper when opened from the light stage ── */
+body:not(.immersive-active) #solution-modal .solution-modal-card {
+  background: #ffffff !important;
+  border: 1px solid #e1e8f6 !important;
+  box-shadow: 0 24px 55px -24px rgba(59,90,160,0.45) !important;
+  color: #24365e !important;
+}
+body:not(.immersive-active) #solution-modal .solution-modal-card h2 {
+  color: #1e2e5a !important;
+}
+body:not(.immersive-active) #solution-modal .solution-latex,
+body:not(.immersive-active) #solution-modal #solution-content {
+  background: #f4f6fb !important;
+  border-left: 3px solid #3a86ff !important;
+  color: #24365e !important;
+}
+body:not(.immersive-active) #solution-modal .solution-latex .katex,
+body:not(.immersive-active) #solution-modal #solution-content .katex {
+  color: #24365e !important;
+}
+body:not(.immersive-active) #solution-modal .close-btn {
+  color: #5b6b8c !important;
+}
+body:not(.immersive-active) #solution-modal .close-btn:hover {
+  color: #1e2e5a !important;
+}
+
+/* ── Timer digits: strip the dark inner pill (styles.css .timer-display-sm
+   paints its own black translucent background) so digits sit navy on white ── */
+body:not(.immersive-active) #practice-modal.pq-stage .pq-timer .timer-display-sm {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  color: #1e2e5a !important;
 }
