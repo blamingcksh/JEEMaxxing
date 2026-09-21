@@ -6,7 +6,7 @@
        resolves with the right data-theme/data-mode (no default-theme FOUC).
        Invalid/unknown stored ids silently fall back to the defaults. */
 try{var _t=localStorage.getItem('jeemax_theme'),_m=localStorage.getItem('jeemax_mode');
-var _ths=['furnace','synthwave','glacier','overgrowth','bloodmoon','sakura','stealth'];
+var _ths=['furnace','synthwave','glacier','overgrowth','bloodmoon','sakura','stealth','sepia'];
 var _mds=['midnight','dusk'];
 var _rt=document.documentElement;
 _rt.setAttribute('data-theme',_ths.indexOf(_t)>=0?_t:'furnace');

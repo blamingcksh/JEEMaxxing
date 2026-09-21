@@ -33,7 +33,8 @@ for (let i = 0; i < 6; i++) { if (!(await page.locator('.bootseq').count())) bre
 
 const THEMES = {
   furnace: '255, 178, 36', synthwave: '192, 132, 252', glacier: '56, 189, 248',
-  overgrowth: '52, 211, 153', bloodmoon: '239, 68, 68', sakura: '244, 114, 182', stealth: '229, 231, 235'
+  overgrowth: '52, 211, 153', bloodmoon: '239, 68, 68', sakura: '244, 114, 182', stealth: '229, 231, 235',
+  sepia: '181, 101, 29'
 };
 let pass = 0, fail = 0;
 const assert = (c, n) => { if (c) { pass++; console.log('  ok', n); } else { fail++; console.error('  FAIL', n); } };

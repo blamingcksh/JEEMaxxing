@@ -5446,6 +5446,47 @@ html[data-theme="stealth"] {
   --accent-soft: rgba(229,231,235,0.30);
   --accent-ink: #0b0d12;
 }
+html[data-theme="sepia"] {
+  --furnace: #b5651d;  --furnace-hot: #8b5a2b;  --telemetry: #c99327;  --vault: #7d8450;
+  --grad-furnace: linear-gradient(100deg, #b5651d, #8b5a2b);
+  --grad-flow: linear-gradient(90deg, #b5651d, #8b5a2b, #c99327, #b5651d);
+  --aes-amber: #b5651d; --aes-amber2: #8b5a2b; --aes-cyan: #c99327; --aes-violet: #7d8450;
+  --aur-1: rgba(181,101,29,0.12); --aur-2: rgba(201,147,39,0.10); --aur-3: rgba(125,132,80,0.09);
+  --accent-soft: rgba(181,101,29,0.35);
+  --accent-ink: #fff8ea;
+}
+
+/* ── Sepia paper surfaces — designed for Midnight mode. In Dusk mode the
+   dusk layer further below wins shared tokens (later + more specific),
+   yielding a warm evening hybrid instead of paper. ── */
+html[data-theme="sepia"] {
+  --bg-base: #e9dec6;
+  --bg-raise: #f1e8d5;
+  --bg-inset: #e2d5b8;
+  --bg-surface: rgba(255, 252, 244, 0.66);
+  --bg-surface-hover: rgba(255, 252, 244, 0.88);
+  --text-primary: #3d2f23;
+  --text-secondary: #6f5f4c;
+  --text-muted: #8d7f6a;
+  --line: rgba(90, 64, 32, 0.16);
+  --line-strong: rgba(90, 64, 32, 0.30);
+  --aes-ink: #3d2f23;
+  --aes-dim: #6f5f4c;
+  --aes-line: rgba(90, 64, 32, 0.20);
+  --aes-glass: linear-gradient(180deg, rgba(255,252,244,0.75), rgba(255,252,244,0.45));
+  scrollbar-color: rgba(139, 90, 43, 0.45) transparent;
+}
+html[data-theme="sepia"] body::before {
+  background:
+    radial-gradient(46rem 36rem at 12% -8%,  rgba(181,101,29,0.10), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%,  rgba(201,147,39,0.10), transparent 60%),
+    radial-gradient(62rem 42rem at 50% 118%, rgba(139,90,43,0.12), transparent 62%),
+    linear-gradient(180deg, #f1e8d5 0%, #e9dec6 55%, #dfd2b4 100%);
+  background-attachment: fixed;
+}
+html[data-theme="sepia"] ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(181,101,29,0.55), rgba(139,90,43,0.45));
+}
 
 /* ── Aurora backdrop + ambient orbs follow the active palette ──────────── */
 body::before {
@@ -11681,5 +11722,404 @@ body.forest-bg-on #view-dashboard .dash-card.dash-card {
    unaffected either way.) */
 #view-dashboard .dash-card.dash-card :is(button, [role="button"]) {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75), 0 0 10px rgba(0, 0, 0, 0.45);
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   SEPIA COVERAGE LAYER — makes every surface follow data-theme="sepia".
+   Appended last so ties (vs dusk !important layer) resolve to paper.
+   Reversible: delete this block. Scoped: other 7 themes untouched.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Wave 1 · P0 primary ink (white → sepia ink) ── */
+html[data-theme="sepia"] .username-txt,
+html[data-theme="sepia"] .global-mmr-row .mmr-score,
+html[data-theme="sepia"] .manual-sync-btn:hover,
+html[data-theme="sepia"] .rail-today-num,
+html[data-theme="sepia"] .rail-today-subj b,
+html[data-theme="sepia"] .subject-folder.active,
+html[data-theme="sepia"] .subject-folder.active .folder-count,
+html[data-theme="sepia"] .nav-item:hover,
+html[data-theme="sepia"] .nav-item.active,
+html[data-theme="sepia"] .nav-ck-rung.here,
+html[data-theme="sepia"] .counter-btn,
+html[data-theme="sepia"] .pomo-settings-btn,
+html[data-theme="sepia"] #view-dashboard .counter-btn:hover,
+html[data-theme="sepia"] .hour-stat .val,
+html[data-theme="sepia"] .mini-collapse-btn:hover,
+html[data-theme="sepia"] .mini-time,
+html[data-theme="sepia"] .elo-monitor .elo-monitor-rating,
+html[data-theme="sepia"] .matrix-pill:hover,
+html[data-theme="sepia"] .matrix-pill.active,
+html[data-theme="sepia"] .matrix-meta b,
+html[data-theme="sepia"] .emg-label,
+html[data-theme="sepia"] .error-chapter,
+html[data-theme="sepia"] .em-empty-title,
+html[data-theme="sepia"] .vault-shell.vault-v2 .subject-folder.active,
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active,
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill:hover,
+html[data-theme="sepia"] .qge-title,
+html[data-theme="sepia"] .qge-sub strong,
+html[data-theme="sepia"] .three-dot:hover,
+html[data-theme="sepia"] .hide-toggle,
+html[data-theme="sepia"] .hide-toggle:hover,
+html[data-theme="sepia"] .sr-drawer-title,
+html[data-theme="sepia"] .sr-drawer-close:hover,
+html[data-theme="sepia"] .sr-manual-toggle:hover,
+html[data-theme="sepia"] .sr-history-toggle:hover,
+html[data-theme="sepia"] .sr-conf-btn,
+html[data-theme="sepia"] .pomo-dynamic-btn:hover,
+html[data-theme="sepia"] .btn-break-opt:hover,
+html[data-theme="sepia"] #view-pomodoro .pomo-dynamic-btn:hover,
+html[data-theme="sepia"] #view-pomodoro .btn-break-opt:hover,
+html[data-theme="sepia"] #view-pomodoro .pomo-dynamic-btn.on,
+html[data-theme="sepia"] #view-pomodoro .sc-preset.active,
+html[data-theme="sepia"] #view-pomodoro .timer-display,
+html[data-theme="sepia"] #view-pomodoro .pomo-time,
+html[data-theme="sepia"] #view-pomodoro .sc-preset:hover,
+html[data-theme="sepia"] #view-pomodoro .sc-power-btn.on,
+html[data-theme="sepia"] #view-pomodoro .pomo-settings-btn:hover,
+html[data-theme="sepia"] .mr-confbtn.sel,
+html[data-theme="sepia"] .mr-text,
+html[data-theme="sepia"] .mr-opt,
+html[data-theme="sepia"] .mk-pk-title,
+html[data-theme="sepia"] .mk-pv-keyline,
+html[data-theme="sepia"] .mk-link-banner,
+html[data-theme="sepia"] .mk-pk-chip,
+html[data-theme="sepia"] .mr-pal-cell,
+html[data-theme="sepia"] .mr-navbtn,
+html[data-theme="sepia"] .mr-chip,
+html[data-theme="sepia"] .mr-res-line,
+html[data-theme="sepia"] .mr-fchip,
+html[data-theme="sepia"] .mr-rev-row,
+html[data-theme="sepia"] .mr-rev-opt,
+html[data-theme="sepia"] .mr-rev-sol,
+html[data-theme="sepia"] .cal-nav-btn,
+html[data-theme="sepia"] .cal-day.active-month,
+html[data-theme="sepia"] .date-detail-card .stat-val,
+html[data-theme="sepia"] .theme-mode-btn.active,
+html[data-theme="sepia"] #dc-layout-fab:hover,
+html[data-theme="sepia"] .bento-ctrl-btn:hover,
+html[data-theme="sepia"] .bento-seg button:hover,
+html[data-theme="sepia"] .bento-edit-btn:hover,
+html[data-theme="sepia"] .bento-reset-btn:hover,
+html[data-theme="sepia"] .bento-edit-btn.active,
+html[data-theme="sepia"] .mini-ctl:hover,
+html[data-theme="sepia"] .pop-step:hover,
+html[data-theme="sepia"] .pop-sub:hover,
+html[data-theme="sepia"] .pop-dyn:hover,
+html[data-theme="sepia"] .pop-val,
+html[data-theme="sepia"] .receipt-row b,
+html[data-theme="sepia"] .fl-v,
+html[data-theme="sepia"] .fl-item b,
+html[data-theme="sepia"] .fsr-item b,
+html[data-theme="sepia"] .metro-bpm-num,
+html[data-theme="sepia"] .metro-step:hover,
+html[data-theme="sepia"] .sr-lifeline-dismiss,
+html[data-theme="sepia"] #stopwatch-toggle-btn { color: #3d2f23 !important; }
+
+/* ── Wave 1 · P0 secondary ink (mid-white → warm taupe) ── */
+html[data-theme="sepia"] .mk-loss-ch,
+html[data-theme="sepia"] .mk-qrow,
+html[data-theme="sepia"] .mk-duration,
+html[data-theme="sepia"] .cal-day,
+html[data-theme="sepia"] .metro-step { color: #6f5f4c !important; }
+
+/* ── Wave 1 · paper inputs (dark fills + white ink → cream + sepia) ── */
+html[data-theme="sepia"] .pomo-select,
+html[data-theme="sepia"] .pomo-input,
+html[data-theme="sepia"] #view-pomodoro .pomo-input,
+html[data-theme="sepia"] #view-pomodoro .pomo-select,
+html[data-theme="sepia"] .sr-manual-input,
+html[data-theme="sepia"] .sr-stopwatch,
+html[data-theme="sepia"] .sr-tagedit-input,
+html[data-theme="sepia"] .mk-mix-cell input,
+html[data-theme="sepia"] .mk-auto-cell input,
+html[data-theme="sepia"] .mk-duration input,
+html[data-theme="sepia"] .mk-key-in,
+html[data-theme="sepia"] .mk-bulk textarea,
+html[data-theme="sepia"] .mk-pk-search,
+html[data-theme="sepia"] .mr-numeric,
+html[data-theme="sepia"] .fi-full-date input {
+  background: #fffdf6 !important;
+  border: 1px solid rgba(90, 64, 32, 0.32) !important;
+  color: #3d2f23 !important;
+}
+html[data-theme="sepia"] .pomo-input::placeholder,
+html[data-theme="sepia"] .pomo-select::placeholder,
+html[data-theme="sepia"] .sr-manual-input::placeholder,
+html[data-theme="sepia"] .sr-tagedit-input::placeholder,
+html[data-theme="sepia"] .mr-numeric::placeholder,
+html[data-theme="sepia"] input::placeholder,
+html[data-theme="sepia"] textarea::placeholder { color: #8d7f6a !important; }
+html[data-theme="sepia"] .btn-secondary {
+  background: rgba(139, 90, 43, 0.12) !important;
+  border: 1px solid rgba(90, 64, 32, 0.35) !important;
+  color: #3d2f23 !important;
+}
+html[data-theme="sepia"] .btn-secondary:hover { color: #3d2f23 !important; border-color: #8b5a2b !important; }
+
+/* ── Wave 1 · header mode pills (injected #mode-button-style) ── */
+html[data-theme="sepia"] .mode-pill {
+  color: #3d2f23 !important;
+  background: rgba(139, 90, 43, 0.10) !important;
+  border-color: rgba(90, 64, 32, 0.30) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 2px 10px rgba(90,64,32,0.18) !important;
+}
+html[data-theme="sepia"] .mode-pill-feed:hover { border-color: rgba(90,64,32,0.5) !important; box-shadow: none !important; }
+html[data-theme="sepia"] .mode-pill-flow { border-color: rgba(2,132,199,0.45) !important; animation: none !important; }
+html[data-theme="sepia"] .mode-pill-hc { border-color: rgba(176,58,72,0.45) !important; animation: none !important; }
+html[data-theme="sepia"] .mode-pill.active,
+html[data-theme="sepia"] .mode-pill.on {
+  color: #3d2f23 !important;
+  background: rgba(139, 90, 43, 0.20) !important;
+  border-color: #8b5a2b !important;
+}
+
+/* ── Wave 1 · ELO chips in vault/SR drawer (injected #elo-shift-chip-styles) ── */
+html[data-theme="sepia"] .elo-shift-chip.elo-up,
+html[data-theme="sepia"] .elo-header-chip.elo-up {
+  background: #e6efdb !important; border: 1px solid #9db87f !important; color: #3d6b2f !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .elo-shift-chip.elo-down,
+html[data-theme="sepia"] .elo-header-chip.elo-down {
+  background: #f3ddd2 !important; border: 1px solid #cf9377 !important; color: #8f3a22 !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .elo-shift-chip .elo-shift-time,
+html[data-theme="sepia"] .elo-header-chip .elo-shift-time {
+  background: rgba(139,90,43,0.10) !important; border: 1px solid rgba(90,64,32,0.30) !important; color: #4a3d2c !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .elo-shift-chip .elo-shift-time.time-fast,
+html[data-theme="sepia"] .elo-header-chip .elo-shift-time.time-fast { color: #3d6b2f !important; background: #d9e8c8 !important; border-color: #9db87f !important; }
+html[data-theme="sepia"] .elo-shift-chip .elo-shift-time.time-slow,
+html[data-theme="sepia"] .elo-header-chip .elo-shift-time.time-slow { color: #8f3a22 !important; background: #efd2c2 !important; border-color: #cf9377 !important; }
+html[data-theme="sepia"] .elo-shift-chip .elo-shift-time.time-mode,
+html[data-theme="sepia"] .elo-header-chip .elo-shift-time.time-mode { color: #4a3d78 !important; background: #e2dcf3 !important; border-color: #b3a4dd !important; }
+
+/* ── Wave 1 · skip popover + undo toast + app toasts → paper ── */
+html[data-theme="sepia"] .skip-popover {
+  background: #fffaf0 !important; border: 1px solid rgba(90,64,32,0.30) !important; color: #3d2f23 !important;
+  box-shadow: 0 14px 34px -18px rgba(90,64,32,0.45) !important;
+}
+html[data-theme="sepia"] .skip-popover .skip-popover-title { color: #6f5f4c !important; }
+html[data-theme="sepia"] .skip-popover button {
+  background: #f6efdd !important; border: 1px solid #d9c69c !important; color: #4a3828 !important;
+}
+html[data-theme="sepia"] .skip-popover button:hover { background: #f0dfb8 !important; border-color: #8b5a2b !important; color: #3d2f23 !important; }
+html[data-theme="sepia"] .skip-undo-toast,
+html[data-theme="sepia"] .jmax-app-toast,
+html[data-theme="sepia"] .pomo-focus-toast,
+html[data-theme="sepia"] #jmax-update-toast {
+  background: #fffaf0 !important; border: 1px solid rgba(90,64,32,0.30) !important; color: #3d2f23 !important;
+  box-shadow: 0 14px 34px -18px rgba(90,64,32,0.45) !important;
+}
+html[data-theme="sepia"] #jmax-update-toast button { background: #f0dfb8 !important; border: 1px solid #b28c4d !important; color: #3d2f23 !important; }
+html[data-theme="sepia"] .skip-undo-toast button { background: #f0dfb8 !important; border: 1px solid #b28c4d !important; color: #3d2f23 !important; }
+html[data-theme="sepia"] .math-failure-banner {
+  background: #f0dfb8 !important; border: 1px solid #b28c4d !important; color: #5a3d1e !important;
+}
+
+/* ── Wave 1 · AIR popup + decay drilldown + cortex tag editor → paper ── */
+html[data-theme="sepia"] .air-popup {
+  background: linear-gradient(#fffaf0, #f6efdd) !important; color: #3d2f23 !important;
+  border: 1px solid rgba(90,64,32,0.30) !important;
+}
+html[data-theme="sepia"] .air-pop-close { color: #6f5f4c !important; }
+html[data-theme="sepia"] .air-pop-close:hover { color: #8f3a22 !important; }
+html[data-theme="sepia"] .air-pop-air { color: #2e7d3f !important; }
+html[data-theme="sepia"] .air-low { color: #b03a48 !important; }
+html[data-theme="sepia"] .decay-drill-panel {
+  background: linear-gradient(#fffaf0, #f6efdd) !important; color: #3d2f23 !important;
+  border: 1px solid rgba(90,64,32,0.30) !important;
+}
+html[data-theme="sepia"] .decay-drill-panel .sub,
+html[data-theme="sepia"] .decay-drill-panel .close { color: #4a3d2c !important; }
+html[data-theme="sepia"] .sr-stat--ok b { color: #2e7d3f !important; }
+html[data-theme="sepia"] .sr-stat--warn b { color: #8a6d00 !important; }
+html[data-theme="sepia"] .sr-stat--crit b { color: #b03a48 !important; }
+html[data-theme="sepia"] .sr-card-usertag {
+  color: #6d4fc2 !important; background: rgba(109,79,194,0.10) !important; border: 1px solid rgba(109,79,194,0.30) !important;
+}
+html[data-theme="sepia"] .sr-tagedit-chip {
+  color: #4a3d2c !important; background: rgba(139,90,43,0.12) !important; border: 1px solid rgba(90,64,32,0.30) !important;
+}
+html[data-theme="sepia"] .sr-tagedit-x { color: #7c4f16 !important; }
+html[data-theme="sepia"] .sr-tagedit-x:hover { background: rgba(176,58,72,0.15) !important; color: #8f3a22 !important; }
+html[data-theme="sepia"] .sr-tagedit-sugg { color: #7c4f16 !important; border: 1px dashed rgba(124,79,22,0.45) !important; }
+html[data-theme="sepia"] .sr-tagedit-sugg:hover { background: rgba(139,90,43,0.12) !important; }
+html[data-theme="sepia"] .sr-tagedit-none,
+html[data-theme="sepia"] .sr-tagedit-count { color: #6f5f4c !important; }
+html[data-theme="sepia"] .dd-contagion {
+  background: rgba(176,58,72,0.10) !important; border: 1px solid rgba(176,58,72,0.35) !important; color: #8f3a22 !important;
+}
+html[data-theme="sepia"] .dd-tagleak-row { color: #4a3d2c !important; }
+html[data-theme="sepia"] .dd-tagleak-row:hover { background: rgba(139,90,43,0.10) !important; }
+html[data-theme="sepia"] .dd-tagleak-bar { background: rgba(90,64,32,0.15) !important; }
+
+/* ── Wave 1 · metronome slider track → sepia ── */
+html[data-theme="sepia"] .metro-pop input[type="range"] {
+  background: linear-gradient(90deg, rgba(139,90,43,0.85) var(--metro-fill, 50%), rgba(90,64,32,0.18) var(--metro-fill, 50%)) !important;
+}
+
+/* ── Wave 1 · JS inline-hex remaps (beats style="color:#…" via !important) ── */
+html[data-theme="sepia"] [style*="#cbd5e1"] { color: #4a3d2c !important; }
+html[data-theme="sepia"] [style*="#93c5fd"] { color: #7c4f16 !important; border-color: rgba(124,79,22,0.4) !important; }
+html[data-theme="sepia"] [style*="#6ee7b7"] { color: #2e7d3f !important; border-color: rgba(46,125,63,0.4) !important; }
+html[data-theme="sepia"] [style*="#c4b5fd"] { color: #6d4fc2 !important; }
+html[data-theme="sepia"] [style*="#4ade80"] { color: #2e7d3f !important; }
+html[data-theme="sepia"] [style*="#fde047"] { color: #8a6d00 !important; }
+html[data-theme="sepia"] [style*="#fda4af"] { color: #b03a48 !important; }
+html[data-theme="sepia"] [style*="#8be9ff"] { color: #1e6f8e !important; border-color: rgba(30,111,142,0.4) !important; }
+html[data-theme="sepia"] [style*="#8aa0c8"] { color: #6f5f4c !important; }
+html[data-theme="sepia"] [style*="#e8eefb"] { color: #3d2f23 !important; border-color: rgba(90,64,32,0.3) !important; }
+html[data-theme="sepia"] [style*="#e8eefc"] { color: #3d2f23 !important; border-color: rgba(90,64,32,0.3) !important; }
+html[data-theme="sepia"] [style*="#dfe7f5"] { color: #3d2f23 !important; border-color: rgba(90,64,32,0.3) !important; }
+html[data-theme="sepia"] [style*="#e4e4e7"] { color: #3d2f23 !important; }
+html[data-theme="sepia"] [style*="#ffd9a0"] { color: #7c4f16 !important; }
+html[data-theme="sepia"] [style*="#d4d4d8"] { color: #4a3d2c !important; }
+html[data-theme="sepia"] [style*="#a1a1aa"] { color: #6f5f4c !important; }
+html[data-theme="sepia"] [style*="#71717a"] { color: #6f5f4c !important; }
+html[data-theme="sepia"] [style*="#7CFFB2"] { color: #2e7d3f !important; }
+html[data-theme="sepia"] [style*="#FF8585"] { color: #b03a48 !important; }
+html[data-theme="sepia"] [style*="#E0CFFF"] { color: #6d4fc2 !important; }
+html[data-theme="sepia"] [style*="#cdd9f2"] { color: #4a3d2c !important; }
+html[data-theme="sepia"] [style*="#dbe4f5"] { color: #3d2f23 !important; }
+html[data-theme="sepia"] [style*="#dbe1ec"] { color: #3d2f23 !important; }
+html[data-theme="sepia"] [style*="#66708a"] { color: #6f5f4c !important; }
+html[data-theme="sepia"] [style*="#888"] { color: #6f5f4c !important; }
+html[data-theme="sepia"] [style*="#666"] { color: #8d7f6a !important; }
+html[data-theme="sepia"] [style*="#555"] { color: #8d7f6a !important; }
+html[data-theme="sepia"] [style*="#f87171"] { color: #b03a48 !important; }
+html[data-theme="sepia"] [style*="#EF4444"] { color: #b03a48 !important; }
+html[data-theme="sepia"] [style*="#fbbf24"] { color: #8a6d00 !important; }
+html[data-theme="sepia"] [style*="#34d399"] { color: #2e7d3f !important; }
+html[data-theme="sepia"] [style*="#10B981"] { color: #2e7d3f !important; }
+html[data-theme="sepia"] [style*="#f59e0b"] { color: #8a6d00 !important; }
+html[data-theme="sepia"] [style*="#a78bfa"] { color: #6d4fc2 !important; }
+html[data-theme="sepia"] [style*="#bfdbfe"] { color: #4a3d2c !important; }
+html[data-theme="sepia"] [style*="#fecaca"] { color: #8f3a22 !important; }
+html[data-theme="sepia"] [style*="#7a8aa8"] { color: #6f5f4c !important; }
+html[data-theme="sepia"] [style*="#38bdf8"] { color: #1e6f8e !important; }
+
+/* ── Wave 2 · paper shells ── */
+/* Sidebar */
+html[data-theme="sepia"] .sidebar,
+html[data-theme="sepia"] #sidebar,
+html[data-theme="sepia"] #sidebar.sidebar {
+  background: linear-gradient(180deg, rgba(255,252,244,0.85), rgba(246,239,221,0.9)) !important;
+  border-right: 1px solid rgba(90, 64, 32, 0.25) !important;
+  box-shadow: inset -1px 0 0 rgba(255,255,255,0.7), 8px 0 40px -28px rgba(90,64,32,0.4) !important;
+}
+/* Dashboard hero + graph + subject rows */
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker {
+  border: 1px solid transparent !important;
+  background:
+    linear-gradient(180deg, #f6efdd, #efe3c8) padding-box,
+    conic-gradient(from var(--aes-angle), var(--aes-amber), var(--aes-cyan), var(--aes-violet), var(--aes-amber)) border-box !important;
+}
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker::after { background: radial-gradient(120% 80% at 50% -10%, rgba(181,101,29,0.12), transparent 60%) !important; }
+html[data-theme="sepia"] #view-dashboard .graph-display {
+  background: linear-gradient(180deg, #f6efdd, #eee2c6) !important;
+  border: 1px solid rgba(90, 64, 32, 0.25) !important;
+}
+html[data-theme="sepia"] #view-dashboard .compact-subject-card {
+  background: linear-gradient(180deg, rgba(139,90,43,0.10), rgba(139,90,43,0.04)) !important;
+  border: 1px solid rgba(90, 64, 32, 0.25) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7) !important;
+}
+html[data-theme="sepia"] #view-dashboard .compact-subject-card:hover { border-color: #8b5a2b !important; }
+html[data-theme="sepia"] #view-dashboard .compact-subject-card .counter {
+  background: none !important;
+  -webkit-text-fill-color: #3d2f23 !important;
+  color: #3d2f23 !important;
+}
+html[data-theme="sepia"] #view-dashboard .dash-card.dash-card,
+html[data-theme="sepia"] html[data-mode] #view-dashboard .dash-card.dash-card {
+  border: 1px solid rgba(90, 64, 32, 0.28) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 14px 34px -30px rgba(90,64,32,0.5) !important;
+  text-shadow: none !important;
+}
+html[data-theme="sepia"] #view-dashboard .dash-card.dash-card:hover,
+html[data-theme="sepia"] html[data-mode] #view-dashboard .dash-card.dash-card:hover {
+  border-color: #8b5a2b !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 18px 40px -32px rgba(90,64,32,0.55) !important;
+}
+html[data-theme="sepia"] #view-dashboard .dash-card.dash-card :is(button, [role="button"]) { text-shadow: none !important; }
+/* Vault */
+html[data-theme="sepia"] .vault-rail {
+  background: linear-gradient(180deg, rgba(255,252,244,0.85), rgba(246,239,221,0.9)) !important;
+  border: 1px solid rgba(90, 64, 32, 0.25) !important;
+}
+html[data-theme="sepia"] .error-block {
+  background: linear-gradient(180deg, #fffaf0, #f6efdd) !important;
+  border: 1px solid rgba(90, 64, 32, 0.25) !important;
+}
+html[data-theme="sepia"] .error-img-box { background: #e7dabd !important; }
+html[data-theme="sepia"] .matrix-pill.active { background: rgba(139,90,43,0.16) !important; border-color: #8b5a2b !important; }
+html[data-theme="sepia"] .vault-shell.vault-v2 .subject-folder.active { background: rgba(139,90,43,0.16) !important; }
+html[data-theme="sepia"] .subject-folder.active { background: linear-gradient(90deg, rgba(139,90,43,0.20), rgba(139,90,43,0.06)) !important; }
+/* SR drawer */
+html[data-theme="sepia"] .sr-practice-drawer {
+  background: linear-gradient(180deg, #f6efdd, #eee2c6) !important;
+  border: 1px solid rgba(90, 64, 32, 0.30) !important;
+}
+html[data-theme="sepia"] .sr-question-text { color: #3d2f23 !important; background: rgba(139,90,43,0.08) !important; }
+html[data-theme="sepia"] .sr-question-img-wrap { background: #e7dabd !important; }
+html[data-theme="sepia"] .sr-hide-img-btn { color: #4a3d2c !important; background: rgba(139,90,43,0.12) !important; }
+html[data-theme="sepia"] .sr-result-banner.correct { background: #e6efdb !important; border: 1px solid #9db87f !important; color: #3d6b2f !important; }
+html[data-theme="sepia"] .sr-result-banner.incorrect,
+html[data-theme="sepia"] .sr-result-banner.wrong { background: #f3ddd2 !important; border: 1px solid #cf9377 !important; color: #8f3a22 !important; }
+html[data-theme="sepia"] .sr-keep-going { color: #6f5f4c !important; }
+html[data-theme="sepia"] #sr-practice-overlay .streak-visualizer { background: transparent !important; border: none !important; box-shadow: none !important; }
+html[data-theme="sepia"] #sr-practice-overlay .streak-number { color: #3d2f23 !important; text-shadow: none !important; }
+/* Standard modals */
+html[data-theme="sepia"] .modal-content,
+html[data-theme="sepia"] .modal-card {
+  background: linear-gradient(180deg, #fffaf0, #f6efdd) !important;
+  border: 1px solid rgba(90, 64, 32, 0.30) !important;
+  box-shadow: 0 24px 55px -24px rgba(90,64,32,0.5), inset 0 1px 0 rgba(255,255,255,0.8) !important;
+}
+html[data-theme="sepia"] .solution-modal-card {
+  background: #fffaf0 !important; border: 1px solid rgba(90,64,32,0.30) !important; color: #3d2f23 !important;
+  box-shadow: 0 24px 55px -24px rgba(90,64,32,0.5) !important;
+}
+html[data-theme="sepia"] .solution-latex { background: #f6efdd !important; border-left: 3px solid #8b5a2b !important; color: #3d2f23 !important; }
+html[data-theme="sepia"] .solution-latex .katex { color: #3d2f23 !important; }
+html[data-theme="sepia"] .close-btn:hover { color: #3d2f23 !important; }
+/* Pomodoro + mock shells */
+html[data-theme="sepia"] .pomo-mini-widget {
+  background: rgba(255,250,240,0.92) !important;
+  border: 1px solid rgba(90, 64, 32, 0.30) !important;
+  color: #3d2f23 !important;
+}
+html[data-theme="sepia"] .mock-runner { background: #efe4cb !important; }
+html[data-theme="sepia"] .mr-shell.results { background: linear-gradient(160deg, #f6efdd, #eee2c6) !important; }
+/* Ring tracks (SVG) */
+html[data-theme="sepia"] .tp-ring-track,
+html[data-theme="sepia"] .mini-ring-track { stroke: rgba(90, 64, 32, 0.22) !important; }
+/* Calendar */
+html[data-theme="sepia"] .cal-day { background: rgba(139,90,43,0.06) !important; }
+html[data-theme="sepia"] .cal-day.today { border: 1px solid #8b5a2b !important; background: rgba(139,90,43,0.14) !important; }
+html[data-theme="sepia"] .date-detail-card { background: linear-gradient(180deg, #fffaf0, #f6efdd) !important; }
+html[data-theme="sepia"] .date-detail-card .sub-stat { background: rgba(139,90,43,0.12) !important; }
+/* Metronome */
+html[data-theme="sepia"] .metro-fab { background: rgba(255,250,240,0.94) !important; border: 2px solid rgba(139,90,43,0.5) !important; }
+html[data-theme="sepia"] .metro-pop { background: rgba(255,250,240,0.96) !important; border: 1px solid rgba(90,64,32,0.30) !important; }
+
+/* ── Dusk+sepia pins (paper wins the tie by EOF order; beats lock-in) ── */
+html[data-mode="dusk"][data-theme="sepia"] body::before {
+  background:
+    radial-gradient(46rem 36rem at 12% -8%, rgba(181,101,29,0.10), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%, rgba(201,147,39,0.10), transparent 60%),
+    radial-gradient(62rem 42rem at 50% 118%, rgba(139,90,43,0.12), transparent 62%),
+    linear-gradient(180deg, #f1e8d5 0%, #e9dec6 55%, #dfd2b4 100%) !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] #sidebar,
+html[data-mode="dusk"][data-theme="sepia"] .sidebar {
+  background: linear-gradient(180deg, rgba(255,252,244,0.85), rgba(246,239,221,0.9)) !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] .modal-content,
+html[data-mode="dusk"][data-theme="sepia"] .modal-card,
+html[data-mode="dusk"][data-theme="sepia"] .solution-modal-card {
+  background: linear-gradient(180deg, #fffaf0, #f6efdd) !important;
 }
 
