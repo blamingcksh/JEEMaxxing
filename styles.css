@@ -3603,6 +3603,7 @@ select.pomo-select, select.pomo-input {
 .file-upload-label.compact-upload span { display: inline; }
 .file-upload-label.compact-upload .file-icon { margin-bottom: 0; font-size: 20px; }
 .file-selected-text { margin-top: 8px; font-size: 11.5px; color: #a5ecff; }
+html[data-theme="sepia"] .file-selected-text { color: #5c4c37 !important; }
 .file-upload-btn {
     background: rgba(255, 255, 255, 0.08);
     padding: 10px 16px;
@@ -11895,7 +11896,7 @@ html[data-theme="sepia"] .sr-manual-input::placeholder,
 html[data-theme="sepia"] .sr-tagedit-input::placeholder,
 html[data-theme="sepia"] .mr-numeric::placeholder,
 html[data-theme="sepia"] input::placeholder,
-html[data-theme="sepia"] textarea::placeholder { color: #8d7f6a !important; }
+html[data-theme="sepia"] textarea::placeholder { color: #6f6049 !important; }
 html[data-theme="sepia"] .btn-secondary {
   background: rgba(139, 90, 43, 0.12) !important;
   border: 1px solid rgba(90, 64, 32, 0.35) !important;
@@ -12231,19 +12232,13 @@ html[data-theme="sepia"] #fb-op::-moz-range-thumb { background: #fdf8ea !importa
    via local --dash-* tokens; retune them to cream for paper. ── */
 html[data-theme="sepia"] #view-dashboard {
   --dash-ink: #2c2317;
-  --dash-muted: #594b36;
-  --dash-subtle: #6b5a44;
+  --dash-muted: #5c4c37;
+  --dash-subtle: #5c4c37;
   --dash-border: rgba(90, 60, 24, 0.20);
   --dash-border-hover: rgba(139, 90, 43, 0.48);
   --dash-surface-top: rgba(255, 253, 246, 0.92);
   --dash-surface-bottom: rgba(246, 239, 221, 0.94);
   --dash-inset: rgba(255, 255, 255, 0.65);
-  --dv-track: rgba(90, 60, 24, 0.10);
-  --dv-1: rgba(47, 107, 51, 0.28);
-  --dv-2: rgba(47, 107, 51, 0.50);
-  --dv-3: rgba(47, 107, 51, 0.72);
-  --dv-4: #2f6b33;
-  --dv-glow: rgba(47, 107, 51, 0.35);
 }
 html[data-theme="sepia"] #view-dashboard .dash-card,
 html[data-theme="sepia"] #view-dashboard .dash-card.dash-card-tracker,
@@ -12422,7 +12417,7 @@ html[data-theme="sepia"] .ms-input {
   color: #2c2317 !important;
 }
 html[data-theme="sepia"] .mock-input::placeholder,
-html[data-theme="sepia"] .ms-input::placeholder { color: #8a7a62 !important; }
+html[data-theme="sepia"] .ms-input::placeholder { color: #6f6049 !important; }
 html[data-theme="sepia"] .btn-new-mock,
 html[data-theme="sepia"] .mock-create-btn {
   background: linear-gradient(100deg, #cc8533, #b4752d) !important;
@@ -12457,10 +12452,10 @@ html[data-theme="sepia"] .mock-input:focus {
   border-color: #8b5a2b !important;
   box-shadow: 0 0 0 3px rgba(181,101,29,0.18) !important;
 }
-html[data-theme="sepia"] .pomo-input::placeholder { color: #8a7a62 !important; }
+html[data-theme="sepia"] .pomo-input::placeholder { color: #6f6049 !important; }
 /* Placeholder ink everywhere (search fields reported unreadable) */
 html[data-theme="sepia"] input::placeholder,
-html[data-theme="sepia"] textarea::placeholder { color: #8a7a62 !important; opacity: 1; }
+html[data-theme="sepia"] textarea::placeholder { color: #6f6049 !important; opacity: 1; }
 
 /* ── Primary/secondary/ghost buttons → warm sienna with dark ink ─────── */
 html[data-theme="sepia"] .btn-primary {
@@ -12788,3 +12783,253 @@ html[data-theme="sepia"] .rh-critical .rh-dot { background: #a83542 !important; 
 html[data-theme="sepia"] .legend-chip.legend-green::before { background: #2f6b33 !important; }
 html[data-theme="sepia"] .legend-chip.legend-yellow::before { background: #c99327 !important; }
 html[data-theme="sepia"] .legend-chip.legend-red::before { background: #a83542 !important; }
+
+/* ════════════════════════════════════════════════════════════════════
+   SEPIA POLISH — WAVE 7 · paper as a designed system
+   Follow-up on waves 1–6. Everything here is scoped to
+   html[data-theme="sepia"] (both modes) and appended last so it wins
+   ties against the component layers loaded after styles.css.
+   Reversible: delete this block.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── 1 · Ink — deepen the two secondary steps so 11–13px body copy and
+      9px micro-caps clear 4.5:1 on base, raise, inset and cream cards.
+      (--text-secondary #594b36 → 6.3:1 base / 4.3:1 inset → borderline;
+       --text-muted    #6b5a44 → 4.95:1 base / 4.42:1 inset → under AA.)
+      Primary ink, kicker (#7a4a20) and nav icon (#b5651d) are untouched. ── */
+html[data-theme="sepia"] {
+  --text-secondary: #5c4c37;
+  --text-muted: #5c4c37;
+  --aes-dim: #5c4c37;
+  --dash-muted: #5c4c37;
+  --dash-subtle: #5c4c37;
+}
+
+/* ── 2 · Paper depth — the vellum base was flat. Restore the fibre
+      texture the base sheet drops for sepia and warm the engineering
+      grid to sienna hairlines so the backdrop has tooth. ── */
+html[data-theme="sepia"] body::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
+    radial-gradient(46rem 36rem at 12% -8%,  rgba(181,101,29,0.10), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%, rgba(201,147,39,0.10), transparent 60%),
+    radial-gradient(62rem 42rem at 50% 118%, rgba(139,90,43,0.12), transparent 62%),
+    linear-gradient(180deg, #f3ead4 0%, #e9dec4 55%, #ded0ae 100%) !important;
+  background-attachment: fixed;
+}
+html[data-mode="dusk"][data-theme="sepia"] body::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
+    radial-gradient(46rem 36rem at 12% -8%, rgba(181,101,29,0.10), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%, rgba(201,147,39,0.10), transparent 60%),
+    radial-gradient(62rem 42rem at 50% 118%, rgba(139,90,43,0.12), transparent 62%),
+    linear-gradient(180deg, #f3ead4 0%, #e9dec4 55%, #ded0ae 100%) !important;
+}
+html[data-theme="sepia"] .bg-grid-overlay {
+  background-image:
+    repeating-linear-gradient(0deg,  rgba(139, 90, 43, 0.045) 0 1px, transparent 1px 52px),
+    repeating-linear-gradient(90deg, rgba(139, 90, 43, 0.045) 0 1px, transparent 1px 52px);
+}
+
+/* ── 3 · Gradient text — the white→gray headline gradients painted the
+      page title, logo wordmark and header h1 with -webkit-text-fill-color:
+      transparent on paper. They were literally invisible. Solid ink, keep
+      the type sizing. ── */
+html[data-theme="sepia"] #view-title,
+html[data-theme="sepia"] #main-header h1,
+html[data-theme="sepia"] .header-section h1,
+html[data-theme="sepia"] .header-copy h1 {
+  background: none !important;
+  -webkit-text-fill-color: #2c2317 !important;
+}
+html[data-theme="sepia"] .logo-text {
+  background: none !important;
+  -webkit-text-fill-color: #2c2317 !important;
+}
+
+/* ── 4 · Tracker — the meters were 3–4px hairlines at 9% ink: no well, no
+      read. Give them a cream well with a hairline, restore a visible
+      track, and lift the sub-meter to the day meter's weight. ── */
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-meter,
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-sub-meter {
+  height: 6px;
+  background: rgba(224, 210, 178, 0.9) !important;
+  box-shadow: inset 0 0 0 1px rgba(90, 60, 24, 0.16);
+}
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-sub-meter { height: 5px; margin-top: 12px; }
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-meter-fill {
+  background: linear-gradient(90deg, #8b5a2b, #b5651d) !important;
+  box-shadow: 0 0 8px -2px rgba(181, 101, 29, 0.45);
+}
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-sub-fill {
+  background: linear-gradient(90deg, var(--subj), var(--subj-2)) !important;
+  box-shadow: 0 0 8px -2px color-mix(in srgb, var(--subj) 45%, transparent);
+}
+/* Pace tick: the 55%-ink white bar read as a gap in the well on paper. */
+html[data-theme="sepia"] #view-dashboard .tp-pace,
+html[data-theme="sepia"] .tp-pace { background: rgba(90, 60, 24, 0.62) !important; }
+
+/* ── 5 · Subject data channels — the shared --telemetry/--glow-green pair
+      is olive-brown/green and muddy on cream, and the daily sheet pins
+      cyan/teal/amber. Retune the channels themselves so dots, sub-fills,
+      stepper hovers, counters and completion states all read as ink. ── */
+html[data-theme="sepia"] { --telemetry: #175f7a; --glow-green: #1f5c26; --furnace: #b5651d; }
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .compact-subject-card[data-subject="physics"]   { --subj: #175f7a; --subj-2: #2f6b8e; }
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .compact-subject-card[data-subject="chemistry"] { --subj: #1f5c26; --subj-2: #2f6b33; }
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .compact-subject-card[data-subject="maths"]     { --subj: #8a5a12; --subj-2: #b5651d; }
+/* Subject card headings + counters were already retuned per hue; keep
+   the hues aligned with the channels above. */
+html[data-theme="sepia"] #view-dashboard .compact-subject-card[data-subject="physics"] .counter { color: #175f7a !important; }
+html[data-theme="sepia"] #view-dashboard .compact-subject-card[data-subject="chemistry"] .counter { color: #1f5c26 !important; }
+html[data-theme="sepia"] #view-dashboard .compact-subject-card[data-subject="maths"] .counter { color: #8a5a12 !important; }
+html[data-theme="sepia"] .fsr-dot[data-subject="physics"]   { background: #175f7a !important; box-shadow: none !important; }
+html[data-theme="sepia"] .fsr-dot[data-subject="chemistry"] { background: #1f5c26 !important; box-shadow: none !important; }
+html[data-theme="sepia"] .fsr-dot[data-subject="maths"]     { background: #8a5a12 !important; box-shadow: none !important; }
+html[data-theme="sepia"] #view-pomodoro .fsr-dot { background: #5c4c37 !important; box-shadow: none !important; }
+/* Steppers: real key caps instead of transparent chips on a faint border. */
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-step-btn {
+  background: rgba(255, 253, 246, 0.75) !important;
+  border-color: rgba(90, 60, 24, 0.30) !important;
+}
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-step-btn:hover {
+  color: #2c2317 !important;
+  border-color: color-mix(in srgb, var(--subj) 55%, transparent) !important;
+  background: color-mix(in srgb, var(--subj) 12%, transparent) !important;
+}
+/* Tracker row label + target numerals. */
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-row-top h4 { color: #4a3b28 !important; }
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-tgt { color: #5c4c37 !important; }
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker .tp-figure-tgt { color: #5c4c37 !important; }
+
+/* ── 6 · Variance heatmap — the ramp inherits --accent (mid sienna) with
+      a 6% track, so low days sank into the paper. Deepen the low steps
+      and raise the track so the year grid reads as data, not dust. ── */
+html[data-theme="sepia"] #view-dashboard .dash-card-variance {
+  --dv-track: rgba(90, 60, 24, 0.14);
+  --dv-1: rgba(139, 90, 43, 0.34);
+  --dv-2: rgba(139, 90, 43, 0.56);
+  --dv-3: rgba(139, 90, 43, 0.78);
+  --dv-4: #8b5a2b;
+  --dv-glow: rgba(139, 90, 43, 0.45);
+}
+
+/* ── 7 · Hero tracker edge — the conic sweep mixed sienna/olive-brown/
+      taupe into mud. One clean warm sweep: sienna → gold → deep brown. ── */
+html[data-theme="sepia"] #view-dashboard .dash-card.dash-card-tracker {
+  background:
+    linear-gradient(180deg, #f6efdd, #efe3c8) padding-box,
+    conic-gradient(from var(--aes-angle, 0deg), #b5651d, #c99327, #8b5a2b, #b5651d) border-box !important;
+}
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker::before {
+  background: linear-gradient(90deg, rgba(181,101,29,0.55), transparent) !important;
+}
+html[data-theme="sepia"] body.bento-dragging #view-dashboard .dash-card.dash-card-tracker {
+  background:
+    linear-gradient(180deg, #f6efdd, #efe3c8) padding-box,
+    conic-gradient(from var(--aes-angle, 0deg), #b5651d, #c99327, #8b5a2b, #b5651d) border-box !important;
+}
+
+/* ── 8 · Chrome that still carried dark-mode white-alpha fills ── */
+html[data-theme="sepia"] .setup-divider { background: rgba(90, 60, 24, 0.24) !important; }
+html[data-theme="sepia"] #view-pomodoro .progress-bar-container { background: rgba(90, 60, 24, 0.16) !important; }
+html[data-theme="sepia"] #view-pomodoro .focus-ledger,
+html[data-theme="sepia"] #view-pomodoro .focus-stats-row {
+  border-color: rgba(90, 60, 24, 0.20) !important;
+  background: rgba(255, 253, 246, 0.55) !important;
+}
+html[data-theme="sepia"] #view-pomodoro .btn-pause {
+  background: rgba(255, 253, 246, 0.75) !important;
+  border-color: rgba(90, 60, 24, 0.32) !important;
+  color: #4a3b28 !important;
+}
+html[data-theme="sepia"] #view-pomodoro .btn-pause:hover { background: #fffdf6 !important; border-color: rgba(139,90,43,0.5) !important; color: #2c2317 !important; }
+html[data-theme="sepia"] #view-pomodoro .btn-break-opt {
+  background: rgba(255, 253, 246, 0.6) !important;
+  border-color: rgba(90, 60, 24, 0.28) !important;
+  color: #4a3b28 !important;
+}
+html[data-theme="sepia"] #view-pomodoro .btn-break-opt:hover { background: #fffdf6 !important; border-color: rgba(139,90,43,0.5) !important; color: #2c2317 !important; }
+html[data-theme="sepia"] #view-pomodoro .chain-pip { border: 1px solid rgba(90, 60, 24, 0.28) !important; }
+html[data-theme="sepia"] #view-pomodoro .chain-pip.lit { box-shadow: 0 0 8px rgba(181,101,29,0.4) !important; }
+html[data-theme="sepia"] .mini-x2 { color: #1f1608 !important; }
+/* Soundscape panel + presets: white-alpha chips and white headings. */
+html[data-theme="sepia"] #view-pomodoro .soundscape-panel {
+  background: linear-gradient(180deg, rgba(255,253,246,0.85), rgba(246,239,221,0.9)) !important;
+  border-color: rgba(90, 60, 24, 0.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), var(--e-1) !important;
+}
+html[data-theme="sepia"] #view-pomodoro .sc-head { border-bottom-color: rgba(90, 60, 24, 0.18) !important; }
+html[data-theme="sepia"] #view-pomodoro .sc-head .kicker { background: rgba(139,90,43,0.10) !important; border-color: rgba(139,90,43,0.30) !important; }
+html[data-theme="sepia"] #view-pomodoro .sc-head .box-title { color: #2c2317 !important; }
+html[data-theme="sepia"] #view-pomodoro .sc-preset {
+  background: rgba(255, 253, 246, 0.6) !important;
+  border-color: rgba(90, 60, 24, 0.24) !important;
+  color: #4a3b28 !important;
+}
+html[data-theme="sepia"] #view-pomodoro .sc-preset:hover { background: #fffdf6 !important; border-color: rgba(139,90,43,0.45) !important; color: #2c2317 !important; }
+html[data-theme="sepia"] #view-pomodoro .sc-preset.active {
+  background: rgba(181,101,29,0.16) !important;
+  border-color: #b5651d !important;
+  color: #2c2317 !important;
+  box-shadow: none !important;
+}
+html[data-theme="sepia"] #view-pomodoro .sc-range {
+  background: linear-gradient(90deg,
+    var(--pomo-accent) 0 var(--sc-fill, 50%),
+    rgba(90,60,24,0.18) var(--sc-fill, 50%) 100%) !important;
+}
+html[data-theme="sepia"] #view-pomodoro .sc-range::-webkit-slider-thumb,
+html[data-theme="sepia"] #view-pomodoro .sc-range::-moz-range-thumb {
+  background: #fdf8ea !important;
+  box-shadow: 0 1px 6px rgba(90,64,32,0.5) !important;
+}
+/* Calibration strip: dark-mode white track + neon verdict colors. */
+html[data-theme="sepia"] .calib-meter { background: rgba(90, 60, 24, 0.14) !important; }
+html[data-theme="sepia"] .calib-meter::before { background: rgba(90, 60, 24, 0.45) !important; }
+html[data-theme="sepia"] .main-content .calib-strip .calib-metric b { color: #2c2317 !important; }
+html[data-theme="sepia"] .main-content .calib-strip .calib-metric i,
+html[data-theme="sepia"] .calib-kicker { color: #4a3b28 !important; }
+html[data-theme="sepia"] .calib-warmup { color: #4a3b28 !important; }
+html[data-theme="sepia"] .calib-strip [style*="color:#fda4af"] { color: #a83542 !important; }
+html[data-theme="sepia"] .calib-strip [style*="color:#fde047"] { color: #7a5c0a !important; }
+html[data-theme="sepia"] .calib-strip [style*="color:#4ade80"] { color: #1f5c26 !important; }
+html[data-theme="sepia"] .calib-strip [style*="color:#c4b5fd"] { color: #5c4c37 !important; }
+/* MMR tier badge: cream-mixed accent washed out. */
+html[data-theme="sepia"] .global-mmr-row .mmr-tier-badge { color: #7a4a20 !important; }
+
+/* ── 9 · Momentum legend — cool violet dashes on paper ── */
+html[data-theme="sepia"] #view-dashboard .mom-legend .lg-proj {
+  background: repeating-linear-gradient(90deg, #6b4f8f 0 3px, transparent 3px 6px);
+}
+
+/* ── 10 · Daily directive — falls back to #94a3b8 (undefined --text-dim)
+      and cool-green/cyan glows. Bind them to the paper ink system. ── */
+html[data-theme="sepia"] .dir-kicker { color: #7a4a20 !important; opacity: 1; }
+html[data-theme="sepia"] .dir-status,
+html[data-theme="sepia"] .dir-box-hint,
+html[data-theme="sepia"] .dir-night-calm,
+html[data-theme="sepia"] .dir-set-note { color: #4a3b28 !important; }
+html[data-theme="sepia"] .dir-set-actions .btn-secondary:disabled { opacity: 0.6; }
+html[data-theme="sepia"] .dir-item { background: rgba(139, 90, 43, 0.07) !important; }
+html[data-theme="sepia"] .dir-item-headline {
+  border-left-color: #b5651d !important;
+  background: rgba(181, 101, 29, 0.09) !important;
+}
+html[data-theme="sepia"] .dir-item-label { color: #2c2317 !important; }
+html[data-theme="sepia"] .dir-item-meta { color: #5c4c37 !important; }
+html[data-theme="sepia"] .dir-item-done .dir-item-label { color: #5c4c37 !important; }
+html[data-theme="sepia"] .dir-item-done .dir-item-meta { color: #1f5c26 !important; }
+html[data-theme="sepia"] .dir-item-check { color: #1f5c26 !important; }
+html[data-theme="sepia"] .dir-today-recovery { color: #7a5c0a !important; }
+html[data-theme="sepia"] .dir-status-cleared { color: #1f5c26 !important; text-shadow: none !important; }
+html[data-theme="sepia"] .dir-spin-reel { background: rgba(255, 253, 246, 0.75) !important; }
+html[data-theme="sepia"] .dir-spin-cell { color: #7a4a20 !important; }
+html[data-theme="sepia"] .dir-tier-rest .dir-spin-cell { color: #1f5c26 !important; text-shadow: none !important; }
+html[data-theme="sepia"] .dir-tier-lighter .dir-spin-cell { color: #175f7a !important; text-shadow: none !important; }
+html[data-theme="sepia"] .dir-tier-golden .dir-spin-cell { color: #b5651d !important; text-shadow: 0 0 12px rgba(181,101,29,0.35) !important; }
+html[data-theme="sepia"] .dir-spin-desc { color: #5c4c37 !important; }
+html[data-theme="sepia"] body.directive-golden .dash-card-tracker,
+html[data-theme="sepia"] body.directive-golden .dash-card-directive { border-color: rgba(181,101,29,0.55) !important; }
+
+/* ── 11 · Collapse control hover (white-alpha fill on paper) ── */
+html[data-theme="sepia"] .collapse-btn:hover { background: rgba(139, 90, 43, 0.12) !important; }
