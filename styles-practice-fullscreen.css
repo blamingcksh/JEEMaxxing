@@ -999,7 +999,7 @@ html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-subm
   background: rgba(181,101,29,0.18) !important; border: 1px solid rgba(201,147,39,0.6) !important; color: #f0e5cd !important;
 }
 html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-next {
-  background: linear-gradient(90deg, #b5651d, #8b5a2b) !important; color: #fff8ea !important;
+  background: linear-gradient(90deg, #cc8533, #b4752d) !important; color: #1f1608 !important;
   box-shadow: 0 10px 26px -12px rgba(139,90,43,0.8) !important;
 }
 html[data-theme="sepia"] body.immersive-active #practice-modal.pq-stage .pq-corner-moon { color: #d4a017 !important; }
@@ -1088,7 +1088,7 @@ html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .p
   background: #e3cfa1 !important; border: 1px solid #b28c4d !important; color: #3d2f23 !important;
 }
 html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-next {
-  background: linear-gradient(90deg, #b5651d, #8b5a2b) !important; color: #fff8ea !important;
+  background: linear-gradient(90deg, #cc8533, #b4752d) !important; color: #1f1608 !important;
   box-shadow: 0 10px 24px -12px rgba(139,90,43,0.7) !important;
 }
 html[data-theme="sepia"] body:not(.immersive-active) #practice-modal.pq-stage .pq-corner-moon { color: #8b5a2b !important; }
