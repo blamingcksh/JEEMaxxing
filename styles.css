@@ -13033,3 +13033,341 @@ html[data-theme="sepia"] body.directive-golden .dash-card-directive { border-col
 
 /* ── 11 · Collapse control hover (white-alpha fill on paper) ── */
 html[data-theme="sepia"] .collapse-btn:hover { background: rgba(139, 90, 43, 0.12) !important; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   WAVE 8 — mocks overlays + momentum card.
+   The Mocks surface (builder, bank picker, preview, exam runner, results
+   sheet) is a self-contained dark widget set with its own #12141f cards
+   and cyan/blue channel. Nothing in waves 1–7 reached it: only .mock-runner
+   and .mr-shell.results were pinned. Wave 8 binds the whole family to paper.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 12 · Mocks builder — panels, rows, chips ── */
+html[data-theme="sepia"] .mk-status.building  { color: #8a6d00 !important; }
+html[data-theme="sepia"] .mk-status.ready     { color: #1f5c26 !important; }
+html[data-theme="sepia"] .mk-status.in-progress { color: #175f7a !important; }
+html[data-theme="sepia"] .mk-status.done      { color: #5c4c37 !important; }
+html[data-theme="sepia"] .mk-card,
+html[data-theme="sepia"] .mk-wp-section,
+html[data-theme="sepia"] .mk-subj-panel,
+html[data-theme="sepia"] .mk-bulk {
+  background: rgba(255, 253, 246, 0.6) !important;
+  border-color: rgba(90, 64, 32, 0.20) !important;
+}
+html[data-theme="sepia"] .mk-subj-panel.active {
+  border-color: #b5651d !important;
+  box-shadow: 0 0 0 1px rgba(181,101,29,0.25) !important;
+}
+html[data-theme="sepia"] .mk-link-banner {
+  color: #4a3d2c !important;
+  background: rgba(181, 101, 29, 0.10) !important;
+  border-color: rgba(139, 90, 43, 0.40) !important;
+}
+html[data-theme="sepia"] .mk-note,
+html[data-theme="sepia"] .mk-qnum,
+html[data-theme="sepia"] .mk-pk-meta,
+html[data-theme="sepia"] .mk-pk-count,
+html[data-theme="sepia"] .mk-pv-meta,
+html[data-theme="sepia"] .mk-pv-note,
+html[data-theme="sepia"] .mk-pv-sub { color: #5c4c37 !important; }
+html[data-theme="sepia"] .mk-loss-ch  { color: #4a3d2c !important; }
+html[data-theme="sepia"] .mk-loss-pat {
+  color: #7c4f16 !important;
+  border-color: rgba(124, 79, 22, 0.40) !important;
+}
+html[data-theme="sepia"] .mk-loss-bar { background: rgba(90, 64, 32, 0.16) !important; }
+html[data-theme="sepia"] .mk-loss-n   { color: #b03a48 !important; }
+html[data-theme="sepia"] .mk-mix-cell { color: #5c4c37 !important; }
+html[data-theme="sepia"] .mk-auto-cell label { color: #5c4c37 !important; }
+html[data-theme="sepia"] .mk-auto { border-color: rgba(90, 64, 32, 0.28) !important; }
+html[data-theme="sepia"] .mk-qdel { color: #b03a48 !important; }
+html[data-theme="sepia"] .mk-qpv  { color: #7c4f16 !important; }
+html[data-theme="sepia"] .mk-qpv:hover {
+  background: rgba(181,101,29,0.12) !important;
+  border-color: rgba(139,90,43,0.45) !important;
+  color: #7a4a20 !important;
+}
+
+/* ── 13 · Bank picker + question preview overlays ── */
+html[data-theme="sepia"] .mk-picker,
+html[data-theme="sepia"] .mk-preview {
+  background: rgba(60, 44, 22, 0.55) !important;
+  -webkit-backdrop-filter: blur(4px) saturate(120%) !important;
+  backdrop-filter: blur(4px) saturate(120%) !important;
+}
+html[data-theme="sepia"] .mk-picker-card,
+html[data-theme="sepia"] .mk-preview-card {
+  background: linear-gradient(180deg, #fffaf0, #f6efdd) !important;
+  border: 1px solid rgba(90, 64, 32, 0.35) !important;
+  box-shadow: 0 28px 60px -26px rgba(60,44,22,0.6), inset 0 1px 0 rgba(255,255,255,0.8) !important;
+}
+html[data-theme="sepia"] .mk-pk-head,
+html[data-theme="sepia"] .mk-pk-tools,
+html[data-theme="sepia"] .mk-pk-foot,
+html[data-theme="sepia"] .mk-pv-head { border-color: rgba(90, 64, 32, 0.18) !important; }
+html[data-theme="sepia"] .mk-pk-close,
+html[data-theme="sepia"] .mk-pk-pv {
+  background: rgba(139, 90, 43, 0.08) !important;
+  border: 1px solid rgba(90, 64, 32, 0.26) !important;
+  color: #7c4f16 !important;
+}
+html[data-theme="sepia"] .mk-pk-close:hover,
+html[data-theme="sepia"] .mk-pk-pv:hover {
+  background: rgba(181,101,29,0.14) !important;
+  border-color: rgba(139,90,43,0.45) !important;
+  color: #7a4a20 !important;
+}
+html[data-theme="sepia"] .mk-pk-chip {
+  background: rgba(255, 253, 246, 0.7) !important;
+  border-color: rgba(90, 64, 32, 0.24) !important;
+  color: #4a3d2c !important;
+}
+html[data-theme="sepia"] .mk-pk-chip.on {
+  background: rgba(181, 101, 29, 0.16) !important;
+  border-color: #b5651d !important;
+  color: #7a4a20 !important;
+}
+html[data-theme="sepia"] .mk-pk-row:hover { background: rgba(139, 90, 43, 0.08) !important; }
+html[data-theme="sepia"] .mk-pk-row.sel {
+  background: rgba(181, 101, 29, 0.12) !important;
+  border-color: rgba(181, 101, 29, 0.45) !important;
+}
+html[data-theme="sepia"] .mk-pk-tick { border-color: rgba(90, 64, 32, 0.35) !important; }
+html[data-theme="sepia"] .mk-pk-row.sel .mk-pk-tick {
+  background: #8b5a2b !important;
+  border-color: transparent !important;
+  color: #fff8ea !important;
+}
+html[data-theme="sepia"] .mk-pk-title { color: #4a3d2c !important; }
+html[data-theme="sepia"] .mk-pv-keyline { color: #4a3d2c !important; }
+html[data-theme="sepia"] .mk-pv-keyline b { color: #1f5c26 !important; }
+html[data-theme="sepia"] .mk-pv-hint { color: #8a6d00 !important; }
+html[data-theme="sepia"] .mk-pv-optimg { border-color: rgba(90, 64, 32, 0.35) !important; }
+
+/* ── 14 · Exam runner — topbar, palette, options, footer ── */
+html[data-theme="sepia"] .mr-topbar {
+  background: #e9dec4 !important;
+  border-bottom-color: rgba(90, 64, 32, 0.25) !important;
+}
+html[data-theme="sepia"] .mr-clock { color: #3d2f23 !important; }
+html[data-theme="sepia"] .mr-iconbtn {
+  background: rgba(255, 253, 246, 0.7) !important;
+  border: 1px solid rgba(90, 64, 32, 0.28) !important;
+  color: #4a3d2c !important;
+}
+html[data-theme="sepia"] .mr-iconbtn:hover { background: #fffdf6 !important; color: #2c2317 !important; }
+html[data-theme="sepia"] .mr-clockbar { background: rgba(90, 64, 32, 0.16) !important; }
+html[data-theme="sepia"] .mr-qnum { color: #5c4c37 !important; }
+html[data-theme="sepia"] .mr-pattern {
+  color: #7c4f16 !important;
+  border-color: rgba(124, 79, 22, 0.40) !important;
+}
+html[data-theme="sepia"] .mr-confbtn {
+  background: rgba(255, 253, 246, 0.7) !important;
+  border: 1px solid rgba(90, 64, 32, 0.26) !important;
+  color: #5c4c37 !important;
+}
+html[data-theme="sepia"] .mr-confbtn.sel {
+  background: #8b5a2b !important;
+  border-color: transparent !important;
+  color: #fff8ea !important;
+}
+html[data-theme="sepia"] .mr-opt {
+  background: #fffdf6 !important;
+  border-color: rgba(90, 64, 32, 0.22) !important;
+  color: #3d2f23 !important;
+}
+html[data-theme="sepia"] .mr-opt b { color: #7c4f16 !important; }
+html[data-theme="sepia"] .mr-opt:hover { background: #f6efdd !important; border-color: rgba(139,90,43,0.45) !important; }
+html[data-theme="sepia"] .mr-opt.sel {
+  background: rgba(181, 101, 29, 0.12) !important;
+  border-color: #b5651d !important;
+}
+html[data-theme="sepia"] .mr-multihint { color: #5c4c37 !important; }
+html[data-theme="sepia"] .mr-palette { border-left-color: rgba(90, 64, 32, 0.22) !important; }
+html[data-theme="sepia"] .mr-pal-title,
+html[data-theme="sepia"] .mr-pal-legend { color: #5c4c37 !important; }
+html[data-theme="sepia"] .mr-pal-legend .lg-ans { background: rgba(31, 92, 38, 0.55) !important; }
+html[data-theme="sepia"] .mr-pal-legend .lg-un { background: rgba(90, 64, 32, 0.20) !important; }
+html[data-theme="sepia"] .mr-pal-legend .lg-mk { background: rgba(90, 64, 32, 0.12) !important; box-shadow: 0 0 0 2px #8a6d00 inset !important; }
+html[data-theme="sepia"] .mr-pal-cell {
+  background: rgba(255, 253, 246, 0.75) !important;
+  border-color: rgba(90, 64, 32, 0.24) !important;
+  color: #4a3d2c !important;
+}
+html[data-theme="sepia"] .mr-pal-cell.ans {
+  background: rgba(31, 92, 38, 0.18) !important;
+  border-color: rgba(31, 92, 38, 0.50) !important;
+  color: #1f5c26 !important;
+}
+html[data-theme="sepia"] .mr-pal-cell.mk { box-shadow: 0 0 0 2px #8a6d00 inset !important; }
+html[data-theme="sepia"] .mr-pal-cell.cur { outline-color: #8b5a2b !important; }
+html[data-theme="sepia"] .mr-footer { border-top-color: rgba(90, 64, 32, 0.22) !important; }
+html[data-theme="sepia"] .mr-navbtn {
+  background: rgba(255, 253, 246, 0.7) !important;
+  border: 1px solid rgba(90, 64, 32, 0.28) !important;
+  color: #4a3d2c !important;
+}
+html[data-theme="sepia"] .mr-navbtn:hover { background: #fffdf6 !important; color: #2c2317 !important; }
+html[data-theme="sepia"] .mr-markbtn {
+  background: rgba(138, 109, 0, 0.12) !important;
+  border-color: rgba(138, 109, 0, 0.40) !important;
+  color: #8a6d00 !important;
+}
+html[data-theme="sepia"] .mr-markbtn.on { background: rgba(138, 109, 0, 0.26) !important; }
+html[data-theme="sepia"] .mr-submit {
+  background: rgba(31, 92, 38, 0.14) !important;
+  border-color: rgba(31, 92, 38, 0.45) !important;
+  color: #1f5c26 !important;
+}
+html[data-theme="sepia"] .mr-confirm { background: rgba(60, 44, 22, 0.6) !important; }
+html[data-theme="sepia"] .mr-confirm-card {
+  background: linear-gradient(180deg, #fffaf0, #f6efdd) !important;
+  border: 1px solid rgba(90, 64, 32, 0.35) !important;
+}
+html[data-theme="sepia"] .mr-warn { color: #b03a48 !important; }
+
+/* ── 15 · Results sheet — scorecard + review rows ── */
+html[data-theme="sepia"] .mr-res-head {
+  background: linear-gradient(180deg, #fffaf0, #f6efdd) !important;
+  border-bottom-color: rgba(90, 64, 32, 0.25) !important;
+}
+html[data-theme="sepia"] .mr-total { color: #7a4a20 !important; }
+html[data-theme="sepia"] .mr-total span { color: #5c4c37 !important; }
+/* Filter chips: violet-on state → sienna; cyan/white wash → hairline + cream. */
+html[data-theme="sepia"] .mr-fchip {
+  border-color: rgba(90, 64, 32, 0.28) !important;
+  background: rgba(255, 253, 246, 0.9) !important;
+}
+html[data-theme="sepia"] .mr-fchip.on {
+  background: rgba(181, 101, 29, 0.14) !important;
+  border-color: rgba(181, 101, 29, 0.5) !important;
+  color: #7a4a20 !important;
+}
+/* Headline chips — accuracy green / predicted cyan / time amber → warm data ramp. */
+html[data-theme="sepia"] .mr-chip { color: #5c4c37 !important; border-color: rgba(90, 64, 32, 0.28) !important; }
+html[data-theme="sepia"] .mr-chip.acc  { color: #2e7d3f !important; border-color: rgba(46, 125, 63, 0.4) !important; }
+html[data-theme="sepia"] .mr-chip.pred { color: #8a5a12 !important; border-color: rgba(138, 90, 18, 0.4) !important; }
+html[data-theme="sepia"] .mr-chip.time { color: #8a6d00 !important; border-color: rgba(138, 109, 0, 0.4) !important; }
+/* Subject breakdown rows. */
+html[data-theme="sepia"] .mr-subjrow .sname  { color: #3d2f23 !important; }
+html[data-theme="sepia"] .mr-subjrow .snums  { color: #5c4c37 !important; }
+html[data-theme="sepia"] .mr-bar { background: #efe3c8 !important; border: 1px solid rgba(90, 64, 32, 0.22) !important; }
+html[data-theme="sepia"] .mr-bar > i { background: linear-gradient(90deg, #b5651d, #2e7d3f) !important; }
+/* Review rows — per-question verdict rails and marks. */
+html[data-theme="sepia"] .mr-rev-item { border-color: rgba(90, 64, 32, 0.22) !important; background: rgba(255, 253, 246, 0.72) !important; }
+html[data-theme="sepia"] .mr-rev-num { color: #7a4a20 !important; }
+html[data-theme="sepia"] .mr-rev-ansline { color: #6f5f4c !important; }
+html[data-theme="sepia"] .mr-st.ok   { background: rgba(46, 125, 63, 0.16) !important;  color: #2e7d3f !important; }
+html[data-theme="sepia"] .mr-st.bad  { background: rgba(176, 58, 72, 0.16) !important;  color: #b03a48 !important; }
+html[data-theme="sepia"] .mr-st.skip { background: rgba(90, 64, 32, 0.12) !important;    color: #6f5f4c !important; }
+html[data-theme="sepia"] .mr-rev-marks.pos  { color: #2e7d3f !important; }
+html[data-theme="sepia"] .mr-rev-marks.neg  { color: #b03a48 !important; }
+html[data-theme="sepia"] .mr-rev-marks.zero { color: #6f5f4c !important; }
+html[data-theme="sepia"] .mr-rev-opt { border-color: rgba(90, 64, 32, 0.22) !important; }
+html[data-theme="sepia"] .mr-rev-opt b { color: #7a4a20 !important; }
+html[data-theme="sepia"] .mr-rev-opt.correct { border-color: rgba(46, 125, 63, 0.5) !important; background: rgba(46, 125, 63, 0.1) !important; }
+html[data-theme="sepia"] .mr-rev-opt.correct b { color: #2e7d3f !important; }
+html[data-theme="sepia"] .mr-rev-opt.you { box-shadow: 0 0 0 2px rgba(181, 101, 29, 0.45) inset !important; }
+html[data-theme="sepia"] .mr-rev-sol { border-left-color: rgba(181, 101, 29, 0.45) !important; }
+html[data-theme="sepia"] .mr-rev-body { border-top-color: rgba(90, 64, 32, 0.22) !important; }
+html[data-theme="sepia"] .mr-vaultbtn { background: rgba(176, 58, 72, 0.1) !important; border-color: rgba(176, 58, 72, 0.4) !important; color: #b03a48 !important; }
+html[data-theme="sepia"] .mr-invault { color: #2e7d3f !important; }
+html[data-theme="sepia"] .mr-table th, html[data-theme="sepia"] .mr-table td { border-bottom-color: rgba(90, 64, 32, 0.22) !important; }
+html[data-theme="sepia"] .mr-autopsy { background: rgba(255, 253, 246, 0.72) !important; border-color: rgba(90, 64, 32, 0.28) !important; }
+html[data-theme="sepia"] .mr-autopsy .rp-bad { color: #b03a48 !important; }
+html[data-theme="sepia"] .rp-chip { border-color: rgba(90, 64, 32, 0.3) !important; }
+
+/* ── 16 · Vault SR due-pills + emf rails — cool blue/violet on paper. ── */
+html[data-theme="sepia"] .sr-due--scheduled { color: #7c4f16 !important; border-color: rgba(124, 79, 22, 0.45) !important; }
+html[data-theme="sepia"] .sr-due--mastered  { color: #5c4c37 !important; border-color: rgba(90, 64, 32, 0.35) !important; }
+/* Vault filter pills — wave-1 pinned the *shared* color to paper ink, but the
+   per-emf active palette at 11668–11675 is deeper (`.vault-shell.vault-v2` +
+   `[data-emf-value]` + `!important`), so the channels must be re-stated here
+   at the same depth. Warm subject/data palette, no neon. */
+html[data-theme="sepia"] .matrix-pill.active,
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active { color: #7a4a20 !important; }
+html[data-theme="sepia"] .matrix-pill.active,
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active {
+  background: rgba(139, 90, 43, 0.14) !important;
+  border-color: rgba(139, 90, 43, 0.45) !important;
+}
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-value="all"] {
+  color: #fff8ea !important; background: rgba(139, 90, 43, 0.14) !important;
+  border-color: rgba(139, 90, 43, 0.45) !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-value="ready"] {
+  color: #1f5c26 !important; background: rgba(31, 92, 38, 0.10) !important;
+  border-color: rgba(31, 92, 38, 0.45) !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-value="due_soon"],
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-value="calculation"] {
+  color: #8a6d00 !important; background: rgba(138, 109, 0, 0.10) !important;
+  border-color: rgba(138, 109, 0, 0.45) !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-value="scheduled"] {
+  color: #7c4f16 !important; background: rgba(124, 79, 22, 0.10) !important;
+  border-color: rgba(124, 79, 22, 0.45) !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-value="mastered"] {
+  color: #4a3d2c !important; background: rgba(90, 64, 32, 0.12) !important;
+  border-color: rgba(90, 64, 32, 0.45) !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-value="conceptual"] {
+  color: #b03a48 !important; background: rgba(176, 58, 72, 0.10) !important;
+  border-color: rgba(176, 58, 72, 0.45) !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-value="misread"] {
+  color: #175f7a !important; background: rgba(23, 95, 122, 0.10) !important;
+  border-color: rgba(23, 95, 122, 0.45) !important; box-shadow: none !important;
+}
+html[data-theme="sepia"] .vault-shell.vault-v2 .error-block[data-sr-status="scheduled"]::before { background: #7c4f16 !important; }
+html[data-theme="sepia"] .vault-shell.vault-v2 .error-block[data-sr-status="mastered"]::before { background: #6b5a44 !important; }
+
+/* ── 17 · Daily mood check — boot-sequence.js injects this pastel
+      pink/violet/blue modal into <head> AFTER styles.css, so it lands on
+      top of every theme. Under sepia it is a violet cloud on cream.
+      Scoped to (0,2,1) + !important to win over the injected sheet. ── */
+html[data-theme="sepia"] .bootseq {
+  background:
+    radial-gradient(900px 620px at 15% 0%, rgba(181,101,29,0.16), transparent 60%),
+    radial-gradient(820px 620px at 85% 100%, rgba(139,90,43,0.14), transparent 60%),
+    rgba(60, 44, 22, 0.55) !important;
+}
+html[data-theme="sepia"] .moodpop {
+  background: linear-gradient(170deg, #fffaf0 0%, #f6efdd 48%, #efe3c8 100%) !important;
+  box-shadow: 0 34px 90px rgba(60,44,22,0.5), inset 0 0 0 1.5px rgba(255,253,246,0.9) !important;
+}
+html[data-theme="sepia"] .moodpop::before { background: radial-gradient(ellipse at center, rgba(181,101,29,0.28), transparent 70%) !important; }
+html[data-theme="sepia"] .moodpop-title {
+  color: #7a4a20 !important;
+  background: none !important;
+  -webkit-text-fill-color: #7a4a20 !important;
+}
+html[data-theme="sepia"] .moodpop-sub { color: #6f5f4c !important; }
+html[data-theme="sepia"] .moodpop-opt {
+  background: rgba(255, 253, 246, 0.92) !important;
+  border-color: rgba(90, 64, 32, 0.30) !important;
+}
+html[data-theme="sepia"] .moodpop-opt.is-sad .moodpop-emoji { background: #efe3c8 !important; }
+html[data-theme="sepia"] .moodpop-opt.is-neutral .moodpop-emoji { background: #e9dec4 !important; }
+html[data-theme="sepia"] .moodpop-opt.is-happy .moodpop-emoji { background: #f6efdd !important; }
+html[data-theme="sepia"] .moodpop-opt.is-sad:hover    { border-color: #8b5a2b !important; box-shadow: 0 12px 28px rgba(90,64,32,0.22) !important; }
+html[data-theme="sepia"] .moodpop-opt.is-neutral:hover { border-color: #b5651d !important; box-shadow: 0 12px 28px rgba(90,64,32,0.22) !important; }
+html[data-theme="sepia"] .moodpop-opt.is-happy:hover   { border-color: #c99327 !important; box-shadow: 0 12px 28px rgba(90,64,32,0.22) !important; }
+html[data-theme="sepia"] .moodpop-label { color: #3d2f23 !important; }
+html[data-theme="sepia"] .moodpop-desc  { color: #6f5f4c !important; }
+html[data-theme="sepia"] .moodpop-key {
+  color: #7a4a20 !important;
+  border-color: rgba(139, 90, 43, 0.5) !important;
+  background: rgba(255, 253, 246, 0.7) !important;
+}
+html[data-theme="sepia"] .bootseq button:focus-visible { outline-color: #b5651d !important; }
+html[data-theme="sepia"] .moodpop-float.f1, html[data-theme="sepia"] .moodpop-float.f2,
+html[data-theme="sepia"] .moodpop-float.f3, html[data-theme="sepia"] .moodpop-float.f4,
+html[data-theme="sepia"] .moodpop-float.f5, html[data-theme="sepia"] .moodpop-float.f6 { color: #c99327 !important; }
+html[data-theme="sepia"] .moodpop-spark { color: #b5651d !important; }
+html[data-theme="sepia"] .moodpop-mascot {
+  background: radial-gradient(circle at 32% 26%, #fffdf6, #f6efdd 58%, #efe3c8) !important;
+  box-shadow: 0 12px 28px rgba(90,64,32,0.35), inset 0 0 0 2px rgba(255,253,246,0.95) !important;
+}
