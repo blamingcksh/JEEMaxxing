@@ -5447,41 +5447,67 @@ html[data-theme="stealth"] {
   --accent-ink: #0b0d12;
 }
 html[data-theme="sepia"] {
-  --furnace: #b5651d;  --furnace-hot: #8b5a2b;  --telemetry: #c99327;  --vault: #7d8450;
-  --grad-furnace: linear-gradient(100deg, #b5651d, #8b5a2b);
-  --grad-flow: linear-gradient(90deg, #b5651d, #8b5a2b, #c99327, #b5651d);
-  --aes-amber: #b5651d; --aes-amber2: #8b5a2b; --aes-cyan: #c99327; --aes-violet: #7d8450;
+  --furnace: #b5651d;  --furnace-hot: #8b5a2b;  --telemetry: #8a5a12;  --vault: #6b5a44;
+  --grad-furnace: linear-gradient(100deg, #c07d30, #a86a1c);
+  --grad-flow: linear-gradient(90deg, #b5651d, #8b5a2b, #8a5a12, #b5651d);
+  --aes-amber: #b5651d; --aes-amber2: #8b5a2b; --aes-cyan: #8a5a12; --aes-violet: #6b5a44;
   --aur-1: rgba(181,101,29,0.12); --aur-2: rgba(201,147,39,0.10); --aur-3: rgba(125,132,80,0.09);
   --accent-soft: rgba(181,101,29,0.35);
-  --accent-ink: #fff8ea;
+  /* Accent is a mid-tone sienna on paper — ink on it must be near-black,
+     not the default cream. */
+  --accent-ink: #1f1608;
 }
 
 /* ── Sepia paper surfaces — designed for Midnight mode. In Dusk mode the
    dusk layer further below wins shared tokens (later + more specific),
    yielding a warm evening hybrid instead of paper. ── */
 html[data-theme="sepia"] {
-  --bg-base: #e9dec6;
-  --bg-raise: #f1e8d5;
-  --bg-inset: #e2d5b8;
-  --bg-surface: rgba(255, 252, 244, 0.66);
-  --bg-surface-hover: rgba(255, 252, 244, 0.88);
-  --text-primary: #3d2f23;
-  --text-secondary: #6f5f4c;
-  --text-muted: #8d7f6a;
-  --line: rgba(90, 64, 32, 0.16);
-  --line-strong: rgba(90, 64, 32, 0.30);
-  --aes-ink: #3d2f23;
-  --aes-dim: #6f5f4c;
-  --aes-line: rgba(90, 64, 32, 0.20);
-  --aes-glass: linear-gradient(180deg, rgba(255,252,244,0.75), rgba(255,252,244,0.45));
+  /* Warm aged-paper surfaces. The page reads as one continuous sheet of
+     vellum; cards lift by a lighter cream tint, never by shadow. */
+  --bg-base: #e9dec4;
+  --bg-raise: #f3ead4;
+  --bg-inset: #e0d2b2;
+  --bg-surface: rgba(255, 252, 242, 0.60);
+  --bg-surface-hover: rgba(255, 252, 242, 0.85);
+
+  /* Ink — every value clears 4.5:1 on --bg-base, --bg-raise and
+     --bg-inset. Darkest brown-black for body, warm taupe for secondary,
+     and a muted brown still dark enough for 9px micro-caps. */
+  --text-primary: #2c2317;
+  --text-secondary: #594b36;
+  --text-muted: #6b5a44;
+
+  /* Structural lines — warm sienna hairlines, alpha high enough to actually
+     read on paper (the old 0.16 washed out to nothing). */
+  --line: rgba(90, 60, 24, 0.22);
+  --line-strong: rgba(90, 60, 24, 0.40);
+
+  --aes-ink: #2c2317;
+  --aes-dim: #594b36;
+  --aes-line: rgba(90, 60, 24, 0.26);
+  --aes-glass: linear-gradient(180deg, rgba(255,252,242,0.72), rgba(255,252,242,0.42));
+
+  /* Semantic status — retuned for paper. Each clears 4.5:1 on --bg-base. */
+  --glow-green: #2f6b33;
+  --glow-red: #a83542;
+  --glow-yellow: #7a5c0a;
+  --glow-orange: #a05a12;
+  --teal: #1e6f8e;
+
+  /* Elevation — shadows tinted warm-brown, not neutral black, so cards
+     lift like paper over paper instead of dropping a gray smear. */
+  --e-1: 0 1px 2px rgba(90, 60, 24, 0.10), 0 4px 14px -8px rgba(90, 60, 24, 0.18);
+  --e-2: 0 2px 6px -2px rgba(90, 60, 24, 0.14), 0 14px 34px -18px rgba(90, 60, 24, 0.24);
+  --e-3: 0 4px 12px -4px rgba(90, 60, 24, 0.18), 0 28px 64px -24px rgba(90, 60, 24, 0.34);
+
   scrollbar-color: rgba(139, 90, 43, 0.45) transparent;
 }
 html[data-theme="sepia"] body::before {
   background:
     radial-gradient(46rem 36rem at 12% -8%,  rgba(181,101,29,0.10), transparent 60%),
-    radial-gradient(40rem 34rem at 102% 6%,  rgba(201,147,39,0.10), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%, rgba(201,147,39,0.10), transparent 60%),
     radial-gradient(62rem 42rem at 50% 118%, rgba(139,90,43,0.12), transparent 62%),
-    linear-gradient(180deg, #f1e8d5 0%, #e9dec6 55%, #dfd2b4 100%);
+    linear-gradient(180deg, #f3ead4 0%, #e9dec4 55%, #ded0ae 100%);
   background-attachment: fixed;
 }
 html[data-theme="sepia"] ::-webkit-scrollbar-thumb {
@@ -8624,6 +8650,25 @@ html[data-mode="dusk"] #view-pomodoro {
     --pomo-primary-ink: var(--text-primary);
     --pomo-fill: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.24));
     --pomo-liquid: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.30), rgba(255,255,255,0.18));
+}
+/* Sepia on paper: amber at #ffb224 is invisible, and the whole Lumen cockpit
+   is built on these tokens. Retune the full set, not just the failing tags. */
+html[data-theme="sepia"] #view-pomodoro {
+    --pomo-accent: #7a4a20;
+    --pomo-accent2: #7c4f16;
+    --pomo-accent-soft: rgba(181,101,29,0.14);
+    --pomo-cyan: #1e6f8e;
+    --pomo-cyan-soft: rgba(30,111,142,0.12);
+    --pomo-green: #2f6b33;
+    --pomo-green-soft: rgba(47,107,51,0.12);
+    --pomo-red: #a83542;
+    --pomo-red-bg: rgba(168,53,66,0.08);
+    --pomo-red-border: rgba(168,53,66,0.30);
+    --pomo-red-bg-hover: rgba(168,53,66,0.16);
+    --pomo-primary-bg: linear-gradient(100deg, #cc8533, #b4752d);
+    --pomo-primary-ink: #1f1608;
+    --pomo-fill: linear-gradient(90deg, #cc8533, #b4752d, #1e6f8e);
+    --pomo-liquid: linear-gradient(180deg, #d9a35b, #cc8533, #b4752d);
 }
 
 /* ── layout: header spans, timer hero left, config panel right ─────────── */
@@ -12123,3 +12168,623 @@ html[data-mode="dusk"][data-theme="sepia"] .solution-modal-card {
   background: linear-gradient(180deg, #fffaf0, #f6efdd) !important;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   SEPIA COVERAGE — WAVE 2 · ink fixes · paper cards · heatmap ramp
+   Appended last so ties resolve to paper. Reversible: delete this block.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Metronome — base rules hardcode white-alpha ink for the dark panel.
+   The paper panel needs sienna ink at matching weight. ── */
+html[data-theme="sepia"] .metro-fab { color: #7c4f16 !important; }
+html[data-theme="sepia"] .metro-fab.playing { border-color: #b5651d !important; box-shadow: 0 0 20px rgba(181,101,29,0.4), 0 4px 12px rgba(90,64,32,0.25) !important; }
+html[data-theme="sepia"] .metro-tag,
+html[data-theme="sepia"] .metro-bpm-lbl,
+html[data-theme="sepia"] .metro-mini-lbl { color: #6b5a44 !important; }
+html[data-theme="sepia"] .metro-bpm-num { color: #2c2317 !important; }
+html[data-theme="sepia"] .metro-step { color: #6b5a44 !important; }
+html[data-theme="sepia"] .metro-step:hover { color: #2c2317 !important; background: rgba(139,90,43,0.10) !important; }
+html[data-theme="sepia"] .metro-dot { background: rgba(90, 60, 24, 0.20) !important; }
+html[data-theme="sepia"] .metro-dot.accent { background: rgba(90, 60, 24, 0.34) !important; }
+html[data-theme="sepia"] .metro-dot.on { background: #8b5a2b !important; }
+html[data-theme="sepia"] .metro-dot.on-accent { background: #b5651d !important; box-shadow: 0 0 9px rgba(181,101,29,0.5) !important; }
+html[data-theme="sepia"] .metro-range { background: rgba(90, 60, 24, 0.18) !important; }
+html[data-theme="sepia"] .metro-range::-webkit-slider-thumb { background: #fdf8ea !important; box-shadow: 0 1px 6px rgba(90,64,32,0.5) !important; }
+html[data-theme="sepia"] .metro-range::-moz-range-thumb { background: #fdf8ea !important; box-shadow: 0 1px 6px rgba(90,64,32,0.5) !important; }
+html[data-theme="sepia"] .metro-play { border-color: rgba(90, 60, 24, 0.28) !important; color: #5f4f38 !important; }
+html[data-theme="sepia"] .metro-play:hover { border-color: #8b5a2b !important; color: #2c2317 !important; }
+html[data-theme="sepia"] .metro-play.stop-face { background: #b5651d !important; border-color: #b5651d !important; color: #1f1608 !important; }
+html[data-theme="sepia"] .metro-tap { color: #6b5a44 !important; }
+html[data-theme="sepia"] .metro-tap:hover { color: #2c2317 !important; }
+html[data-theme="sepia"] .metro-tap:active,
+html[data-theme="sepia"] .metro-tap.flash { color: #7c4f16 !important; }
+html[data-theme="sepia"] .metro-chip { opacity: 0.5; filter: grayscale(0.35); }
+html[data-theme="sepia"] .metro-chip:hover { opacity: 0.8; }
+html[data-theme="sepia"] .metro-chip.active { opacity: 1; filter: none; }
+
+/* ── Hardcoded light/cool inks surfaced by the audit — each was written
+   for a dark panel and lands invisible on paper. ── */
+html[data-theme="sepia"] #file-name-lbl { color: #7c4f16 !important; }
+html[data-theme="sepia"] #sync-sub-text,
+html[data-theme="sepia"] .sync-cluster .val { color: #594b36 !important; }
+html[data-theme="sepia"] .fb-pop-title { color: #2c2317 !important; }
+html[data-theme="sepia"] .dir-set-note { color: #594b36 !important; }
+html[data-theme="sepia"] .badge .val { color: #2c2317 !important; }
+html[data-theme="sepia"] .hour-stat .val { color: #2c2317 !important; }
+html[data-theme="sepia"] .lock-indicator { color: #8f3a22 !important; }
+html[data-theme="sepia"] .forest-bg-pop {
+  background: linear-gradient(180deg, rgba(255,253,246,0.97), rgba(246,239,221,0.98)) !important;
+  border: 1px solid rgba(90,64,32,0.30) !important;
+}
+html[data-theme="sepia"] .fb-pop-l { color: #594b36 !important; }
+html[data-theme="sepia"] .fb-pop-note { color: #6b5a44 !important; }
+html[data-theme="sepia"] #sidebar .fb-dot { background-color: #594b36 !important; }
+html[data-theme="sepia"] #sidebar .forest-bg-btn:hover .fb-dot,
+html[data-theme="sepia"] #sidebar .forest-bg-btn.active .fb-dot { background-color: #2f6b33 !important; }
+html[data-theme="sepia"] #sidebar .forest-bg-btn.active { border-color: rgba(47,107,51,0.45) !important; }
+html[data-theme="sepia"] .fb-slider { background: rgba(90, 60, 24, 0.22) !important; }
+html[data-theme="sepia"] .fb-slider:before { background: #fdf8ea !important; }
+html[data-theme="sepia"] #fb-op { background: rgba(90, 60, 24, 0.18) !important; }
+html[data-theme="sepia"] #fb-op::-webkit-slider-thumb { background: #fdf8ea !important; }
+html[data-theme="sepia"] #fb-op::-moz-range-thumb { background: #fdf8ea !important; }
+
+/* ── Card surfaces — the production dashboard pins a dark glass gradient
+   via local --dash-* tokens; retune them to cream for paper. ── */
+html[data-theme="sepia"] #view-dashboard {
+  --dash-ink: #2c2317;
+  --dash-muted: #594b36;
+  --dash-subtle: #6b5a44;
+  --dash-border: rgba(90, 60, 24, 0.20);
+  --dash-border-hover: rgba(139, 90, 43, 0.48);
+  --dash-surface-top: rgba(255, 253, 246, 0.92);
+  --dash-surface-bottom: rgba(246, 239, 221, 0.94);
+  --dash-inset: rgba(255, 255, 255, 0.65);
+  --dv-track: rgba(90, 60, 24, 0.10);
+  --dv-1: rgba(47, 107, 51, 0.28);
+  --dv-2: rgba(47, 107, 51, 0.50);
+  --dv-3: rgba(47, 107, 51, 0.72);
+  --dv-4: #2f6b33;
+  --dv-glow: rgba(47, 107, 51, 0.35);
+}
+html[data-theme="sepia"] #view-dashboard .dash-card,
+html[data-theme="sepia"] #view-dashboard .dash-card.dash-card-tracker,
+html[data-theme="sepia"] html[data-mode] #view-dashboard .dash-card {
+  background: linear-gradient(180deg, rgba(255,253,246,0.92), rgba(246,239,221,0.94)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), 0 10px 26px -20px rgba(90,64,32,0.45) !important;
+}
+html[data-theme="sepia"] #view-dashboard .dash-card:hover,
+html[data-theme="sepia"] html[data-mode] #view-dashboard .dash-card:hover {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 14px 32px -22px rgba(90,64,32,0.5) !important;
+}
+html[data-theme="sepia"] #view-dashboard .dash-card::before { background: rgba(139,90,43,0.45) !important; }
+html[data-theme="sepia"] #view-dashboard .compact-subject-card,
+html[data-theme="sepia"] html[data-mode] #view-dashboard .compact-subject-card {
+  background: rgba(139,90,43,0.09) !important;
+  border-color: rgba(90, 60, 24, 0.22) !important;
+}
+html[data-theme="sepia"] #view-dashboard .compact-subject-card:hover,
+html[data-theme="sepia"] html[data-mode] #view-dashboard .compact-subject-card:hover {
+  background: rgba(139,90,43,0.15) !important;
+  border-color: rgba(139, 90, 43, 0.45) !important;
+}
+html[data-theme="sepia"] #view-dashboard .counter-btn,
+html[data-theme="sepia"] html[data-mode] #view-dashboard .counter-btn {
+  background: rgba(255,253,246,0.75) !important;
+  border-color: rgba(90, 60, 24, 0.28) !important;
+  color: #594b36 !important;
+}
+html[data-theme="sepia"] #view-dashboard .counter-btn:hover,
+html[data-theme="sepia"] html[data-mode] #view-dashboard .counter-btn:hover {
+  background: rgba(255,253,246,0.95) !important;
+  border-color: rgba(139, 90, 43, 0.5) !important;
+  color: #2c2317 !important;
+}
+html[data-theme="sepia"] #view-dashboard .graph-display,
+html[data-theme="sepia"] html[data-mode] #view-dashboard .graph-display {
+  background: linear-gradient(180deg, rgba(255,253,246,0.85), rgba(246,239,221,0.9)) !important;
+  border-color: rgba(90, 60, 24, 0.22) !important;
+}
+html[data-theme="sepia"] #view-dashboard .distribution-pill { background: rgba(90,60,24,0.14) !important; box-shadow: none !important; }
+html[data-theme="sepia"] #view-dashboard #dc-layout-fab {
+  background: rgba(255,253,246,0.94) !important;
+  border-color: rgba(90, 60, 24, 0.28) !important;
+  color: #594b36 !important;
+}
+html[data-theme="sepia"] #view-dashboard #dc-layout-fab:hover {
+  background: #fffdf6 !important;
+  border-color: rgba(139, 90, 43, 0.5) !important;
+  color: #2c2317 !important;
+}
+html[data-theme="sepia"] #view-dashboard .compact-subject-card[data-subject="physics"] .counter { color: #1e6f8e !important; }
+html[data-theme="sepia"] #view-dashboard .compact-subject-card[data-subject="chemistry"] .counter { color: #2f6b33 !important; }
+html[data-theme="sepia"] #view-dashboard .compact-subject-card[data-subject="maths"] .counter { color: #a05a12 !important; }
+html[data-theme="sepia"] .daily-variance-dot[data-today="true"] { outline: 1px solid rgba(139,90,43,0.7) !important; }
+html[data-theme="sepia"] .daily-variance-dot:hover { box-shadow: inset 0 0 0 1px rgba(139,90,43,0.85), 0 0 9px -2px rgba(139,90,43,0.35) !important; }
+html[data-theme="sepia"] .settings-card {
+  background: linear-gradient(180deg, rgba(255,253,246,0.92), rgba(246,239,221,0.94)) !important;
+  border: 1px solid rgba(90, 60, 24, 0.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), 0 10px 26px -22px rgba(90,64,32,0.4) !important;
+}
+html[data-theme="sepia"] .settings-card:hover { border-color: rgba(139, 90, 43, 0.48) !important; }
+html[data-theme="sepia"] .settings-card h3 { border-bottom: 1px solid rgba(90, 60, 24, 0.22) !important; }
+
+/* ── Kicker: accent-on-paper is a small bold caps label. --furnace at
+   #b5651d sits at 3.24:1 on the page base — under 4.5 for this size and
+   weight. Deepen to the darkest in-family sienna so it clears AA on base,
+   raise, inset and cream cards alike. ── */
+html[data-theme="sepia"] .kicker { color: #7a4a20 !important; }
+
+/* ── Dusk+sepia pins — paper in both modes (mirrors the practice stage's
+   Parchment design); backdrop and shells forced warm cream. ── */
+html[data-mode="dusk"][data-theme="sepia"] body::before {
+  background:
+    radial-gradient(46rem 36rem at 12% -8%, rgba(181,101,29,0.10), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%, rgba(201,147,39,0.10), transparent 60%),
+    radial-gradient(62rem 42rem at 50% 118%, rgba(139,90,43,0.12), transparent 62%),
+    linear-gradient(180deg, #f3ead4 0%, #e9dec4 55%, #ded0ae 100%) !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] #sidebar,
+html[data-mode="dusk"][data-theme="sepia"] .sidebar {
+  background: linear-gradient(180deg, rgba(255,252,242,0.85), rgba(246,239,221,0.9)) !important;
+}
+/* ── Errors view — dark-panel inks (violet dump button, amber queue button,
+   cyan pills) rewritten for paper with warm equivalents. ── */
+html[data-theme="sepia"] .btn-dump,
+html[data-theme="sepia"] .em-empty-secondary {
+  color: #7c4f16 !important;
+  background: rgba(139,90,43,0.10) !important;
+  border-color: rgba(139,90,43,0.40) !important;
+}
+html[data-theme="sepia"] .btn-dump:hover,
+html[data-theme="sepia"] .em-empty-secondary:hover {
+  color: #2c2317 !important;
+  background: rgba(139,90,43,0.18) !important;
+  border-color: rgba(139,90,43,0.60) !important;
+  box-shadow: 0 0 16px rgba(139,90,43,0.18), 0 6px 14px -10px rgba(90,64,32,0.5) !important;
+}
+html[data-theme="sepia"] .daily-queue-master-btn {
+  color: #7c4f16 !important;
+  background: rgba(181,101,29,0.09) !important;
+  border-color: rgba(181,101,29,0.45) !important;
+}
+html[data-theme="sepia"] .daily-queue-master-btn:hover {
+  color: #2c2317 !important;
+  border-color: rgba(181,101,29,0.70) !important;
+  box-shadow: 0 0 16px rgba(181,101,29,0.20), 0 6px 14px -10px rgba(90,64,32,0.5) !important;
+}
+html[data-theme="sepia"] .daily-queue-master-btn.active {
+  color: #1f1608 !important;
+  background: linear-gradient(100deg, #b5651d, #8b5a2b) !important;
+  border-color: transparent !important;
+  box-shadow: 0 0 18px rgba(181,101,29,0.30), inset 0 0 10px rgba(255,253,246,0.14) !important;
+}
+html[data-theme="sepia"] .matrix-pill {
+  color: #594b36 !important;
+  background: rgba(255,253,246,0.60) !important;
+  border-color: rgba(90,60,24,0.24) !important;
+}
+html[data-theme="sepia"] .matrix-pill:hover {
+  color: #2c2317 !important;
+  background: rgba(255,253,246,0.92) !important;
+  border-color: rgba(139,90,43,0.60) !important;
+  box-shadow: 0 0 12px rgba(139,90,43,0.14), 0 4px 10px -8px rgba(90,64,32,0.45) !important;
+}
+html[data-theme="sepia"] .emf-pill-group .matrix-pill::before { opacity: 0.5 !important; }
+html[data-theme="sepia"] .emf-pill-group .matrix-pill.active::before { opacity: 1 !important; }
+html[data-theme="sepia"] .matrix-pill.active[data-emf-value="all"]         { color: #1e6f8e !important; background: rgba(30,111,142,0.12) !important; border-color: rgba(30,111,142,0.55) !important; box-shadow: none !important; }
+html[data-theme="sepia"] .matrix-pill.active[data-emf-value="ready"]       { color: #2f6b33 !important; background: rgba(47,107,51,0.12) !important; border-color: rgba(47,107,51,0.55) !important; box-shadow: none !important; }
+html[data-theme="sepia"] .matrix-pill.active[data-emf-value="due_soon"]    { color: #7a5c0a !important; background: rgba(122,92,10,0.12) !important; border-color: rgba(122,92,10,0.50) !important; box-shadow: none !important; }
+html[data-theme="sepia"] .matrix-pill.active[data-emf-value="scheduled"]   { color: #8b5a2b !important; background: rgba(139,90,43,0.12) !important; border-color: rgba(139,90,43,0.55) !important; box-shadow: none !important; }
+html[data-theme="sepia"] .matrix-pill.active[data-emf-value="mastered"]    { color: #6b4f8f !important; background: rgba(107,79,143,0.10) !important; border-color: rgba(107,79,143,0.50) !important; box-shadow: none !important; }
+html[data-theme="sepia"] .matrix-pill.active[data-emf-value="calculation"] { color: #8f6a12 !important; background: rgba(143,106,18,0.12) !important; border-color: rgba(143,106,18,0.50) !important; box-shadow: none !important; }
+html[data-theme="sepia"] .matrix-pill.active[data-emf-value="conceptual"]  { color: #a83542 !important; background: rgba(168,53,66,0.10) !important; border-color: rgba(168,53,66,0.50) !important; box-shadow: none !important; }
+html[data-theme="sepia"] .matrix-pill.active[data-emf-value="misread"]     { color: #1e6f8e !important; background: rgba(30,111,142,0.10) !important; border-color: rgba(30,111,142,0.45) !important; box-shadow: none !important; }
+/* ════════════════════════════════════════════════════════════════════
+   SEPIA COVERAGE — WAVE 3 · paper panels · elevation · depth
+   The Lumen panels (glow-box-inner, mock studio, subject picker) are
+   hardcoded near-black and read as slabs of charcoal on paper.
+   Retune them to cream, tint elevation warm, and restore hierarchy.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Lumen panel → warm cream slab with a real border + lift ─────────── */
+html[data-theme="sepia"] .glow-box-inner {
+  background: linear-gradient(180deg, rgba(255,253,246,0.94), rgba(244,235,214,0.96)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), var(--e-2) !important;
+  border: 1px solid rgba(90, 64, 32, 0.20) !important;
+}
+html[data-theme="sepia"] #view-pomodoro .glow-box-inner {
+  background: linear-gradient(180deg, rgba(255,253,246,0.94), rgba(244,235,214,0.96)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), var(--e-2) !important;
+}
+/* Animated glow ring → warm sienna sweep on paper */
+html[data-theme="sepia"] .glow-wrapper::before {
+  background: conic-gradient(from 0deg, transparent 25%, #b5651d 42%, #8b5a2b 55%, #6b5a44 72%, transparent 90%) !important;
+}
+html[data-theme="sepia"] body.pomo-active .glow-wrapper::before {
+  background: conic-gradient(from 0deg, transparent 30%, #b5651d 46%, #8b5a2b 56%, transparent 72%) !important;
+}
+
+/* ── Mock studio: the runner was already retuned; the embedded editor
+   canvas still carries dark chrome ───────────────────────────────────── */
+html[data-theme="sepia"] #mock-studio-root,
+html[data-theme="sepia"] .mock-studio,
+html[data-theme="sepia"] .ms-shell {
+  background: linear-gradient(180deg, rgba(255,253,246,0.94), rgba(244,235,214,0.96)) !important;
+}
+html[data-theme="sepia"] .ms-toolbar,
+html[data-theme="sepia"] .mock-toolbar {
+  background: rgba(139,90,43,0.08) !important;
+  border-color: rgba(90, 60, 24, 0.22) !important;
+}
+html[data-theme="sepia"] .mock-input,
+html[data-theme="sepia"] .ms-input {
+  background: rgba(255,253,246,0.85) !important;
+  border-color: rgba(90, 60, 24, 0.30) !important;
+  color: #2c2317 !important;
+}
+html[data-theme="sepia"] .mock-input::placeholder,
+html[data-theme="sepia"] .ms-input::placeholder { color: #8a7a62 !important; }
+html[data-theme="sepia"] .btn-new-mock,
+html[data-theme="sepia"] .mock-create-btn {
+  background: linear-gradient(100deg, #cc8533, #b4752d) !important;
+  color: #1f1608 !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 14px -6px rgba(139,90,43,0.55) !important;
+}
+
+/* ── Depth pass: cards get a warm hairline + soft lift so paper has
+   a visible layer stack instead of one flat sheet ────────────────────── */
+html[data-theme="sepia"] .glow-wrapper { border: 1px solid rgba(90, 64, 32, 0.18); }
+html[data-theme="sepia"] .stat-card,
+html[data-theme="sepia"] .panel-card,
+html[data-theme="sepia"] .stat-box,
+html[data-theme="sepia"] .glass-panel,
+html[data-theme="sepia"] .settings-card {
+  background: linear-gradient(180deg, rgba(255,253,246,0.92), rgba(246,239,221,0.94)) !important;
+  border: 1px solid rgba(90, 60, 24, 0.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), var(--e-1) !important;
+}
+/* Inputs: visible cream well with a real border */
+html[data-theme="sepia"] .pomo-input,
+html[data-theme="sepia"] .ms-input,
+html[data-theme="sepia"] .mock-input {
+  background: rgba(255,253,246,0.85) !important;
+  border: 1px solid rgba(90, 60, 24, 0.30) !important;
+  color: #2c2317 !important;
+}
+html[data-theme="sepia"] .pomo-input:focus,
+html[data-theme="sepia"] .ms-input:focus,
+html[data-theme="sepia"] .mock-input:focus {
+  border-color: #8b5a2b !important;
+  box-shadow: 0 0 0 3px rgba(181,101,29,0.18) !important;
+}
+html[data-theme="sepia"] .pomo-input::placeholder { color: #8a7a62 !important; }
+/* Placeholder ink everywhere (search fields reported unreadable) */
+html[data-theme="sepia"] input::placeholder,
+html[data-theme="sepia"] textarea::placeholder { color: #8a7a62 !important; opacity: 1; }
+
+/* ── Primary/secondary/ghost buttons → warm sienna with dark ink ─────── */
+html[data-theme="sepia"] .btn-primary {
+  background: linear-gradient(100deg, #cc8533, #b4752d) !important;
+  color: #1f1608 !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 14px -6px rgba(139,90,43,0.55), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+}
+html[data-theme="sepia"] .btn-primary:hover {
+  background: linear-gradient(100deg, #d48f3a, #bd7a30) !important;
+  box-shadow: 0 6px 18px -6px rgba(139,90,43,0.65), inset 0 1px 0 rgba(255,255,255,0.22) !important;
+}
+html[data-theme="sepia"] .btn-secondary {
+  background: rgba(255,253,246,0.85) !important;
+  color: #5f4f38 !important;
+  border: 1px solid rgba(90, 60, 24, 0.32) !important;
+}
+html[data-theme="sepia"] .btn-secondary:hover {
+  background: #fffdf6 !important;
+  color: #2c2317 !important;
+  border-color: rgba(139, 90, 43, 0.55) !important;
+  box-shadow: 0 4px 12px -8px rgba(90,64,32,0.5) !important;
+}
+html[data-theme="sepia"] .btn-ghost {
+  color: #5f4f38 !important;
+  border: 1px solid rgba(90, 60, 24, 0.22) !important;
+}
+html[data-theme="sepia"] .btn-ghost:hover { color: #2c2317 !important; border-color: rgba(139,90,43,0.45) !important; }
+/* ════════════════════════════════════════════════════════════════════
+   SEPIA COVERAGE — WAVE 4 · dark slabs → paper
+   These surfaces hardcode a near-black glass gradient. On paper they read
+   as charcoal slabs. Retune each to cream with a warm hairline.
+   ════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="sepia"] .vault-rail,
+html[data-theme="sepia"] .error-filters,
+html[data-theme="sepia"] .error-block,
+html[data-theme="sepia"] .subject-card,
+html[data-theme="sepia"] #view-dashboard .dash-card,
+html[data-theme="sepia"] #view-dashboard .dash-card-tracker,
+html[data-theme="sepia"] .settings-card {
+  background: linear-gradient(180deg, rgba(255,253,246,0.93), rgba(245,237,216,0.95)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), var(--e-1) !important;
+}
+html[data-theme="sepia"] .vault-rail { box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 12px 28px -22px rgba(90,64,32,0.5) !important; }
+html[data-theme="sepia"] #sidebar,
+html[data-theme="sepia"] .sidebar {
+  background: linear-gradient(180deg, rgba(255,253,246,0.88), rgba(243,234,212,0.92)) !important;
+  box-shadow: 4px 0 24px -18px rgba(90,64,32,0.6), inset -1px 0 0 rgba(255,255,255,0.5) !important;
+}
+html[data-theme="sepia"] #view-dashboard .dash-card,
+html[data-theme="sepia"] .settings-card {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), var(--e-2) !important;
+}
+html[data-theme="sepia"] .subject-card { box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), var(--e-1) !important; }
+html[data-theme="sepia"] .subject-card:hover {
+  border-color: #b5651d !important;
+  transform: translateY(-5px) !important;
+  box-shadow: 0 16px 32px -20px rgba(90,64,32,0.6) !important;
+}
+/* subject accent hue per card so the trio reads as distinct at a glance */
+html[data-theme="sepia"] .subject-card[onclick*="physics"] h3 { color: #1e6f8e !important; }
+html[data-theme="sepia"] .subject-card[onclick*="chemistry"] h3 { color: #2f6b33 !important; }
+html[data-theme="sepia"] .subject-card[onclick*="maths"] h3 { color: #a05a12 !important; }
+
+/* ── Practice / question cards / chapter rows ─────────────────────────── */
+html[data-theme="sepia"] .chapter-item,
+html[data-theme="sepia"] .question-card {
+  background: linear-gradient(180deg, rgba(255,253,246,0.90), rgba(245,237,216,0.92)) !important;
+  border: 1px solid rgba(90, 60, 24, 0.20) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), var(--e-1) !important;
+}
+html[data-theme="sepia"] .chapter-item:hover,
+html[data-theme="sepia"] .question-card:hover {
+  border-color: rgba(139, 90, 43, 0.45) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), var(--e-2) !important;
+}
+
+/* ── Breadcrumb / kicker: #7a4a20 on paper clears 4.5:1 ──────────────── */
+html[data-theme="sepia"] .box-title { color: #2c2317 !important; }
+
+/* ── Nav: active pill needs a real fill + accent ink ─────────────────── */
+html[data-theme="sepia"] #sidebar .nav-item,
+html[data-theme="sepia"] .sidebar .nav-item {
+  color: #594b36 !important;
+  border-radius: 12px !important;
+}
+html[data-theme="sepia"] #sidebar .nav-item:hover,
+html[data-theme="sepia"] .sidebar .nav-item:hover {
+  color: #2c2317 !important;
+  background: rgba(139,90,43,0.12) !important;
+}
+html[data-theme="sepia"] #sidebar .nav-item.active,
+html[data-theme="sepia"] .sidebar .nav-item.active {
+  color: #1f1608 !important;
+  background: linear-gradient(100deg, #cc8533, #b4752d) !important;
+  box-shadow: 0 4px 12px -6px rgba(139,90,43,0.55), inset 0 1px 0 rgba(255,255,255,0.2) !important;
+}
+html[data-theme="sepia"] #sidebar .nav-item.active .icon,
+html[data-theme="sepia"] .sidebar .nav-item.active .icon { color: #b5651d !important; }
+/* ── Theme picker panel → warm parchment, and the sepia option row gets a
+   paper swatch so it reads as the current theme ─────────────────────────── */
+html[data-theme="sepia"] .theme-panel {
+  background: linear-gradient(180deg, rgba(255,253,246,0.97), rgba(246,239,221,0.97)) !important;
+  border: 1px solid rgba(90,64,32,0.28) !important;
+  box-shadow: 0 24px 60px -24px rgba(90,64,32,0.65), inset 0 1px 0 rgba(255,255,255,0.8) !important;
+}
+html[data-theme="sepia"] .theme-panel-head { color: #6b5a44 !important; }
+html[data-theme="sepia"] .theme-opt:hover { background: rgba(139,90,43,0.10) !important; border-color: rgba(139,90,43,0.22) !important; }
+html[data-theme="sepia"] .theme-opt.active {
+  background: linear-gradient(90deg, rgba(181,101,29,0.20), rgba(181,101,29,0.04) 75%) !important;
+  border-color: rgba(181,101,29,0.45) !important;
+}
+html[data-theme="sepia"] .theme-opt-name { color: #2c2317 !important; }
+html[data-theme="sepia"] .theme-opt-desc { color: #6b5a44 !important; }
+html[data-theme="sepia"] .theme-opt-check { color: #8b5a2b !important; text-shadow: none !important; }
+html[data-theme="sepia"] .theme-opt-dot { box-shadow: inset 0 0 0 1px rgba(90,60,24,0.35), 0 2px 8px -3px rgba(90,64,32,0.5) !important; }
+html[data-theme="sepia"] .theme-btn {
+  background: rgba(255,253,246,0.85) !important;
+  border: 1px solid rgba(90, 60, 24, 0.28) !important;
+  color: #594b36 !important;
+}
+html[data-theme="sepia"] .theme-btn:hover { border-color: rgba(139,90,43,0.55) !important; color: #2c2317 !important; }
+html[data-theme="sepia"] .theme-btn-dot { box-shadow: inset 0 0 0 1px rgba(90,60,24,0.35) !important; }
+html[data-theme="sepia"] .theme-mode-btn { color: #594b36 !important; }
+html[data-theme="sepia"] .theme-mode-btn.active { color: #1f1608 !important; background: rgba(181,101,29,0.22) !important; }
+html[data-theme="sepia"] { --pomo-accent: #7a4a20; }
+
+/* Metronome popover is cream (mode surface); its numerals were white. */
+html[data-theme="sepia"] .metro-beat-num { color: #2c2317 !important; }
+html[data-theme="sepia"] .metro-pop,
+html[data-theme="sepia"] .metro-fab {
+  background: linear-gradient(180deg, rgba(255,253,246,0.97), rgba(246,239,221,0.97)) !important;
+  border: 1px solid rgba(90, 64, 32, 0.28) !important;
+  box-shadow: 0 20px 48px -22px rgba(90,64,32,0.6), inset 0 1px 0 rgba(255,255,255,0.8) !important;
+}
+/* Focus-mode stat numerals were pure white — dark ink on paper. */
+html[data-theme="sepia"] .fl-item b,
+html[data-theme="sepia"] .fsr-item b { color: #2c2317 !important; }
+html[data-theme="sepia"] .fl-item,
+html[data-theme="sepia"] .fsr-item { color: #594b36 !important; }
+html[data-theme="sepia"] .fl-tag { color: #7a4a20 !important; opacity: 1 !important; }
+html[data-theme="sepia"] #view-pomodoro .sc-power-btn { color: #7a4a20 !important; }
+html[data-theme="sepia"] #view-pomodoro .sc-power-btn:hover { color: #2c2317 !important; }
+/* The Lock In CTA and other accent-filled CTAs share the button ramp. */
+html[data-theme="sepia"] .btn-start {
+  background: linear-gradient(100deg, #cc8533, #b4752d) !important;
+  color: #1f1608 !important;
+  box-shadow: 0 8px 22px -8px rgba(139,90,43,0.7), inset 0 1px 0 rgba(255,255,255,0.22) !important;
+}
+/* ════════════════════════════════════════════════════════════════════
+   SEPIA COVERAGE — DUSK HYBRID: paper surfaces AND paper ink
+   The dusk layer sets light ink on dark surfaces. Sepia pins surfaces to
+   paper but inherited dusk ink (cream #f5f0e4) on cream — unreadable.
+   Restore the full paper token set so dusk+sepia is a warm evening
+   paper, not a broken hybrid.
+   ════════════════════════════════════════════════════════════════════ */
+html[data-mode="dusk"][data-theme="sepia"] {
+  --bg-base: #e9dec4;
+  --bg-raise: #f3ead4;
+  --bg-inset: #e0d2b2;
+  --bg-surface: rgba(255, 252, 242, 0.60);
+  --bg-surface-hover: rgba(255, 252, 242, 0.85);
+  --text-primary: #2c2317;
+  --text-secondary: #594b36;
+  --text-muted: #6b5a44;
+  --line: rgba(90, 60, 24, 0.22);
+  --line-strong: rgba(90, 60, 24, 0.40);
+  --aes-ink: #2c2317;
+  --aes-dim: #594b36;
+  --aes-line: rgba(90, 60, 24, 0.26);
+  --aes-glass: linear-gradient(180deg, rgba(255,252,242,0.72), rgba(255,252,242,0.42));
+  --accent-ink: #1f1608;
+  --e-1: 0 1px 2px rgba(90,60,24,0.10), 0 4px 14px -8px rgba(90,60,24,0.18);
+  --e-2: 0 2px 6px -2px rgba(90,60,24,0.14), 0 14px 34px -18px rgba(90,60,24,0.24);
+  --e-3: 0 4px 12px -4px rgba(90,60,24,0.18), 0 28px 64px -24px rgba(90,60,24,0.34);
+}
+/* Dusk forces a dark glass body; sepia restores paper. */
+html[data-mode="dusk"][data-theme="sepia"] body,
+html[data-mode="dusk"][data-theme="sepia"] #app,
+html[data-mode="dusk"][data-theme="sepia"] .app-container {
+  background: #e9dec4 !important;
+}
+/* Sunset horizon: warm dusk glow above the paper. */
+html[data-mode="dusk"][data-theme="sepia"] body::before {
+  background:
+    radial-gradient(46rem 36rem at 12% -8%, rgba(181,101,29,0.16), transparent 60%),
+    radial-gradient(40rem 34rem at 102% 6%, rgba(201,147,39,0.14), transparent 60%),
+    radial-gradient(62rem 42rem at 50% 118%, rgba(139,90,43,0.14), transparent 62%),
+    linear-gradient(180deg, #f3ead4 0%, #e9dec4 55%, #ded0ae 100%) !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] body::after {
+  background: radial-gradient(120% 80% at 50% 100%, rgba(122,74,32,0.10), transparent 65%) !important;
+}
+/* Sidebar + shells: paper glass, warm hairline */
+html[data-mode="dusk"][data-theme="sepia"] #sidebar,
+html[data-mode="dusk"][data-theme="sepia"] .sidebar {
+  background: linear-gradient(180deg, rgba(255,252,242,0.90), rgba(243,234,212,0.94)) !important;
+  border-right: 1px solid rgba(90, 60, 24, 0.22) !important;
+  box-shadow: 4px 0 24px -18px rgba(90,64,32,0.6), inset -1px 0 0 rgba(255,255,255,0.5) !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] .modal-content,
+html[data-mode="dusk"][data-theme="sepia"] .modal-card,
+html[data-mode="dusk"][data-theme="sepia"] .solution-modal-card {
+  background: linear-gradient(180deg, rgba(255,253,246,0.97), rgba(246,239,221,0.97)) !important;
+  border: 1px solid rgba(90, 64, 32, 0.28) !important;
+  box-shadow: 0 24px 60px -24px rgba(90,64,32,0.6), inset 0 1px 0 rgba(255,255,255,0.8) !important;
+}
+/* Dusk-only overrides that would otherwise re-darken sepia panels. */
+html[data-mode="dusk"][data-theme="sepia"] .glow-box-inner {
+  background: linear-gradient(180deg, rgba(255,253,246,0.94), rgba(244,235,214,0.96)) !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] .bento-toolbar { background: rgba(139,90,43,0.08) !important; }
+html[data-mode="dusk"][data-theme="sepia"] .bento-ctrl-btn { background: rgba(255,253,246,0.85) !important; }
+html[data-mode="dusk"][data-theme="sepia"] .pomo-mini-widget {
+  background: linear-gradient(180deg, rgba(255,253,246,0.96), rgba(246,239,221,0.96)) !important;
+  border: 1px solid rgba(90, 64, 32, 0.26) !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] .air-popup,
+html[data-mode="dusk"][data-theme="sepia"] #cp-control-panel {
+  background: linear-gradient(160deg, rgba(255,253,246,0.97), rgba(246,239,221,0.97)) !important;
+  border: 1px solid rgba(90, 64, 32, 0.28) !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] .sr-manual-input,
+html[data-mode="dusk"][data-theme="sepia"] .text-track-terminal {
+  background: rgba(255,253,246,0.85) !important;
+  border: 1px solid rgba(90, 60, 24, 0.30) !important;
+  color: #2c2317 !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] .text-track-terminal { color: #594b36 !important; }
+/* Nav: paper ink, sienna active pill */
+html[data-mode="dusk"][data-theme="sepia"] #sidebar .nav-item,
+html[data-mode="dusk"][data-theme="sepia"] .sidebar .nav-item { color: #594b36 !important; }
+html[data-mode="dusk"][data-theme="sepia"] #sidebar .nav-item:hover,
+html[data-mode="dusk"][data-theme="sepia"] .sidebar .nav-item:hover { color: #2c2317 !important; background: rgba(139,90,43,0.12) !important; }
+html[data-mode="dusk"][data-theme="sepia"] #sidebar .nav-item.active,
+html[data-mode="dusk"][data-theme="sepia"] .sidebar .nav-item.active {
+  color: #1f1608 !important;
+  background: linear-gradient(100deg, #cc8533, #b4752d) !important;
+  box-shadow: 0 4px 12px -6px rgba(139,90,43,0.55), inset 0 1px 0 rgba(255,255,255,0.2) !important;
+}
+html[data-mode="dusk"][data-theme="sepia"] #sidebar .nav-item.active .icon,
+html[data-mode="dusk"][data-theme="sepia"] .sidebar .nav-item.active .icon { color: #b5651d !important; }
+/* Header: paper strip with a hairline separating it from the page */
+html[data-mode="dusk"][data-theme="sepia"] .header-section,
+html[data-mode="dusk"][data-theme="sepia"] #main-header {
+  background: linear-gradient(180deg, rgba(255,253,246,0.92), rgba(246,239,221,0.86)) !important;
+  border-bottom: 1px solid rgba(90, 60, 24, 0.22) !important;
+}
+/* ════════════════════════════════════════════════════════════════════
+   SEPIA COVERAGE — WAVE 6 · hierarchy & chrome (both modes)
+   Vision findings after the paper overhaul:
+     • Header merged into the page (no distinct strip, no hairline).
+     • Nav active state too subtle (fixed in wave 4; mirrored for dusk).
+     • Sprint widget + mini-widget blend into the page.
+     • Logo ink washed out on the paper sidebar.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Header strip: a lighter paper band separated from the page ───────── */
+html[data-theme="sepia"] .header-section,
+html[data-theme="sepia"] #main-header {
+  background: linear-gradient(180deg, rgba(255,253,246,0.90), rgba(246,239,221,0.84)) !important;
+  border-bottom: 1px solid rgba(90, 60, 24, 0.22) !important;
+}
+html[data-theme="sepia"] .header-section::after,
+html[data-theme="sepia"] #main-header::after { opacity: 0.5 !important; }
+
+/* ── Logo lockup: the mark + wordmark were near-invisible on paper ─────── */
+html[data-theme="sepia"] .logo-mark { color: #b5651d !important; }
+html[data-theme="sepia"] .logo-text { color: #2c2317 !important; }
+html[data-theme="sepia"] .logo-icon-alt { color: #6b5a44 !important; }
+
+/* ── Page title / date / sub-line: full-strength ink ──────────────────── */
+html[data-theme="sepia"] #view-title { color: #2c2317 !important; }
+html[data-theme="sepia"] #top-date,
+html[data-theme="sepia"] .header-sub { color: #594b36 !important; }
+
+/* ── Sidebar chrome: collapse button + user chip ──────────────────────── */
+html[data-theme="sepia"] .collapse-btn {
+  color: #6b5a44 !important;
+  background: rgba(255,253,246,0.6) !important;
+  border: 1px solid rgba(90, 60, 24, 0.20) !important;
+}
+html[data-theme="sepia"] .collapse-btn:hover { color: #2c2317 !important; border-color: rgba(139,90,43,0.5) !important; }
+html[data-theme="sepia"] .user-profile {
+  background: rgba(255,253,246,0.72) !important;
+  border: 1px solid rgba(90, 60, 24, 0.22) !important;
+}
+html[data-theme="sepia"] .username-txt { color: #2c2317 !important; }
+
+/* ── Sprint / floating widgets: give them a paper chip + hairline so they
+   read as a distinct layer instead of dissolving into the page ────────── */
+html[data-theme="sepia"] .pomo-mini-widget {
+  background: linear-gradient(180deg, rgba(255,253,246,0.97), rgba(246,239,221,0.97)) !important;
+  border: 1px solid rgba(90, 64, 32, 0.26) !important;
+  box-shadow: 0 16px 40px -20px rgba(90,64,32,0.6), inset 0 1px 0 rgba(255,255,255,0.8) !important;
+}
+html[data-theme="sepia"] .mini-go { color: #7a4a20 !important; }
+html[data-theme="sepia"] .mini-status,
+html[data-theme="sepia"] .mini-time,
+html[data-theme="sepia"] .mini-subject { color: #2c2317 !important; }
+html[data-theme="sepia"] .mini-ctl { color: #594b36 !important; }
+html[data-theme="sepia"] .mini-ctl:hover { color: #2c2317 !important; }
+
+/* ── Row separators: hairlines were invisible. Warm, slightly stronger ── */
+html[data-theme="sepia"] .tp-row + .tp-row,
+html[data-theme="sepia"] .subject-row + .subject-row,
+html[data-theme="sepia"] .dash-row + .dash-row,
+html[data-theme="sepia"] .folder-item + .folder-item,
+html[data-theme="sepia"] .settings-row + .settings-row {
+  border-top: 1px solid rgba(90, 60, 24, 0.16) !important;
+}
+
+/* ── Retention / status / heatmap dots: warm border so they don't sink
+   into the paper (colors already come from --glow-* / --dv-* tokens) ──── */
+html[data-theme="sepia"] .rh-dot,
+html[data-theme="sepia"] .daily-variance-dot,
+html[data-theme="sepia"] .legend-chip::before {
+  border: 1px solid rgba(90, 60, 24, 0.35) !important;
+  box-shadow: 0 1px 3px -1px rgba(90,64,32,0.45) !important;
+}
+html[data-theme="sepia"] .rh-ready .rh-dot { background: #2f6b33 !important; }
+html[data-theme="sepia"] .rh-fading .rh-dot { background: #c99327 !important; }
+html[data-theme="sepia"] .rh-critical .rh-dot { background: #a83542 !important; }
+html[data-theme="sepia"] .legend-chip.legend-green::before { background: #2f6b33 !important; }
+html[data-theme="sepia"] .legend-chip.legend-yellow::before { background: #c99327 !important; }
+html[data-theme="sepia"] .legend-chip.legend-red::before { background: #a83542 !important; }

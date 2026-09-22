@@ -36,6 +36,11 @@ const THEMES = {
   overgrowth: '52, 211, 153', bloodmoon: '239, 68, 68', sakura: '244, 114, 182', stealth: '229, 231, 235',
   sepia: '181, 101, 29'
 };
+/* Sepia is the paper theme: the nav icon keeps the mid-tone sienna accent
+   (#b5651d), while the small-caps kicker needs a deeper sienna to clear
+   4.5:1 on both the page base and the cream cards. Per-theme kicker
+   override; every other theme asserts the same value for both probes. */
+const KICKER_OVERRIDES = { sepia: '122, 74, 32' };
 let pass = 0, fail = 0;
 const assert = (c, n) => { if (c) { pass++; console.log('  ok', n); } else { fail++; console.error('  FAIL', n); } };
 
@@ -52,7 +57,7 @@ for (const mode of ['midnight', 'dusk']) {
       return { icon, kicker, barH };
     });
     assert(res.icon.includes(rgb), `${mode}/${name}: nav icon accent (${res.icon})`);
-    assert(res.kicker.includes(rgb), `${mode}/${name}: kicker accent (${res.kicker})`);
+    assert(res.kicker.includes(KICKER_OVERRIDES[name] || rgb), `${mode}/${name}: kicker accent (${res.kicker})`);
     assert(res.barH === (mode === 'dusk' ? 64 : 64), `${mode}/${name}: bar 64 (${res.barH})`);
   }
 }
