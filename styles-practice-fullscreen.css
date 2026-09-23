@@ -369,6 +369,27 @@ body.pq-active { overflow: hidden; }
 .pq-submit:hover { background: rgba(91,157,255,0.22); border-color: #5b9dff; color: #eef1f9; }
 #practice-modal.pq-stage .pm-footer .btn { border-radius: 999px; }
 
+/* ── Chrome auto-fade: bottom nav melts away while solving ──
+   JS toggles .pq-chrome-hidden on #practice-modal after 10s idle.
+   Hide is a slow 3.5s cross-fade; restore is a snappy 0.35s fade-in.
+   visibility keeps layout space (no card jump); pointer-events:none lets
+   taps fall through to the card so they restore the bar. */
+#practice-modal.pq-stage .pq-nav {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity .35s ease, visibility 0s;
+}
+#practice-modal.pq-stage.pq-chrome-hidden .pq-nav {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 3.5s ease, visibility 0s linear 3.6s;
+}
+@media (prefers-reduced-motion: reduce) {
+  #practice-modal.pq-stage .pq-nav,
+  #practice-modal.pq-stage.pq-chrome-hidden .pq-nav { transition: none; }
+}
+
 /* solution + error modals sit above stage */
 #solution-modal.modal-overlay.active, #error-reason-modal.modal-overlay.active { z-index: 6000; }
 #practice-image-lightbox { z-index: 7000 !important; }
