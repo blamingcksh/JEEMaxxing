@@ -1027,6 +1027,7 @@ export function closeModal(e, id, force) {
             try { document.body.classList.remove('pq-active'); } catch (_) {}
             try { document.body.classList.remove('immersive-active'); } catch (_) {}
             if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+            try { _pqCancelChromeFade(); } catch (_) {}
             // Parity with closePracticeModal(): a backdrop dismiss used to
             // leak the run's Flow/Hardcore navigation stacks into the next
             // session and keep a lifeline pick armed for an unrelated solve.
@@ -1039,7 +1040,7 @@ export function closeModal(e, id, force) {
 export function closeModalStr(id) {
     const m = document.getElementById(id);
     if (!m) return;
-    if (id === 'practice-modal') { SessionFocus.release('practice'); try { document.body.classList.remove('pq-active'); } catch (_) {} try { document.body.classList.remove('immersive-active'); } catch (_) {} }
+    if (id === 'practice-modal') { SessionFocus.release('practice'); try { document.body.classList.remove('pq-active'); } catch (_) {} try { document.body.classList.remove('immersive-active'); } catch (_) {} try { _pqCancelChromeFade(); } catch (_) {} }
     _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
@@ -1064,7 +1065,7 @@ export function closeModalStr(id) {
 function forceHideModal(id) {
     const m = document.getElementById(id);
     if (!m) return;
-    if (id === 'practice-modal') { SessionFocus.release('practice'); try { document.body.classList.remove('pq-active'); } catch (_) {} try { document.body.classList.remove('immersive-active'); } catch (_) {} }
+    if (id === 'practice-modal') { SessionFocus.release('practice'); try { document.body.classList.remove('pq-active'); } catch (_) {} try { document.body.classList.remove('immersive-active'); } catch (_) {} try { _pqCancelChromeFade(); } catch (_) {} }
     _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     m.style.display = 'none';
@@ -5342,6 +5343,7 @@ export function renderPracticeQuestionModal() {
         });
         document.getElementById('practice-submit-btn').style.display = 'none';
         try { _updatePracticeHUD(); } catch (_) {}
+        try { _pqCancelChromeFade(); } catch (_) {}
         return;
     }
 
@@ -5385,6 +5387,7 @@ export function renderPracticeQuestionModal() {
         });
     });
     try { _updatePracticeHUD(); } catch (_) {}
+    try { _pqArmChromeFade(); } catch (_) {}
 }
 
 export function toggleMcqOption(element, optionText) {
@@ -5424,6 +5427,98 @@ window.__pqZoomCurrent = function () {
         if (img && img.src) openPracticeImageLightbox(img.src);
     } catch (_) {}
 };
+
+// ── Practice chrome auto-fade: bottom nav melts away while solving ──────
+// Footer-only (#practice-footer): after 10s idle on an UNSUBMITTED question
+// the bar cross-fades out over ~3.5s (CSS class .pq-chrome-hidden); any tap
+// on the stage restores it and restarts the 10s clock. Answered/result
+// state never fades (footer forced visible). Pure presentation — never
+// touches grading, Elo, timers or queues.
+let _pqChromeFadeTimer = null;
+let _pqChromeTapBound = false;
+
+function _pqChromeModal() {
+    try { return document.getElementById('practice-modal'); } catch (_) { return null; }
+}
+
+function _pqChromeAnswered() {
+    try {
+        const flags = AppState.practiceSubmittedFlags;
+        if (Array.isArray(flags) && typeof AppState.currentPracticeIndex === 'number') {
+            if (!!flags[AppState.currentPracticeIndex]) return true;
+        }
+    } catch (_) {}
+    return false;
+}
+
+function _pqChromeOverlayOpen() {
+    try {
+        if (document.getElementById('skip-popover')) return true;
+        const sol = document.getElementById('solution-modal');
+        if (sol && sol.classList.contains('active')) return true;
+        const err = document.getElementById('error-reason-modal');
+        if (err && err.classList.contains('active')) return true;
+        const lb = document.getElementById('practice-image-lightbox');
+        if (lb && lb.style.display !== 'none' && lb.offsetParent !== null) return true;
+    } catch (_) {}
+    return false;
+}
+
+function _pqCancelChromeFade() {
+    try {
+        if (_pqChromeFadeTimer) { clearTimeout(_pqChromeFadeTimer); _pqChromeFadeTimer = null; }
+        const m = _pqChromeModal();
+        if (m) m.classList.remove('pq-chrome-hidden');
+    } catch (_) {}
+}
+
+function _pqArmChromeFade(delayMs) {
+    try {
+        if (_pqChromeFadeTimer) { clearTimeout(_pqChromeFadeTimer); _pqChromeFadeTimer = null; }
+        const m = _pqChromeModal();
+        if (!m) return;
+        _pqEnsureChromeTapBound();
+        // Every fresh question starts with the bar visible.
+        m.classList.remove('pq-chrome-hidden');
+        // Answered/result state: stay visible, no timer.
+        if (_pqChromeAnswered()) return;
+        const wait = (typeof delayMs === 'number' && delayMs >= 0) ? delayMs : 10000;
+        _pqChromeFadeTimer = setTimeout(() => {
+            _pqChromeFadeTimer = null;
+            try {
+                const mm = _pqChromeModal();
+                if (!mm || !mm.classList.contains('active')) return;
+                if (_pqChromeAnswered()) return;
+                // Don't fade under an open popover/lightbox/solution — retry shortly.
+                if (_pqChromeOverlayOpen()) { _pqArmChromeFade(5000); return; }
+                mm.classList.add('pq-chrome-hidden');
+            } catch (_) {}
+        }, wait);
+    } catch (_) {}
+}
+
+function _pqOnChromeActivity() {
+    try {
+        const m = _pqChromeModal();
+        if (!m || !m.classList.contains('active')) return;
+        // Hidden → restore; visible → just reset the 10s idle clock.
+        _pqArmChromeFade();
+    } catch (_) {}
+}
+
+function _pqEnsureChromeTapBound() {
+    if (_pqChromeTapBound) return;
+    try {
+        const m = _pqChromeModal();
+        if (!m) return;
+        m.addEventListener('pointerdown', _pqOnChromeActivity, { passive: true });
+        m.addEventListener('keydown', _pqOnChromeActivity);
+        m.addEventListener('input', _pqOnChromeActivity);
+        // Scroll doesn't bubble — capture catches card/modal track scrolls.
+        m.addEventListener('scroll', _pqOnChromeActivity, { passive: true, capture: true });
+        _pqChromeTapBound = true;
+    } catch (_) {}
+}
 
 // Returns a data-option value verbatim. getAttribute()/dataset ALREADY
 // entity-decode the value at parse time (escapeAttribute's single encode is
