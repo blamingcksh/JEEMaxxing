@@ -469,6 +469,79 @@ function _esc(str) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// ── Dashboard short chapter names (narrow bento thirds, e.g. iPad landscape)
+// Cards are `@container card`; CSS swaps .ch-full ↔ .ch-short below ~440px
+// card width. Chapter names are user-defined, so a curated map covers common
+// JEE chapters (case-insensitive) and shortChapterName() falls back to a
+// word-boundary cut for the rest. Full names always survive in title/aria.
+const CHAPTER_SHORT = {
+    'thermodynamics': 'Thermo',
+    'chemical thermodynamics': 'Chem. Thermo',
+    'kinetic theory of gases': 'KTG',
+    'work energy and power': 'Work & Energy',
+    'work, energy and power': 'Work & Energy',
+    'electrostatics': 'Electrostat.',
+    'current electricity': 'Current Elec.',
+    'electromagnetic induction': 'EMI',
+    'alternating current': 'AC',
+    'wave optics': 'Wave Opt.',
+    'modern physics': 'Modern Phys.',
+    'semiconductors': 'Semicond.',
+    'semiconductor': 'Semicond.',
+    'units and dimensions': 'Units & Dim.',
+    'rotational mechanics': 'Rotation',
+    'thermal expansion': 'Thermal Exp.',
+    'temperature and thermal expansion': 'Temp. & Exp.',
+    'thermal properties of matter': 'Thermal Prop.',
+    'mechanical properties of fluids': 'Fluids',
+    'mechanical properties of solids': 'Elasticity',
+    'magnetism and matter': 'Magnetism',
+    'stoichiometry': 'Stoichio',
+    'atomic structure': 'Atomic Struct.',
+    'chemical bonding': 'Chem. Bonding',
+    'coordination compounds': 'Coord. Comp.',
+    'chemical equilibrium': 'Chem. Eqbm.',
+    'ionic equilibrium': 'Ionic Eqbm.',
+    'electrochemistry': 'Electrochem.',
+    'chemical kinetics': 'Kinetics',
+    'p-block elements': 'p-Block',
+    's-block elements': 's-Block',
+    'd and f block elements': 'd & f Block',
+    'general organic chemistry': 'GOC',
+    'aldehydes and ketones': 'Ald. & Ket.',
+    'alcohols phenols and ethers': 'Alcohols…',
+    'redox reactions': 'Redox',
+    'continuity and differentiability': 'Cont. & Diff.',
+    'limit continuity and differentiability': 'Cont. & Diff.',
+    'application of derivatives': 'AOD',
+    'applications of derivatives': 'AOD',
+    'indefinite integration': 'Indef. Integ.',
+    'definite integration': 'Def. Integ.',
+    'differential equations': 'Diff. Eqns.',
+    'complex numbers': 'Complex Nos.',
+    'quadratic equations': 'Quad. Eqns.',
+    'sequences and series': 'Seq. & Series',
+    'three dimensional geometry': '3D Geometry',
+    'inverse trigonometric functions': 'Inv. Trigo.',
+    'trigonometric functions': 'Trigonometry',
+    'sets and relations': 'Sets & Rel.',
+    'mathematical reasoning': 'Math. Reason.',
+    'linear programming': 'LPP',
+    'vector algebra': 'Vectors',
+    'permutations and combinations': 'P & C',
+    'binomial theorem': 'Binomial'
+};
+function shortChapterName(name) {
+    const s = String(name == null ? '' : name);
+    if (!s) return s;
+    const hit = CHAPTER_SHORT[s.trim().toLowerCase()];
+    if (hit) return hit;
+    if (s.length <= 14) return s;
+    const cut = s.slice(0, 12);
+    const ws = cut.lastIndexOf(' ');
+    return (ws >= 5 ? cut.slice(0, ws) : cut).trimEnd() + '…';
+}
+
 /**
  * Encode an id for embedding in a single-quoted inline-JS handler argument.
  * Entity-escaping alone is NOT safe here: the browser HTML-decodes attribute
@@ -2709,7 +2782,7 @@ export function renderChapterDecayGrid() {
                  data-chapter="${_esc(encodeURIComponent(ch.name || ''))}"
                  aria-label="${_esc(ch.name)}: ${Math.round(h)} percent retention"
                  title="${_esc(ch.name)} — retention ${Math.round(h)}% · coverage ${covPct}% · ${ch.questionCount} items · tap for item decay"
-><span class="rh-name">${_esc(ch.name)}</span><span class="rh-gauge" aria-hidden="true"><i class="rh-cov" style="width:${covPct}%"></i><i class="rh-line" style="width:${h.toFixed(1)}%"></i>${fc != null ? `<i class="rh-fc" style="left:${fc.toFixed(1)}%"></i>` : ''}<i class="rh-dot" style="left:${h.toFixed(1)}%"></i></span><span class="rh-val">${Math.round(h)}<em>%</em>${trend}</span><span class="rh-hz ${horizonCls}">${_esc(horizonTxt)}</span></div>`;
+><span class="rh-name"><span class="ch-full">${_esc(ch.name)}</span><span class="ch-short" aria-hidden="true">${_esc(shortChapterName(ch.name))}</span></span><span class="rh-gauge" aria-hidden="true"><i class="rh-cov" style="width:${covPct}%"></i><i class="rh-line" style="width:${h.toFixed(1)}%"></i>${fc != null ? `<i class="rh-fc" style="left:${fc.toFixed(1)}%"></i>` : ''}<i class="rh-dot" style="left:${h.toFixed(1)}%"></i></span><span class="rh-val">${Math.round(h)}<em>%</em>${trend}</span><span class="rh-hz ${horizonCls}">${_esc(horizonTxt)}</span></div>`;
     }).join('');
 
     // Commit this render's health values as the next trend baseline.
@@ -3004,9 +3077,9 @@ export function renderChapterProgressList() {
         const name = safeAttr(r.name);
         return `<div class="${cls.join(' ')}" role="button" tabindex="0"` +
                ` data-subj="${r.subj}" data-enc="${encodeURIComponent(r.name)}" data-pct="${r.pct}"` +
-               ` aria-label="${name} · ${r.pct}% complete">` +
+               ` aria-label="${name} · ${r.pct}% complete" title="${name} · ${r.pct}% complete">` +
                `<span class="cpx-subj" aria-hidden="true">${SUBJ_META[r.subj] || '·'}</span>` +
-               `<span class="cpx-name">${escapeHtml(r.name)}</span>` +
+               `<span class="cpx-name"><span class="ch-full">${escapeHtml(r.name)}</span><span class="ch-short" aria-hidden="true">${escapeHtml(shortChapterName(r.name))}</span></span>` +
                `<span class="cpx-track" aria-hidden="true"><i style="width:${r.pct}%"></i></span>` +
                `<span class="cpx-pct">${r.pct}<i>%</i></span>` +
            `</div>`;

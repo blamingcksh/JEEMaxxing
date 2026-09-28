@@ -290,3 +290,20 @@ html.fx-effects-off #view-dashboard .dash-card-decay .rh-dot {
     #view-dashboard .dash-card-decay .rh-val { font-size: 14px; }
     #view-dashboard .dash-card-decay .rh-head-g { letter-spacing: .1em; }
 }
+
+/* ── Narrow thirds (iPad 10" landscape ≈ 330px/card): short chapter names ──
+   matrix.js renders .ch-full + .ch-short in every .rh-name; the swap rides
+   the card's own width, so stacked portrait + desktop keep full names. Full
+   names survive in title/aria-label. Later in file = wins over the 600/400
+   rules above where they overlap. */
+#view-dashboard .dash-card-decay .rh-name .ch-short { display: none; }
+@container card (max-width: 440px) {
+    #view-dashboard .dash-card-decay .rh-name .ch-full { display: none; }
+    #view-dashboard .dash-card-decay .rh-name .ch-short { display: inline; }
+    #view-dashboard .dash-card-decay .rh-head,
+    #view-dashboard .dash-card-decay .rh-row {
+        grid-template-columns: minmax(72px, 1fr) minmax(84px, 40%) 44px;
+        column-gap: 10px;
+    }
+    #view-dashboard .dash-card-decay .rh-row { padding: 11px 0; }
+}

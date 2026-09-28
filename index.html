@@ -8,9 +8,10 @@
 try{var _t=localStorage.getItem('jeemax_theme'),_m=localStorage.getItem('jeemax_mode');
 var _ths=['furnace','synthwave','glacier','overgrowth','bloodmoon','sakura','stealth','sepia'];
 var _mds=['midnight','dusk'];
+if(_m==='midnight'&&!localStorage.getItem('jeemax_mode_dusk_mig')){_m='dusk';try{localStorage.setItem('jeemax_mode','dusk');localStorage.setItem('jeemax_mode_dusk_mig','1');}catch(_){}}
 var _rt=document.documentElement;
 _rt.setAttribute('data-theme',_ths.indexOf(_t)>=0?_t:'furnace');
-_rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'midnight');}catch(e){}</script>
+_rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'dusk');}catch(e){}</script>
 <script>/* Standalone pre-boot: flag Home-Screen launches BEFORE first paint so
    styles-ipad.css resolves --sat (status-bar inset) with no flash of
    under-the-blur content. iOS Safari exposes navigator.standalone; modern
@@ -227,9 +228,30 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <section id="view-dashboard" class="view-section active">
             <div class="dash-grid">
 
+                <!-- ── CONSISTENCY — a year of daily output vs target
+                     (app.js renderDailyVarianceHeatmap fills months + grid). ── -->
+                <div class="dash-card dash-card-variance" data-bento-span="12">
+                    <div class="dv-head dv-head-wrap">
+                        <h2 class="dv-title">Consistency</h2>
+                        <span class="daily-variance-legend" aria-hidden="true">
+                            <span class="daily-variance-legend-label">Less</span>
+                            <i class="daily-variance-swatch" data-level="0"></i>
+                            <i class="daily-variance-swatch" data-level="1"></i>
+                            <i class="daily-variance-swatch" data-level="2"></i>
+                            <i class="daily-variance-swatch" data-level="3"></i>
+                            <i class="daily-variance-swatch" data-level="4"></i>
+                            <span class="daily-variance-legend-label">More</span>
+                        </span>
+                    </div>
+                    <div class="daily-variance-scroll">
+                        <div id="daily-variance-months" class="daily-variance-months" aria-hidden="true"></div>
+                        <div id="daily-variance-grid" class="daily-variance-grid" role="img" aria-label="Daily solved questions relative to your daily target, one cell per day. Denser colour means more output."></div>
+                    </div>
+                </div>
+
                 <!-- ── TODAY'S PROGRESS · the one number that matters, three
                      subject ledgers under it. Steppers are the quick-log. ── -->
-                <div class="dash-card dash-card-tracker" data-bento-span="12">
+                <div class="dash-card dash-card-tracker" data-bento-span="4">
                     <div class="dv-head">
                         <h2 class="dv-title">Today’s Progress</h2>
                         <span class="tp-variance" id="variance-val" title="Solved vs target today">0.0%</span>
@@ -291,7 +313,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
                 <!-- ── RETENTION HEALTH — matrix.js renders the chapter ledger
                      (most exam-dangerous first) into the grid. ── -->
-                <div class="dash-card dash-card-decay" data-bento-span="12">
+                <div class="dash-card dash-card-decay" data-bento-span="4">
                     <div class="dv-head dv-head-wrap">
                         <h2 class="dv-title">Retention Health</h2>
                         <div class="dv-legend" aria-hidden="true">
@@ -303,30 +325,9 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     <div id="chapter-decay-grid"></div>
                 </div>
 
-                <!-- ── CONSISTENCY — a year of daily output vs target
-                     (app.js renderDailyVarianceHeatmap fills months + grid). ── -->
-                <div class="dash-card dash-card-variance" data-bento-span="12">
-                    <div class="dv-head dv-head-wrap">
-                        <h2 class="dv-title">Consistency</h2>
-                        <span class="daily-variance-legend" aria-hidden="true">
-                            <span class="daily-variance-legend-label">Less</span>
-                            <i class="daily-variance-swatch" data-level="0"></i>
-                            <i class="daily-variance-swatch" data-level="1"></i>
-                            <i class="daily-variance-swatch" data-level="2"></i>
-                            <i class="daily-variance-swatch" data-level="3"></i>
-                            <i class="daily-variance-swatch" data-level="4"></i>
-                            <span class="daily-variance-legend-label">More</span>
-                        </span>
-                    </div>
-                    <div class="daily-variance-scroll">
-                        <div id="daily-variance-months" class="daily-variance-months" aria-hidden="true"></div>
-                        <div id="daily-variance-grid" class="daily-variance-grid" role="img" aria-label="Daily solved questions relative to your daily target, one cell per day. Denser colour means more output."></div>
-                    </div>
-                </div>
-
                 <!-- ── CHAPTER PROGRESS — matrix.js, weakest chapter first
                      (the list carries its own column header). ── -->
-                <div class="dash-card dash-card-progress" data-bento-span="12">
+                <div class="dash-card dash-card-progress" data-bento-span="4">
                     <div class="dv-head">
                         <h2 class="dv-title">Chapter Progress</h2>
                     </div>
@@ -1274,6 +1275,7 @@ window.clearMatrixFilters = function () {
     const V_MIN = 140, V_MAX = 1600;
     const COLS = 12;
     const IDS = ['tracker', 'variance', 'progress', 'decay'];
+    const DEFAULT_ORDER = ['variance', 'tracker', 'decay', 'progress'];  // screenshot default: Consistency on top, thirds below
     // 'directive' + 'momentum' cards were removed from the dashboard markup —
     // their backends (directive.js, sprout-isle.js, candlestick engine) still
     // run; only the dashboard boxes are gone, so they stay untracked here.
@@ -1291,8 +1293,9 @@ window.clearMatrixFilters = function () {
     function save(o){ try { localStorage.setItem(LS, JSON.stringify(o)); } catch (e) {} }
 
     // The width a card SHOULD be right now: a user-set value wins, otherwise
-    // the themed responsive default (2 columns above 1100px, 1 below).
-    function defaultW(card){ return card && card.classList.contains('dash-card-variance') ? 12 : (twoCol() ? 6 : 12); }
+    // the themed responsive default (Consistency full-width on top, three
+    // equal columns below above 1100px, stacked to 1 column below).
+    function defaultW(card){ return card && card.classList.contains('dash-card-variance') ? 12 : (twoCol() ? 4 : 12); }
     function widthOf(card){ const v = parseInt(card.dataset.bentoSpan, 10); return clamp(Number.isFinite(v) ? v : defaultW(card), 3, 12); }
 
     // Vertical scroll layer (exists ONLY while a card has a fixed height).
@@ -1346,8 +1349,8 @@ window.clearMatrixFilters = function () {
     // ══════════════════════════════════════════════════════════════════════
     //  RELAYOUT v6 (overhaul) — WIDTHS ONLY, rows flow naturally.
     //  The v5 height-map packer assumed six uniform cards whose heights were
-    //  known early. The overhauled dashboard uses asymmetric 7/5 rows and a
-    //  Directive body that hydrates late from IDB; pinning explicit rows from
+    //  known early. The overhauled dashboard uses a full-width Consistency
+    //  row plus three equal columns, with bodies that hydrate late from IDB; pinning explicit rows from
     //  point-in-time heights produced overlaps and holes. Now each card only
     //  carries its span (`span N`, no explicit start) — CSS auto-flow packs
     //  flush rows in DOM order, immune to hydration timing. The editor's
@@ -1356,8 +1359,9 @@ window.clearMatrixFilters = function () {
     // ══════════════════════════════════════════════════════════════════════
     function relayout(){
         const grid = gridOf(); if (!grid) return;
-        // Off / hidden → hand control back to CSS (mobile stack or other tab).
-        if (!wide() || !dashActive()) {
+        // Off / hidden / below the 2-col breakpoint → hand control back to
+        // CSS (stacked 1-col layout or other tab).
+        if (!wide() || !twoCol() || !dashActive()) {
             grid.style.gridAutoRows = ''; grid.style.rowGap = '';
             [...grid.children].forEach(c => { c.style.gridRow = ''; c.style.gridColumn = ''; });
             return;
@@ -1447,7 +1451,7 @@ window.clearMatrixFilters = function () {
 
         tb.querySelector('[data-bento-reset]').addEventListener('click', () => {
             IDS.forEach(id => { const c = cardById(id); if (c) { clearWrap(c); delete c.dataset.bentoSpan; delete c.dataset.bentoPrevSpan; } });
-            IDS.forEach(id => { const c = cardById(id); if (c) grid.appendChild(c); });   // default order
+            DEFAULT_ORDER.forEach(id => { const c = cardById(id); if (c) grid.appendChild(c); });   // screenshot default order
             persistAll();
             relayout(); settle();
         });

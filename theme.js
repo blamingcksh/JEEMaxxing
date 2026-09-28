@@ -1,6 +1,7 @@
 /* ============================================================================
    theme.js — JEEMaxxing Theme Engine v2
    Accent themes (data-theme) × appearance mode (data-mode: midnight | dusk).
+   Dusk is the default mode; stored 'midnight' migrates to dusk once.
    Pill button docks next to the logo; dropdown re-skins the whole app live.
    Persists: localStorage 'jeemax_theme' + 'jeemax_mode'.
    ============================================================================ */
@@ -11,6 +12,7 @@
 
   var LS_THEME = 'jeemax_theme';
   var LS_MODE  = 'jeemax_mode';
+  var LS_MODE_MIG = 'jeemax_mode_dusk_mig';  // one-time midnight → dusk migration flag
 
   var THEMES = [
     { id: 'furnace',    name: 'Furnace',    desc: 'Amber heat · stock build', dots: ['#ffb224', '#ff7a1a', '#3ddcff'] },
@@ -31,7 +33,19 @@
   var btn = null, panel = null;
 
   function current() { try { return localStorage.getItem(LS_THEME) || 'furnace'; } catch (e) { return 'furnace'; } }
-  function currentMode() { try { return localStorage.getItem(LS_MODE) || 'midnight'; } catch (e) { return 'midnight'; } }
+  function currentMode() {
+    try {
+      var m = localStorage.getItem(LS_MODE);
+      // Dusk is the default (Sep 2026). Stored 'midnight' migrates to dusk
+      // once; users can still pick Midnight afterwards — the flag stops us
+      // from re-forcing it on every load.
+      if (m === 'midnight' && !localStorage.getItem(LS_MODE_MIG)) {
+        try { localStorage.setItem(LS_MODE, 'dusk'); localStorage.setItem(LS_MODE_MIG, '1'); } catch (e) {}
+        return 'dusk';
+      }
+      return m || 'dusk';
+    } catch (e) { return 'dusk'; }
+  }
   function byId(id) {
     for (var i = 0; i < THEMES.length; i++) { if (THEMES[i].id === id) return THEMES[i]; }
     return THEMES[0];
@@ -61,7 +75,7 @@
   }
 
   function applyMode(id, persist) {
-    var valid = 'midnight';
+    var valid = 'dusk';
     for (var i = 0; i < MODES.length; i++) { if (MODES[i].id === id) valid = id; }
     document.documentElement.setAttribute('data-mode', valid);
     if (persist !== false) { try { localStorage.setItem(LS_MODE, valid); } catch (e) {} }

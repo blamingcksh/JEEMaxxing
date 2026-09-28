@@ -41,15 +41,13 @@
 }
 
 /* Column spans — wide layout (the bento packer pins these inline while
-   active; below its 901px breakpoint this CSS takes over). 7/5 · 7/5 ·
-   12 · 12 gives the page an alternating rhythm instead of a uniform tile
-   wall. */
-#view-dashboard .dash-card-tracker  { grid-column: span 7; }
-#view-dashboard .dash-card-directive{ grid-column: span 5; }
-#view-dashboard .dash-card-decay    { grid-column: span 7; }
-#view-dashboard .dash-card-momentum { grid-column: span 5; }
+   active; below its 1101px breakpoint this CSS takes over). Consistency
+   runs full-width on top; Today's Progress · Retention · Chapter Progress
+   sit in three equal columns below (4/4/4). */
 #view-dashboard .dash-card-variance { grid-column: span 12; }
-#view-dashboard .dash-card-progress { grid-column: span 12; }
+#view-dashboard .dash-card-tracker  { grid-column: span 4; }
+#view-dashboard .dash-card-decay    { grid-column: span 4; }
+#view-dashboard .dash-card-progress { grid-column: span 4; }
 
 /* Entry cascade — the legacy fxRise handles 1-4; extend to six cards. */
 .view-section.active .dash-card:nth-child(5) { animation-delay: 0.22s; }
@@ -754,9 +752,7 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
 
 @media (max-width: 1100px) {
     #view-dashboard .dash-card-tracker,
-    #view-dashboard .dash-card-directive,
     #view-dashboard .dash-card-decay,
-    #view-dashboard .dash-card-momentum,
     #view-dashboard .dash-card-variance,
     #view-dashboard .dash-card-progress { grid-column: span 12; }
 }
@@ -784,6 +780,20 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
     #view-dashboard .dir-item { gap: 9px; }
     #view-dashboard .dir-item-meta { font-size: 10px; }
     #view-dashboard .mom-toggle .mom-tab { padding: 5px 10px; }
+}
+
+/* ── Narrow thirds (iPad 10" landscape ≈ 330px/card): reclaim tracker row ──
+   The subject row crowds h4 out ("C…/Ma…") via elo chip + counts + steppers.
+   Subjects keep full names — space is reclaimed instead: tier text hides
+   (rating chip stays), gaps tighten, steppers slim. Rides the card's own
+   width so stacked/desktop rendering is untouched. */
+@container card (max-width: 460px) {
+    #view-dashboard .dash-card-tracker .elo-monitor-tier { display: none; }
+    #view-dashboard .dash-card-tracker .tp-row-top { gap: 8px; }
+    #view-dashboard .dash-card-tracker .tp-steppers { gap: 4px; margin-left: 0; }
+    #view-dashboard .dash-card-tracker .tp-step-btn { width: 26px; height: 26px; }
+    #view-dashboard .dash-card-tracker .tp-count { gap: 3px; }
+    #view-dashboard .dash-card-tracker .tp-row-top .elo-monitor { padding: 3px 7px; }
 }
 
 /* ── 11 · MOTION + A11Y ────────────────────────────────────────────────── */
