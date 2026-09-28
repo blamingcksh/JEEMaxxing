@@ -872,6 +872,25 @@ export function normSubjKey(s) {
     if (s === 'math' || s === 'mathematics') return 'maths';
     return _SUBJ_KEYS.indexOf(s) >= 0 ? s : 'physics';
 }
+
+// ── Mock-test chapter labelling (single canonical home) ─────────────────
+// Mock uploads file their questions under `Mock: <paper name>` chapters so
+// they are visible, labelled tiles in the vault — never invisible orphans.
+// q.mockSource / q.reservedForMock remain the inclusion stamps; the chapter
+// prefix is the display contract the dashboard filters on.
+export const MOCK_CHAPTER_PREFIX = 'Mock: ';
+export function mockChapterName(mockName) {
+    const n = String(mockName == null ? '' : mockName).trim();
+    return MOCK_CHAPTER_PREFIX + (n || 'Untitled');
+}
+export function isMockChapterName(ch) {
+    return String(ch == null ? '' : ch).trim().toLowerCase().indexOf('mock:') === 0;
+}
+export function isMockQuestion(q) {
+    if (!q) return false;
+    if (q.mockSource || q.reservedForMock) return true;
+    return isMockChapterName(q.chapter);
+}
 export const monthNamesCal = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"

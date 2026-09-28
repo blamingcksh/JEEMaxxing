@@ -41,6 +41,10 @@ import {
     CONFIDENCE_ANCHORS,
     getPatternForQuestion,
     getSchemeIdForQuestion,
+    recordCloudTombstone,
+    mockChapterName,
+    isMockChapterName,
+    isMockQuestion,
 } from './storage.js';
 
 // Smart Mistake Report engine — post-mock tag × difficulty autopsy (pure).
@@ -228,12 +232,15 @@ export function prefillKeyFor(q) {
     return [...new Set(letters)].sort();
 }
 
-/** Called by app.js Save-All hook while a draft section is open for filling. */
+/** Called by app.js Save-All hook while a draft section is open for filling.
+ * Returns true when the question was actually linked into the paper; false
+ * when routing rejected it (e.g. mixed-subject dump) so the caller can fall
+ * back to normal chapter placement. */
 function linkQuestion(ctx, newQ) {
     const m = getMock(ctx.mockId);
-    if (!m || (m.status !== 'building' && m.status !== 'ready')) return;
+    if (!m || (m.status !== 'building' && m.status !== 'ready')) return false;
     const sec = m.sections[ctx.subject];
-    if (!sec || !newQ || !newQ.id) return;
+    if (!sec || !newQ || !newQ.id) return false;
     // Mixed-subject dumps are legal. Placement (q.subject) follows the
     // session context (saveAllQuestions contract), so the dump's OWN claim —
     // gemSubject provenance — is what decides mock routing: a chemistry
@@ -242,8 +249,8 @@ function linkQuestion(ctx, newQ) {
     const effSubj = ['physics', 'chemistry', 'maths'].includes(gemSubj)
         ? gemSubj
         : String(newQ.subject || '').toLowerCase();
-    if (effSubj !== String(ctx.subject).toLowerCase()) return;
-    if (sec.questionIds.includes(newQ.id)) return;
+    if (effSubj !== String(ctx.subject).toLowerCase()) return false;
+    if (sec.questionIds.includes(newQ.id)) return false;
     newQ.mockSource = m.id;
     newQ.reservedForMock = m.id;
     sec.questionIds.push(newQ.id);
@@ -253,6 +260,16 @@ function linkQuestion(ctx, newQ) {
     }
     persist();
     scheduleBuilderRefresh(m.id);
+    return true;
+}
+
+/** Canonical chapter label for a paper's uploads. app.js asks for this
+ * BEFORE committing a dump so every mock question files under
+ * `Mock: <paper name>` instead of inheriting a stale chapter (or null). */
+export function mockChapterFor(mockId) {
+    const m = getMock(mockId);
+    if (!m) return null;
+    return mockChapterName(m.name);
 }
 
 function unlinkQuestion(mockId, qid) {
@@ -291,12 +308,96 @@ function finalizeMock(id) {
 
 function deleteMock(id) {
     const m = getMock(id); if (!m) return;
+    const liveIds = new Set();
+    for (const o of (AppState.mocks || [])) {
+        if (o.id === id) continue;
+        for (const qid of allQuestionIds(o)) liveIds.add(String(qid));
+    }
+    // Deleting a paper deletes its questions from the bank (plus a cloud
+    // tombstone so stale snapshots can't resurrect them). The single guard:
+    // a question still referenced by ANOTHER paper is kept — only its stamps
+    // for the deleted paper are cleared.
     for (const qid of allQuestionIds(m)) {
         const q = qById(qid);
-        if (q) { delete q.reservedForMock; delete q.mockSource; }
+        if (!q) continue;
+        if (liveIds.has(String(qid))) {
+            delete q.reservedForMock;
+            if (q.mockSource === id) delete q.mockSource;
+            continue;
+        }
+        const i = AppState.questionBank.indexOf(q);
+        if (i >= 0) AppState.questionBank.splice(i, 1);
+        try { recordCloudTombstone(q.id).catch(console.error); } catch (_) {}
     }
     AppState.mocks = AppState.mocks.filter(x => x.id !== id);
+    pruneEmptyMockChapters();
     persist();
+}
+
+/** Drop `Mock: *` chapter tiles that hold no bank questions and belong to no
+ * live paper (stale labels from deleted mocks). Real chapters are untouched;
+ * live papers re-register their tile on next upload. */
+function pruneEmptyMockChapters() {
+    try {
+        for (const s of SUBJECTS) {
+            const list = AppState.chapters && AppState.chapters[s];
+            if (!Array.isArray(list)) continue;
+            // A live paper re-registers its tile on next upload, so any
+            // `Mock: *` entry holding zero bank questions is safe to drop.
+            AppState.chapters[s] = list.filter(ch => {
+                if (!isMockChapterName(ch)) return true;
+                return AppState.questionBank.some(q =>
+                    q.subject === s && String(q.chapter || '').trim().toLowerCase() === String(ch).trim().toLowerCase());
+            });
+        }
+    } catch (_) { /* never break delete/boot */ }
+}
+
+/**
+ * Boot-time ghost cleanup (idempotent): pre-label-era uploads left mock
+ * questions with stale or null chapters, and deleted papers left stamped
+ * orphans behind. Relabel what still belongs to a live paper, permanently
+ * remove questions whose paper is gone, then prune empty Mock tiles.
+ */
+export function cleanupMockOrphans() {
+    try {
+        ensureState();
+        const bank = AppState.questionBank;
+        if (!Array.isArray(bank)) return { relabeled: 0, removed: 0 };
+        const byId = {};
+        for (const o of (AppState.mocks || [])) byId[o.id] = o;
+        let relabeled = 0, removed = 0;
+        for (let i = bank.length - 1; i >= 0; i--) {
+            const q = bank[i];
+            const stamp = q && (q.mockSource || q.reservedForMock);
+            if (!stamp) continue;
+            const owner = byId[stamp] || byId[q.mockSource];
+            if (!owner) {
+                bank.splice(i, 1);
+                try { recordCloudTombstone(q.id).catch(console.error); } catch (_) {}
+                removed++;
+                continue;
+            }
+            const label = mockChapterName(owner.name);
+            if (q.chapter !== label) {
+                q.chapter = label;
+                if (q.subject && AppState.chapters) {
+                    const list = AppState.chapters[q.subject] || (AppState.chapters[q.subject] = []);
+                    if (!list.some(c => String(c).trim().toLowerCase() === label.trim().toLowerCase())) list.push(label);
+                }
+                relabeled++;
+            }
+        }
+        if (relabeled || removed) {
+            pruneEmptyMockChapters();
+            persist();
+        }
+        if (relabeled || removed) console.warn('[mock-cleanup] relabeled ' + relabeled + ', removed ' + removed + ' orphaned mock question(s).');
+        return { relabeled, removed };
+    } catch (err) {
+        console.warn('[mock-cleanup] skipped:', err);
+        return { relabeled: 0, removed: 0 };
+    }
 }
 
 /** Bank questions eligible for papers: not reserved, not anomalous. */
@@ -1109,7 +1210,9 @@ win.mockOpenBuilder = function (id) {
 };
 win.mockDelete = function (id) {
     if (_pk && _pk.mockId === id) _closePicker();
-    if (confirm('Delete this mock? Linked questions stay in your bank.')) { deleteMock(id); if (_studioMode.mockId === id) _studioMode = { view: 'home' }; renderMocksView(); }
+    const m = getMock(id);
+    const n = m ? totalQuestions(m) : 0;
+    if (confirm('Delete this mock? Its ' + n + ' linked question' + (n === 1 ? '' : 's') + ' will be permanently removed from your bank.')) { deleteMock(id); if (_studioMode.mockId === id) _studioMode = { view: 'home' }; renderMocksView(); }
 };
 win.mockStart = function (id) { startMock(id); };
 win.mockKeysFor = function (id) {
@@ -1209,7 +1312,7 @@ function _syncMockLinkBanner() {
         content.insertBefore(banner, content.firstChild.nextSibling || null);
     }
     banner.innerHTML = '<div style="flex:1;min-width:200px;">🔗 Dumping into <b>' + _esc(m ? m.name : 'paper') +
-        '</b> · <b>' + _esc(String(ctx.subject || '').toUpperCase()) + '</b> — every imported question lands in that panel.' +
+        '</b> · <b>' + _esc(String(ctx.subject || '').toUpperCase()) + '</b> — every imported question files under <b>' + _esc(m ? mockChapterName(m.name) : 'Mock') + '</b>.' +
         '<br><span style="font-size:10px;opacity:.8;">Paste a Gem dump below (or upload a .json) and hit Execute.</span></div>' +
         '<button class="btn btn-secondary btn-sm" onclick="window.copyGemDumpPrompt && window.copyGemDumpPrompt()" type="button">📋 Gem prompt</button>' +
         '<button class="btn btn-danger btn-sm" onclick="window.mockToggleIngest(\'' + ctx.mockId + '\',\'' + ctx.subject + '\')" type="button">⏹ Stop</button>';
@@ -1679,14 +1782,15 @@ function bootMockUI() {
 
 if (typeof document !== 'undefined' && document.getElementById('view-mocks')) {
     bootMockUI();
-    win.MockEngine = { linkQuestion, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
+    win.MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
 } else if (typeof document !== 'undefined') {
     // DOM present but view not yet parsed (module import order) — retry once DOM settles.
     document.addEventListener('DOMContentLoaded', () => {
-        if (document.getElementById('view-mocks')) { bootMockUI(); win.MockEngine = { linkQuestion, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey }; }
+        if (document.getElementById('view-mocks')) { bootMockUI(); win.MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey }; }
     });
 }
 
 // Default export surface for app.js Save-All hook (works even pre-boot).
-const MockEngine = { linkQuestion, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
+const MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
 export default MockEngine;
+

@@ -25,6 +25,9 @@ import {
     recordCloudTombstone,
     // Canonical subject-key mapper (physics/chemistry/maths) for counter writes.
     normSubjKey,
+    // Mock-test labelling: dashboard ledgers skip mock questions/chapters.
+    isMockChapterName,
+    isMockQuestion,
     // Chapter weightage for exam-aware risk sorting in the Decay Grid.
     getChapterWeight,
     resolveChapterWeightInfo,
@@ -534,7 +537,19 @@ const CHAPTER_SHORT = {
 function shortChapterName(name) {
     const s = String(name == null ? '' : name);
     if (!s) return s;
-    const hit = CHAPTER_SHORT[s.trim().toLowerCase()];
+    // Mock-test chapters keep their prefix and shorten the paper part:
+    // `Mock: Thermodynamics` → `Mock: Thermo`.
+    const t = s.trim();
+    if (t.length > 6 && t.slice(0, 5).toLowerCase() === 'mock:') {
+        const rest = t.slice(5).trim();
+        const hit = CHAPTER_SHORT[rest.toLowerCase()];
+        if (hit) return 'Mock: ' + hit;
+        if (rest.length <= 12) return 'Mock: ' + rest;
+        const cut = rest.slice(0, 14);
+        const ws = cut.lastIndexOf(' ');
+        return 'Mock: ' + (ws >= 4 ? cut.slice(0, ws) : cut).trimEnd() + '…';
+    }
+    const hit = CHAPTER_SHORT[t.toLowerCase()];
     if (hit) return hit;
     if (s.length <= 14) return s;
     const cut = s.slice(0, 12);
@@ -2699,10 +2714,11 @@ export function renderChapterDecayGrid() {
     const container = document.getElementById('chapter-decay-grid');
     if (!container) return;
     const allErrors = AppState.questionBank.filter(q =>
-        q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
+        q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') && !isMockQuestion(q)
     );
     const chapterMap = {};
     allErrors.forEach(q => {
+        if (isMockChapterName(q.chapter)) return; // belt-and-braces: unstamped Mock tiles never surface
         const subject = q.subject || '';
         const chapter = q.chapter || 'Uncategorized';
         const key = subject + '||' + chapter;
@@ -2712,8 +2728,10 @@ export function renderChapterDecayGrid() {
 
     // Coverage denominators: EVERY registered bank question per chapter, so
     // untouched chapters are visible as 0% attempted instead of invisible.
+    // Mock-test questions are excluded — test bulk must not dilute coverage.
     const covTotals = {};
     AppState.questionBank.forEach(q => {
+        if (isMockQuestion(q)) return;
         const key = (q.subject || '') + '||' + String(q.chapter || 'Uncategorized').trim().toLowerCase();
         covTotals[key] = (covTotals[key] || 0) + 1;
     });
@@ -3023,7 +3041,11 @@ export function renderChapterProgressList() {
     // Keys are <canonicalSubject>::<encodeURIComponent(chapter)> — the old
     // subject+'||'+chapter join corrupted pairing whenever a chapter name
     // contained '||', and left raw subjects free to hit inline handlers.
+    // Mock-test questions are dashboard-invisible: they file under
+    // `Mock: *` chapters with their own tile + Test view, and must not move
+    // chapter-progress percentages.
     AppState.questionBank.forEach(q => {
+        if (isMockQuestion(q)) return;
         const key = normSubjKey(q.subject) + '::' + encodeURIComponent(q.chapter || '');
         totals[key] = (totals[key] || 0) + 1;
         if (q.status === 'solved') solvedCounts[key] = (solvedCounts[key] || 0) + 1;
@@ -3032,6 +3054,7 @@ export function renderChapterProgressList() {
     const rows = [];
     ['physics', 'chemistry', 'maths'].forEach(subj => {
         (AppState.chapters[subj] || []).forEach(name => {
+            if (isMockChapterName(name)) return;
             const key = subj + '::' + encodeURIComponent(name);
             rows.push({ subj, name, total: totals[key] || 0, solved: solvedCounts[key] || 0 });
         });
@@ -3043,6 +3066,7 @@ export function renderChapterProgressList() {
         const subj = key.slice(0, sep);
         let name = '';
         try { name = decodeURIComponent(key.slice(sep + 2)); } catch (_) { name = key.slice(sep + 2); }
+        if (isMockChapterName(name)) return;
         if (!rows.some(r => r.subj === subj && match(r.name, name))) {
             rows.push({ subj, name, total: totals[key], solved: solvedCounts[key] || 0 });
         }
