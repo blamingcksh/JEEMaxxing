@@ -578,10 +578,11 @@ body {
     grid-template-columns: repeat(12, 1fr);
     gap: 18px;
 }
-.dash-card-tracker  { grid-column: span 6; }
+.dash-card-variance { grid-column: span 12; }
+.dash-card-tracker  { grid-column: span 4; }
 .dash-card-momentum { grid-column: span 6; }
-.dash-card-progress { grid-column: span 6; }
-.dash-card-decay    { grid-column: span 6; }
+.dash-card-progress { grid-column: span 4; }
+.dash-card-decay    { grid-column: span 4; }
 
 .dash-card {
     position: relative;
@@ -4364,8 +4365,10 @@ button, .btn, .nav-item, .counter-btn, .cal-day, .mcq-option, .matrix-pill {
 }
 
 @media (max-width: 1180px) {
-    .dash-card-tracker, .dash-card-momentum,
-    .dash-card-progress, .dash-card-decay { grid-column: span 6; }
+    .dash-card-variance { grid-column: span 12; }
+    .dash-card-tracker,
+    .dash-card-progress, .dash-card-decay { grid-column: span 4; }
+    .dash-card-momentum { grid-column: span 6; }
 }
 
 @media (max-width: 900px) {
@@ -4379,7 +4382,8 @@ button, .btn, .nav-item, .counter-btn, .cal-day, .mcq-option, .matrix-pill {
     .sidebar .global-mmr-row { display: none; }
 
     .dash-card-tracker, .dash-card-momentum,
-    .dash-card-progress, .dash-card-decay { grid-column: span 12; }
+    .dash-card-progress, .dash-card-decay,
+    .dash-card-variance { grid-column: span 12; }
 
     .settings-grid { grid-template-columns: 1fr; }
     .erm-layout { grid-template-columns: 1fr; }
@@ -4597,10 +4601,11 @@ html.fx-effects-off .cp-grace-timer.critical { animation: none !important; }
 
 /* ── 1. Uniform 2×2 grid (kills the 7/5/5/7 diagonal zig-zag) + more air ── */
 #view-dashboard .dash-grid { gap: 22px; }
+#view-dashboard .dash-card-variance { grid-column: span 12; }
 #view-dashboard .dash-card-tracker,
-#view-dashboard .dash-card-momentum,
 #view-dashboard .dash-card-progress,
-#view-dashboard .dash-card-decay { grid-column: span 6; }
+#view-dashboard .dash-card-decay { grid-column: span 4; }
+#view-dashboard .dash-card-momentum { grid-column: span 6; }
 
 /* ── 2. Cards breathe; telemetry tiles sit quieter than the tracker ─────── */
 #view-dashboard .dash-card { padding: 24px 26px; }
@@ -4652,12 +4657,13 @@ html.fx-effects-off .cp-grace-timer.critical { animation: none !important; }
 .main-content .header-badges .badge .val { font-size: 12px; }
 .main-content .manual-sync-btn         { width: 30px; height: 30px; font-size: 15px; }
 
-/* ── 8. Responsive: re-stack the 2×2 (id-scoped so it beats the span-6) ─── */
+/* ── 8. Responsive: re-stack the thirds (id-scoped so it beats the span-4) ─── */
 @media (max-width: 1100px) {
     #view-dashboard .dash-card-tracker,
     #view-dashboard .dash-card-momentum,
     #view-dashboard .dash-card-progress,
-    #view-dashboard .dash-card-decay { grid-column: span 12; }
+    #view-dashboard .dash-card-decay,
+    #view-dashboard .dash-card-variance { grid-column: span 12; }
 }
 @media (max-width: 560px) {
     #view-dashboard .dash-card          { padding: 18px 16px; }

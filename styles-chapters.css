@@ -248,3 +248,19 @@ html.fx-effects-off .cpx-animate .cpx-track i { animation: none !important; }
     .cpx-name { font-size: 13px; }
     .cpx-pct { font-size: 14.5px; }
 }
+
+/* ── Narrow thirds (iPad 10" landscape ≈ 330px/card): short chapter names ──
+   matrix.js renders .ch-full + .ch-short in every .cpx-name; the swap rides
+   the card's own width via @container (cards are container-name: card), so
+   stacked portrait + desktop keep full names. Full names survive in
+   title/aria-label. Container query beats the 560px viewport rule above on
+   wide viewports with narrow cards. */
+.dash-card-progress #chapter-progress-list .ch-short { display: none; }
+@container card (max-width: 440px) {
+    .dash-card-progress #chapter-progress-list {
+        --cpx-grid: 16px minmax(0, 1fr) clamp(54px, 24%, 110px) 46px;
+    }
+    .dash-card-progress #chapter-progress-list .cpx-name .ch-full { display: none; }
+    .dash-card-progress #chapter-progress-list .cpx-name .ch-short { display: inline; }
+    .dash-card-progress #chapter-progress-list .cpx-row { column-gap: 10px; padding: 13px 2px 12px; }
+}
