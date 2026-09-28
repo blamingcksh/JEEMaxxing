@@ -3055,6 +3055,7 @@ export function renderChapterProgressList() {
     ['physics', 'chemistry', 'maths'].forEach(subj => {
         (AppState.chapters[subj] || []).forEach(name => {
             if (isMockChapterName(name)) return;
+            if (!String(name == null ? '' : name).trim()) return; // blank tiles can never render
             const key = subj + '::' + encodeURIComponent(name);
             rows.push({ subj, name, total: totals[key] || 0, solved: solvedCounts[key] || 0 });
         });
@@ -3067,6 +3068,7 @@ export function renderChapterProgressList() {
         let name = '';
         try { name = decodeURIComponent(key.slice(sep + 2)); } catch (_) { name = key.slice(sep + 2); }
         if (isMockChapterName(name)) return;
+        if (!String(name).trim()) return; // nameless ghosts stay invisible here; the vault purge row owns them
         if (!rows.some(r => r.subj === subj && match(r.name, name))) {
             rows.push({ subj, name, total: totals[key], solved: solvedCounts[key] || 0 });
         }

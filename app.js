@@ -101,7 +101,7 @@ import {
 
 // Mock Mode — staged paper builder + exam runner (self-registers UI bridges).
 import './mock.js';
-import { cleanupMockOrphans } from './mock.js';
+import { cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions } from './mock.js';
 
 import {
     resetPomoUI, startTimer, pauseTimer, resumeTimer, quitTimer,
@@ -2097,6 +2097,22 @@ export function renderChaptersList() {
     if (_healed) saveAllAsync().catch(console.error);
     let cont = document.getElementById('chapters-list-container');
     cont.innerHTML = '';
+    // ── Ghost review row: pre-label-era uploads with no chapter render
+    // nowhere (and are now hidden from dashboard progress too), so they get
+    // an explicit review-and-purge row instead of lingering invisibly. ──
+    try {
+        const _g = countGhostQuestions(AppState.currentSubject);
+        const _n = (_g.stamped || 0) + (_g.blank || 0);
+        if (_n > 0) {
+            const grow = document.createElement('div');
+            grow.className = 'chapter-item ghost-review-row';
+            grow.innerHTML =
+                `<span>👻 ${_n} ghost question${_n === 1 ? '' : 's'} (no chapter — old test leftovers)` +
+                `<span class="ghost-review-sub">tap Delete to purge them forever</span></span>` +
+                `<span class="delete-chapter" onclick="event.stopPropagation(); purgeGhostChapterQuestions()">🗑</span>`;
+            cont.appendChild(grow);
+        }
+    } catch (_) {}
     (AppState.chapters[AppState.currentSubject] || []).forEach(ch => {
         let div = document.createElement('div');
         div.className = 'chapter-item';
@@ -2141,6 +2157,23 @@ export function deleteChapter(ch) {
         renderChaptersList();
     }
 }
+
+export function purgeGhostChapterQuestions() {
+    const subj = AppState.currentSubject;
+    let g = { stamped: 0, blank: 0 };
+    try { g = countGhostQuestions(subj); } catch (_) {}
+    const n = (g.stamped || 0) + (g.blank || 0);
+    if (!n) return;
+    if (!confirm(`Purge ${n} ghost question${n === 1 ? '' : 's'} from ${subj}? No chapter tile can show them — gone forever. No undo.`)) return;
+    let out = { stamped: 0, blank: 0 };
+    try { out = purgeGhostQuestions(subj) || out; } catch (_) {}
+    const removed = (out.stamped || 0) + (out.blank || 0);
+    saveAllAsync().catch(console.error);
+    try { renderChaptersList(); } catch (_) {}
+    try { updateUI(); } catch (_) {}
+    (window.__jmaxAppToast || alert)(`🧹 Purged ${removed} ghost question${removed === 1 ? '' : 's'}.`);
+}
+window.purgeGhostChapterQuestions = purgeGhostChapterQuestions;
 
 export function addChapter() {
     let name = document.getElementById('new-chapter-input').value.trim();

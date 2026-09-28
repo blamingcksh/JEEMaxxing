@@ -337,7 +337,7 @@ function deleteMock(id) {
 /** Drop `Mock: *` chapter tiles that hold no bank questions and belong to no
  * live paper (stale labels from deleted mocks). Real chapters are untouched;
  * live papers re-register their tile on next upload. */
-function pruneEmptyMockChapters() {
+export function pruneEmptyMockChapters() {
     try {
         for (const s of SUBJECTS) {
             const list = AppState.chapters && AppState.chapters[s];
@@ -392,12 +392,74 @@ export function cleanupMockOrphans() {
             pruneEmptyMockChapters();
             persist();
         }
-        if (relabeled || removed) console.warn('[mock-cleanup] relabeled ' + relabeled + ', removed ' + removed + ' orphaned mock question(s).');
+        if (relabeled || removed) {
+            console.warn('[mock-cleanup] relabeled ' + relabeled + ', removed ' + removed + ' orphaned mock question(s).');
+            _toast('🧹 Mock cleanup: relabeled ' + relabeled + ', removed ' + removed + ' ghost question' + ((relabeled + removed) === 1 ? '' : 's') + '.');
+        }
         return { relabeled, removed };
     } catch (err) {
         console.warn('[mock-cleanup] skipped:', err);
         return { relabeled: 0, removed: 0 };
     }
+}
+
+/** A bank question is a "ghost" when no chapter tile can ever show it:
+ * blank/null chapter (pre-label-era uploads, stamp-stripped deletes). */
+function _isGhostQuestion(q, subject) {
+    if (!q || q.subject !== subject) return false;
+    return !String(q.chapter == null ? '' : q.chapter).trim();
+}
+
+/** Count ghosts per group for the vault review row. Stamped orphans (paper
+ * gone) vs blank-chapter leftovers (origin untraceable — user decides). */
+export function countGhostQuestions(subject) {
+    const out = { stamped: 0, blank: 0 };
+    try {
+        ensureState();
+        const bank = AppState.questionBank;
+        if (!Array.isArray(bank)) return out;
+        const live = {};
+        for (const o of (AppState.mocks || [])) live[o.id] = true;
+        for (const q of bank) {
+            if (!q || q.subject !== subject) continue;
+            const stamp = q.mockSource || q.reservedForMock;
+            if (stamp && !live[stamp] && !live[q.mockSource]) { out.stamped++; continue; }
+            if (_isGhostQuestion(q, subject)) out.blank++;
+        }
+    } catch (_) { /* counting must never break the vault */ }
+    return out;
+}
+
+/** User-confirmed purge of one subject's ghosts: stamped orphans (paper
+ * gone) + blank-chapter leftovers. Splices + tombstones like deleteQuestion,
+ * prunes empty Mock tiles, re-saves. Returns counts removed. */
+export function purgeGhostQuestions(subject) {
+    const out = { stamped: 0, blank: 0 };
+    try {
+        ensureState();
+        const bank = AppState.questionBank;
+        if (!Array.isArray(bank)) return out;
+        const live = {};
+        for (const o of (AppState.mocks || [])) live[o.id] = true;
+        for (let i = bank.length - 1; i >= 0; i--) {
+            const q = bank[i];
+            if (!q || q.subject !== subject) continue;
+            const stamp = q.mockSource || q.reservedForMock;
+            const orphanStamp = stamp && !live[stamp] && !live[q.mockSource];
+            const blank = !orphanStamp && _isGhostQuestion(q, subject);
+            if (!orphanStamp && !blank) continue;
+            bank.splice(i, 1);
+            try { recordCloudTombstone(q.id).catch(console.error); } catch (_) {}
+            if (orphanStamp) out.stamped++; else out.blank++;
+        }
+        if (out.stamped || out.blank) {
+            pruneEmptyMockChapters();
+            persist();
+        }
+    } catch (err) {
+        console.warn('[mock-purge] skipped:', err);
+    }
+    return out;
 }
 
 /** Bank questions eligible for papers: not reserved, not anomalous. */
@@ -1782,15 +1844,15 @@ function bootMockUI() {
 
 if (typeof document !== 'undefined' && document.getElementById('view-mocks')) {
     bootMockUI();
-    win.MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
+    win.MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions, pruneEmptyMockChapters, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
 } else if (typeof document !== 'undefined') {
     // DOM present but view not yet parsed (module import order) — retry once DOM settles.
     document.addEventListener('DOMContentLoaded', () => {
-        if (document.getElementById('view-mocks')) { bootMockUI(); win.MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey }; }
+        if (document.getElementById('view-mocks')) { bootMockUI(); win.MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions, pruneEmptyMockChapters, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey }; }
     });
 }
 
 // Default export surface for app.js Save-All hook (works even pre-boot).
-const MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
+const MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions, pruneEmptyMockChapters, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
 export default MockEngine;
 
