@@ -52,6 +52,8 @@ import {
     CALIBRATION_LOG_CAP,
     // ── Chapter weightage dynamic tiers ──
     setAiChapterWeight,
+    // ── Mock-test chapter labelling (vault tiles + dashboard filters) ──
+    isMockChapterName,
 } from './storage.js';
 
 // ── Daily Directive (target-system v2) ──
@@ -99,6 +101,7 @@ import {
 
 // Mock Mode — staged paper builder + exam runner (self-registers UI bridges).
 import './mock.js';
+import { cleanupMockOrphans } from './mock.js';
 
 import {
     resetPomoUI, startTimer, pauseTimer, resumeTimer, quitTimer,
@@ -2097,8 +2100,11 @@ export function renderChaptersList() {
     (AppState.chapters[AppState.currentSubject] || []).forEach(ch => {
         let div = document.createElement('div');
         div.className = 'chapter-item';
+        // Mock-test chapters wear their label + badge so test uploads are
+        // visibly grouped instead of masquerading as syllabus chapters.
+        const _mockBadge = isMockChapterName(ch) ? '<span class="mock-chapter-badge" title="Mock test chapter">🧪</span>' : '';
         div.innerHTML =
-            `<span>${escapeHtml(ch)}</span><span class="delete-chapter" onclick="event.stopPropagation(); deleteChapter('${escapeAttribute(ch)}')">🗑</span>`;
+            `<span>${_mockBadge}${escapeHtml(ch)}</span><span class="delete-chapter" onclick="event.stopPropagation(); deleteChapter('${escapeAttribute(ch)}')">🗑</span>`;
         div.onclick = () => openChapterDetail(ch);
         cont.appendChild(div);
     });
@@ -2118,6 +2124,19 @@ export function deleteChapter(ch) {
                 AppState.questionBank.splice(i, 1);
             }
         }
+        // Keep mock papers consistent: strip section ids that no longer exist
+        // in the bank (startMock would drop them with a warning otherwise).
+        try {
+            const _alive = new Set(AppState.questionBank.map(q => String(q.id)));
+            for (const m of (AppState.mocks || [])) {
+                for (const s of ['physics', 'chemistry', 'maths']) {
+                    const sec = m.sections && m.sections[s];
+                    if (!sec) continue;
+                    sec.questionIds = (sec.questionIds || []).filter(qid => _alive.has(String(qid)));
+                    for (const k of Object.keys(sec.keys || {})) if (!_alive.has(String(k))) delete sec.keys[k];
+                }
+            }
+        } catch (_) {}
         saveAllAsync().catch(console.error);
         renderChaptersList();
     }
@@ -3165,6 +3184,16 @@ export function saveAllQuestions() {
         }
     }
     let skippedDupes = 0;
+    // ── Mock Mode: resolve the paper's chapter label ONCE per batch. While
+    // a mock panel is open for filling, every committed question files under
+    // `Mock: <paper>` instead of inheriting a stale chapter (or null, which
+    // made pre-label uploads invisible + unreachable in the vault). ──
+    let _mockChapter = null;
+    if (AppState.mockDraftContext && window.MockEngine && typeof window.MockEngine.mockChapterFor === 'function') {
+        try { _mockChapter = window.MockEngine.mockChapterFor(AppState.mockDraftContext.mockId); } catch (_) { _mockChapter = null; }
+    }
+    const _staleChapter = (typeof AppState.currentChapter === 'string' && AppState.currentChapter.trim())
+        ? AppState.currentChapter.trim() : null;
     for (let i = 0; i < AppState.extractedItems.length; i++) {
         let q = AppState.extractedItems[i];
         const manualInput = document.getElementById(`manual-answer-${i}`);
@@ -3206,9 +3235,10 @@ export function saveAllQuestions() {
             // provenance on the bank object for future tooling; they never
             // drive placement and never create chapters.
             subject: _normalizeSubjectKey(AppState.currentSubject || 'physics'),
-            chapter: (typeof AppState.currentChapter === 'string' && AppState.currentChapter.trim())
-                ? AppState.currentChapter.trim()
-                : null,
+            chapter: _mockChapter
+                || ((typeof AppState.currentChapter === 'string' && AppState.currentChapter.trim())
+                    ? AppState.currentChapter.trim()
+                    : null),
             gemSubject: (typeof q.gemSubject === 'string' && q.gemSubject) ? q.gemSubject : null,
             gemChapter: (typeof q.gemChapter === 'string' && q.gemChapter) ? q.gemChapter : null,
             imageDataUrl: q.imageDataUrl,
@@ -3273,6 +3303,15 @@ export function saveAllQuestions() {
             seenKeys.add(_dk);
             dupeOriginByKey.set(_dk, { subject: newQ.subject, chapter: newQ.chapter });
         }
+        // ── Mock Mode: link BEFORE the bank push so routing can still veto.
+        // A linked question keeps its `Mock: <paper>` chapter; a rejected one
+        // (e.g. mixed-subject dump) falls back to the stale session chapter
+        // instead of landing in the mock's tile without belonging to it. ──
+        let _mockLinked = false;
+        if (_mockChapter && AppState.mockDraftContext && window.MockEngine && typeof window.MockEngine.linkQuestion === 'function') {
+            try { _mockLinked = !!window.MockEngine.linkQuestion(AppState.mockDraftContext, newQ); } catch (_) { _mockLinked = false; }
+        }
+        if (_mockChapter && !_mockLinked) newQ.chapter = _staleChapter;
         AppState.questionBank.push(newQ);
         // ── Register the (possibly gem-stamped) chapter so it actually gets a
         // tile in the chapter grid. Without this, questions imported under a
@@ -3280,12 +3319,6 @@ export function saveAllQuestions() {
         // in the bank (so re-uploads flag "duplicate") but never rendered. ──
         const _chList = AppState.chapters[newQ.subject] || (AppState.chapters[newQ.subject] = []);
         if (newQ.chapter && !_chList.some(c => _chaptersMatch(c, newQ.chapter))) _chList.push(newQ.chapter);
-        // ── Mock Mode: while a mock section panel is open for filling, every
-        // committed question is stamped reserved and linked into that draft
-        // section, so a paper survives app closes mid-build. ──
-        if (AppState.mockDraftContext && window.MockEngine && typeof window.MockEngine.linkQuestion === 'function') {
-            try { window.MockEngine.linkQuestion(AppState.mockDraftContext, newQ); } catch (_) {}
-        }
     }
     const importedCount = AppState.questionBank.length - bankBeforeLength;
     // ── Clear the import buffer AFTER a successful commit so a second
@@ -6913,13 +6946,20 @@ function _renderModeButtonsIntoChapterDetail() {
 }
 .mode-pill-hc:hover { border-color:rgba(255,70,70,.5); }
 
+/* Test pill — mock-test chapters for this subject */
+.mode-pill-test {
+  border-color:rgba(167,139,250,.25);
+  background:rgba(167,139,250,.07);
+}
+.mode-pill-test:hover { border-color:rgba(167,139,250,.55); box-shadow:0 0 14px rgba(167,139,250,.12); }
+
 /* Active states */
         `;
         document.head.appendChild(style);
     }
 
     // ── Already built — just refresh the badge state ──────────────────────
-    if (document.getElementById('btn-mode-feed')) { _renderModeBadge(); return; }
+    if (document.getElementById('btn-mode-feed')) { _renderModeBadge(); _ensureTestPill(row); return; }
 
     // ── Feed Question pill ─────────────────────────────────────────────────
     const feed = document.createElement('button');
@@ -6954,7 +6994,39 @@ function _renderModeButtonsIntoChapterDetail() {
     hardcore.addEventListener('mouseenter', (e) => _spawnModeHoverParticles(e, hardcore, 'hardcore'));
     row.appendChild(hardcore);
 
+    _ensureTestPill(row);
+
     _renderModeBadge();
+}
+
+/** 🧪 Test pill — jumps to this subject's mock-test chapters (`Mock: *`
+ * tiles) with their proper labels. Idempotent: the header row persists
+ * across chapter opens, so the pill is built once and only ensured after. */
+function _ensureTestPill(row) {
+    if (!row || document.getElementById('btn-mode-test')) return;
+    const test = document.createElement('button');
+    test.id = 'btn-mode-test';
+    test.className = 'mode-pill mode-pill-test';
+    test.textContent = '🧪 Test';
+    test.title = "Open this subject's mock-test chapters";
+    test.onclick = () => openMockTestChapter();
+    row.appendChild(test);
+}
+
+export function openMockTestChapter() {
+    const subj = AppState.currentSubject;
+    const mocks = (AppState.chapters[subj] || []).filter(isMockChapterName);
+    if (!mocks.length) {
+        (window.__jmaxAppToast || alert)('No test chapters in ' + subj + ' yet — upload questions via Mock Tests.');
+        return;
+    }
+    // Multi-select every Mock tile so the list shows the test bank with
+    // proper per-question chapters; single mock opens it directly.
+    AppState.currentChapterSelection = mocks.slice();
+    AppState.currentChapter = mocks.length === 1 ? mocks[0] : '🧪 Tests';
+    AppState.currentFilter = 'all';
+    _renderModeButtonsIntoChapterDetail();
+    showQuestionList();
 }
 
 // ── Click ripple effect ────────────────────────────────────────────────────
@@ -9641,6 +9713,12 @@ async function initApp() {
     // The bank is hydrated above; silently remove any copies the old
     // chapter-scoped dedupe spread across chapters. Idempotent + non-blocking.
     _autoPurgeDuplicateQuestions();
+
+    // ── One-time mock ghost cleanup ──
+    // Pre-label uploads left mock questions with stale/null chapters and
+    // deleted papers left stamped orphans: relabel what still belongs to a
+    // live paper (`Mock: <name>` tiles), permanently remove the rest.
+    try { cleanupMockOrphans(); } catch (_) {}
 
     // Verify day rollover — gated on the LAST ACTUALLY-SETTLED day, NOT the
     // mood-calibration date. The old gate (jeemax_last_calibrated_date) is

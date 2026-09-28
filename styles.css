@@ -2921,6 +2921,8 @@ body {
 .chapter-item:hover { background: var(--bg-surface-hover); border-color: var(--line-strong); transform: translateX(3px); }
 .delete-chapter { color: var(--glow-red); cursor: pointer; transition: transform 0.15s; }
 .delete-chapter:hover { transform: scale(1.2); }
+/* Mock-test chapter tile badge (app.js renderChaptersList). */
+.mock-chapter-badge { margin-right: 7px; font-size: 13px; }
 
 .glow-practice-box {
     background: rgba(255, 178, 36, 0.06);
