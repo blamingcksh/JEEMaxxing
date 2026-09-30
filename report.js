@@ -84,17 +84,26 @@ function _esc(s) {
     ));
 }
 
-/** Parse a historyLog frictionTypes field — stored as a JSON string by matrix.js. */
-export function parseFrictionTypes(ft) {
-    if (Array.isArray(ft)) return ft.map(String);
-    if (typeof ft === 'string') {
-        try {
-            const arr = JSON.parse(ft);
-            if (Array.isArray(arr)) return arr.map(String);
-        } catch (_) { /* bare single token */ }
-        if (ft) return [ft];
+/**
+ * CANONICAL frictionTypes parser — mirrors storage.js parseFrictionTypes
+ * exactly. `historyLogs[i].frictionTypes` is written as JSON.stringify(array)
+ * by matrix.js, but legacy/hand-edited banks hold a raw array or a bare token;
+ * a bare non-JSON token IS a real legacy value and is preserved. Malformed
+ * input degrades to []; elements are coerced to strings, trimmed, deduped.
+ */
+export function parseFrictionTypes(raw) {
+    let list = raw;
+    if (typeof list === 'string') {
+        try { list = JSON.parse(list); }
+        catch (_) { list = [raw]; }          // bare legacy token
     }
-    return [];
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const v of list) {
+        const s = String(v == null ? '' : v).trim();
+        if (s && out.indexOf(s) === -1) out.push(s);
+    }
+    return out;
 }
 
 /**
@@ -110,6 +119,23 @@ function _pct(part, whole) {
 }
 
 function _bandLabel(key) { return BAND_LABELS[key] || key; }
+
+/**
+ * Own-property lookup into a plain lookup map. Keys here come from STORED
+ * data (friction tokens, errorReason), so a bare `map[key] || fallback`
+ * would happily resolve `'constructor'` / `'__proto__'` on Object.prototype
+ * and render native function source into a visible pill. Never index these
+ * maps with a stored value without this guard.
+ */
+function _mapGet(map, key) {
+    return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+}
+
+/** Display label for a friction key, or '' when the key is not a known type. */
+function _frictionLabel(key) {
+    const lab = _mapGet(FRICTION_LABELS, key);
+    return typeof lab === 'string' ? lab : '';
+}
 
 // ── Per-question facts ──────────────────────────────────────────────────────
 
@@ -152,17 +178,19 @@ export function buildQuestionFacts(q, now) {
 
     // Friction profile: prefer real attempt frictions; fall back to the vault's
     // errorReason mapping when the mistake never went through a tagged retry.
+    // Counters are keyed ONLY by known friction types (+ OTHER) so an
+    // arbitrary stored token can never become a map key downstream.
     const frictionCounts = {};
     let frictionSource = 'logs';
     for (const l of wrongLogs) {
         for (const f of l.frictions) {
-            if (FRICTION_LABELS[f]) frictionCounts[f] = (frictionCounts[f] || 0) + 1;
+            if (_frictionLabel(f)) frictionCounts[f] = (frictionCounts[f] || 0) + 1;
             else frictionCounts.OTHER = (frictionCounts.OTHER || 0) + 1;
         }
     }
     if (!Object.keys(frictionCounts).length && errorReason) {
-        const mapped = ERROR_REASON_TO_FRICTION[errorReason.toLowerCase()];
-        if (mapped) { frictionCounts[mapped] = 1; frictionSource = 'vault'; }
+        const mapped = _mapGet(ERROR_REASON_TO_FRICTION, errorReason.toLowerCase());
+        if (typeof mapped === 'string' && mapped) { frictionCounts[mapped] = 1; frictionSource = 'vault'; }
     }
 
     const wrongT = wrongLogs.filter(l => l.timeMins > 0);
@@ -297,7 +325,10 @@ function _trendArrow(recent, prior) {
  */
 export function aggregateTags(facts, opts) {
     const eloMap = (opts && opts.elo) || {};
-    const rows = {};
+    // Null-prototype: `tag` is a STORED user tag, so 'constructor'/'__proto__'
+    // must not resolve to an inherited member (which would fold the fact into
+    // Object.prototype and silently drop the row).
+    const rows = Object.create(null);
     for (const f of facts) {
         const userElo = _num(eloMap[f.subject], 1200);
         for (const tag of f.tags) {
@@ -367,7 +398,8 @@ const PRESCRIPTIONS = {
 };
 
 function _prescriptionFor(frictionKey) {
-    return PRESCRIPTIONS[frictionKey] || PRESCRIPTIONS.OTHER;
+    const p = _mapGet(PRESCRIPTIONS, frictionKey);
+    return (typeof p === 'string' && p) ? p : PRESCRIPTIONS.OTHER;
 }
 
 /**
@@ -520,7 +552,7 @@ export function renderReportText(report, opts) {
         const shown = report.tagRows.slice(0, maxTags);
         for (const r of shown) {
             const whyBits = [];
-            if (r.dominantFriction) whyBits.push(FRICTION_LABELS[r.dominantFriction] || r.dominantFriction);
+            if (r.dominantFriction) whyBits.push(_frictionLabel(r.dominantFriction) || r.dominantFriction);
             if (r.overconfident) whyBits.push(r.overconfident + '× overconfident');
             if (r.repeatOffenders) whyBits.push(r.repeatOffenders + '× repeat');
             const trend = r.trend === 'worse' ? ' ↑worse' : r.trend === 'better' ? ' ↓better' : '';
@@ -571,7 +603,7 @@ export function renderReportText(report, opts) {
         L.push('── NEXT ACTIONS ─────────────────────────────────────');
         report.actions.forEach((a, i) => {
             L.push('  ' + (i + 1) + '. [' + a.tag + '] ' + a.mistakes + '/' + a.questions + ' wrong' +
-                (a.dominantFriction ? ' (' + String(FRICTION_LABELS[a.dominantFriction] || a.dominantFriction).toLowerCase() + ')' : ''));
+                (a.dominantFriction ? ' (' + String(_frictionLabel(a.dominantFriction) || a.dominantFriction).toLowerCase() + ')' : ''));
             L.push('     → ' + a.action);
         });
     }
@@ -606,7 +638,7 @@ export function renderReportHtml(report, opts) {
         html += '<table class="rp-table"><thead><tr><th>Tag</th><th>Qs</th><th>✗</th><th>Acc</th><th>Difficulty</th><th>Why</th></tr></thead><tbody>';
         for (const r of report.tagRows.slice(0, maxTags)) {
             const why = [];
-            if (r.dominantFriction) why.push('<span class="rp-chip">' + _esc(FRICTION_LABELS[r.dominantFriction] || r.dominantFriction) + '</span>');
+            if (r.dominantFriction) why.push('<span class="rp-chip">' + _esc(_frictionLabel(r.dominantFriction) || r.dominantFriction) + '</span>');
             if (r.overconfident) why.push('<span class="rp-chip rp-chip-warn">' + _esc(r.overconfident + '× overconfident') + '</span>');
             if (r.repeatOffenders) why.push('<span class="rp-chip">' + _esc(r.repeatOffenders + '× repeat') + '</span>');
             const trendMark = r.trend === 'worse'
@@ -691,11 +723,13 @@ export function renderReportHtml(report, opts) {
 export function buildMockAutopsy(wrongIds, qById, now) {
     const ids = (Array.isArray(wrongIds) ? wrongIds : []).map(String);
     if (!ids.length) return null;
-    const qs = ids.map(id => qById[id]).filter(Boolean);
+    const qs = ids.map(id => _mapGet(qById, id)).filter(q => q && typeof q === 'object');
     if (!qs.length) return null;
     const facts = qs.map(q => buildQuestionFacts(q, now));
 
-    const tagCounts = {};
+    // Null-prototype: `tag` is a STORED user tag — an inherited
+    // Object.prototype member would turn the count into function source.
+    const tagCounts = Object.create(null);
     for (const f of facts) {
         for (const tag of f.tags) tagCounts[tag] = (tagCounts[tag] || 0) + 1;
     }
@@ -718,7 +752,7 @@ export function buildMockAutopsy(wrongIds, qById, now) {
     const topFrictions = Object.entries(frictionTotals)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
-        .map(pair => (FRICTION_LABELS[pair[0]] || pair[0]) + ' ×' + pair[1]);
+        .map(pair => (_frictionLabel(pair[0]) || pair[0]) + ' ×' + pair[1]);
 
     const lines = [];
     lines.push('By topic: ' + byTag.map(t2 => t2.tag + ' ×' + t2.count).join(' · '));

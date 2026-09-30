@@ -27,7 +27,7 @@
        visual (heatmap, candles, streak) keeps working on top of v2 targets.
    ============================================================================ */
 
-import { AppState, idbGet, idbSet, todayLocalKey } from './storage.js';
+import { AppState, idbGet, idbSet, todayLocalKey, normSubjKeyStrict } from './storage.js';
 import { getChapterWeight } from './chapter-weights.js';
 
 const SUBJECTS = ['physics', 'chemistry', 'maths'];
@@ -335,7 +335,51 @@ function _drawQuests(dueCount) {
     return picked.map(q => ({ ...q, prog: 0, done: false }));
 }
 
+/** Epoch ms for a stored timestamp (Date | number | ISO string).
+ *  Returns null when absent or unparsable — callers treat that as "due now". */
+function _tsMs(v) {
+    if (v == null) return null;
+    if (v instanceof Date) { const t = v.getTime(); return Number.isFinite(t) ? t : null; }
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    const t = new Date(v).getTime();
+    return Number.isFinite(t) ? t : null;
+}
+
+/** True when a mistake is due now or already overdue. */
+function _isDueNow(nextReviewAt) {
+    const t = _tsMs(nextReviewAt);
+    if (t === null) return true;      // missing / unparsable → due
+    return t <= Date.now();
+}
+
 // ── Headline quest: argmax(weight × weakness × leak × neglect) ──────────────
+
+/**
+ * θ_c for a chapter, resolved from the (subject::chapter) key the Elo engine
+ * actually writes (app.js _updateChapterTheta + window.getChapterTheta). A
+ * chapter's questions are usually one subject, so the per-subject nodes are
+ * combined by sample count; an unmeasured subject contributes nothing instead
+ * of a default that would drag real θ toward the middle.
+ * Returns the sample-weighted θ (Elo, ~1200 scale) or null when unmeasured.
+ */
+function _chapterThetaFor(theta, bank, ch) {
+    const key = sub => sub + '::' + String(ch).trim().toLowerCase();
+    let weightSum = 0;
+    let thetaSum = 0;
+    const seen = new Set();
+    for (const q of bank) {
+        if (q.chapter !== ch) continue;
+        const sub = normSubjKeyStrict(q.subject);
+        if (!sub || seen.has(sub)) continue;
+        seen.add(sub);
+        const node = theta[key(sub)];
+        if (!node || !isFinite(node.e)) continue;
+        const n = Math.max(1, Number(node.n) || 1);
+        thetaSum += node.e * n;
+        weightSum += n;
+    }
+    return weightSum > 0 ? thetaSum / weightSum : null;
+}
 
 function _pickHeadline() {
     const bank = Array.isArray(AppState.questionBank) ? AppState.questionBank : [];
@@ -345,9 +389,9 @@ function _pickHeadline() {
         const ch = q.chapter; if (!ch) return;
         const c = byChapter[ch] || (byChapter[ch] = { n: 0, due: 0, lastSolved: 0 });
         c.n += 1;
-        if ((q.errorReason || q.status === 'error' || q.status === 'wrong') &&
-            (!q.nextReviewAt || q.nextReviewAt <= now)) c.due += 1;
-        if (q.lastSolvedAt) c.lastSolved = Math.max(c.lastSolved, q.lastSolvedAt);
+        if ((q.errorReason || q.status === 'error' || q.status === 'wrong') && _isDueNow(q.nextReviewAt)) c.due += 1;
+        const solvedAt = _tsMs(q.lastSolvedAt);
+        if (solvedAt !== null) c.lastSolved = Math.max(c.lastSolved, solvedAt);
     });
     const theta = AppState.chapterTheta || {};
     let best = null, bestScore = -1;
@@ -356,7 +400,19 @@ function _pickHeadline() {
         if (c.n < 2) return;
         const maps = { overrides: AppState.userChapterWeights, ai: AppState.chapterWeights };
         const w = getChapterWeight(ch, maps);
-        const weak = 1 - _clamp(Number(theta[ch]) ?? 0.5, 0, 1);
+        // θ_c is keyed by a COMPOSITE (subject::chapter) key — the same shape
+        // app.js _updateChapterTheta / window.getChapterTheta write. Reading it
+        // as `theta[ch]` was an always-undefined lookup that made `weak`
+        // NaN-proof-but-inert: `theta[ch] ?? 0.5` caught the undefined, but the
+        // per-question key was never built, so chapters whose ability had been
+        // measured scored as flat 0.5 while their real θ silently went unused.
+        // θ_c lives on the Elo scale (~1200). Normalise it into [0,1] ability
+        // against a wide elo band before deriving weakness: theta 1200 ⇒ 0.5,
+        // below 900 ⇒ ~0.1, above 1500 ⇒ ~0.9. An unmeasured chapter keeps the
+        // neutral 0.5 rather than a NaN that used to poison the whole score.
+        const t = _chapterThetaFor(theta, bank, ch);
+        const ability = t == null ? 0.5 : _clamp((t - 900) / 600, 0, 1);
+        const weak = 1 - ability;
         const leak = Math.min(1, c.due / 5);
         const daysIdle = c.lastSolved ? (now - c.lastSolved) / 86400000 : 14;
         const neglect = Math.min(1, daysIdle / 14);
@@ -365,9 +421,14 @@ function _pickHeadline() {
     });
     if (!best) return null;
     const subject = (() => {
-        const q = bank.find(q => q.chapter === best.ch);
-        return q ? normSubjKeyCompat(q.subject) : 'physics';
+        const inChapter = bank.filter(q => q.chapter === best.ch);
+        for (const q of inChapter) {
+            const sub = normSubjKeyStrict(q.subject);
+            if (sub) return sub;
+        }
+        return null;      // no canonical subject in the chapter → no headline quest
     })();
+    if (!subject) return null;
     return {
         subject,
         chapter: best.ch,
@@ -378,23 +439,20 @@ function _pickHeadline() {
     };
 }
 
-// storage.js normSubjKey is not imported (avoid pulling mutation deps); local canon.
-function normSubjKeyCompat(s) {
-    s = String(s || '').toLowerCase().trim();
-    if (s === 'math' || s === 'mathematics') return 'maths';
-    return SUBJECTS.indexOf(s) >= 0 ? s : 'physics';
-}
-
 // ── Contract computation ────────────────────────────────────────────────────
 
+// Subject canon comes from storage.js normSubjKeyStrict; a question whose
+// subject is not one of the three real subjects is skipped, never credited
+// to physics.
 function _dueCountBySubject() {
     const bank = Array.isArray(AppState.questionBank) ? AppState.questionBank : [];
-    const now = Date.now();
     const out = { physics: 0, chemistry: 0, maths: 0 };
     bank.forEach(q => {
         if (!(q.errorReason || q.status === 'error' || q.status === 'wrong')) return;
-        if (q.nextReviewAt && q.nextReviewAt > now) return;
-        out[normSubjKeyCompat(q.subject)] += 1;
+        if (!_isDueNow(q.nextReviewAt)) return;
+        const sub = normSubjKeyStrict(q.subject);
+        if (!sub) return;
+        out[sub] += 1;
     });
     return out;
 }

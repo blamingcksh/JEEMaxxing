@@ -117,6 +117,59 @@ function _listenTabSync() {
 _listenTabSync();
 
 // ── Multi-tab question-bank guard (audit residual of item [11]) ─────────────
+// Spaced-repetition fields that a cross-device / cross-tab merge is allowed to
+// move. These are exactly the fields the SR engine owns (SM-2 baseline from
+// computeSR, kernel state from memory.js, cortex schedule from cortex.js) plus
+// the per-question revision clock and the vault identity they hang off.
+// Everything else (text, images, qElo, counters, telemetry) is NOT SR state and
+// follows the pre-existing copy-wholesale merge.
+const SR_MERGE_FIELDS = [
+    'srUpdatedAt',        // the LWW clock itself
+    'lastReviewedAt',     // kernel recency anchor (also drives cortex priors)
+    'currentInterval',    // SM-2 I_next
+    'nextReviewAt',       // SM-2 due date
+    'easeFactor',         // SM-2 EF
+    'isMastered',         // SM-2 derived flag
+    'stability',          // Memory Kernel v2 S
+    'difficultyD',        // Memory Kernel v2 D
+    'reps',               // Memory Kernel v2 review count
+    'lapses',             // Memory Kernel v2 lapse count
+    'historyLogs',        // attempt ledger (bounded at 30 by both writers)
+    'status',             // 'error' | 'solved' — the vault identity
+    'errorReason',        // vault classification
+    'firstAttemptResult', // locked first attempt (accuracy is immutable)
+];
+
+/**
+ * Heal a question row that entered the bank through a MERGE (cloud pull or tab
+ * adoption) back into the canonical SR schema. migrateQuestionBankSR runs at
+ * boot, BEFORE any merge, so imported rows arrived with raw fields and —
+ * worse — adopted as the other device left them, including rows with an
+ * interval but no nextReviewAt, a NaN easeFactor, or a historyLogs array that
+ * was never bounded. Never throws; a heal failure leaves the row as-is.
+ */
+function _healAdoptedQ(q) {
+    if (!q || typeof q !== 'object') return;
+    try {
+        const ef = Number(q.easeFactor);
+        q.easeFactor = (Number.isFinite(ef) && ef >= 1.3 && ef <= 3.0) ? ef : 2.5;
+        const iv = Number(q.currentInterval);
+        q.currentInterval = Number.isFinite(iv) && iv >= 0 ? iv : 0;
+        if (typeof q.nextReviewAt !== 'string' || q.nextReviewAt === '' || isNaN(Date.parse(q.nextReviewAt))) {
+            // A scheduled item with no parsable due date is silently invisible
+            // to every due filter; reschedule it from its interval.
+            const d = new Date();
+            d.setDate(d.getDate() + Math.max(0, q.currentInterval));
+            q.nextReviewAt = d.toISOString();
+        }
+        if (q.isMastered !== true) q.isMastered = false;
+        if (!Array.isArray(q.historyLogs)) q.historyLogs = [];
+        if (q.historyLogs.length > 30) q.historyLogs = q.historyLogs.slice(-30);
+        backfillMemoryFields(q);
+        migrateCortexFields(q);
+    } catch (_) { /* healing is best-effort; never block a merge */ }
+}
+
 // A sibling tab's save used to be invisible to our full-bank rewrite: each tab
 // holds its own AppState copy, so an idle tab running a pomodoro tick could
 // commit a STALE bank over a sibling's fresh solve (per-question
@@ -160,9 +213,35 @@ async function _adoptForeignBankUpdates() {
             // Remote moved since we last saw it AND ours is untouched since our
             // last load/commit → take their fields (never clobbering local edits).
             if (rSig !== ourLastSig && _bankSig(lq) === ourLastSig) {
+                // SR state is EXCLUDED here and handled separately: it moves
+                // only on the per-question srUpdatedAt revision clock, never on
+                // a JSON-signature heuristic. A tab's full-bank save carries
+                // every untouched question too, so signature matching alone put
+                // the sibling's schedule over ours for anything we had not
+                // locally edited since our own last commit — i.e. a fresh solve
+                // in this tab could be silently reverted by a sibling's save.
                 for (const k of Object.keys(rq)) {
                     if (k === 'imageDataUrl' || k === 'diagramImageUrl' || k === 'optionImageUrls' || k === 'solutionImageUrl') continue;
+                    if (SR_MERGE_FIELDS.includes(k)) continue;
                     lq[k] = rq[k];
+                }
+                // SR state: newest revision wins, per field-set.
+                const cloudSR = Number(rq.srUpdatedAt) || 0;
+                const localSR = Number(lq.srUpdatedAt) || 0;
+                if (cloudSR > localSR) {
+                    for (const k of SR_MERGE_FIELDS) {
+                        if (Object.prototype.hasOwnProperty.call(rq, k)) lq[k] = rq[k];
+                    }
+                    lq.srUpdatedAt = cloudSR;
+                } else if (localSR === 0 && cloudSR === 0) {
+                    // Both sides are pre-clock (legacy rows with no stamp).
+                    // Adopt only the scheduling shape, and heal it into the
+                    // canonical schema so a rev-0 pair can never persist a
+                    // NaN ease factor or a schedule with no parsable due date.
+                    for (const k of SR_MERGE_FIELDS) {
+                        if (Object.prototype.hasOwnProperty.call(rq, k)) lq[k] = rq[k];
+                    }
+                    _healAdoptedQ(lq);
                 }
                 _bankSigs.set(key, rSig);
                 adopted++;
@@ -873,6 +952,22 @@ export function normSubjKey(s) {
     return _SUBJ_KEYS.indexOf(s) >= 0 ? s : 'physics';
 }
 
+/**
+ * STRICT variant of normSubjKey: returns the canonical key, or `null` when the
+ * subject is not one of the three real subjects.
+ *
+ * normSubjKey's `'physics'` catch-all is fine for DISPLAY/GROUPING (an unknown
+ * subject needs *some* bucket) but is actively harmful for COUNTERS — a
+ * "Biology" question silently incremented solved.physics while the study-time
+ * injector dropped the same seconds, so one attempt produced two different
+ * wrong answers on screen. Counter writes must use this and SKIP on null.
+ */
+export function normSubjKeyStrict(s) {
+    s = String(s == null ? '' : s).toLowerCase().trim();
+    if (s === 'math' || s === 'mathematics') return 'maths';
+    return _SUBJ_KEYS.indexOf(s) >= 0 ? s : null;
+}
+
 // ── Mock-test chapter labelling (single canonical home) ─────────────────
 // Mock uploads file their questions under `Mock: <paper name>` chapters so
 // they are visible, labelled tiles in the vault — never invisible orphans.
@@ -926,6 +1021,33 @@ export const SR_FRICTION_WEIGHTS = {
     CONCEPT:  0.35,
     APPROACH: 0.15,
 };
+
+/**
+ * CANONICAL frictionTypes parser — the single definition every module shares.
+ *
+ * `historyLogs[i].frictionTypes` is written as JSON.stringify(array) by
+ * matrix.js, but legacy/hand-edited banks hold a raw array or a bare token.
+ * matrix.js and cortex.js used to DROP bare tokens (returning []) while
+ * report.js and app.js KEPT them (returning [token]) — so one legacy row showed
+ * no friction pill on the card while the Smart Mistake Report counted a real
+ * mistake from it. A bare non-JSON token IS a real legacy value, so it is
+ * preserved. Malformed input still degrades to []; elements are coerced to
+ * strings and empty ones dropped.
+ */
+export function parseFrictionTypes(raw) {
+    let list = raw;
+    if (typeof list === 'string') {
+        try { list = JSON.parse(list); }
+        catch (_) { list = [raw]; }          // bare legacy token
+    }
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const v of list) {
+        const s = String(v == null ? '' : v).trim();
+        if (s && out.indexOf(s) === -1) out.push(s);
+    }
+    return out;
+}
 
 export const SR_FRICTION_LABELS = {
     PERFECT:  'Perfect Execution',
@@ -1349,12 +1471,26 @@ export function formatSRDate(isoString) {
 export function migrateQuestionBankSR() {
     let dirty = false;
     for (const q of AppState.questionBank) {
-        if (q.currentInterval === undefined) { q.currentInterval = 0; dirty = true; }
-        if (q.easeFactor      === undefined) { q.easeFactor      = 2.5; dirty = true; }
-        if (q.targetTimeMins  === undefined) { q.targetTimeMins  = 5;   dirty = true; }
-        if (q.isMastered      === undefined) { q.isMastered      = false; dirty = true; }
-        if (!q.nextReviewAt)  { q.nextReviewAt = new Date().toISOString(); dirty = true; }
+        // Heal nullish AND non-finite values, not just `undefined`. A legitimate
+        // JSON `null` (hand-edited backup, a cloud payload that stripped the
+        // field, an export/import round-trip) survived this migration untouched,
+        // and `Number(null) === 0` then rendered a physically impossible "EF
+        // 0.00" on the card — the SM-2 engine floors at 1.3 — and sorted the
+        // question FIRST in getLowestHealthQuestion, so corrupt data hijacked
+        // Checkpoint lockdown. See the qElo row below, which already did this.
+        if (q.currentInterval == null || !isFinite(Number(q.currentInterval)) || Number(q.currentInterval) < 0) { q.currentInterval = 0; dirty = true; }
+        if (q.easeFactor      == null || !isFinite(Number(q.easeFactor)))      { q.easeFactor      = 2.5; dirty = true; }
+        if (q.targetTimeMins  == null || !isFinite(Number(q.targetTimeMins)) || Number(q.targetTimeMins) <= 0) { q.targetTimeMins = 5; dirty = true; }
+        if (q.isMastered      == null) { q.isMastered      = false; dirty = true; }
+        if (!q.nextReviewAt || isNaN(new Date(q.nextReviewAt).getTime())) { q.nextReviewAt = new Date().toISOString(); dirty = true; }
         if (!Array.isArray(q.historyLogs)) { q.historyLogs = []; dirty = true; }
+        // Attempt-log rows are rendered directly into card HTML, so a corrupt
+        // element (null, or a non-object) must not survive into the renderer.
+        let logsHealed = false;
+        for (let i = q.historyLogs.length - 1; i >= 0; i--) {
+            if (!q.historyLogs[i] || typeof q.historyLogs[i] !== 'object') { q.historyLogs.splice(i, 1); logsHealed = true; }
+        }
+        if (logsHealed) dirty = true;
         // ── Bound text-bloat: keep only the most recent attempt logs per
         // question (the UI renders the last 5 dots / reversed list anyway). ──
         if (q.historyLogs.length > 30) { q.historyLogs = q.historyLogs.slice(-30); dirty = true; }
@@ -1645,6 +1781,21 @@ export async function cropImageFromBBox(originalDataUrl, bbox) {
     });
 }
 
+// Quotes are escaped too: this helper also builds double-quoted HTML attribute
+// values (e.g. value="${escapeHtml(answerDisplay)}"), where a raw " in
+// ingested Gemini/user text would terminate the attribute and inject markup.
+// Null/undefined-safe: a bare `str.replace` threw on any nullish argument.
+export function escapeHtml(str) { return String(str == null ? '' : str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]); }
+
+export function escapeAttribute(str) {
+  return String(str == null ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+}
+
 let loadingTimeout = null;
 
 export function showLoading(msg) {
@@ -1667,19 +1818,6 @@ export function readFileAsBase64(file) {
         r.onload = e => resolve(e.target.result);
         r.onerror = reject;
         r.readAsDataURL(file); });
-}
-
-// Quotes are escaped too: this helper also builds double-quoted HTML attribute
-// values (e.g. value="${escapeHtml(answerDisplay)}"), where a raw " in
-// ingested Gemini/user text would terminate the attribute and inject markup.
-export function escapeHtml(str) { return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]); }
-
-export function escapeAttribute(str) {
-  return str.replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
 }
 
 export function formatTime(sec) {
@@ -2692,8 +2830,44 @@ export async function loadStateFromCloud(isBackground = false) {
                     if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
                     if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect
                     const localQ = localById.get(cloudQ.id);
-                    if (!localQ) { AppState.questionBank.push(cloudQ); localById.set(cloudQ.id, cloudQ); }
-                    else if (cloudQ.status === 'solved' && localQ.status !== 'solved') localQ.status = 'solved';
+                    if (!localQ) {
+                        // A device that pushed this question stamped its own SR
+                        // state; a brand-new local row means the device booted
+                        // before the pull, so heal the imported copy in place
+                        // rather than shipping raw cloud fields into the bank.
+                        _healAdoptedQ(cloudQ);
+                        AppState.questionBank.push(cloudQ);
+                        localById.set(cloudQ.id, cloudQ);
+                        return;
+                    }
+                    // SR state is not a counter: it is a per-question revision
+                    // clock (srUpdatedAt, stamped by every SR write — see
+                    // matrix.js submitPracticeLog). The old rule merged ONLY
+                    // `status === 'solved'` and ignored every schedule field,
+                    // so a solve on one device never reached the other: device
+                    // B kept its stale due date and re-surfaced an item already
+                    // solved on device A. Nothing was overwritten here — SR
+                    // state simply never crossed the wire.
+                    if (cloudQ.status === 'solved' && localQ.status !== 'solved') localQ.status = 'solved';
+                    const cloudSR = Number(cloudQ.srUpdatedAt) || 0;
+                    const localSR = Number(localQ.srUpdatedAt) || 0;
+                    if (cloudSR > localSR) {
+                        for (const k of SR_MERGE_FIELDS) {
+                            if (Object.prototype.hasOwnProperty.call(cloudQ, k)) localQ[k] = cloudQ[k];
+                        }
+                        localQ.srUpdatedAt = cloudSR;
+                    } else if (cloudSR === 0 && localSR === 0) {
+                        // Both sides pre-clock: this is the first pull after the
+                        // clock landed. Take the remote schedule and heal it,
+                        // so the legacy copy's raw fields can't park a NaN
+                        // ease factor or a schedule with no parsable due date
+                        // into the bank (migrateQuestionBankSR already ran at
+                        // boot, before this pull).
+                        for (const k of SR_MERGE_FIELDS) {
+                            if (Object.prototype.hasOwnProperty.call(cloudQ, k)) localQ[k] = cloudQ[k];
+                        }
+                        _healAdoptedQ(localQ);
+                    }
                 });
                 // Persist the merged bank so the merge survives a crash before
                 // the next saveAllAsync, and so the heartbeat doesn't re-run

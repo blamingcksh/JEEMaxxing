@@ -25,6 +25,11 @@ import {
     recordCloudTombstone,
     // Canonical subject-key mapper (physics/chemistry/maths) for counter writes.
     normSubjKey,
+    // Strict variant: returns null for a non-canonical subject. COUNTER writes
+    // must use this and skip on null, never silently credit 'physics'.
+    normSubjKeyStrict,
+    // Canonical frictionTypes parser (JSON string | raw array | bare legacy token).
+    parseFrictionTypes,
     // Mock-test labelling: dashboard ledgers skip mock questions/chapters.
     isMockChapterName,
     isMockQuestion,
@@ -47,7 +52,6 @@ import {
     currentRetrievability,
     retrievabilityAt,
     hydrateMemory,
-    refineDifficultyAfterTag,
 } from './memory.js';
 
 // Cognitive Cortex v3 — brain-like scheduling layer (pure, zero DOM; same
@@ -293,6 +297,19 @@ try {
 
 let _drawerState = {
     qId: null,
+    // ── Pre-solve kernel state, captured when the DRAWER OPENS. ──
+    // The Elo bridge advances q.reps (memory.js updateMemoryOnReview) the
+    // instant the user commits an answer in _applyResult — long before
+    // submitPracticeLog runs. Reading hydrateMemory(q).reps at submit time
+    // therefore returns the POST-solve count on every single review, which
+    // made the cortex-scheduler gate below treat every item as
+    // kernel-owned on its very first vault attempt.
+    preSolveReps: 0,
+    preSolveStability: 0,
+    // Pre-solve SM-2 ease factor. The Elo bridge nudges easeFactor before
+    // submitPracticeLog runs; this holds the pre-nudge value so computeSR can
+    // evaluate one SM-2 step instead of two stacked ones.
+    preSolveEF: 2.5,
     result: null,           // 'correct' | 'incorrect'
     autonomy: 'independent', // 'independent' | 'hint_used' | 'solution_read' — honest default [AUDIT P1-7]
     frictionTypes: [],      // ['PERFECT', 'CALC', ...]
@@ -306,9 +323,12 @@ let _drawerState = {
 };
 
 function _resetDrawerState() {
-    if (_drawerState.stopwatchInterval) clearInterval(_drawerState.stopwatchInterval);
+    clearInterval(_drawerState.stopwatchInterval);
     _drawerState = {
         qId: null,
+        preSolveReps: 0,
+        preSolveStability: 0,
+        preSolveEF: 2.5,
         result: null,           // 'correct' | 'incorrect'
         resultSource: null,     // 'auto' (graded against loaded answer) | 'self' (user-reported)
         selectedOptions: [],    // MCQ letters the user picked, e.g. ['A'] or ['A','C']
@@ -368,6 +388,28 @@ export function openPracticeDrawer(qId) {
 
     _drawerState.qId = qId;
     _drawerState.targetTimeMins = q.targetTimeMins || 5;
+
+    // ── Freeze the PRE-SOLVE kernel state NOW, before any answer is given ──
+    // calculateEloMigration fires at the moment of truth and advances
+    // q.reps / q.stability / q.difficultyD; submitPracticeLog then needs the
+    // PRE-solve values to decide whether this item was already kernel-owned
+    // (cortex scheduler eligibility) and to compute the interval without
+    // double-counting the just-committed review.
+    try {
+        const _pre = hydrateMemory(q);
+        _drawerState.preSolveReps = Number(_pre.reps) || 0;
+        _drawerState.preSolveStability = Number(_pre.stability) || 0;
+        // Capability: hydrateMemory does not carry easeFactor, so read it off
+        // the raw question the same way computeSR does (with the same 2.5
+        // default and NaN guard) — this is the value SM-2 must step FROM.
+        const _rawEF = Number(q.easeFactor);
+        _drawerState.preSolveEF = Number.isFinite(_rawEF) ? _rawEF : 2.5;
+    } catch (_) {
+        _drawerState.preSolveReps = 0;
+        _drawerState.preSolveStability = 0;
+        const _rawEF = Number(q.easeFactor);
+        _drawerState.preSolveEF = Number.isFinite(_rawEF) ? _rawEF : 2.5;
+    }
 
     const dueInfo = getDueStatus(q);
     const hasImage = (q.imageDataUrl && q.imageDataUrl.length > 100) || !!q.driveImageId
@@ -581,15 +623,31 @@ function _findQByHandlerId(rawId) {
 
 function _currentDrawerQuestion() {
     if (!_drawerState.qId) return null;
-    return AppState.questionBank.find(item => item.id.toString() === _drawerState.qId.toString()) || null;
+    // id-null guard: a bank row with a missing id must not throw here — the
+    // drawer is opened straight from a card click and every caller assumes
+    // this returns null on a miss.
+    return AppState.questionBank.find(item => item.id != null && String(item.id) === String(_drawerState.qId)) || null;
 }
 
-// Pull the leading letter (A/B/C/D) out of an option string like "A) ...".
-function _optionLetter(opt, idx) {
-    if (!opt) return String.fromCharCode(65 + idx);
-    const m = String(opt).trim().match(/^([A-Za-z])[.)\s]/);
-    if (m) return m[1].toUpperCase();
-    return String.fromCharCode(65 + idx);
+// The letter a drawer option tile is badged with AND graded against. It is
+// the OPTION INDEX (A, B, C …): app.js's own practice modal renders
+// `_letters[_oi]` and resolveMcqCorrectLetters() resolves the stored answer
+// to index letters. Deriving it from the option TEXT instead ("m is the
+// mass…" → "M") meant the grader demanded "B" while the genuinely correct
+// tile was badged "V" — a guaranteed miss with nothing marked green.
+// Past 26 options fall back to the 1-based number, matching app.js.
+function _optionLetter(idx) {
+    const i = Number(idx);
+    if (!Number.isInteger(i) || i < 0) return '';
+    return i < 26 ? String.fromCharCode(65 + i) : String(i + 1);
+}
+
+// The letter an option's Gem auto-crop figure is STORED under — that map is
+// keyed by whatever prefix the option text itself carries ("A) …" → "A"), so
+// the figure lookup stays text-derived while the tile letter is index-based.
+function _optTextLetter(opt, idx) {
+    const m = opt && String(opt).trim().match(/^([A-Za-z])[.)\s]/);
+    return m ? m[1].toUpperCase() : _optionLetter(idx);
 }
 
 // Auto-cropped figure bound to a single MCQ option (Gem Diagram Map output,
@@ -598,7 +656,7 @@ function _optionLetter(opt, idx) {
 // convention as the duplicated _safeImgSrc above.
 function _optionImgUrl(q, opt, idx) {
     if (!q || !q.optionImageUrls || typeof opt !== 'string') return null;
-    const letter = _optionLetter(opt, idx);
+    const letter = _optTextLetter(opt, idx);
     return q.optionImageUrls[letter]
         || q.optionImageUrls[opt]
         || q.optionImageUrls[opt.toUpperCase()]
@@ -710,6 +768,15 @@ function _hasLoadedAnswer(q) {
     return String(q.correctAnswer).trim().length > 0;
 }
 
+// Single-vs-multi is decided by how many letters the RESOLVED answer yields,
+// not by the stored value's JS type. A multi-answer stored as the string
+// "A and C" is not an Array, so the old Array.isArray(correctAnswer) test
+// rendered single-select and the user could never submit a passing set.
+// Conversely an Array holding ONE answer is still a single answer.
+function _drawerIsMultiAnswer(q) {
+    try { return resolveMcqCorrectLetters(q).length > 1; } catch (_) { return false; }
+}
+
 // Validate image sources before injecting into HTML: only app-generated
 // data:image, https, or blob: URLs are allowed — anything else (crafted
 // `" onerror=…` payloads) is dropped.
@@ -783,13 +850,16 @@ window.srSetConfidence = function (level) {
 
 function _renderAnswerStage(q) {
     if (q.type === 'mcq' && Array.isArray(q.options) && q.options.length) {
-        const isMulti = Array.isArray(q.correctAnswer);
+        const isMulti = _drawerIsMultiAnswer(q);
         const optsHtml = q.options.map((opt, i) => {
-            const letter = _optionLetter(opt, i);
+            const letter = _optionLetter(i);
             const optImg = _optionImgUrl(q, opt, i)
                 ? `<img class="sr-mcq-img" src="${_safeImgSrc(_optionImgUrl(q, opt, i))}" alt="Option figure">`
                 : '';
-            return `<div class="sr-mcq-option" data-letter="${_esc(letter)}" data-option="${_esc(opt)}" onclick="srSelectOption(this)" role="button" tabindex="0">
+            // Enter/Space mirror the click so the drawer is completable from
+            // the keyboard alone (role="button" + tabindex="0" advertise
+            // that) — same activation contract as .rh-row / .cpx-row.
+            return `<div class="sr-mcq-option" data-letter="${_esc(letter)}" data-option="${_esc(opt)}" onclick="srSelectOption(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();srSelectOption(this);}" role="button" tabindex="0">
                 <span class="sr-mcq-letter">${_esc(letter)}</span>
                 <span class="sr-mcq-text">${_esc(opt)}</span>
                 ${optImg}
@@ -992,7 +1062,21 @@ function _applyResult(result, source, q) {
     // migration (fired below) and submitPracticeLog() both use the instant
     // the user committed their answer — NOT the "Log Attempt" click.
     _drawerState.resultLocked = true;
-    _drawerState.frozenTimeMins = _drawerState.stopwatchSeconds / 60;
+    // An explicitly typed manual time is the user's own reading of the
+    // solve — it wins over the stopwatch, which manual mode pauses and
+    // therefore leaves frozen at a stale pre-manual reading. Without this
+    // the Elo engine scored the pre-manual seconds while the log stored the
+    // typed minutes, and the two disagreed by an arbitrary amount.
+    _drawerState.frozenTimeMins = _drawerState.timeSpentMins > 0
+        ? _drawerState.timeSpentMins
+        : _drawerState.stopwatchSeconds / 60;
+    // The Manual toggle + input live INSIDE the tag stage, which is hidden
+    // until this function reveals it — so they are the user's ONLY way to
+    // state how long the attempt really took, and they stay usable here by
+    // design. The stopwatch stays frozen (above); the manual value is the
+    // user's correction of the duration and submitPracticeLog() prefers it for
+    // the historyLog + SR schedule. The Elo chip intentionally reports the
+    // decision-instant stopwatch cost, which is what that engine prices.
 
     const zone = document.getElementById('sr-result-zone');
     if (zone) {
@@ -1043,7 +1127,10 @@ function _applyResult(result, source, q) {
         // Self-report: lock MCQ options if any, otherwise hide the answer stage
         const mcqOpts = document.querySelectorAll('.sr-mcq-option');
         if (mcqOpts.length) {
-            mcqOpts.forEach(o => { o.style.pointerEvents = 'none'; });
+            // The pick that unlocked Confirm was never graded (no answer /
+            // unresolvable answer) — leaving it badged "selected" under the
+            // result banner implies it counted for something. Clear it.
+            mcqOpts.forEach(o => { o.style.pointerEvents = 'none'; o.classList.remove('selected'); });
         } else {
             const as = document.getElementById('sr-answer-stage');
             if (as) as.style.display = 'none';
@@ -1077,10 +1164,11 @@ function _applyResult(result, source, q) {
             window._justWonBounty = false;
             if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
         } else if (document.body.classList.contains('overheat-active')) {
-            // changeCount indexes solved[physics|chemistry|maths] — a raw
-            // "Physics"/custom subject used to compute undefined+2 = NaN and
-            // poison the daily tally. Canonicalize before writing.
-            changeCount(normSubjKey(q.subject), 2);
+            // changeCount indexes solved[physics|chemistry|maths]. Use the STRICT
+            // normalizer and skip a non-canonical subject: normSubjKey's
+            // 'physics' catch-all would silently credit another subject's tally.
+            const _overheatKey = normSubjKeyStrict(q && q.subject);
+            if (_overheatKey) changeCount(_overheatKey, 2);
             if (typeof window.showSupercharged === 'function') window.showSupercharged();
             if (typeof window.deactivateOverheat === 'function') window.deactivateOverheat();
         } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
@@ -1194,13 +1282,17 @@ function _applyResult(result, source, q) {
     _updateDrawerUI();
 }
 
-// Shown when an MCQ question has NO loaded answer — ask the user to self-report.
+// Shown when an MCQ cannot be auto-graded — either there is NO loaded answer,
+// or the loaded answer exists but resolveMcqCorrectLetters() could not map it
+// to option letters ("Option B", "A, C and D", prose). In both cases every
+// pick would grade as wrong, so degrade to the self-report path rather than
+// silently failing the user; the banner then reads "(self-reported)".
 function _showSelfReportPrompt(q) {
     const zone = document.getElementById('sr-result-zone');
     if (zone) {
         zone.innerHTML = `
             <div class="sr-self-report">
-                <div class="sr-self-report-label">No answer on file — were you correct?</div>
+                <div class="sr-self-report-label">${_hasLoadedAnswer(q) ? 'Stored answer could not be matched to any option — were you correct?' : 'No answer on file — were you correct?'}</div>
                 <div class="sr-self-report-btns">
                     <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
                     <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
@@ -1209,7 +1301,13 @@ function _showSelfReportPrompt(q) {
     }
     const cb = document.getElementById('sr-confirm-btn');
     if (cb) cb.style.display = 'none';
-    document.querySelectorAll('.sr-mcq-option').forEach(o => { o.style.pointerEvents = 'none'; });
+    // pointerEvents:none only blocks the mouse — drop the tiles out of the tab
+    // order too, or a keyboard user could keep re-picking a pick that is
+    // never graded.
+    document.querySelectorAll('.sr-mcq-option').forEach(o => {
+        o.style.pointerEvents = 'none';
+        o.setAttribute('tabindex', '-1');
+    });
 }
 
 function _renderKatexIn(el) {
@@ -1279,9 +1377,12 @@ function _postRenderDrawer(q) {
 // ── Practice drawer: MCQ + image interaction handlers (exposed to window) ──
 
 export function srSelectOption(el) {
+    // 🔒 The result is committed — the tiles are inert. pointerEvents:none
+    // stops the mouse but not Enter/Space on a focused tile.
+    if (_drawerState.resultLocked) return;
     const q = _currentDrawerQuestion();
     if (!q) return;
-    const isMulti = Array.isArray(q.correctAnswer);
+    const isMulti = _drawerIsMultiAnswer(q);
     const letter = el.getAttribute('data-letter');
     if (isMulti) {
         const idx = _drawerState.selectedOptions.indexOf(letter);
@@ -1301,9 +1402,12 @@ export function srConfirmAnswer() {
     const q = _currentDrawerQuestion();
     if (!q) return;
     if (_drawerState.selectedOptions.length === 0) return;
-    if (_hasLoadedAnswer(q)) {
+    // An answer can be on file yet unresolvable to letters; with an empty
+    // correct set EVERY pick compares as wrong, so route to the self-report
+    // prompt instead of declaring the user wrong on a technicality.
+    const correct = _hasLoadedAnswer(q) ? resolveMcqCorrectLetters(q).slice().sort() : [];
+    if (correct.length) {
         const selected = [..._drawerState.selectedOptions].sort();
-        const correct = resolveMcqCorrectLetters(q).sort();
         const isCorrect = selected.length === correct.length && selected.every((l, i) => l === correct[i]);
         _applyResult(isCorrect ? 'correct' : 'incorrect', 'auto', q);
     } else {
@@ -1414,18 +1518,45 @@ export function srToggleStopwatch() {
     }
 }
 
+// Upper bound on a hand-entered solve time: 24h. Anything past that is a
+// typo (a dropped exponent, a pasted ms figure), not a study session.
+const MAX_MANUAL_TIME_MINS = 1440;
+
 export function srToggleManualTime() {
+    // NOT gated on resultLocked: this control is rendered inside the tag stage,
+    // which _applyResult only reveals at the decision instant, so locking it
+    // there made manual time permanently unusable. The stopwatch — not the
+    // manual input — is what the result lock freezes.
     const toggle = document.getElementById('sr-manual-toggle');
+    if (!toggle) return;
     const input = document.getElementById('sr-manual-input');
     const unit = document.getElementById('sr-manual-unit');
     const isManual = toggle.classList.toggle('active');
-    input.style.display = isManual ? 'inline-block' : 'none';
-    unit.style.display = isManual ? 'inline' : 'none';
-    if (isManual) { _pauseStopwatch(); const dot = document.getElementById('sr-pulse-dot'); if (dot) dot.classList.remove('running'); }
+    if (input) input.style.display = isManual ? 'inline-block' : 'none';
+    if (unit) unit.style.display = isManual ? 'inline' : 'none';
+    const dot = document.getElementById('sr-pulse-dot');
+    if (isManual) {
+        // Manual becomes the active time source: pause the stopwatch.
+        _pauseStopwatch();
+        if (dot) dot.classList.remove('running');
+    } else {
+        // …and hand it back to the stopwatch. Without this the timer stayed
+        // frozen after manual-off while the UI still read as stopwatch-fed,
+        // silently logging only the seconds accrued before the toggle.
+        _startStopwatch();
+        if (dot) dot.classList.add('running');
+    }
 }
 
 export function srUpdateManualTime(val) {
-    _drawerState.timeSpentMins = parseFloat(val) || 0;
+    // Deliberately NOT gated on resultLocked — see srToggleManualTime. The
+    // value is bounds-checked below and is only consumed by submitPracticeLog.
+    const n = parseFloat(val);
+    // "1e999" is a legal value for <input type="number"> and parses to
+    // Infinity, which is truthy — the old `|| 0` let it straight through and
+    // poisoned the subject's studySecs permanently. Empty, junk, negative and
+    // out-of-range all read as "no manual time" (0 → stopwatch fallback).
+    _drawerState.timeSpentMins = (Number.isFinite(n) && n >= 0 && n <= MAX_MANUAL_TIME_MINS) ? n : 0;
     _updateDrawerUI();
 }
 
@@ -1460,10 +1591,27 @@ export function submitPracticeLog() {
     const qId = _drawerState.qId;
     if (!qId) return;
 
-    const q = AppState.questionBank.find(item => item.id.toString() === qId.toString());
+    // Guard the id compare: `find` runs the predicate on EVERY row, so a
+    // single bank entry with `id: null` threw here before any match could be
+    // considered — killing the whole log commit (0 history logs, drawer stuck
+    // open with the result already locked). Same shape as _findQByHandlerId.
+    const q = AppState.questionBank.find(item => item.id != null && String(item.id) === String(qId));
     if (!q) return;
 
     const timeSpent = _drawerState.timeSpentMins > 0 ? _drawerState.timeSpentMins : _drawerState.stopwatchSeconds / 60;
+
+    // ── Undo the Elo-bridge EF nudge so computeSR sees the PRE-solve EF.
+    // The Elo engine (app.js calculateEloMigration) flatly nudges easeFactor
+    // (+0.15 / −0.2) at the moment of truth; computeSR then read that nudged
+    // value as `currentEF` and applied SM-2's own q-driven move on top. One
+    // logical review produced TWO ease-factor changes. The pre-solve EF is
+    // restored for the duration of this commit (computeSR's own output is
+    // clamped to the same [1.3, 3.0] band the nudge uses), so the persisted
+    // EF is exactly SM-2's answer for this solve. ──
+    const _preSolveEF = Number.isFinite(_drawerState.preSolveEF) ? _drawerState.preSolveEF : Number(q.easeFactor);
+    const _eliBridgedEF = Number(q.easeFactor);
+    const _efWasNudged = Number.isFinite(_preSolveEF) && _preSolveEF !== _eliBridgedEF;
+    if (_efWasNudged) q.easeFactor = _preSolveEF;
 
     // ── Cognitive Cortex v3: capture the PRE-commit memory state BEFORE any
     // writer touches q (computeSR overwrites nextReviewAt; the kernel moves
@@ -1492,40 +1640,72 @@ export function submitPracticeLog() {
     });
 
     // Memory Kernel v2 — the honest friction/autonomy tag arrived AFTER the
-    // Elo moment, so refine ONLY the difficulty axis here (stability/reps/
-    // lapses were already committed inside calculateEloMigration; refining a
-    // single aspect per event keeps the kernel free of double-counting).
-    try { refineDifficultyAfterTag(q, srResult.performanceQ); } catch (_) {}
+    // Elo moment. The kernel already walked difficultyD, stability, reps and
+    // lapses EXACTLY ONCE inside calculateEloMigration (memory.js
+    // updateMemoryOnReview), so this second walk was a double-count of the
+    // same solve. Difficulty now has a single owner per event: the kernel.
+    // Friction/autonomy still reach the model honestly — as the performanceQ
+    // input to computeSR below, which moves easeFactor and the interval.
+
+    // ── Schedule precedence (ONE rule, expressed in this order):
+    //   1. SM-2 (computeSR) writes the baseline schedule ALWAYS.
+    //   2. The Cognitive Cortex target-retention scheduler OVERRIDES the
+    //      horizon, but only for kernel-owned items (reps >= 1 BEFORE this
+    //      solve) AND only on a CORRECT solve. An INCORRECT solve is a lapse:
+    //      SM-2's compression (interval × Wf) stands, and the cortex is not
+    //      allowed to re-lengthen it — the cortex estimates recall
+    //      probability of a NEWLY modified stability, which is only
+    //      meaningful after a successful retrieval.
+    // _preReps is captured by the caller (openPracticeDrawer), because the
+    // Elo bridge advances q.reps at the moment of truth — long before this
+    // runs — so reading q.reps here would make EVERY item look kernel-owned
+    // on its very first review.
+    const _preReps = Number(_drawerState.preSolveReps) || 0;
+
+    // Baseline: pure SM-2 output. Written FIRST so the cortex block below
+    // expresses a genuine override, and so the mastery re-derivation there
+    // reads the POST-solve ease factor rather than the stale pre-solve one.
+    q.currentInterval = srResult.newInterval;
+    q.easeFactor = srResult.newEaseFactor;
+    q.nextReviewAt = srResult.nextReviewAt;
+    q.isMastered = srResult.isMastered;
 
     // ── Cognitive Cortex v3 commit: age-at-solve priors (hot strike / cold
-    // revival) + overdue spacing credit, applied to q.stability AFTER both
-    // engines wrote their state. Single-aspect rule preserved — nothing else
-    // is touched here. Then the cortex scheduler (target-retention model)
-    // overrides nextReviewAt once the kernel has taken over (reps ≥ 1);
-    // brand-new items keep the SM-2 schedule. Every step guarded — a cortex
-    // fault degrades to pure SM-2 behavior. ──
+    // revival) + overdue spacing credit, applied to q.stability AFTER the
+    // SM-2 baseline is on the question. Single-aspect rule preserved —
+    // nothing else is touched here. Every step guarded — a cortex fault
+    // degrades to pure SM-2 behavior. ──
     let _cortexSummary = null;
     try {
         _cortexSummary = commitCortexReview(q, _cortexSnap, {
             correct: _drawerState.result === 'correct',
             vaultFirst: _vaultFirstReview,
         });
-        const _sched = scheduleNextReview(q, {
-            examDateMs: _examDateMsSafe(),
-            chapterWeight: getChapterWeight,
-        });
-        if (_sched && typeof _sched === 'string') {
-            q.nextReviewAt = _sched;
-            // Keep the displayed interval honest with the new schedule.
-            try {
-                const dDays = Math.max(0, (new Date(_sched).getTime() - Date.now()) / 86400000);
-                if (_drawerState.result === 'correct' || dDays > srResult.newInterval) {
-                    q.currentInterval = Math.max(1, Math.round(dDays));
-                }
-            } catch (_) {}
-            // Re-derive mastery against the cortex horizon (>30d at ≥0.9
-            // target retention with healthy ease ⇒ resting memory).
-            if (!(q.currentInterval > 30 && q.easeFactor > 2.5)) q.isMastered = false;
+        const _sched = _preReps >= 1 && _drawerState.result === 'correct'
+            ? scheduleNextReview(q, {
+                examDateMs: _examDateMsSafe(),
+                chapterWeight: getChapterWeight,
+            })
+            : null;
+        if (typeof _sched === 'string') {
+            // Keep the displayed interval EXACTLY consistent with the new
+            // schedule. No rounding: the cortex scheduler legitimately returns
+            // sub-day horizons (MIN_INTERVAL_DAYS ≈ 1h for a just-modified,
+            // low-stability item), and `Math.max(1, Math.round(d))` used to
+            // persist a FULL-DAY interval against a 1-hour nextReviewAt —
+            // memory.js then derived stability from that 1-day figure, so the
+            // item was shelved an order of magnitude further out than the
+            // schedule said. No consumer requires an integer interval.
+            const _days = Math.max(0, (new Date(_sched).getTime() - Date.now()) / 86400000);
+            if (Number.isFinite(_days)) {
+                q.currentInterval = _days;
+                q.nextReviewAt = _sched;
+                // Re-derive mastery against the cortex horizon. SM-2's rule
+                // ALSO requires the attempt itself to be correct — omitting
+                // that conjunct shelved just-FAILED items with EF > 2.5 as
+                // "mastered", permanently removing them from lockdown.
+                q.isMastered = _days > 30 && q.easeFactor > 2.5 && _drawerState.result === 'correct';
+            }
         }
     } catch (_) { /* SM-2 output already on the question — safe fallback */ }
 
@@ -1558,75 +1738,125 @@ export function submitPracticeLog() {
     // visible is lost while storage stays capped. ──
     if (q.historyLogs.length > 30) q.historyLogs = q.historyLogs.slice(-30);
 
+    // ── lastReviewedAt: the kernel's own clock. ──
+    // cortex.js effectiveStability() falls back to lastReviewedAt → createdAt
+    // → epoch when q.lastReviewedAt is missing; without this stamp every vault
+    // solve looked "never reviewed", so the age-at-solve priors and every
+    // recency ordering keyed off a 1970 timestamp.
+    q.lastReviewedAt = new Date().toISOString();
+
+    // ── srUpdatedAt: per-question SR revision clock (epoch ms). ──
+    // Cloud pull + sibling-tab adoption merge on this stamp, so a question
+    // solved on device A today can never be overwritten by device B's stale
+    // snapshot, and an idle tab's stale bank can never clobber a sibling
+    // tab's fresh solve. Stamp only after every SR write above landed.
+    q.srUpdatedAt = Date.now();
+
+    // ── Every COUNTER write in this function uses the STRICT subject key.
+    // normSubjKey()'s 'physics' catch-all silently credited a custom/foreign
+    // subject to physics; a counter must be skipped, not misattributed. ──
+    const subjKey = normSubjKeyStrict(q.subject);
+
     // ── Incremental nav counter: a correct SR commit bumps the CK engine's
     // "fixed today" ring in O(1) instead of it rescaming every log on the
-    // next 1s tick. No-op if the CK engine isn't present. ──
+    // next 1s tick. No-op if the CK engine isn't present — and skipped
+    // entirely for a non-canonical subject, which used to be handed over RAW
+    // while every neighbouring counter got the normalized key. ──
     try {
-        if (_drawerState.result === 'correct' && typeof window.__ckBumpTodayFix === 'function') {
-            window.__ckBumpTodayFix(q.subject);
+        if (_drawerState.result === 'correct' && subjKey &&
+            typeof window.__ckBumpTodayFix === 'function') {
+            window.__ckBumpTodayFix(subjKey);
         }
     } catch (_) {}
 
-    // Update SR state on question
-    q.currentInterval = srResult.newInterval;
-    q.easeFactor = srResult.newEaseFactor;
-    q.nextReviewAt = srResult.nextReviewAt;
-    q.isMastered = srResult.isMastered;
-
-    // ⚡ DYNAMIC COMBO CONVERGENCE: Update primary tracking tag to match the worst current error profile
-    if (_drawerState.frictionTypes.length > 0) {
-        // Map active strings to their baseline mathematical order weights
-        const weights = { PERFECT: 5, CALC: 4, FORMULA: 3, CONCEPT: 2, APPROACH: 1 };
-        
-        // Sort selections to extract the single most severe breakdown layer
-        // (unknown friction strings must not produce NaN comparisons)
-        const dominantFriction = [..._drawerState.frictionTypes].sort((a, b) => (weights[a] || 0) - (weights[b] || 0))[0];
-        
-        // Map internal uppercase keys to match your system design styles (calculation, conceptual, misread)
-        const typeMapping = {
-            PERFECT: 'calculation', 
-            CALC: 'calculation',
-            FORMULA: 'conceptual',
-            CONCEPT: 'conceptual',
-            APPROACH: 'misread'
-        };
-        
-        q.errorReason = typeMapping[dominantFriction] || q.errorReason;
-    }
+    // NOTE: the SR state (currentInterval / easeFactor / nextReviewAt /
+    // isMastered) is written from srResult ABOVE, before the cortex block —
+    // deliberately not re-assigned here, because that later write silently
+    // discarded the cortex scheduler's target-retention schedule.
+    //
+    // ❌ q.errorReason is NOT derived from friction pills, and must not be.
+    // It has exactly two owners: the error-reason modal (app.js
+    // confirmErrorLog — an explicit user classification) and the manual Log
+    // form. The old dominant-friction remap here was a third writer and was
+    // wrong four ways at once: PERFECT ("Perfect Execution" — a flawless
+    // solve) mapped to 'calculation'; the weight sort ran ASCENDING so [0]
+    // was the LEAST severe pill, not the most; it had no `result` guard so it
+    // fired on CORRECT solves too; and it silently overwrote the
+    // classification the user had just chosen. APPROACH ("Application /
+    // Approach Blank" — not knowing how to start) mapped to 'misread', which
+    // makes report.js advise underlining qualifiers for a student who never
+    // misread anything. Friction pills are solve telemetry that already feed
+    // computeSR, the cortex and the report engine; two sources of truth
+    // fighting over one field IS the bug, so the block is removed rather than
+    // re-sorted. Do not re-add it.
 
     // ✅ FIXED: Restored legacy status fields & balanced structural brackets
     if (_drawerState.result === 'correct' && q.status !== 'solved') {
         q.status = 'solved';
-        // Cortex fix completion → price this unit at 1.4 LU (memory work).
-        try {
-            Directive.markPending({
-                type: 'fix',
-                subject: normSubjKey(q.subject),
-                chapter: q.chapter,
-                qElo: q.qElo || 0,
-                timeMins: Number(_drawerState.timeSpentMins) || undefined,
-            });
-        } catch (_) { /* Directive must never block the fix path */ }
-        changeCount(normSubjKey(q.subject), 1);   // canonical key — NaN guard
+        if (subjKey) {
+            // Cortex fix completion → price this unit at 1.4 LU (memory work).
+            try {
+                Directive.markPending({
+                    type: 'fix',
+                    subject: subjKey,
+                    chapter: q.chapter,
+                    qElo: q.qElo || 0,
+                    timeMins: Number(_drawerState.timeSpentMins) || undefined,
+                });
+            } catch (_) { /* Directive must never block the fix path */ }
+            changeCount(subjKey, 1);   // canonical key — NaN guard
+            // Ledger of what THIS question put into the global counters, so
+            // removeErrorLog can hand it back instead of leaving the user's
+            // solved ring inflated forever.
+            q._solvedCredit = (Number(q._solvedCredit) || 0) + 1;
+        }
     } else if (_drawerState.result === 'incorrect') {
         q.status = 'error';
+        // Reverse the ledger produced by an earlier CORRECT solve of this
+        // same question: the user has just failed it, so it is no longer a
+        // solved count. Without this the status flipped to 'error' while
+        // solved[subject] stayed inflated, and removeErrorLog then subtracted
+        // the credit a second time during the purge — over-reversing.
+        if (subjKey) {
+            const credit = Number(q._solvedCredit) || 0;
+            if (credit > 0) {
+                changeCount(subjKey, -credit);
+                q._solvedCredit = 0;
+            }
+        }
     }
 
     // ── Cognitive Cortex v3: commit the tag draft edited in the drawer.
-    // Normalized-dedupe, cap 6, Gem tags preserved unless explicitly removed
-    // via the editor. Only runs when the user actually touched the editor. ──
+    // Commits ONLY when the user actually changed the draft, and never drops
+    // tags the editor never showed: _drawerTags() seeds the draft with
+    // q.tags.slice(0, 6), so the old blind `q.tags = clean` destroyed
+    // everything past index 6 and everything over 40 chars on EVERY log —
+    // with no user interaction at all (the Array.isArray guard is always
+    // true, so the "only runs when the user touched the editor" claim was
+    // false). ──
     try {
-        if (Array.isArray(_drawerState.tagDraft)) {
-            const seen = new Set();
-            const clean = [];
-            for (const raw of _drawerState.tagDraft) {
-                const norm = normalizeTag(raw);
-                if (!norm || seen.has(norm)) continue;
-                seen.add(norm);
-                clean.push(String(raw).trim().slice(0, 40));
-                if (clean.length >= 6) break;
+        const draft = _drawerState.tagDraft;
+        if (Array.isArray(draft)) {
+            const existing = Array.isArray(q.tags) ? q.tags.map(String) : [];
+            const seed = existing.slice(0, 6);
+            const touched = draft.length !== seed.length ||
+                draft.some((t, i) => String(t) !== seed[i]);
+            if (touched) {
+                const seen = new Set();
+                const clean = [];
+                const add = (val, cap) => {
+                    const norm = normalizeTag(val);
+                    if (!norm || seen.has(norm)) return;
+                    seen.add(norm);
+                    const s = String(val).trim();
+                    clean.push(cap ? s.slice(0, 40) : s);
+                };
+                for (const raw of draft) add(raw, true);
+                // Tags beyond the 6-chip window were never displayed, so they
+                // cannot have been removed — carry them over verbatim.
+                for (const raw of existing.slice(6)) add(raw, false);
+                q.tags = clean;
             }
-            q.tags = clean;
         }
     } catch (_) { /* tag persistence must never block the log */ }
     _bumpBankRev();
@@ -1639,23 +1869,23 @@ export function submitPracticeLog() {
     // frozen time + eloResult are stashed on _drawerState and reused here.
 
     const secondsToInject = Math.round(timeSpent * 60);
-    if (secondsToInject > 0 && q.subject) {
-        // ══════════════════════════════════════════════════════════════════════
-        // 🔑 DEFENSIVE SUBJECT KEY NORMALIZATION
-        // Trim, lowercase, and coerce common aliases ("math", "mathematics")
-        // into the canonical dictionary index key "maths" so that the `in`
-        // check never silently drops a time-injection due to a key mismatch.
-        // ══════════════════════════════════════════════════════════════════════
-        const SUBJ_KEY_ALIASES = {
-            math: 'maths',
-            mathematics: 'maths',
-            'maths ': 'maths',   // trailing-space guard
-        };
-        const rawKey = String(q.subject).trim().toLowerCase();
-        const subjKey = SUBJ_KEY_ALIASES[rawKey] || rawKey;
-
+    // ⚡ Pomodoro / countdown overlap guard — the practice-modal path this
+    // mirrors (app.js _injectPracticeTimeIntoStudySecs) explicitly guards
+    // "to avoid double counting". Without the same guard a student running a
+    // Pomodoro and then drilling the Vault in the same tab had every vault
+    // minute counted twice: once live by pomodoro.js and once again here.
+    const pomoActive = document.body.classList.contains('pomo-active') ||
+        document.body.classList.contains('timer-running') ||
+        (typeof window._pomoRunning === 'boolean' && window._pomoRunning);
+    if (secondsToInject > 0 && subjKey && !pomoActive) {
+        // studySecs is keyed by the canonical subject. normSubjKeyStrict()
+        // covers trim/lowercase plus the math aliases AND returns null for a
+        // non-canonical subject, so a foreign subject can never be filed
+        // under a neighbouring bucket (the local alias table this replaced
+        // had no such notion — it happily keyed studySecs['biology']).
         if (subjKey in studySecs) {
             studySecs[subjKey] += secondsToInject;
+            q._studySecsCredit = (Number(q._studySecsCredit) || 0) + secondsToInject;
             if (typeof window.updateStudyTimeHeader === 'function') {
                 window.updateStudyTimeHeader();
             }
@@ -1726,12 +1956,59 @@ export function submitPracticeLog() {
 
 // ── Delete ──────────────────────────────────────────────────────────────────
 
+/**
+ * Hand back everything a deleted question put into app-wide state.
+ *
+ * removeErrorLog used to drop the row and reverse NOTHING: `solved[subject]`
+ * stayed inflated, `studySecs` kept the seconds this question deposited, and
+ * `_dailyQueueSnapshot.ids` (plus its `jeemax_daily_queue_snapshot`
+ * localStorage mirror) kept naming a question that can never be served again —
+ * silently shrinking the queue's "N/M done" denominator mid-day.
+ *
+ * submitPracticeLog ledgers each global write it makes (`_solvedCredit`,
+ * `_studySecsCredit`) precisely so this reversal can be exact rather than a
+ * guess. Questions logged before the ledger existed contribute nothing to
+ * reverse here, which is the honest answer: we cannot know what they banked.
+ */
+function _purgeDeletedQuestion(target, targetId) {
+    const key = normSubjKeyStrict(target.subject);
+    const solvedCredits = Math.max(0, Number(target._solvedCredit) || 0);
+    const secsCredits = Math.max(0, Number(target._studySecsCredit) || 0);
+
+    if (key && solvedCredits > 0) changeCount(key, -solvedCredits);
+    if (key && secsCredits > 0 && (key in studySecs)) {
+        studySecs[key] = Math.max(0, studySecs[key] - secsCredits);
+        if (typeof window.updateStudyTimeHeader === 'function') {
+            window.updateStudyTimeHeader();
+        }
+    }
+
+    // Queue snapshot: in-memory first, then the localStorage mirror, so a
+    // reload cannot resurrect the dead id.
+    if (Array.isArray(_dailyQueueSnapshot.ids)) {
+        _dailyQueueSnapshot.ids = _dailyQueueSnapshot.ids.filter(id => String(id) !== targetId);
+    }
+    if (typeof localStorage !== 'undefined') {
+        try {
+            const raw = localStorage.getItem(DAILY_QUEUE_LS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && Array.isArray(parsed.ids)) {
+                    parsed.ids = parsed.ids.filter(id => String(id) !== targetId);
+                    localStorage.setItem(DAILY_QUEUE_LS_KEY, JSON.stringify(parsed));
+                }
+            }
+        } catch (_) { /* corrupt mirror — the in-memory purge above still stands */ }
+    }
+}
+
 export function removeErrorLog(id) {
     if (confirm("Confirm deletion of this friction point and all its attempt history?")) {
         // Accept percent-encoded (_jsId) or raw ids — see _findQByHandlerId.
         let target = _findQByHandlerId(id);
         if (!target) return;
         const targetId = String(target.id);
+        _purgeDeletedQuestion(target, targetId);
         AppState.questionBank = AppState.questionBank.filter(q => q.id == null || String(q.id) !== targetId);
         id = targetId;
         // Tombstone the id so a stale cloud snapshot can never resurrect it.
@@ -1763,6 +2040,11 @@ export function removeErrorLog(id) {
 export function filterErrors() {
     if (_dailyQueueActive) {
         _renderDailyQueueCards();
+        // The board is not on screen, so #matrix-meta must describe the QUEUE
+        // — leaving the board's "N of M shown / ✕ Clear filters" line up meant
+        // the header described cards the user could not see. The queue's own
+        // empty state replaces the filter no-match node.
+        _updateDailyQueueMeta();
         return;
     }
 
@@ -1838,6 +2120,29 @@ function _updateMatrixMeta(visible, total, f) {
     _toggleNoMatchNode(visible === 0);
 }
 
+// Queue mode has its own meta line: the board's "N of M shown / ✕ Clear
+// filters" description is meaningless while the queue owns the container (and
+// its Clear button would have done nothing — filterErrors() short-circuits).
+function _updateDailyQueueMeta() {
+    const meta = document.getElementById('matrix-meta');
+    if (!meta) return;
+    _toggleNoMatchNode(false);   // the queue renders its own empty state
+    const targets = _getDailyQueueSnapshot().map(_bankQuestionById).filter(Boolean);
+    if (targets.length === 0) { meta.hidden = true; meta.innerHTML = ''; return; }
+    const done = targets.filter(_isCompletedToday).length;
+    meta.hidden = false;
+    meta.innerHTML =
+        '<span class="matrix-meta-count"><b>' + done + '</b>&nbsp;of ' + targets.length + ' done</span>' +
+        '<span class="matrix-meta-due">·&nbsp;<b>' + (targets.length - done) + '</b>&nbsp;left today</span>';
+}
+
+/** Bank lookup that tolerates rows with a null id (see submitPracticeLog). */
+function _bankQuestionById(id) {
+    if (id == null) return null;
+    const s = String(id);
+    return AppState.questionBank.find(q => q.id != null && String(q.id) === s) || null;
+}
+
 // Zero matches → inject a "way back" card instead of silent blank space.
 function _toggleNoMatchNode(show) {
     const c = document.getElementById('error-list-container');
@@ -1862,6 +2167,43 @@ function _toggleNoMatchNode(show) {
 
 // ==================== DAILY CORE QUEUE ====================
 
+// Queue-mode counterpart to the board's filter dock. While the queue is up,
+// filterErrors() returns before reading #filter-status / #filter-type /
+// #filter-tag, so a stale carrier plus a fully enabled control was a dead
+// control that still LOOKED live (and whose `.error-filters[data-active]`
+// echo advertised a filter that was never applied). Reset the carriers to
+// neutral and disable the controls rather than leave them silently inert; the
+// queue's own progress line lives in #matrix-meta via _updateDailyQueueMeta.
+function _setQueueFilterMode(on) {
+    ['filter-status', 'filter-type'].forEach(id => {
+        const carrier = document.getElementById(id);
+        if (!carrier) return;
+        if (on) carrier.value = 'all';
+        carrier.disabled = !!on;
+    });
+    const tagCarrier = document.getElementById('filter-tag');
+    if (tagCarrier) {
+        if (on) tagCarrier.value = '';
+        tagCarrier.disabled = !!on;
+    }
+    const search = document.getElementById('matrix-search-input');
+    if (search) {
+        if (on) search.value = '';
+        search.disabled = !!on;
+    }
+    const clearBtn = document.getElementById('matrix-search-clear');
+    if (clearBtn) clearBtn.hidden = true;
+    // Both pill groups, not just status: the type pills kept their .active
+    // echo across the queue switch.
+    document.querySelectorAll('.error-filters .matrix-pill').forEach(p => {
+        p.disabled = !!on;
+        p.classList.toggle('active', p.getAttribute('data-emf-value') === 'all');
+    });
+    if (on && typeof window.syncDockedEcho === 'function') {
+        try { window.syncDockedEcho(); } catch (_) {}
+    }
+}
+
 function _showDailyQueue() {
     const btn = document.getElementById('daily-queue-btn');
     const title = document.getElementById('error-matrix-title');
@@ -1871,8 +2213,14 @@ function _showDailyQueue() {
     if (badge) badge.style.display = 'inline';
     const shell = document.querySelector('.vault-shell');
     if (shell) shell.classList.add('queue-active');
-    document.querySelectorAll('.emf-pill-group[data-emf-filter="status"] .matrix-pill').forEach(p => p.classList.remove('active'));
+    // Queue mode REPLACES the board, and filterErrors() short-circuits to the
+    // queue while it is active — so the board's filter controls are
+    // meaningless here. They used to be left visible, enabled and fully armed:
+    // the carriers kept whatever the board had, and every pill click or
+    // keystroke called filterErrors() straight into an early return.
+    _setQueueFilterMode(true);
     _renderDailyQueueCards();
+    _updateDailyQueueMeta();
 }
 
 function _hideDailyQueue() {
@@ -1883,10 +2231,7 @@ function _hideDailyQueue() {
     if (badge) badge.style.display = 'none';
     const shell = document.querySelector('.vault-shell');
     if (shell) shell.classList.remove('queue-active');
-    const allPill = document.querySelector('.emf-pill-group[data-emf-filter="status"] .matrix-pill[data-emf-value="all"]');
-    if (allPill) allPill.classList.add('active');
-    const statusCarrier = document.getElementById('filter-status');
-    if (statusCarrier) statusCarrier.value = 'all';
+    _setQueueFilterMode(false);
     if (title) {
         const subj = AppState.currentErrorSubject;
         title.textContent = `${subj.charAt(0).toUpperCase() + subj.slice(1)} Matrix`;
@@ -1989,7 +2334,7 @@ function _getDailyQueueSnapshot() {
         ...bySubject.physics.slice(0, DAILY_QUEUE_LIMITS.physics),
         ...bySubject.maths.slice(0, DAILY_QUEUE_LIMITS.maths),
         ...bySubject.chemistry.slice(0, DAILY_QUEUE_LIMITS.chemistry),
-    ].map(q => q.id.toString());
+    ].filter(q => q && q.id != null).map(q => String(q.id));
 
     // ── Commit to in-memory cache AND persistent localStorage layer ───────
     _dailyQueueSnapshot = { date: today, ids };
@@ -2023,9 +2368,7 @@ function _renderDailyQueueCards() {
     if (!c) return;
 
     const snapshotIds = _getDailyQueueSnapshot();
-    const targets = snapshotIds
-        .map(id => AppState.questionBank.find(q => q.id.toString() === id))
-        .filter(Boolean);
+    const targets = snapshotIds.map(_bankQuestionById).filter(Boolean);
 
     if (targets.length === 0) {
         c.innerHTML = `
@@ -2096,10 +2439,31 @@ function _renderDailyQueueCards() {
 
 // ==================== CARD HTML BUILDER ====================
 
-function _buildErrorCardHTML(q) {
+function _buildErrorCardHTML(q, dueInfo) {
     const tagStyle = TAG_STYLES[q.errorReason] || TAG_STYLES.conceptual;
     const tagLabel = TAG_LABELS[q.errorReason] || q.errorReason;
-    const dueInfo = getDueStatus(q);
+    // dueInfo is resolved ONCE by _buildGroupedBoardHTML and handed down: a
+    // nextReviewAt crossing a boundary between the grouping pass and this pass
+    // filed the card under ONE group header while data-sr-status said another,
+    // and filterErrors' per-header recount then under-counted that group. The
+    // daily queue renders standalone cards, so resolve it here when absent.
+    const due = dueInfo || getDueStatus(q);
+
+    // ── Personal tags ──────────────────────────────────────────────────────
+    // filterErrors() matches ONLY `.error-chapter` / `.error-tag` text. The
+    // chips render into `.sr-card-usertag` — a class the filter never queried
+    // — so "tap to hunt this tag" wrote #filter-tag with a string no card could
+    // match (0 of 4 cards visible plus the "Nothing matches those filters" card).
+    // The tags are therefore mirrored as a visually hidden tail INSIDE
+    // .error-chapter. The mistake-type pill keeps its single label, colour and
+    // casing, and the chapter's own ellipsis is untouched (the mirror is out of
+    // flow and clipped to 1px).
+    const tags = (Array.isArray(q.tags) ? q.tags : [])
+        .map(t => String(t == null ? '' : t).trim())
+        .filter(Boolean);
+    const huntMirror = tags.length
+        ? `<span class="sr-chapter-tags" aria-hidden="true" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;"> ${tags.map(t => '#' + _esc(t)).join(' ')} </span>`
+        : '';
 
     // ── Cognitive Cortex v3 card telemetry (all reads are pure + guarded) ──
     // Live retrievability, days-sitting-overdue and age-since-logging turn the
@@ -2141,19 +2505,27 @@ function _buildErrorCardHTML(q) {
     return `
             <div class="error-block ${bountyClass}" id="err-block-${_jsId(q.id)}"
                  data-type="${_esc(q.errorReason || 'conceptual')}"
-                 data-sr-status="${_esc(dueInfo.status)}"
+                 data-sr-status="${_esc(due.status)}"
                  data-subject="${_esc(q.subject)}"
                  onclick="openPracticeDrawer('${_jsId(q.id)}')" title="Open practice session">
                 <div class="error-img-box">
                     ${imgHtml}
-                    <span class="sr-due-badge sr-due--${_esc(dueInfo.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(dueInfo, q))}</span>
+                    <span class="sr-due-badge sr-due--${_esc(due.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(due, q))}</span>
                 </div>
                 <div class="error-details">
-                    <div class="error-chapter">${_esc(q.chapter || 'Unknown')}</div>
+                    <div class="error-chapter">${_esc(q.chapter || 'Unknown')}${huntMirror}</div>
                     <div class="error-tag-row">
                         <span class="error-tag error-tag--${_esc(q.errorReason || 'conceptual')}" style="color:${tagStyle.color};background:${tagStyle.bg};">${_esc(tagLabel)}</span>
-                        ${(Array.isArray(q.tags) && q.tags.length)
-                            ? q.tags.slice(0, 3).map(t => `<span class="sr-card-usertag" title="Personal tag — tap to hunt this tag" onclick="event.stopPropagation();window.__cortexHuntTag&&__cortexHuntTag('${_esc(String(t).replace(/'/g, ''))}')">#${_esc(t)}</span>`).join('')
+                        ${tags.length
+                            // The hunted token rides a data attribute (percent-encoded
+                            // by _jsId and decoded on tap) instead of a JS string literal:
+                            // _esc() does not encode backslashes or the HTML entity pass
+                            // un-does '&quot;', so a tag ending in "\" or a quote broke the
+                            // whole inline handler — stopPropagation never ran and the tap
+                            // fell through to the card root and opened the practice drawer.
+                            // Stripping "'" from the argument (but not the label) also made
+                            // "boy's law" hunt for "boys law".
+                            ? tags.slice(0, 3).map(t => `<span class="sr-card-usertag" title="Personal tag — tap to hunt this tag" data-hunt-tag="${_esc(_jsId(t))}" onclick="event.stopPropagation();window.__cortexHuntTag&&__cortexHuntTag(decodeURIComponent(this.getAttribute('data-hunt-tag')||''))">#${_esc(t)}</span>`).join('')
                             : ''}
                     </div>
                     <div class="sr-stats-row">
@@ -2168,7 +2540,7 @@ function _buildErrorCardHTML(q) {
                     </div>
                 </div>
                 <div class="sr-card-actions">
-                    <button class="sr-practice-btn" onclick="openPracticeDrawer('${_jsId(q.id)}')">Practice Now<span class="sr-btn-arrow">→</span></button>
+                    <button class="sr-practice-btn" onclick="event.stopPropagation();openPracticeDrawer('${_jsId(q.id)}')">Practice Now<span class="sr-btn-arrow">→</span></button>
                     <div class="sr-card-actions-sub">
                         <button class="sr-history-toggle" onclick="event.stopPropagation();toggleCardHistory('${_jsId(q.id)}')" aria-label="Toggle attempt history">
                             History
@@ -2186,9 +2558,47 @@ function _buildErrorCardHTML(q) {
 
 // ── Add Error (manual) ─────────────────────────────────────────────────────
 
+// Manual-log re-entrancy latch. The modal's submit button (index.html) carries
+// no disabled state, so a double-click ran the whole handler twice: the second
+// run read the ALREADY-CLEARED chapter field and filed a phantom
+// "Uncategorized" mistake that the daily queue then resurfaced forever.
+let _addErrorBusy = false;
+
 export function addErrorBlock() {
-    const chapter = document.getElementById('new-err-chapter').value || 'Uncategorized';
-    const typeValue = document.getElementById('new-err-type').value;
+    if (_addErrorBusy) return;
+
+    const chapterEl = document.getElementById('new-err-chapter');
+    const typeEl = document.getElementById('new-err-type');
+    if (!chapterEl || !typeEl) return;
+    const typeValue = typeEl.value;
+
+    // A whitespace-only chapter is TRUTHY: it was stored verbatim and filed
+    // under a chapter that matches no tile. Collapse, cap, and fall back to the
+    // placeholder only when there is genuinely nothing left.
+    const chapter = String(chapterEl.value || '').replace(/\s+/g, ' ').trim().slice(0, 120).trim() || 'Uncategorized';
+
+    // Every manual log carries the SAME extractedText constant, so the chapter
+    // is the only field that tells two manual entries apart — a second log of
+    // the same chapter is an indistinguishable copy that the SR engine then
+    // resurfaces on its own schedule.
+    const chapterKey = chapter.toLowerCase();
+    const duplicate = AppState.questionBank.some(q => q && q.errorReason &&
+        (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') &&
+        _normSubj(q.subject) === _normSubj(AppState.currentErrorSubject) &&
+        String(q.chapter || '').replace(/\s+/g, ' ').trim().toLowerCase() === chapterKey);
+    if (duplicate) {
+        (window.__jmaxAppToast || alert)('⚠ "' + chapter + '" is already in this vault — open that card and log an attempt on it instead of filing a copy.');
+        return;
+    }
+
+    const modal = chapterEl.closest ? chapterEl.closest('.modal-content') : null;
+    const submitBtn = modal ? modal.querySelector('button.btn-primary') : null;
+    _addErrorBusy = true;
+    if (submitBtn) submitBtn.disabled = true;
+    // The body below is synchronous, so the double-click window is exactly this
+    // turn. Release on the next macrotask: that also un-latches (and re-enables
+    // the button) even if something below faults mid-save.
+    setTimeout(() => { _addErrorBusy = false; if (submitBtn) submitBtn.disabled = false; }, 0);
 
     const newErrorQ = {
         id: 'err-manual-' + Date.now(),
@@ -2280,27 +2690,43 @@ function _dueLabel(dueInfo, q) {
 }
 
 function _buildAttemptDots(historyLogs) {
-    if (!historyLogs || historyLogs.length === 0) return '<span class="sr-dots-empty">No attempts yet</span>';
+    // A truthy NON-array ('[]' stored as a string, or {}) passed the old
+    // length guard and then threw on .slice() — and because the throw escaped
+    // before c.innerHTML was assigned, it blanked the ENTIRE board (and every
+    // caller above it: filterErrors, the dashboard). submitPracticeLog and
+    // migrateQuestionBankSR both normalise this field; the render paths are the
+    // only consumers that didn't.
+    if (!Array.isArray(historyLogs) || historyLogs.length === 0) return '<span class="sr-dots-empty">No attempts yet</span>';
 
     const last5 = historyLogs.slice(-5).reverse();
-    return last5.map(log => {
+    return last5.map(raw => {
+        const log = raw && typeof raw === 'object' ? raw : {};
         const isCorrect = log.result === 'correct';
         const frictionTypes = _parseFrictionTypes(log.frictionTypes);
-        const primaryFriction = frictionTypes[0] || 'N/A';
-        const frictionLabel = SR_FRICTION_LABELS[primaryFriction] || primaryFriction;
+        // List EVERY pill, exactly as the history row does. frictionTypes[0] is
+        // the first pill TAPPED (push order), not the dominant one, so the dot
+        // could contradict its own card's tag.
+        const frictionLabel = frictionTypes.length
+            ? frictionTypes.map(f => SR_FRICTION_LABELS[f] || f).join(', ')
+            : 'N/A';
         const ts = new Date(log.timestamp);
         const dateStr = isNaN(ts.getTime()) ? 'unknown date' : formatSRDate(log.timestamp);
-        const timeStr = log.timeSpentMins + 'm';
-        const tooltip = `title="${_esc(dateStr + '\\nTime: ' + timeStr + '\\nFriction: ' + frictionLabel)}"`;
+        const timeStr = String(log.timeSpentMins == null ? '' : log.timeSpentMins) + 'm';
+        // '\n' is a real newline: '\\n' inside a template literal is a literal
+        // backslash + n, so every hover showed the escape on one run-on line.
+        const tooltip = `title="${_esc(dateStr + '\nTime: ' + timeStr + '\nFriction: ' + frictionLabel)}"`;
 
         return `<div class="sr-attempt-dot ${isCorrect ? 'is-correct' : 'is-wrong'}" ${tooltip}></div>`;
     }).join('');
 }
 
 function _buildHistoryLogs(historyLogs) {
-    if (!historyLogs || historyLogs.length === 0) return '';
+    // Same non-array blast radius as the attempt dots (see above): these two
+    // render paths were the only unguarded consumers of historyLogs.
+    if (!Array.isArray(historyLogs) || historyLogs.length === 0) return '';
 
-    return historyLogs.slice().reverse().map(log => {
+    return historyLogs.slice().reverse().map(raw => {
+        const log = raw && typeof raw === 'object' ? raw : {};
         const isCorrect = log.result === 'correct';
         const frictionTypes = _parseFrictionTypes(log.frictionTypes);
         const ts = new Date(log.timestamp);
@@ -2319,13 +2745,13 @@ function _buildHistoryLogs(historyLogs) {
                     <div class="sr-history-top">
                         <span class="${isCorrect ? 'is-correct' : 'is-wrong'}">${isCorrect ? 'Correct' : 'Incorrect'}</span>
                         <span class="sr-sep">·</span>
-                        <span style="color:#888;">${_esc((log.autonomy || '').replace('_', ' '))}</span>
+                        <span style="color:#888;">${_esc(String(log.autonomy == null ? '' : log.autonomy).replace('_', ' '))}</span>
                     </div>
                     <div class="sr-history-frictions">${frictionPills}</div>
                 </div>
                 <div class="sr-history-meta">
                     <div style="color:#666;">${dateStr}</div>
-                    <div style="color:#555;">${log.timeSpentMins}m · EF ${_numOr(log.newEaseFactor, 2.5).toFixed(2)}</div>
+                    <div style="color:#555;">${_esc(log.timeSpentMins)}m · EF ${_numOr(log.newEaseFactor, 2.5).toFixed(2)}</div>
                 </div>
             </div>
         `;
@@ -2369,7 +2795,12 @@ const EM_GROUP_META = {
 };
 
 function _buildGroupedBoardHTML(errs) {
-    const withStatus = errs.map(q => ({ q, st: getDueStatus(q).status }));
+    // getDueStatus() is resolved ONCE per card and carried down into the card
+    // body. Calling it twice let a nextReviewAt that crossed a boundary between
+    // the grouping pass and the card pass file the card under ONE group header
+    // while its data-sr-status said another — filterErrors' per-header recount
+    // then under-counted the group it was placed in.
+    const withStatus = errs.map(q => { const due = getDueStatus(q); return { q, due, st: due.status }; });
     // ── Cognitive Cortex v3 within-group ordering: composite priority field,
     // highest first. The cortex context is computed ONCE for the whole board
     // (memoized on _bankRev) so N cards don't rebuild profiles N times.
@@ -2388,7 +2819,7 @@ function _buildGroupedBoardHTML(errs) {
 
     const parts = [];
     let lastStatus = null;
-    for (const { q, st } of withStatus) {
+    for (const { q, st, due } of withStatus) {
         if (st !== lastStatus) {
             lastStatus = st;
             const meta = EM_GROUP_META[st] || { icon: '•', label: st, blurb: '' };
@@ -2402,7 +2833,7 @@ function _buildGroupedBoardHTML(errs) {
                 '</div>'
             );
         }
-        parts.push(_buildErrorCardHTML(q));
+        parts.push(_buildErrorCardHTML(q, due));
     }
     return parts.join('');
 }
@@ -2491,7 +2922,10 @@ export function initErrorLazyLoaders() {
                 }
                 if (!base64 || img._lazyToken !== token || !img.isConnected) return;
                 img.src = base64;
-                img.onclick = () => openLightbox(base64);
+                // Card root opens the practice drawer on click, so the image
+                // must keep the template's stopPropagation in BOTH states —
+                // otherwise a loaded image fires the lightbox AND the drawer.
+                img.onclick = (e) => { e.stopPropagation(); openLightbox(base64); };
                 img.dataset.loaded = '1';
                 if (q && !isDiagram && !q.imageDataUrl) q.imageDataUrl = base64;
             } else if (img.dataset.loaded === '1') {
@@ -2508,7 +2942,9 @@ export function initErrorLazyLoaders() {
 }
 
 export function openLightbox(src) {
-    document.getElementById('lightbox-img').src = src;
+    const img = document.getElementById('lightbox-img');
+    if (!img) return;   // stripped DOM (lockdown/modal teardown) — never throw
+    img.src = src;
     _openModal('lightbox-modal');
 }
 
@@ -2545,6 +2981,28 @@ function _matrixChapterHealthContinuous(questions) {
     } catch (_) { return 50; }
 }
 
+// ── Chapter identity ────────────────────────────────────────────────────────
+// ONE spelling for "which chapter is this?" across every chapter-keyed surface
+// below (health lookup, decay-grid grouping + coverage, drilldown matching).
+
+// Canonical chapter bucket key: <canonicalSubject>::<encodeURIComponent(name)>.
+//   • normSubjKey folds Math/Mathematics into maths (same join the Chapter
+//     Progress ledger uses — the old subject+'||'+chapter join corrupted
+//     pairing whenever a chapter name contained '||').
+//   • encodeURIComponent makes that join unambiguous.
+//   • trim + lowercase on the chapter makes 'Mechanics', ' mechanics' and
+//     'MECHANICS' ONE bucket instead of three row/coverage/drilldown splits.
+function _chapterKey(subject, chapter) {
+    const name = String(chapter == null ? '' : chapter).trim().toLowerCase() || 'Uncategorized';
+    return normSubjKey(subject) + '::' + encodeURIComponent(name);
+}
+
+// Chapter-name equality for callers that already matched the subject half.
+// Mirrors app.js's `_chaptersMatch` (trim + lowercase).
+function _sameChapter(a, b) {
+    return String(a == null ? '' : a).trim().toLowerCase() === String(b == null ? '' : b).trim().toLowerCase();
+}
+
 // Exposed for the Daily Briefing flow — the SAME health model the Chapter
 // Health Grid renders, so the boot flow's "weakest chapter first" ordering
 // always matches what the user sees in-app (no divergent reimplementation).
@@ -2552,7 +3010,7 @@ window.getChapterHealth = (subject, chapter) => {
     try {
         const qs = AppState.questionBank.filter(q =>
             q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') &&
-            _normSubj(q.subject) === _normSubj(subject) && q.chapter === chapter
+            _normSubj(q.subject) === _normSubj(subject) && _sameChapter(q.chapter, chapter)
         );
         return _matrixChapterHealthContinuous(qs);
     } catch (_) { return 50; }
@@ -2697,9 +3155,16 @@ function leakOfSafe(profiles, key) {
 
 const MS_PER_DAY = 86400000;
 
-// Previous-render health per chapter key — powers the ↑/↓ trend arrows.
+// Trend baseline per chapter key — powers the ↑/↓ arrows. Value is
+// { health, ts, sig }: `sig` is the chapter's member-id signature, so an
+// edit to the chapter (an error deleted, a new one filed) invalidates the
+// baseline instead of reporting a composition change as "decay".
 // Module-scoped (resets on boot by design: trends compare within a session).
 const _decayTrendCache = new Map();
+// app.js re-renders this grid on EVERY updateUI, so a baseline written seconds
+// ago measures nothing but the clock. A "trend" needs a real gap: compare
+// against the oldest sample at least this old, then roll it forward.
+const DECAY_TREND_MIN_AGE_MS = 60 * 60 * 1000;
 
 function _examDateMsSafe() {
     try {
@@ -2721,8 +3186,13 @@ export function renderChapterDecayGrid() {
         if (isMockChapterName(q.chapter)) return; // belt-and-braces: unstamped Mock tiles never surface
         const subject = q.subject || '';
         const chapter = q.chapter || 'Uncategorized';
-        const key = subject + '||' + chapter;
-        if (!chapterMap[key]) chapterMap[key] = { name: chapter, subject, questions: [] };
+        // Canonical bucket key (see _chapterKey): the raw subject+'||'+chapter
+        // join corrupted pairing whenever a chapter name contained '||', and
+        // split 'Mechanics' / 'mechanics' into two rows over ONE coverage
+        // bucket — each then reporting a fraction of the real denominator in
+        // its own title while both opened the same mixed drilldown.
+        const key = _chapterKey(subject, chapter);
+        if (!chapterMap[key]) chapterMap[key] = { key, name: chapter, subject, questions: [] };
         chapterMap[key].questions.push(q);
     });
 
@@ -2732,19 +3202,19 @@ export function renderChapterDecayGrid() {
     const covTotals = {};
     AppState.questionBank.forEach(q => {
         if (isMockQuestion(q)) return;
-        const key = (q.subject || '') + '||' + String(q.chapter || 'Uncategorized').trim().toLowerCase();
+        const key = _chapterKey(q.subject, q.chapter);   // SAME key the grid rows group on
         covTotals[key] = (covTotals[key] || 0) + 1;
     });
 
     const examMs = _examDateMsSafe();
+    const nowMs = Date.now();
 
-    const chapters = Object.values(chapterMap).map(({ name, subject, questions }) => {
+    const chapters = Object.values(chapterMap).map(({ key, name, subject, questions }) => {
         const avgEF = questions.reduce((sum, q) => sum + _numOr(q.easeFactor, 2.5), 0) / questions.length;
-        const stats = chapterMemoryStats(questions, { examDateMs: examMs, nowMs: Date.now() });
+        const stats = chapterMemoryStats(questions, { examDateMs: examMs, nowMs: nowMs });
         const health = stats ? stats.health : 50;
         const forecast = stats ? stats.forecastHealth : null;
-        const covKey = subject + '||' + String(name).trim().toLowerCase();
-        const total = covTotals[covKey] || questions.length;
+        const total = covTotals[key] || questions.length;
         const coverage = total > 0 ? questions.length / total : 1;
         // Exam-aware risk: JEE weightage × how much retention will be MISSING
         // at exam time (falls back to current health without an exam date).
@@ -2757,10 +3227,20 @@ export function renderChapterDecayGrid() {
         const fluency = timed.length > 0
             ? timed.reduce((s, q) => s + (q.timeTaken / (_numOr(q.targetTimeMins, 5) * 60)), 0) / timed.length
             : null;
-        const prev = _decayTrendCache.get(subject + '||' + name);
-        const trend = (prev == null || Math.abs(prev - health) < 0.5) ? 0 : (health > prev ? 1 : -1);
-        return { name, subject, health, forecast, stats, coverage, weight, risk, fluency, trend, questionCount: questions.length, avgEF };
+        const sig = questions.length + ':' + questions.map(q => String(q.id == null ? '' : q.id)).sort().join(',');
+        const prev = _decayTrendCache.get(key);
+        // A baseline only describes real decay if the chapter still holds the
+        // same questions AND the sample is at least an hour old. Re-rendering
+        // seconds later (every updateUI) or re-filing an error under the same
+        // name must not draw an arrow against a stale reading.
+        const baseline = (prev && prev.sig === sig && (nowMs - prev.ts) >= DECAY_TREND_MIN_AGE_MS) ? prev.health : null;
+        const trend = (baseline == null || Math.abs(baseline - health) < 0.5) ? 0 : (health > baseline ? 1 : -1);
+        return { key, name, subject, health, forecast, stats, coverage, weight, risk, fluency, trend, sig, questionCount: questions.length, avgEF };
     });
+    // Prune baselines for chapters that no longer exist (errors deleted,
+    // chapter renamed) so the map cannot grow unboundedly across a session.
+    const liveKeys = new Set(chapters.map(ch => ch.key));
+    _decayTrendCache.forEach((_v, k) => { if (!liveKeys.has(k)) _decayTrendCache.delete(k); });
     // Most exam-dangerous chapter first.
     chapters.sort((a, b) => b.risk - a.risk);
     if (chapters.length === 0) {
@@ -2803,8 +3283,15 @@ export function renderChapterDecayGrid() {
 ><span class="rh-name"><span class="ch-full">${_esc(ch.name)}</span><span class="ch-short" aria-hidden="true">${_esc(shortChapterName(ch.name))}</span></span><span class="rh-gauge" aria-hidden="true"><i class="rh-cov" style="width:${covPct}%"></i><i class="rh-line" style="width:${h.toFixed(1)}%"></i>${fc != null ? `<i class="rh-fc" style="left:${fc.toFixed(1)}%"></i>` : ''}<i class="rh-dot" style="left:${h.toFixed(1)}%"></i></span><span class="rh-val">${Math.round(h)}<em>%</em>${trend}</span><span class="rh-hz ${horizonCls}">${_esc(horizonTxt)}</span></div>`;
     }).join('');
 
-    // Commit this render's health values as the next trend baseline.
-    chapters.forEach(ch => { _decayTrendCache.set(ch.subject + '||' + ch.name, ch.health); });
+    // Commit this render's health as the NEXT baseline — but only once the
+    // stored sample has aged past the trend window, so the baseline is a real
+    // point in time instead of "whatever the previous render said".
+    chapters.forEach(ch => {
+        const cur = _decayTrendCache.get(ch.key);
+        if (!cur || !cur.sig || (nowMs - cur.ts) >= DECAY_TREND_MIN_AGE_MS) {
+            _decayTrendCache.set(ch.key, { health: ch.health, ts: nowMs, sig: ch.sig });
+        }
+    });
 
     container.innerHTML = `
         <div class="rh-ledger">
@@ -2914,12 +3401,41 @@ export function openDecayDrilldown(subjectEnc, chapEnc) {
     let subject = '', chapterName = '';
     try { subject = decodeURIComponent(subjectEnc || ''); } catch (_) { subject = subjectEnc || ''; }
     try { chapterName = decodeURIComponent(chapEnc || ''); } catch (_) { chapterName = chapEnc || ''; }
-    const norm = (v) => String(v || '').trim().toLowerCase();
+    // SAME membership predicate the grid row counts with (errorReason + logged
+    // status + non-mock), and the SAME canonical chapter key — otherwise the
+    // panel header claims more "tracked items" than the row it was opened from
+    // and lists items that row's numbers deliberately exclude.
+    const key = _chapterKey(subject, chapterName);
     const items = AppState.questionBank.filter(q =>
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') &&
-        norm(q.subject) === norm(subject) && String(q.chapter || 'Uncategorized').trim().toLowerCase() === norm(chapterName)
+        !isMockQuestion(q) && _chapterKey(q.subject, q.chapter) === key
     );
-    if (!items.length) return;
+    if (!items.length) {
+        // Malformed args (decodeURIComponent fell back to a still-encoded name)
+        // used to return silently: the tap did nothing and the user was stuck
+        // with no panel and no way back. Say so inside a dismissible panel.
+        _injectDecayDrilldownStyles();
+        document.querySelectorAll('.decay-drill-overlay').forEach(o => o.remove());
+        const blank = document.createElement('div');
+        blank.className = 'decay-drill-overlay';
+        blank.innerHTML =
+            '<div class="decay-drill-panel" role="dialog" aria-label="Item decay drilldown">' +
+            '<div class="decay-drill-head">' +
+            '<span class="decay-drill-title">🧠 ' + _esc(chapterName) + '</span>' +
+            '<button class="decay-drill-close" type="button" aria-label="Close">✕</button>' +
+            '</div>' +
+            '<div class="decay-drill-list"><div class="decay-item">' +
+            '<div class="dd-meta">No tracked items in this chapter — it may have been renamed, or its errors cleared.</div>' +
+            '</div></div>' +
+            '</div>';
+        const closeBlank = () => { if (blank.parentNode) blank.parentNode.removeChild(blank); document.removeEventListener('keydown', onBlankKey, true); };
+        const onBlankKey = (e) => { if (e.key === 'Escape') closeBlank(); };
+        blank.querySelector('.decay-drill-close').addEventListener('click', closeBlank);
+        blank.addEventListener('click', (e) => { if (e.target === blank) closeBlank(); });
+        document.addEventListener('keydown', onBlankKey, true);
+        document.body.appendChild(blank);
+        return;
+    }
     items.forEach(q => { try { q.__R = currentRetrievability(q); } catch (_) { q.__R = 0; } });
     items.sort((a, b) => a.__R - b.__R);
 
@@ -3034,9 +3550,15 @@ export function renderChapterProgressList() {
     if (!container) return;
 
     const SUBJ_META = { physics: 'P', chemistry: 'C', maths: 'M' };
-    const match = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+    // Chapter names arrive from two directions: bank rows carry their own
+    // spelling, while a manual log (addErrorBlock) stores the raw free text
+    // the user typed ("  Modern Physics "). Fold case + whitespace on BOTH
+    // sides so a case/whitespace variant resolves to the chapter's REAL bank
+    // totals instead of totals[key]||0 → pct 0 → is-void → sorted first.
+    const normName = (n) => String(n == null ? '' : n).trim().toLowerCase();
     const totals = {};
     const solvedCounts = {};
+    const displayName = {};   // first-seen raw spelling per key, kept for display
 
     // Keys are <canonicalSubject>::<encodeURIComponent(chapter)> — the old
     // subject+'||'+chapter join corrupted pairing whenever a chapter name
@@ -3046,8 +3568,9 @@ export function renderChapterProgressList() {
     // chapter-progress percentages.
     AppState.questionBank.forEach(q => {
         if (isMockQuestion(q)) return;
-        const key = normSubjKey(q.subject) + '::' + encodeURIComponent(q.chapter || '');
+        const key = normSubjKey(q.subject) + '::' + encodeURIComponent(normName(q.chapter));
         totals[key] = (totals[key] || 0) + 1;
+        if (displayName[key] === undefined) displayName[key] = String(q.chapter == null ? '' : q.chapter).trim();
         if (q.status === 'solved') solvedCounts[key] = (solvedCounts[key] || 0) + 1;
     });
 
@@ -3056,8 +3579,8 @@ export function renderChapterProgressList() {
         (AppState.chapters[subj] || []).forEach(name => {
             if (isMockChapterName(name)) return;
             if (!String(name == null ? '' : name).trim()) return; // blank tiles can never render
-            const key = subj + '::' + encodeURIComponent(name);
-            rows.push({ subj, name, total: totals[key] || 0, solved: solvedCounts[key] || 0 });
+            const key = subj + '::' + encodeURIComponent(normName(name));
+            rows.push({ subj, norm: normName(name), name: String(name).trim(), total: totals[key] || 0, solved: solvedCounts[key] || 0 });
         });
     });
 
@@ -3069,8 +3592,8 @@ export function renderChapterProgressList() {
         try { name = decodeURIComponent(key.slice(sep + 2)); } catch (_) { name = key.slice(sep + 2); }
         if (isMockChapterName(name)) return;
         if (!String(name).trim()) return; // nameless ghosts stay invisible here; the vault purge row owns them
-        if (!rows.some(r => r.subj === subj && match(r.name, name))) {
-            rows.push({ subj, name, total: totals[key], solved: solvedCounts[key] || 0 });
+        if (!rows.some(r => r.subj === subj && r.norm === name)) {
+            rows.push({ subj, norm: name, name: displayName[key] || name, total: totals[key], solved: solvedCounts[key] || 0 });
         }
     });
 
@@ -3087,6 +3610,7 @@ export function renderChapterProgressList() {
                 '<span class="cpx-empty-sub">Add a chapter in Grind Station — it surfaces here, weakest first.</span>' +
             '</div>';
         container.classList.remove('cpx-animate');
+        container.classList.remove('is-expanded');   // no button left to collapse it
         return;
     }
 
@@ -3098,7 +3622,10 @@ export function renderChapterProgressList() {
     const rowHtml = (r, i) => {
         const cls = ['cpx-row'];
         if (r.total === 0) cls.push('is-void');      // registered but untouched
-        if (i === 0 && rows.length > 0) cls.push('is-flag');   // THE weakest — only accent
+        // THE weakest — only accent, and only for a chapter that actually has
+        // bank questions. An untouched (`is-void`) row is a place-holder, not
+        // the weakest chapter, and must never wear the single accent.
+        if (i === 0 && r.total > 0) cls.push('is-flag');
         if (r.pct >= 100) cls.push('is-done');
         const name = safeAttr(r.name);
         return `<div class="${cls.join(' ')}" role="button" tabindex="0"` +
@@ -3111,17 +3638,23 @@ export function renderChapterProgressList() {
            `</div>`;
     };
 
+    // `is-expanded` lives on the CONTAINER and survives this innerHTML wipe,
+    // so the rebuilt button must be re-derived from it — otherwise solving a
+    // question (every updateUI re-renders here) leaves the rows expanded while
+    // the button still reads "+N more" and the next tap COLLAPSES the list.
+    const wasExpanded = container.classList.contains('is-expanded');
     container.innerHTML =
         '<div class="cpx-cols" aria-hidden="true">Chapter &middot; weakest first</div>' +
         '<div class="cpx-rows">' + rows.map(rowHtml).join('') + '</div>' +
         (overflow > 0
-            ? `<button type="button" class="cpx-more" data-open="0"` +
-              ` data-more-label="+ ${overflow} more" data-less-label="Show less">+ ${overflow} more</button>`
+            ? `<button type="button" class="cpx-more" data-open="${wasExpanded ? '1' : '0'}"` +
+              ` data-more-label="+ ${overflow} more" data-less-label="Show less">${wasExpanded ? 'Show less' : '+ ' + overflow + ' more'}</button>`
             : '');
 
     // Width-in animation only on the first paint after page load — later
     // re-renders (each solve triggers updateUI) must NOT replay the motion.
     container.classList.toggle('cpx-animate', firstPaint);
+    container.classList.toggle('is-expanded', overflow > 0 && wasExpanded);
 
     // One delegated pair for the card's lifetime: row activation (click /
     // keyboard) routes through window.openChapterProgress exactly as before,
@@ -3166,21 +3699,31 @@ export function openChapterProgress(subj, encodedName) {
 }
 
 // ── Pillar 2 helper: lowest-health question for Checkpoint lockdown ──────────
-// Returns the single highest-priority, lowest-health question from the Chapter
-// Decay Grid — the one with the lowest easeFactor among due (overdue) error
-// entries. This is what the Checkpoint serves during lockdown.
+// Returns the single lowest-memory-health question from the vault Chapter
+// Decay Grid — the tracked item that is hardest to retrieve right now. This
+// is what the Checkpoint serves during lockdown, so the pool must be the SAME
+// set the grid counts (logged errors/mistakes, non-mock) and the ranking must
+// be the SAME kernel metric the grid, drilldown and cards use.
 export function getLowestHealthQuestion() {
-    const candidates = AppState.questionBank.filter(q =>
+    // Identical to the grid's membership predicate: an errorReason actually
+    // logged under error/wrong/solved, and not mock-test bulk. Without the
+    // errorReason test this handed out ordinary solved practice questions that
+    // were never mistakes.
+    const inVault = (q) => !!q && !!q.errorReason &&
         (q.status === 'error' || q.status === 'wrong' || q.status === 'solved') &&
-        getDueStatus(q).status === 'ready'
-    );
-    if (!candidates.length) {
-        // Fallback: lowest easeFactor across the entire bank
-        const sorted = [...AppState.questionBank].sort((a, b) => _numOr(a.easeFactor, 2.5) - _numOr(b.easeFactor, 2.5));
-        return sorted[0] || null;
-    }
-    const sorted = [...candidates].sort((a, b) => _numOr(a.easeFactor, 2.5) - _numOr(b.easeFactor, 2.5));
-    return sorted[0];
+        !isMockQuestion(q);
+    const vault = AppState.questionBank.filter(inVault);
+    // Fallback is the SAME tracked pool, never the whole bank — a mastered,
+    // never-attempted or `Mock:` chapter question must not be served here.
+    const due = vault.filter(q => getDueStatus(q).status === 'ready');
+    const pool = due.length ? due : vault;
+    if (!pool.length) return null;
+    // Rank by memory-kernel retrievability — the exact value the Decay Grid
+    // gauges and the drilldown sorts on. easeFactor said nothing about what is
+    // about to be forgotten, and corrupt values hijacked the pick.
+    const r = (q) => { try { return currentRetrievability(q); } catch (_) { return 1; } };
+    const sorted = [...pool].sort((a, b) => r(a) - r(b));   // copy — never mutates state
+    return sorted[0] || null;
 }
 
 // ==================== ERROR RESOLUTION ENGINE ====================
@@ -3191,13 +3734,23 @@ let _rolloverWatchStarted = false;
 
 // Null-safe numeric coercion: corrupt/legacy STRING values (e.g. "2.7") or
 // NaN must never crash .toFixed() or poison comparators.
+//
+// nullish/blank/false must take the FALLBACK, not coerce to 0. `Number(null)`
+// and `Number('')` are both 0, so a question with `easeFactor: null` rendered a
+// physically impossible "EF 0.00" on its card and sorted FIRST in
+// getLowestHealthQuestion — i.e. corrupt data hijacked Checkpoint lockdown.
 function _numOr(v, fallback) {
+    if (v === null || v === undefined || v === '' || v === false) return fallback;
     const n = Number(v);
     return isFinite(n) ? n : fallback;
 }
 
 /** Round to 1 decimal; null/NaN/corrupt ⇒ null (cortex log fields). */
 function _r1(v) {
+    // Number(null) === 0, which turned a MISSING createdAt into a persisted
+    // ageAtSolveDays of 0 — "solved the instant it was created", flattering the
+    // hot-strike / cold-revival priors with fabricated evidence.
+    if (v === null || v === undefined || v === '' || v === false) return null;
     const n = Number(v);
     return isFinite(n) ? Math.round(n * 10) / 10 : null;
 }
@@ -3213,16 +3766,13 @@ function _todayKey(date) {
     return `${y}-${m}-${day}`;
 }
 
-// frictionTypes may be a JSON STRING or (legacy) a raw array.
+// frictionTypes may be a JSON STRING, a (legacy) raw array, or a bare legacy
+// token. Delegates to the CANONICAL parser in storage.js so this module, cortex.js,
+// report.js and app.js all agree — they previously split into two behaviours
+// (drop vs keep bare tokens) and the same log row could show no pill on the card
+// while the report counted a real mistake from it.
 function _parseFrictionTypes(raw) {
-    if (Array.isArray(raw)) return raw;
-    if (typeof raw !== 'string') return [];
-    try {
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch (_) {
-        return [];
-    }
+    return parseFrictionTypes(raw);
 }
 
 export function refreshErrorDashboardIfStale() {
@@ -3230,6 +3780,13 @@ export function refreshErrorDashboardIfStale() {
     if (_lastRenderedDate !== today) {
         _lastRenderedDate = today;
         renderErrorResolutionDashboard();
+        // The daily queue is the only other surface whose "done today" state is
+        // derived from historyLogs, and nothing else re-rendered it on a date
+        // change — so an open queue kept showing yesterday's completions struck
+        // through with a stale "N/M done" until the user touched a filter.
+        if (_dailyQueueActive) {
+            try { _renderDailyQueueCards(); _updateDailyQueueMeta(); } catch (_) {}
+        }
         // The sparkline we just drew is only the intermediate data carrier —
         // app.js's candlestick renderer (renderMomentumCandles) reads the
         // points back and replaces the container. Re-chain it so the rollover
@@ -3256,7 +3813,9 @@ function _initFilterDock() {
     io.observe(sentinel);
 }
 // Static markup — safe to wire at module eval (module scripts run after parse).
-_initFilterDock();
+// Guarded: this module is also imported dynamically by Node QA harnesses, and an
+// unguarded `document` deref aborted module evaluation before ANY export existed.
+try { _initFilterDock(); } catch (_) {}
 
 // ── Draft persistence for the manual Log-a-Mistake form [AUDIT P1-9] ──────
 // A student typing a chapter/topic who swipes the PWA away (iPad app switcher
@@ -3298,7 +3857,7 @@ try {
         });
     }
 } catch (_) {}
-window.__restoreAddErrorDraft = _restoreAddErrorDraft;
+try { window.__restoreAddErrorDraft = _restoreAddErrorDraft; } catch (_) {}
 
 function _startRolloverWatcher() {
     if (_rolloverWatchStarted) return;

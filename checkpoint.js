@@ -22,8 +22,8 @@
 // Imports from storage.js + matrix.js. Loaded as type="module" from index.html.
 // ============================================================================
 
-import { AppState, idbGet, idbSet, saveAllAsync, fetchMediaFromDrive } from './storage.js';
-import { openPracticeDrawer, renderErrorResolutionDashboard, getLowestHealthQuestion } from './matrix.js';
+import { AppState, idbGet, idbSet, saveAllAsync, fetchMediaFromDrive, isMockQuestion } from './storage.js';
+import { renderErrorResolutionDashboard, getLowestHealthQuestion } from './matrix.js';
 
 // ── Configuration ──────────────────────────────────────────────────────────
 const STORAGE_KEY = 'checkpoint:config';
@@ -303,7 +303,14 @@ function restoreStateFromRaw(ps) {
     if (phase === 'grace' && graceEndsAt && now < graceEndsAt && armedCheckpointTime) {
         showGraceModal(armedCheckpointTime);
     }
-    if (phase === 'active' && activeQuestion) {
+    // Restored lockdowns must survive the same validation as freshly-initiated
+    // ones — the persisted id may since have been unlinked from its mock or
+    // mastered. An unusable card degrades to self-report rather than stalling
+    // the user in 'active' with no overlay at all.
+    if (phase === 'active') {
+        if (!isLockdownQuestionUsable(activeQuestion)) {
+            activeQuestion = buildSelfReportLockdown('No practice-worthy error question was available when this checkpoint was restored.');
+        }
         showLockdown(activeQuestion);
     }
     persistState();
@@ -593,8 +600,17 @@ function armCheckpoint(cpTime, absoluteDeadlineMs) {
 
 export function initiateCheckpoint() {
     if (phase !== 'grace' && phase !== 'pre-notify' && phase !== 'monitoring') return;
-    const q = getLowestHealthQuestion();
-    activeQuestion = q;
+    // getLowestHealthQuestion() can hand back nothing at all (empty bank) or —
+    // via its whole-bank fallback sort — a Mock-reserved or already-mastered
+    // card. Locking the user down on a question they never got wrong is worse
+    // than no practice UI, so every unusable pick degrades to the self-report
+    // lockdown below.
+    const picked = getLowestHealthQuestion();
+    activeQuestion = isLockdownQuestionUsable(picked)
+        ? picked
+        : buildSelfReportLockdown(picked
+            ? 'The lowest-health question was not a practice-worthy error (mock or already mastered).'
+            : 'No due error questions found in your Chapter Decay Grid.');
     phase = 'active';
     // Fix 6: record absolute start timestamp
     powStartedAt = Date.now();
@@ -607,25 +623,7 @@ export function initiateCheckpoint() {
     lastDrawY = null;
     requestWakeLock();
     hideGraceModal();
-    // Fix: if no due question exists, show a fallback self-report lockdown
-    // instead of silently failing (which left the user stuck with no practice UI).
-    if (q) {
-        showLockdown(q);
-    } else {
-        showLockdown({
-            id: 'fallback',
-            chapter: 'Self-Directed Practice',
-            subject: 'general',
-            easeFactor: 2.5,
-            status: 'error',
-            type: 'self-report',
-            correctAnswer: '',
-            options: [],
-            imageDataUrl: null,
-            driveImageId: null,
-            extractedText: 'No due error questions found in your Chapter Decay Grid. Use this checkpoint to self-direct your study. Work through it, then honestly self-report whether you used the full Proof-of-Work window productively.',
-        });
-    }
+    showLockdown(activeQuestion);
     persistState();
 }
 
@@ -826,9 +824,53 @@ function showPreNotifyBanner(cpTime, minAway) {
     }, 60000);
 }
 
+// A question is only worth a lockdown if it is a REAL, unfinished mistake.
+// Rejects: null/undefined, mock-owned questions (reservedForMock / mockSource /
+// 'Mock: ' chapter prefix — the same contract storage.isMockQuestion encodes),
+// and mastered cards. The mastered test is the SM-2 conjunct from
+// storage.js computeSR verbatim — interval > 30d AND EF > 2.5 AND the last
+// attempt was correct — because that is exactly what sets isMastered. The
+// last attempt's result lives in the most-recent historyLogs entry
+// (appended by matrix.js submitPracticeLog); treating a question with no
+// attempt history as "correct" is what let a just-failed card stay shelved.
+function isLockdownQuestionUsable(q) {
+    if (!q || typeof q !== 'object') return false;
+    if (isMockQuestion(q)) return false;
+    if (q.isMastered === true) return false;
+    if (Number(q.currentInterval) > 30 && Number(q.easeFactor) > 2.5) {
+        const logs = Array.isArray(q.historyLogs) ? q.historyLogs : [];
+        const last = logs.length ? logs[logs.length - 1] : null;
+        if (!last || last.result === 'correct') return false;
+    }
+    return true;
+}
+
+// Self-report lockdown stand-in: no answer key, so the user honestly reports
+// whether the Proof-of-Work window was used productively. Keeps a checkpoint
+// solvable instead of stranding the user behind a question that can't exist.
+function buildSelfReportLockdown(reason) {
+    return {
+        id: 'fallback',
+        chapter: 'Self-Directed Practice',
+        subject: 'general',
+        easeFactor: 2.5,
+        status: 'error',
+        type: 'self-report',
+        correctAnswer: '',
+        options: [],
+        imageDataUrl: null,
+        driveImageId: null,
+        extractedText: (reason || 'No practice-worthy error question is available.') +
+            ' Use this checkpoint to self-direct your study. Work through it, then honestly self-report whether you used the full Proof-of-Work window productively.',
+    };
+}
+
 // ── Lockdown overlay (Pillar 2 + 3 + Fix 7: all question types) ────────────
 function showLockdown(q) {
     hideLockdown();
+    // Last line of defence: nothing below may dereference a null/unusable
+    // question, whatever route got us here.
+    if (!isLockdownQuestionUsable(q)) q = buildSelfReportLockdown('No practice-worthy error question was available for this checkpoint.');
     lockdownOverlay = document.createElement('div');
     lockdownOverlay.id = 'checkpoint-lockdown';
     lockdownOverlay.className = 'checkpoint-lockdown';
