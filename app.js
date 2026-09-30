@@ -54,6 +54,12 @@ import {
     setAiChapterWeight,
     // ── Mock-test chapter labelling (vault tiles + dashboard filters) ──
     isMockChapterName,
+    // ── Canonical parsers shared with matrix.js / cortex.js / report.js ──
+    // normSubjKeyStrict: counter/pricing/time writes MUST use this and skip
+    //   on null — normSubjKey's 'physics' catch-all misfiles out-of-domain
+    //   subjects into the physics ledger.
+    normSubjKeyStrict,
+    parseFrictionTypes,
 } from './storage.js';
 
 // ── Daily Directive (target-system v2) ──
@@ -1743,8 +1749,8 @@ function _buildYieldIndex() {
         // practiceSubmit); slicing the first 10 chars yields YYYY-MM-DD.
         const stamp = q.lastReviewedAt;
         if (!stamp || typeof stamp !== 'string' || stamp.length < 10) continue;
-        const subj = _normalizeSubjectKey(q.subject);
-        if (!(subj === 'maths' || subj === 'physics' || subj === 'chemistry')) continue;
+        const subj = normSubjKeyStrict(q.subject);
+        if (!subj) continue;
         const dateStr = stamp.slice(0, 10);
         let bucket = byDate.get(dateStr);
         if (!bucket) {
@@ -1800,8 +1806,8 @@ function _computeMacroImputationScalar() {
 
     for (const q of AppState.questionBank) {
         if (!q || q.status !== 'solved') continue;
-        const subj = _normalizeSubjectKey(q.subject);
-        if (!(subj in counts)) continue;
+        const subj = normSubjKeyStrict(q.subject);
+        if (!subj) continue;
         counts[subj]++;
         eloSums[subj] += (typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0)
             ? q.qElo : 1200;
@@ -5035,6 +5041,20 @@ export function saveEditQuestion() {
 }
 
 export function startPracticeWithQuestion(questions, index) {
+    // Vault (error-matrix) items must go through the SR drawer, never the
+    // standard practice modal: the modal's practiceSubmit path calls
+    // calculateEloMigration, which nudges easeFactor and stamps the memory
+    // kernel — but nothing on that path ever writes currentInterval /
+    // nextReviewAt / isMastered. A vault question therefore earned an
+    // ease-factor bump with NO schedule attached, so it could never become
+    // due again. showQuestionList has no vault gate either, so the chapter
+    // practice grid was the way in. The SR drawer (submitPracticeLog) is the
+    // single writer of the schedule, so vault items are routed there.
+    const _first = (index >= 0 && index < questions.length) ? questions[index] : null;
+    if (_first && AppState.questionBank.indexOf(_first) !== -1 && (_first.errorReason || _first.status === 'error' || _first.status === 'wrong')) {
+        openPracticeDrawer(_first.id);
+        return;
+    }
     // Standard list entry — a mode left armed (e.g. ✕-closed mid-run) must not
     // leak its footer/nav state into this session.
     AppState.practiceFlowMode = 'standard';
@@ -5597,6 +5617,23 @@ function decodeOption(raw) {
     return raw;
 }
 
+/**
+ * True when a live Pomodoro block or the main countdown timer is ALREADY
+ * incrementing `studySecs` second-by-second. Any path that deposits a
+ * lump-sum time total into `studySecs` MUST consult this first, otherwise
+ * the same seconds are counted twice. Single definition — the practice-modal
+ * deposit and the deep-work Elo multiplier both read it.
+ */
+function _studyTimeDepositBlocked() {
+    try {
+        return document.body.classList.contains('pomo-active') ||
+            document.body.classList.contains('timer-running') ||
+            (typeof window._pomoRunning === 'boolean' && window._pomoRunning);
+    } catch (_) {
+        return false;
+    }
+}
+
 // ── Practice Time → Daily/Subjective Study Counter Convergence ────────────
 // Injects the accumulated stopwatch seconds from the current question
 // practice attempt directly into the global studySecs tracker (the same
@@ -5617,12 +5654,7 @@ function _injectPracticeTimeIntoStudySecs() {
         // finalised (flag already flipped to true by the caller).
         if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return;
 
-        // ⚡ FIX: Detect if Pomodoro or the main countdown timer is already incrementing studySecs live
-        const pomoActive = document.body.classList.contains('pomo-active') ||
-            document.body.classList.contains('timer-running') ||
-            (typeof window._pomoRunning === 'boolean' && window._pomoRunning);
-
-        if (pomoActive) {
+        if (_studyTimeDepositBlocked()) {
             // The time spent on this question has already been tracked second-by-second by pomodoro.js.
             // Bypassing mutation to prevent double-counting. Just refresh layout and save.
             if (typeof updateStudyTimeHeader === 'function') updateStudyTimeHeader();
@@ -5630,16 +5662,9 @@ function _injectPracticeTimeIntoStudySecs() {
             return;
         }
 
-        const subject = AppState.currentQ.subject;
-
-        // ── Defensive subject key normalization (same pattern as matrix.js) ──
-        const SUBJ_KEY_ALIASES = {
-            math: 'maths',
-            mathematics: 'maths',
-            'maths ': 'maths',
-        };
-        const rawKey = String(subject).trim().toLowerCase();
-        const subjKey = SUBJ_KEY_ALIASES[rawKey] || rawKey;
+        // ── Canonical subject key (storage.js). This is a time DEPOSIT, i.e. a
+        // counter write, so a non-canonical subject is a no-op — never 'physics'.
+        const subjKey = normSubjKeyStrict(AppState.currentQ.subject);
 
         // studySecs keys are lowercase: physics / chemistry / maths
         if (!subjKey || !(subjKey in studySecs)) return;
@@ -5876,14 +5901,19 @@ function _hydrateMemoryFields(q) {
 function _getDeepWorkBlockMultiplier() {
     if (window._eloDistractionFlag === true) return 0.75;
     if (AppState.practiceTimer !== null) return 1.5;
-    const pomoActive = document.body.classList.contains('pomo-active') ||
-        document.body.classList.contains('timer-running') ||
-        (typeof window._pomoRunning === 'boolean' && window._pomoRunning);
-    if (pomoActive) return 1.5;
+    if (_studyTimeDepositBlocked()) return 1.5;
     return 1.0;
 }
 
-/** Normalise subject aliases to canonical keys. */
+/**
+ * Normalise subject aliases for DISPLAY / GROUPING / LOOKUP only.
+ *
+ * Unknown subjects pass straight through here, which is correct for a label
+ * or a bucket key — but NOT for anything that writes a counter, prices a
+ * target or deposits time. Those paths must use `normSubjKeyStrict`
+ * (storage.js) and skip on null so an out-of-domain question can never be
+ * misfiled into the physics ledger.
+ */
 function _normalizeSubjectKey(subject) {
     const raw = String(subject || '').trim().toLowerCase();
     if (raw === 'math' || raw === 'mathematics') return 'maths';
@@ -6067,7 +6097,10 @@ window._applyAutonomyClawback = function (q, eloResult, autonomy) {
         const allowed = Math.round(eloResult.deltaSubject * cap);
         const clawback = eloResult.deltaSubject - allowed;
         if (clawback <= 0) return false;
-        const subj = _normalizeSubjectKey(q.subject);
+        // Elo is a counter write — a non-canonical subject must leave the
+        // ledger untouched instead of minting a phantom AppState.elo entry.
+        const subj = normSubjKeyStrict(q.subject);
+        if (!subj) return false;
         const cur = AppState.elo[subj] || 1200;
         AppState.elo[subj] = Math.max(0, Math.round(cur - clawback));
         eloResult.deltaSubject = allowed;
@@ -7142,11 +7175,17 @@ window.startHardcorePractice = () => _setPracticeMode('hardcore');
 window.exitPracticeMode      = () => _exitPracticeMode();
 
 function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth, questionObj) {
-    const safeSubject = _normalizeSubjectKey(subject);
-    const base = ELO_SUBJECT_BASELINES[safeSubject];
+    // Elo pricing + commit are per-subject counter writes (AppState.elo[key],
+    // the rd uncertainty ledger, θ_c, the CNS windows), so the key MUST be
+    // canonical. A non-canonical subject is a total no-op: no baseline ⇒
+    // nothing priced, nothing deposited, and the Memory Kernel v2 row is left
+    // untouched (it is keyed per-question, so a skipped commit is correct
+    // rather than a silently-frozen record).
+    const safeSubject = normSubjKeyStrict(subject);
+    const base = safeSubject ? ELO_SUBJECT_BASELINES[safeSubject] : null;
 
     const result = {
-        subject: safeSubject,
+        subject: safeSubject || _normalizeSubjectKey(subject),
         deltaSubject: 0,
         deltaGlobal: 0,
         oldSubjectElo: AppState.elo[safeSubject] || 1200,
@@ -7364,6 +7403,9 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         } else {
             questionObj.easeFactor = Math.max(1.3, (questionObj.easeFactor || 2.5) - 0.2);
         }
+        // Per-question SR revision clock (see matrix.js submitPracticeLog).
+        // This path owns the ease-factor write, so it owns the stamp.
+        questionObj.srUpdatedAt = Date.now();
 
         const oldGlobal = AppState.elo.global || 1200;
         const newGlobal = _computeGlobalMetaMMR(
@@ -7616,6 +7658,8 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         } else {
             questionObj.easeFactor = Math.max(1.3, (questionObj.easeFactor || 2.5) - 0.2);
         }
+        // Per-question SR revision clock (see matrix.js submitPracticeLog).
+        questionObj.srUpdatedAt = Date.now();
     }
 
     // ── Step F: Master Global Meta-MMR Sync ──
@@ -8806,6 +8850,9 @@ export function confirmErrorLog() {
     if (typeof AppState.pendingWrongQ.easeFactor !== 'number' || !isFinite(AppState.pendingWrongQ.easeFactor)) {
         AppState.pendingWrongQ.easeFactor = 2.5;
     }
+    // Per-question SR revision clock so this fresh vault entry wins LWW against
+    // a stale cloud/tab copy that may still carry it as unloged.
+    AppState.pendingWrongQ.srUpdatedAt = Date.now();
     saveAllAsync().catch(console.error);
     // Non-blocking confirmation [AUDIT P2]: the old alert() fired mid-practice
     // at the user's emotional low point (just got it wrong) and froze the page
@@ -10000,11 +10047,7 @@ function _gatherDumpScopeQuestions(silent, listEl) {
         qs.forEach((q, idx) => {
             raw.push(q);
             const historySummary = (q.historyLogs || []).map(log => {
-                let ft = log.frictionTypes || [];
-                if (typeof ft === 'string') {
-                    try { ft = JSON.parse(ft); } catch (_) { ft = [ft]; }
-                }
-                if (!Array.isArray(ft)) ft = [];
+                const ft = parseFrictionTypes(log.frictionTypes);
                 return {
                     date: log.timestamp ? log.timestamp.slice(0, 10) : 'unknown',
                     result: log.result || 'unknown',
@@ -11258,7 +11301,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (l && l.result === 'correct' && l.timestamp) {
           const t = typeof l.timestamp === 'string' ? Date.parse(l.timestamp) : l.timestamp;
           if (t >= dayStart && t < dayEnd) {
-            const s = (q.subject || '').toLowerCase(); if (s in c) c[s]++;
+            // IDENTICAL canonical rule to __ckBumpTodayFix below, or a
+            // 'math'-labelled question is counted here but not on the
+            // incremental bump and the nav ring permanently disagrees with
+            // the vault rail.
+            const s = normSubjKeyStrict(q.subject); if (s) c[s]++;
           }
         }
       }
@@ -11275,8 +11322,8 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       const day = _fixDayKey();
       if (_fixCache.day !== day) _fixCache = { day, counts: _scanFixToday() };
-      const s = String(subject || '').toLowerCase();
-      if (s in _fixCache.counts) _fixCache.counts[s]++;
+      const s = normSubjKeyStrict(subject);
+      if (s) _fixCache.counts[s] = (_fixCache.counts[s] || 0) + 1;
       // Nudge the memoized nav derivation so the ring reflects it promptly.
       try { window.__jmaxDataDirty = (window.__jmaxDataDirty || 0) + 1; } catch (_) {}
     } catch (e) {}

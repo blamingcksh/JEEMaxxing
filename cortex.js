@@ -139,7 +139,10 @@ export function normalizeTag(t) {
     return String(t == null ? '' : t).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-const ERROR_CLASS_SET = { calculation: 1, conceptual: 1, misread: 1 };
+// Null-prototype membership set: `cls` comes from STORED q.errorReason, and a
+// plain literal would answer `ERROR_CLASS_SET['constructor'/'__proto__']`
+// truthy, minting a phantom mistake-class tag from an inherited member.
+const ERROR_CLASS_SET = Object.assign(Object.create(null), { calculation: 1, conceptual: 1, misread: 1 });
 
 /**
  * Persistent namespaces attached to a question: personal tags (A) + the
@@ -237,13 +240,31 @@ function _tagKeyWeight(key, ns, inventory) {
 //  Leak profiles — per-tag empirical forgetting signal
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * CANONICAL frictionTypes parser — a local copy of storage.js
+ * parseFrictionTypes (cortex.js is deliberately zero-dependency beyond
+ * memory.js, so the semantics are mirrored rather than imported).
+ *
+ * `historyLogs[i].frictionTypes` is written as JSON.stringify(array) by
+ * matrix.js, but legacy/hand-edited banks hold a raw array or a bare token.
+ * A bare non-JSON token IS a real legacy value and is preserved; previously
+ * it was dropped here, so the leak namespace silently skipped frictions that
+ * the Vault pill and the Smart Mistake Report both counted. Malformed input
+ * degrades to []; elements are coerced to strings, trimmed and deduped.
+ */
 function _parseFrictionArray(raw) {
-    if (Array.isArray(raw)) return raw.filter(Boolean);
-    if (typeof raw !== 'string' || !raw) return [];
-    try {
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
-    } catch (_) { return []; }
+    let list = raw;
+    if (typeof list === 'string') {
+        try { list = JSON.parse(list); }
+        catch (_) { list = [raw]; }          // bare legacy token
+    }
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const v of list) {
+        const s = String(v == null ? '' : v).trim();
+        if (s && out.indexOf(s) === -1) out.push(s);
+    }
+    return out;
 }
 
 function _blankProfile() {
@@ -693,16 +714,22 @@ export function commitCortexReview(q, snapshot, attempt, nowMs) {
     try {
         const mem = hydrateMemory(q);
         const out = { ageClass: null, spacingCredit: 0 };
+        // Every write below goes through the HYDRATED stability, never the raw
+        // field: when the Elo/kernel bridge is skipped (typeof guard + try/catch
+        // upstream) q.stability is still undefined, and `undefined * 1.15` is
+        // NaN — which would then be persisted as the item's stability. The
+        // healed value is also written back so the field is always finite.
+        let stability = mem.stability;
 
         const vaultFirst = !!(attempt && attempt.vaultFirst);
         if ((vaultFirst || mem.reps === 1) && snapshot && isFinite(snapshot.ageAtSolveDays)) {
             const lat = snapshot.ageAtSolveDays;
             if (lat < P.HOT_STRIKE_DAYS) {
                 out.ageClass = 'hot';
-                q.stability = Math.min(180, q.stability * P.HOT_S_MULT);
+                stability = Math.min(180, stability * P.HOT_S_MULT);
             } else if (lat > P.COLD_REVIVAL_DAYS) {
                 out.ageClass = 'cold';
-                q.stability = Math.min(q.stability, P.COLD_S_CAP);
+                stability = Math.min(stability, P.COLD_S_CAP);
             } else {
                 out.ageClass = 'mid';
             }
@@ -713,8 +740,9 @@ export function commitCortexReview(q, snapshot, attempt, nowMs) {
         if (correct && od >= P.SPACING_CREDIT_MIN_OVERDUE) {
             out.spacingCredit = P.SPACING_CREDIT_RATE *
                 Math.min(1, od / P.SPACING_CREDIT_SAT_DAYS);
-            q.stability = q.stability * (1 + out.spacingCredit);
+            stability = stability * (1 + out.spacingCredit);
         }
+        q.stability = stability;
         return out;
     } catch (_) {
         return empty;
