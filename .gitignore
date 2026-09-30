@@ -8,3 +8,6 @@ node_modules/.bin/
 
 # ZCode CLI local state (plans/session artifacts)
 .zcode/
+
+# harness binary
+omp-windows-x64.exe

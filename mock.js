@@ -45,10 +45,16 @@ import {
     mockChapterName,
     isMockChapterName,
     isMockQuestion,
+    _invalidateMatrixCtx,
 } from './storage.js';
 
 // Smart Mistake Report engine — post-mock tag × difficulty autopsy (pure).
 import { buildMockAutopsy } from './report.js';
+
+// Every removal path must reverse the solver ledger (solvedCount, studySecs
+// and daily-queue slots) before it drops a card — imported directly so this
+// module does not need app.js (which would be a cycle: app.js → mock.js).
+import { _purgeDeletedQuestion } from './matrix.js';
 
 // Browser bridge alias — Node smoke tests have no window; UI handlers attach
 // through this so importing the module for its pure functions never crashes.
@@ -326,7 +332,15 @@ function deleteMock(id) {
             continue;
         }
         const i = AppState.questionBank.indexOf(q);
-        if (i >= 0) AppState.questionBank.splice(i, 1);
+        if (i >= 0) {
+            // A mock paper can reserve a question the user already solved in
+            // the vault — its counter credit must be handed back on delete.
+            _purgeDeletedQuestion(AppState.questionBank[i], q.id);
+            AppState.questionBank.splice(i, 1);
+        }
+        // Deleting a paper strips its questions from the vault; matrix.js's
+        // cortex cache holds the pre-delete profiles.
+        _invalidateMatrixCtx();
         try { recordCloudTombstone(q.id).catch(console.error); } catch (_) {}
     }
     AppState.mocks = AppState.mocks.filter(x => x.id !== id);
@@ -373,6 +387,7 @@ export function cleanupMockOrphans() {
             if (!stamp) continue;
             const owner = byId[stamp] || byId[q.mockSource];
             if (!owner) {
+                _purgeDeletedQuestion(q, q.id);
                 bank.splice(i, 1);
                 try { recordCloudTombstone(q.id).catch(console.error); } catch (_) {}
                 removed++;
@@ -448,6 +463,9 @@ export function purgeGhostQuestions(subject) {
             const orphanStamp = stamp && !live[stamp] && !live[q.mockSource];
             const blank = !orphanStamp && _isGhostQuestion(q, subject);
             if (!orphanStamp && !blank) continue;
+            // Ghost questions carry no vault credit path of their own, but a
+            // solved ghost still inflated solved[] — hand it back.
+            _purgeDeletedQuestion(q, q.id);
             bank.splice(i, 1);
             try { recordCloudTombstone(q.id).catch(console.error); } catch (_) {}
             if (orphanStamp) out.stamped++; else out.blank++;

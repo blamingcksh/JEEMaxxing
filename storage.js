@@ -103,6 +103,9 @@ function _listenTabSync() {
                             changed = true;
                         }
                     }
+                    // New ids arrived from a sibling tab — matrix.js's cortex
+                    // cache now holds profiles for a smaller bank.
+                    _invalidateMatrixCtx();
                 }
                 if (changed) {
                     _ui('updateUI');
@@ -116,7 +119,92 @@ function _listenTabSync() {
 }
 _listenTabSync();
 
+/**
+ * Tell matrix.js its cortex ctx cache is stale.
+ *
+ * `AppState.questionBank` is mutated from three modules (matrix.js, this one,
+ * app.js) but the cache key is a module-private rev counter that only
+ * matrix.js's own paths bump. Without this hop, a chapter import, a
+ * chapter-question delete, a duplicate purge, or a merge left the vault
+ * sorting on pre-mutation profiles and lapse events.
+ *
+ * Dispatched as a DOM event rather than an import: matrix.js imports this
+ * module at top level, so the reverse edge puts `AppState` in TDZ while
+ * matrix.js's body runs.
+ */
+export function _invalidateMatrixCtx() {
+    try { document.dispatchEvent(new CustomEvent('error-matrix:bank-mutated')); } catch (_) {}
+}
+
 // ── Multi-tab question-bank guard (audit residual of item [11]) ─────────────
+/**
+ * The canonical cross-device question-bank merge. Both cloud-pull entry points
+ * (`executeUnifiedSync` and `loadStateFromCloud`) MUST route through this.
+ * An earlier fix patched only `loadStateFromCloud`, leaving the other running
+ * the original status-only merge — so the manual Sync button (and the poll)
+ * silently reverted every SR field the background pull had just carried
+ * across. One merge, one rule.
+ *
+ * @param {Array} cloudBank  parsed questionBank from the cloud snapshot
+ * @param {Array} tombstones parsed tombstones from the cloud snapshot
+ * @returns {Promise<number>} number of questions adopted or updated
+ */
+async function _mergeCloudQuestionBank(cloudBank, tombstones) {
+    if (!Array.isArray(cloudBank)) return 0;
+    // id → question Map (was .find() per cloud question — O(n·m))
+    const localById = new Map(AppState.questionBank.map(q => [q.id, q]));
+    // Union remote deletions BEFORE filtering, so a question deleted on
+    // another device is dropped here too.
+    await _mergeRemoteTombstones(tombstones);
+    let touched = 0;
+    cloudBank.forEach(cloudQ => {
+        if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
+        if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect
+        const localQ = localById.get(cloudQ.id);
+        if (!localQ) {
+            // A device that pushed this question stamped its own SR state; a
+            // brand-new local row means this device booted before the pull, so
+            // heal the imported copy in place rather than shipping raw cloud
+            // fields straight into the bank.
+            _healAdoptedQ(cloudQ);
+            AppState.questionBank.push(cloudQ);
+            localById.set(cloudQ.id, cloudQ);
+            touched++;
+            return;
+        }
+        // SR state is not a counter: it is a per-question revision clock
+        // (srUpdatedAt, stamped by every SR write — see matrix.js
+        // submitPracticeLog). The OLD rule merged only `status === 'solved'`
+        // and ignored every schedule field, so a solve on one device never
+        // reached the other: device B kept its stale due date and re-surfaced
+        // an item already solved on device A. Nothing was overwritten there —
+        // SR state simply never crossed the wire.
+        const cloudSR = Number(cloudQ.srUpdatedAt) || 0;
+        const localSR = Number(localQ.srUpdatedAt) || 0;
+        // `status` is an SR field, so it moves only with the schedule it
+        // belongs to. The old unconditional `status === 'solved'` flip ran
+        // BEFORE this clock check, so a stale snapshot could stamp a card
+        // 'solved' while the NEWER row's schedule/EF/historyLogs said it had
+        // just failed — the card read "solved", the vault stopped surfacing
+        // it, and the daily solved count diverged from the bank. One clock
+        // decides the whole row: solved, interval and logs cannot disagree.
+        if (cloudSR >= localSR) {
+            for (const k of SR_MERGE_FIELDS) {
+                if (Object.prototype.hasOwnProperty.call(cloudQ, k)) localQ[k] = cloudQ[k];
+            }
+            localQ.srUpdatedAt = cloudSR;
+            // Adopted rows can arrive from a client that never ran
+            // migrateQuestionBankSR, so heal what the pull took: a NaN ease
+            // factor or an unparsable due date must not enter the bank.
+            // _healAdoptedQ only repairs missing/corrupt fields, so this is a
+            // no-op on a row this device wrote itself.
+            _healAdoptedQ(localQ);
+            touched++;
+        }
+    });
+    return touched;
+}
+
 // Spaced-repetition fields that a cross-device / cross-tab merge is allowed to
 // move. These are exactly the fields the SR engine owns (SM-2 baseline from
 // computeSR, kernel state from memory.js, cortex schedule from cortex.js) plus
@@ -247,7 +335,13 @@ async function _adoptForeignBankUpdates() {
                 adopted++;
             }
         }
-        if (adopted) console.info('[tab-sync] adopted ' + adopted + ' remotely-updated question(s) before commit');
+        if (adopted) {
+            console.info('[tab-sync] adopted ' + adopted + ' remotely-updated question(s) before commit');
+            // The bank changed underneath matrix.js's cortex cache, and the
+            // cache key (_bankRev) is module-private. Force a rebuild or the
+            // vault sorts on the pre-adoption profiles.
+            _invalidateMatrixCtx();
+        }
     } catch (_) { /* never block the save path */ }
 }
 
@@ -2543,19 +2637,12 @@ export async function executeUnifiedSync() {
                     let cloudState = await fileRes.json();
                     if (subText) subText.textContent = "Merging runtime variables...";
                     if (cloudState.questionBank) {
-                        // id → question Map: the merge used to .find() per cloud
-                        // question (O(n·m) — ~9M comparisons at 3k×3k every poll).
-                        const localById = new Map(AppState.questionBank.map(q => [q.id, q]));
-                        // Union remote deletions BEFORE filtering, so a question
-                        // deleted on another device is dropped here too.
-                        await _mergeRemoteTombstones(cloudState.tombstones);
-                        cloudState.questionBank.forEach(cloudQ => {
-                            if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
-                            if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect
-                            const localQ = localById.get(cloudQ.id);
-                            if (!localQ) { AppState.questionBank.push(cloudQ); localById.set(cloudQ.id, cloudQ); }
-                            else if (cloudQ.status === 'solved' && localQ.status !== 'solved') localQ.status = 'solved';
-                        });
+                        // One merge, one rule — shared with loadStateFromCloud.
+                        // This block previously ran its own status-only merge,
+                        // which reverted the SR fields the background pull had
+                        // just carried across.
+                        const adopted = await _mergeCloudQuestionBank(cloudState.questionBank, cloudState.tombstones);
+                        if (adopted > 0) _invalidateMatrixCtx();
                     }
                     if (cloudState.chapters) {
                         for (let subj in cloudState.chapters) {
@@ -2588,7 +2675,10 @@ export async function executeUnifiedSync() {
             }
         }
         if (subText) subText.textContent = "Updating interface fields...";
-        await idbSet('jeemax_question_bank', AppState.questionBank.map(_stripBankImages));
+        // Same two-field shape as _doSaveAll — the pull's four-field strip
+        // nulled solutionImageUrl/optionImageUrls, which the image vault
+        // never cached (payloads ≤100 chars), so they were lost for good.
+        await idbSet('jeemax_question_bank', AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })));
         await persistImageCacheIfChanged();
         await idbSet('jeemax_chapters', AppState.chapters);
         await idbSet('jeemax_solved', solved);
@@ -2763,7 +2853,11 @@ export async function syncStateToCloud(force = false) {
             cloudQuestionBank.push(cloudQ);
         }
         if (newlyUploaded) {
-            await idbSet('jeemax_question_bank', AppState.questionBank.map(_stripBankImages));
+            // Local IDB keeps the small in-bank image fields; only the four-
+            // field strip above is the cloud payload shape. The vault only
+            // caches payloads >100 chars, so nulling solutionImageUrl /
+            // optionImageUrls here destroyed every short one on the next pull.
+            await idbSet('jeemax_question_bank', AppState.questionBank.map(q => ({ ...q, imageDataUrl: null, diagramImageUrl: null })));
             await persistImageCacheIfChanged();
         }
         if (subText) subText.textContent = "Syncing system state...";
@@ -2822,57 +2916,17 @@ export async function loadStateFromCloud(isBackground = false) {
             let fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${AppState.driveAccessToken}` } });
             let cloudState = await fileRes.json();
             if (cloudState.questionBank) {
-                // id → question Map (was .find() per cloud question — O(n·m))
-                const localById = new Map(AppState.questionBank.map(q => [q.id, q]));
-                // Union remote deletions BEFORE filtering (cross-device delete).
-                await _mergeRemoteTombstones(cloudState.tombstones);
-                cloudState.questionBank.forEach(cloudQ => {
-                    if (!cloudQ || cloudQ.id === undefined || cloudQ.id === null) return;
-                    if (_isTombstoned(cloudQ.id)) return; // user deleted this — never resurrect
-                    const localQ = localById.get(cloudQ.id);
-                    if (!localQ) {
-                        // A device that pushed this question stamped its own SR
-                        // state; a brand-new local row means the device booted
-                        // before the pull, so heal the imported copy in place
-                        // rather than shipping raw cloud fields into the bank.
-                        _healAdoptedQ(cloudQ);
-                        AppState.questionBank.push(cloudQ);
-                        localById.set(cloudQ.id, cloudQ);
-                        return;
-                    }
-                    // SR state is not a counter: it is a per-question revision
-                    // clock (srUpdatedAt, stamped by every SR write — see
-                    // matrix.js submitPracticeLog). The old rule merged ONLY
-                    // `status === 'solved'` and ignored every schedule field,
-                    // so a solve on one device never reached the other: device
-                    // B kept its stale due date and re-surfaced an item already
-                    // solved on device A. Nothing was overwritten here — SR
-                    // state simply never crossed the wire.
-                    if (cloudQ.status === 'solved' && localQ.status !== 'solved') localQ.status = 'solved';
-                    const cloudSR = Number(cloudQ.srUpdatedAt) || 0;
-                    const localSR = Number(localQ.srUpdatedAt) || 0;
-                    if (cloudSR > localSR) {
-                        for (const k of SR_MERGE_FIELDS) {
-                            if (Object.prototype.hasOwnProperty.call(cloudQ, k)) localQ[k] = cloudQ[k];
-                        }
-                        localQ.srUpdatedAt = cloudSR;
-                    } else if (cloudSR === 0 && localSR === 0) {
-                        // Both sides pre-clock: this is the first pull after the
-                        // clock landed. Take the remote schedule and heal it,
-                        // so the legacy copy's raw fields can't park a NaN
-                        // ease factor or a schedule with no parsable due date
-                        // into the bank (migrateQuestionBankSR already ran at
-                        // boot, before this pull).
-                        for (const k of SR_MERGE_FIELDS) {
-                            if (Object.prototype.hasOwnProperty.call(cloudQ, k)) localQ[k] = cloudQ[k];
-                        }
-                        _healAdoptedQ(localQ);
-                    }
-                });
-                // Persist the merged bank so the merge survives a crash before
-                // the next saveAllAsync, and so the heartbeat doesn't re-run
-                // the same merge on every poll.
-                try { await idbSet('jeemax_question_bank', AppState.questionBank.map(_stripBankImages)); } catch (e) {}
+                // One merge, one rule — shared with executeUnifiedSync so the
+                // two pull paths can never drift apart again.
+                const adopted = await _mergeCloudQuestionBank(cloudState.questionBank, cloudState.tombstones);
+                if (adopted > 0) {
+                    // The bank changed underneath the cortex: its memoised ctx
+                    // is keyed on matrix.js's _bankRev, which only matrix.js
+                    // bumps. Force a full re-render on the Error Matrix the
+                    // next time it opens, or the vault sorts on the pre-pull
+                    // profiles/lapse events.
+                    _invalidateMatrixCtx();
+                }
             }
             if (cloudState.chapters) {
                 for (let subj in cloudState.chapters) { if (!AppState.chapters[subj]) AppState.chapters[subj] = []; cloudState.chapters[subj].forEach(ch => { if (!AppState.chapters[subj].includes(ch)) AppState.chapters[subj].push(ch); }); }
