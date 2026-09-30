@@ -59,6 +59,7 @@ import {
 // contagion, age/overdue priors and the target-retention scheduler.
 import {
     buildTagInventory,
+    CORTEX_PARAMS,
     commitCortexReview,
     computeTagProfiles,
     collectLapseEvents,
@@ -106,6 +107,30 @@ const DAILY_QUEUE_LS_KEY = 'jeemax_daily_queue_snapshot';
 let _bankRev = 0;
 function _bumpBankRev() { _bankRev++; }
 
+/**
+ * Force the cortex ctx cache to rebuild.
+ *
+ * `AppState.questionBank` is mutated from three modules (matrix.js,
+ * app.js, storage.js), but the cache key lives here and only matrix.js's own
+ * paths bump `_bankRev`. Without this export, a chapter import, a
+ * chapter-question delete, a duplicate purge, or a cloud/tab merge left the
+ * vault sorting on the PRE-mutation profiles and lapse events: prices frozen
+ * until a solve happened to rebuild them. Call it after any bank mutation
+ * made outside matrix.js.
+ */
+export function _invalidateMatrixCtx() {
+    _cortexCache.rev = -1;
+    _cortexCache.len = -1;
+    _cortexCache.ctx = null;
+}
+// A module-local event: storage.js/app.js/mock.js cannot import this symbol
+// without forming a circular edge (matrix.js imports storage.js at top level,
+// and storage.js's AppState is in TDZ until its own body finishes — the edge
+// made matrix.js evaluate mid-storage.js-body and throw
+// "Cannot access 'AppState' before initialization"). The CustomEvent hop keeps
+// the dependency direction acyclic.
+document.addEventListener('error-matrix:bank-mutated', _invalidateMatrixCtx);
+
 const _cortexCache = { rev: -1, len: -1, ctx: null };
 
 /**
@@ -113,6 +138,19 @@ const _cortexCache = { rev: -1, len: -1, ctx: null };
  * Every consumer wraps its use in try/catch — a cortex fault must degrade to
  * the legacy sort order, never blank the vault.
  */
+// Cortex calls `chapterWeight(chapter)` with one argument, so handing it
+// getChapterWeight directly left maps undefined and resolveChapterWeight
+// resolved from the static JEE_CHAPTER_WEIGHTS table alone — every user
+// override and every AI-stamped niche weight was silently ignored in vault
+// ordering, cortex priority and scheduleNextReview. This is the ONE place the
+// maps are bound for cortex, matching the shape directive.js already uses.
+function _cortexCtxChapterWeight(chapter) {
+    return getChapterWeight(chapter, {
+        overrides: AppState.userChapterWeights,
+        ai: AppState.chapterWeights,
+    });
+}
+
 function _cortexCtx(nowMs) {
     const bank = AppState.questionBank;
     const now = nowMs || Date.now();
@@ -130,7 +168,7 @@ function _cortexCtx(nowMs) {
             inventory,
             profiles,
             lapseEvents,
-            chapterWeight: getChapterWeight,
+            chapterWeight: _cortexCtxChapterWeight,
         };
     } catch (e) {
         console.error('[cortex] context build failed — degrading to legacy ordering:', e);
@@ -295,17 +333,28 @@ try {
 
 // ── Practice Log Drawer State ──────────────────────────────────────────────
 
+// The EXACT field set the Elo bridge + memory kernel write at the moment of
+// truth (app.js calculateEloMigration → updateMemoryOnReview). Captured before
+// the bridge fires so an abandoned drawer can be rolled back precisely.
+// Kept here, next to the drawer that owns the rollback, so the two cannot drift.
+const _BRIDGE_WRITTEN_FIELDS = [
+    'stability', 'difficultyD', 'reps', 'lapses',      // memory kernel
+    'lastReviewedAt',
+    'easeFactor', 'solveCount',
+    'qElo', 'qEloSource', 'qEloStampedAt', 'qEloStampedBy', 'isAnomaly',
+    'srUpdatedAt',                                      // merge clock
+];
+
 let _drawerState = {
     qId: null,
     // ── Pre-solve kernel state, captured when the DRAWER OPENS. ──
-    // The Elo bridge advances q.reps (memory.js updateMemoryOnReview) the
-    // instant the user commits an answer in _applyResult — long before
-    // submitPracticeLog runs. Reading hydrateMemory(q).reps at submit time
-    // therefore returns the POST-solve count on every single review, which
-    // made the cortex-scheduler gate below treat every item as
-    // kernel-owned on its very first vault attempt.
+    // The Elo bridge advances q.reps (memory.js updateMemoryOnReview) and
+    // nudges easeFactor the instant the user commits an answer in _applyResult
+    // — long before submitPracticeLog runs. Reading them at submit time would
+    // return post-solve values on every review, making the cortex-scheduler
+    // gate treat every item as kernel-owned on its first vault attempt and
+    // stacking two SM-2 steps into one.
     preSolveReps: 0,
-    preSolveStability: 0,
     // Pre-solve SM-2 ease factor. The Elo bridge nudges easeFactor before
     // submitPracticeLog runs; this holds the pre-nudge value so computeSR can
     // evaluate one SM-2 step instead of two stacked ones.
@@ -320,6 +369,13 @@ let _drawerState = {
     eloResult: null,        // 🧠 Elo migration result captured at the decision instant
     frozenTimeMins: 0,      // ⏱ Stopwatch time frozen at the moment of truth
     resultLocked: false,    // 🔒 True once the user committed correct/incorrect
+    // Rollback snapshot of the fields the Elo bridge (+kernel) writes at the
+    // moment of truth, captured when that bridge fires. See _applyResult.
+    preBridgeSnapshot: null,
+    // Cortex PRE-commit telemetry captured at drawer open — see
+    // openPracticeDrawer. The moment-of-truth kernel write makes any
+    // post-hoc capture an "after" reading.
+    cortexSnapshot: null,
 };
 
 function _resetDrawerState() {
@@ -327,7 +383,6 @@ function _resetDrawerState() {
     _drawerState = {
         qId: null,
         preSolveReps: 0,
-        preSolveStability: 0,
         preSolveEF: 2.5,
         result: null,           // 'correct' | 'incorrect'
         resultSource: null,     // 'auto' (graded against loaded answer) | 'self' (user-reported)
@@ -346,6 +401,11 @@ function _resetDrawerState() {
         frozenTimeMins: 0,      // ⏱ Stopwatch time frozen at the moment of truth
         resultLocked: false,    // 🔒 True once the user committed correct/incorrect
         tagDraft: null,         // 🏷 Cortex v3 draft of q.tags while the drawer is open
+        // Rollback snapshot — only meaningful while a result is committed and
+        // unconsumed by submitPracticeLog. Cleared here so a fresh drawer open
+        // can never roll a previous card's mutation back.
+        preBridgeSnapshot: null,
+        cortexSnapshot: null,
     };
 }
 
@@ -398,17 +458,30 @@ export function openPracticeDrawer(qId) {
     try {
         const _pre = hydrateMemory(q);
         _drawerState.preSolveReps = Number(_pre.reps) || 0;
-        _drawerState.preSolveStability = Number(_pre.stability) || 0;
         // Capability: hydrateMemory does not carry easeFactor, so read it off
         // the raw question the same way computeSR does (with the same 2.5
         // default and NaN guard) — this is the value SM-2 must step FROM.
         const _rawEF = Number(q.easeFactor);
         _drawerState.preSolveEF = Number.isFinite(_rawEF) ? _rawEF : 2.5;
+        // Cortex PRE-commit telemetry, captured here alongside the other
+        // pre-solve values. The Elo bridge (+ kernel) runs at the moment of
+        // truth — long before submitPracticeLog — and rewrites stability and
+        // lastReviewedAt. Snapshotting in submitPracticeLog therefore read the
+        // POST-solve memory state across a zero-day gap: sBefore was really an
+        // sAfter, and rBefore came out ~1.0 on nearly every row. daysOverdue
+        // and ageAtSolveDays are unaffected by the ordering (nextReviewAt and
+        // createdAt are untouched until computeSR), but they belong with this
+        // block so the snapshot is one honest unit.
+        try {
+            _drawerState.cortexSnapshot = preReviewSnapshot(q);
+        } catch (_) {
+            _drawerState.cortexSnapshot = null;
+        }
     } catch (_) {
         _drawerState.preSolveReps = 0;
-        _drawerState.preSolveStability = 0;
         const _rawEF = Number(q.easeFactor);
         _drawerState.preSolveEF = Number.isFinite(_rawEF) ? _rawEF : 2.5;
+        _drawerState.cortexSnapshot = null;
     }
 
     const dueInfo = getDueStatus(q);
@@ -500,6 +573,28 @@ export function openPracticeDrawer(qId) {
 
 export function closePracticeDrawer() {
     SessionFocus.release('vault-drawer');
+    // Abort rollback: the Elo bridge + memory kernel write their fields (and
+    // the srUpdatedAt merge clock) at the MOMENT OF TRUTH, before "Log
+    // Attempt". If the user backs out here — backdrop tap, ✕ — the mutation
+    // would persist with no historyLog, no SM-2 schedule and a fresh merge
+    // clock that makes the phantom review authoritative across devices and
+    // sibling tabs. Restore exactly the fields the bridge wrote.
+    // submitPracticeLog clears the snapshot as it consumes the review, so a
+    // completed log is never rolled back.
+    const _snap = _drawerState.preBridgeSnapshot;
+    if (_snap) {
+        try {
+            const _q = _findQByHandlerId(_drawerState.qId);
+            if (_q) {
+                for (const k of Object.keys(_snap)) {
+                    if (_snap[k] === undefined) delete _q[k]; else _q[k] = _snap[k];
+                }
+                saveAllAsync().catch(console.error);
+            }
+        } catch (err) {
+            console.error('[matrix] abort rollback failed:', err);
+        }
+    }
     _pauseStopwatch();
     _resetDrawerState();
     const overlay = document.getElementById('sr-practice-overlay');
@@ -1168,7 +1263,14 @@ function _applyResult(result, source, q) {
             // normalizer and skip a non-canonical subject: normSubjKey's
             // 'physics' catch-all would silently credit another subject's tally.
             const _overheatKey = normSubjKeyStrict(q && q.subject);
-            if (_overheatKey) changeCount(_overheatKey, 2);
+            // Ledger the bonus at the moment it lands, on the question it
+            // belongs to. Without this the purge reversal subtracted only the
+            // base +1 (or nothing at all, when the question was already
+            // 'solved'), so every overheat solve leaked +2 into solved[].
+            if (_overheatKey) {
+                changeCount(_overheatKey, 2);
+                q._solvedCredit = (Number(q._solvedCredit) || 0) + 2;
+            }
             if (typeof window.showSupercharged === 'function') window.showSupercharged();
             if (typeof window.deactivateOverheat === 'function') window.deactivateOverheat();
         } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
@@ -1188,6 +1290,17 @@ function _applyResult(result, source, q) {
     // ── Cognitive MMR / Elo migration (uses the FROZEN decision time) ──
     let _eloResult = null;
     if (typeof window.calculateEloMigration === 'function' && q.subject) {
+        // Snapshot the exact field set the Elo bridge + memory kernel write
+        // (app.js calculateEloMigration: updateMemoryOnReview → stability/
+        // difficultyD/reps/lapses, plus lastReviewedAt, easeFactor, solveCount,
+        // qElo/qEloSource/isAnomaly and the srUpdatedAt merge clock). If the
+        // user abandons the drawer without pressing Log Attempt, this snapshot
+        // is what closePracticeDrawer rolls back — otherwise the mutation is
+        // persisted with NO historyLog and NO schedule, and srUpdatedAt makes
+        // that phantom review authoritative across devices and tabs.
+        const _snap = {};
+        for (const k of _BRIDGE_WRITTEN_FIELDS) _snap[k] = q[k];
+        _drawerState.preBridgeSnapshot = _snap;
         try {
             // Calibration capture: publish the pre-reveal confidence for the
             // engine to consume synchronously inside this solve, then clear it
@@ -1540,10 +1653,18 @@ export function srToggleManualTime() {
         _pauseStopwatch();
         if (dot) dot.classList.remove('running');
     } else {
-        // …and hand it back to the stopwatch. Without this the timer stayed
-        // frozen after manual-off while the UI still read as stopwatch-fed,
-        // silently logging only the seconds accrued before the toggle.
-        _startStopwatch();
+        // Turning Manual OFF hands the time source back to the stopwatch, so
+        // the hand-entered minutes must be discarded here. Without this the
+        // value persisted in _drawerState.timeSpentMins kept winning the
+        // precedence at submitPracticeLog (`timeSpentMins > 0 ?
+        // timeSpentMins : stopwatch / 60`): the log recorded a number the
+        // user had just deliberately turned off, the footer still showed it,
+        // studySecs inflated by up to 24h of phantom minutes, and the record
+        // contradicted the frozen stopwatch display.
+        // NOTE: _startStopwatch() is intentionally NOT called — the result
+        // lock must freeze elapsed time, never re-accumulate it.
+        _drawerState.timeSpentMins = 0;
+        _updateDrawerUI();
         if (dot) dot.classList.add('running');
     }
 }
@@ -1613,14 +1734,12 @@ export function submitPracticeLog() {
     const _efWasNudged = Number.isFinite(_preSolveEF) && _preSolveEF !== _eliBridgedEF;
     if (_efWasNudged) q.easeFactor = _preSolveEF;
 
-    // ── Cognitive Cortex v3: capture the PRE-commit memory state BEFORE any
-    // writer touches q (computeSR overwrites nextReviewAt; the kernel moves
-    // stability). daysOverdue / age-at-solve / rBefore all come from here.
-    // Also record whether this is the item's FIRST vault-drawer review — the
-    // hot-strike/cold-revival priors key on it (practice-fumbled items arrive
-    // with kernel reps already advanced, so reps===1 alone never fires). ──
-    let _cortexSnap = null;
-    try { _cortexSnap = preReviewSnapshot(q); } catch (_) { _cortexSnap = null; }
+    // ── Cognitive Cortex v3: the PRE-commit memory state, captured at drawer
+    // open (before the Elo bridge + kernel wrote stability and
+    // lastReviewedAt). daysOverdue / age-at-solve / rBefore / sBefore all come
+    // from here. A null snapshot means the capture threw; commitCortexReview
+    // treats that as "no telemetry" rather than inventing a post-solve one. ──
+    const _cortexSnap = _drawerState.cortexSnapshot || null;
     const _vaultFirstReview = !Array.isArray(q.historyLogs) || q.historyLogs.length === 0;
 
     // ── Lock the first-attempt result BEFORE pushing the new historyLog.
@@ -1684,7 +1803,7 @@ export function submitPracticeLog() {
         const _sched = _preReps >= 1 && _drawerState.result === 'correct'
             ? scheduleNextReview(q, {
                 examDateMs: _examDateMsSafe(),
-                chapterWeight: getChapterWeight,
+                chapterWeight: _cortexCtxChapterWeight,
             })
             : null;
         if (typeof _sched === 'string') {
@@ -1801,7 +1920,13 @@ export function submitPracticeLog() {
                     subject: subjKey,
                     chapter: q.chapter,
                     qElo: q.qElo || 0,
-                    timeMins: Number(_drawerState.timeSpentMins) || undefined,
+                    // The RESOLVED time (manual entry when the user typed one,
+                    // stopwatch otherwise), not the manual-only field —
+                    // `Number(timeSpentMins) || undefined` was `undefined` for
+                    // every stopwatch-driven solve, so directive.js's
+                    // rushed-vanity clamp never fired and a 6-second redrill
+                    // priced at full LU instead of 0.3.
+                    timeMins: Number.isFinite(timeSpent) && timeSpent > 0 ? timeSpent : undefined,
                 });
             } catch (_) { /* Directive must never block the fix path */ }
             changeCount(subjKey, 1);   // canonical key — NaN guard
@@ -1904,6 +2029,10 @@ export function submitPracticeLog() {
         }
     } catch (_) { /* honesty adjustment must never block the log */ }
 
+    // The bridge snapshot is CONSUMED: this log records the historyLog, the
+    // schedule and the merge clock that the moment-of-truth write needed.
+    // closePracticeDrawer must not roll it back.
+    _drawerState.preBridgeSnapshot = null;
     saveAllAsync().catch(console.error);
     closePracticeDrawer();
 
@@ -1970,7 +2099,7 @@ export function submitPracticeLog() {
  * guess. Questions logged before the ledger existed contribute nothing to
  * reverse here, which is the honest answer: we cannot know what they banked.
  */
-function _purgeDeletedQuestion(target, targetId) {
+export function _purgeDeletedQuestion(target, targetId) {
     const key = normSubjKeyStrict(target.subject);
     const solvedCredits = Math.max(0, Number(target._solvedCredit) || 0);
     const secsCredits = Math.max(0, Number(target._studySecsCredit) || 0);
@@ -2711,7 +2840,7 @@ function _buildAttemptDots(historyLogs) {
             : 'N/A';
         const ts = new Date(log.timestamp);
         const dateStr = isNaN(ts.getTime()) ? 'unknown date' : formatSRDate(log.timestamp);
-        const timeStr = String(log.timeSpentMins == null ? '' : log.timeSpentMins) + 'm';
+        const timeStr = _numOr(log.timeSpentMins, 0) + 'm';
         // '\n' is a real newline: '\\n' inside a template literal is a literal
         // backslash + n, so every hover showed the escape on one run-on line.
         const tooltip = `title="${_esc(dateStr + '\nTime: ' + timeStr + '\nFriction: ' + frictionLabel)}"`;
@@ -2751,7 +2880,7 @@ function _buildHistoryLogs(historyLogs) {
                 </div>
                 <div class="sr-history-meta">
                     <div style="color:#666;">${dateStr}</div>
-                    <div style="color:#555;">${_esc(log.timeSpentMins)}m · EF ${_numOr(log.newEaseFactor, 2.5).toFixed(2)}</div>
+                    <div style="color:#555;">${_numOr(log.timeSpentMins, 0)}m · EF ${_numOr(log.newEaseFactor, 2.5).toFixed(2)}</div>
                 </div>
             </div>
         `;
@@ -3114,7 +3243,7 @@ function _renderCortexDrilldownExtras(subject, chapterName, items) {
                 ev.chapter === chapKey && ids.has(ev.id));
             if (recent.length >= 2) {
                 html += '<div class="dd-contagion">⚠ <b>' + recent.length +
-                    ' sibling lapses here in the last 21d</b> — these memories are entangled; one more lapse resurfaces all of them.</div>';
+                    ' sibling lapses here in the last ' + CORTEX_PARAMS.LAPSE_EVENT_WINDOW_DAYS + 'd</b> — these memories are entangled; one more lapse resurfaces all of them.</div>';
             }
         } catch (_) {}
         // Per-tag leak rows for the chapter's personal vocabulary.

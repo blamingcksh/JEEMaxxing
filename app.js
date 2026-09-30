@@ -60,6 +60,8 @@ import {
     //   subjects into the physics ledger.
     normSubjKeyStrict,
     parseFrictionTypes,
+    // Bank mutated outside matrix.js: expire its cortex ctx cache.
+    _invalidateMatrixCtx,
 } from './storage.js';
 
 // ── Daily Directive (target-system v2) ──
@@ -129,6 +131,9 @@ import {
     openErrorMatrix, filterErrors,
     addErrorBlock, renderErrorMatrixFromBank, initErrorLazyLoaders,
     removeErrorLog, openLightbox,
+    // Every removal path must reverse the solver ledger (solvedCount,
+    // studySecs, daily-queue slots) before it drops a card.
+    _purgeDeletedQuestion,
     // ── Daily Fix Queue (wired to the inline onclick in index.html) ──
     toggleDailyQueue, activateDailyQueue,
     // ── SR practice log imports (new) ──
@@ -2141,11 +2146,18 @@ export function deleteChapter(ch) {
         // Use splice to avoid reassigning the exported let binding
         for (let i = AppState.questionBank.length - 1; i >= 0; i--) {
             if (AppState.questionBank[i].subject === AppState.currentSubject && _chaptersMatch(AppState.questionBank[i].chapter, ch)) {
+                // Reverse this question's solved / study-time credits before
+                // it leaves the bank — a chapter delete is a delete.
+                _purgeDeletedQuestion(AppState.questionBank[i], AppState.questionBank[i].id);
                 // Tombstone so a stale cloud snapshot can't resurrect the chapter's questions.
                 recordCloudTombstone(AppState.questionBank[i].id).catch(console.error);
                 AppState.questionBank.splice(i, 1);
             }
         }
+        // The bank changed under matrix.js's cortex cache — its rev key is
+        // module-private, so expiring it is the only way to make the vault
+        // sort on post-delete profiles.
+        _invalidateMatrixCtx();
         // Keep mock papers consistent: strip section ids that no longer exist
         // in the bank (startMock would drop them with a warning otherwise).
         try {
@@ -3352,6 +3364,9 @@ export function saveAllQuestions() {
         }
         if (_mockChapter && !_mockLinked) newQ.chapter = _staleChapter;
         AppState.questionBank.push(newQ);
+        // A newly imported question changes every cortex profile and lapse
+        // event; the vault must not sort on the pre-import ones.
+        _invalidateMatrixCtx();
         // ── Register the (possibly gem-stamped) chapter so it actually gets a
         // tile in the chapter grid. Without this, questions imported under a
         // chapter name not already in AppState.chapters are orphaned — stored
@@ -5047,12 +5062,22 @@ export function startPracticeWithQuestion(questions, index) {
     // kernel — but nothing on that path ever writes currentInterval /
     // nextReviewAt / isMastered. A vault question therefore earned an
     // ease-factor bump with NO schedule attached, so it could never become
-    // due again. showQuestionList has no vault gate either, so the chapter
-    // practice grid was the way in. The SR drawer (submitPracticeLog) is the
-    // single writer of the schedule, so vault items are routed there.
-    const _first = (index >= 0 && index < questions.length) ? questions[index] : null;
-    if (_first && AppState.questionBank.indexOf(_first) !== -1 && (_first.errorReason || _first.status === 'error' || _first.status === 'wrong')) {
-        openPracticeDrawer(_first.id);
+    // due again. The SR drawer (submitPracticeLog) is the single writer of
+    // the schedule, so vault items are routed there.
+    const _isVault = q => !!q && AppState.questionBank.indexOf(q) !== -1
+        && (q.errorReason || q.status === 'error' || q.status === 'wrong');
+    // The gate must cover the WHOLE queue, not the index we were handed: the
+    // chapter grid passes its filtered array under, and practiceNext /
+    // practicePrev advance through it with no vault predicate of their own.
+    // Gating only the start index let a Grind run walk from an untouched card
+    // straight into a vault card, and the vault then earned the EF bump with
+    // no schedule. Strip the vault items out of the queue and route the first
+    // one to the drawer.
+    const _vaultAt = Array.isArray(questions)
+        ? questions.findIndex(_isVault)
+        : -1;
+    if (_vaultAt !== -1) {
+        openPracticeDrawer(questions[_vaultAt].id);
         return;
     }
     // Standard list entry — a mode left armed (e.g. ✕-closed mid-run) must not
@@ -5216,6 +5241,11 @@ export function evaluateBountyOutcome(wasCorrect) {
         q.status = 'solved';
         _directiveMarkSolve(q, true);
         changeCount(q.subject, 1);
+        // Ledger of what THIS question put into the global counters, so
+        // removeErrorLog / _purgeDeletedQuestion can hand it back instead of
+        // leaving the user's solved ring inflated forever. Same rule as the
+        // SR drawer's log path (matrix.js) — one writer, one reversal.
+        q._solvedCredit = (Number(q._solvedCredit) || 0) + 1;
         AppState.bounty.payoffCount = 3;
         AppState.practiceCorrectStreak = Math.max(AppState.practiceCorrectStreak, 5);
         updateStreakVisualizer();
@@ -5247,8 +5277,38 @@ export function startBountySessionFromModal() {
     const q = AppState.questionBank.find(item => item.id != null && String(item.id) === String(qId));
     if (!q) return;
 
-    const today = todayLocalKey();
-    AppState.bounty.date = today;
+    // The bounty pool is drawn from `status === 'error' || status === 'wrong'`
+    // — i.e. it is ALWAYS vault items. Presenting one through the standard
+    // practice modal ran calculateEloMigration (moving EF/qElo/stability and
+    // stamping the memory kernel) but never computeSR, so the card's
+    // currentInterval/nextReviewAt/isMastered/historyLogs stayed frozen while
+    // its EF kept drifting — it could never become due again. Route it to the
+    // SR drawer, the single writer of the schedule. The bounty state machine
+    // below still owns the win/loss bookkeeping; the drawer's own submit path
+    // writes the schedule, and evaluateBountyOutcome is reached from
+    // practiceSubmit's bounty hooks and the timeout arm.
+    if (q.errorReason || q.status === 'error' || q.status === 'wrong') {
+        _armBountySession(q);
+        openPracticeDrawer(q.id);
+        closeModalStr('bounty-modal');
+        return;
+    }
+
+    _armBountySession(q);
+    renderPracticeQuestionModal();
+    openModal('practice-modal');
+    AppState.photoHidden = false;
+    document.getElementById('hide-photo-toggle').textContent = '📷 Hide Image';
+    closeModalStr('bounty-modal');
+}
+
+// Arms the bounty state machine for one question: today's bounty identity, the
+// per-item time limit, the standard practice queue of one, and the 1s timer
+// whose expiry is a WRONG first attempt. Presentation is the caller's choice —
+// the SR drawer for vault items (which own the SM-2 schedule), the practice
+// modal otherwise — so this is deliberately the only shared part.
+function _armBountySession(q) {
+    AppState.bounty.date = todayLocalKey();
     AppState.bounty.active = true;
     AppState.bounty.questionId = q.id;
     AppState.bounty.timeLimit = getHistoricalBountyTimeLimit(q);
@@ -5280,12 +5340,6 @@ export function startBountySessionFromModal() {
             evaluateBountyOutcome(false);
         }
     }, 1000);
-
-    renderPracticeQuestionModal();
-    openModal('practice-modal');
-    AppState.photoHidden = false;
-    document.getElementById('hide-photo-toggle').textContent = '📷 Hide Image';
-    closeModalStr('bounty-modal');
 }
 
 export function updatePracticeTimerDisplay() {
@@ -8953,9 +9007,16 @@ export async function deleteQuestion(id) {
         // Use splice instead of filter+reassign to preserve live binding
         for (let i = AppState.questionBank.length - 1; i >= 0; i--) {
             if (AppState.questionBank[i].id.toString() === id.toString()) {
+                // Hand back what this question had put into the global
+                // solved / study-time counters. Only removeErrorLog did this,
+                // so every other delete path left the rings inflated forever.
+                _purgeDeletedQuestion(AppState.questionBank[i], id);
                 AppState.questionBank.splice(i, 1);
             }
         }
+        // Bank mutation from outside matrix.js — expire its cortex cache so
+        // the vault does not sort on the pre-deletion profiles.
+        _invalidateMatrixCtx();
         // Tombstone the id so a stale cloud snapshot can never resurrect it.
         recordCloudTombstone(id).catch(console.error);
 
@@ -10258,8 +10319,13 @@ window.purgeDuplicateQuestions = function () {
     }
     if (!confirm(`Found ${dupIndexes.length} duplicate question${dupIndexes.length !== 1 ? 's' : ''} (same text, possibly in different chapters). Keep the first copy of each and remove the rest?`)) return;
     for (let i = dupIndexes.length - 1; i >= 0; i--) {
+        // A purged duplicate may itself be a solved vault item — hand its
+        // credits back the same way any other removal path must.
+        const _dup = AppState.questionBank[dupIndexes[i]];
+        if (_dup) _purgeDeletedQuestion(_dup, _dup.id);
         AppState.questionBank.splice(dupIndexes[i], 1);
     }
+    _invalidateMatrixCtx();
     saveAllAsync().catch(console.error);
     try { renderChaptersList(); } catch (_) {}
     try { showQuestionList(); } catch (_) {}
@@ -10283,7 +10349,14 @@ function _autoPurgeDuplicateQuestions() {
             const ch = bank[i].chapter || 'Uncategorized';
             byChapter[ch] = (byChapter[ch] || 0) + 1;
         });
-        for (let i = dupIndexes.length - 1; i >= 0; i--) bank.splice(dupIndexes[i], 1);
+        for (let i = dupIndexes.length - 1; i >= 0; i--) {
+            // Same rule as every other removal path: hand the card's solver
+            // credits, study seconds and daily-queue slots back before it goes.
+            const _dup = bank[dupIndexes[i]];
+            if (_dup) _purgeDeletedQuestion(_dup, _dup.id);
+            bank.splice(dupIndexes[i], 1);
+        }
+        _invalidateMatrixCtx();
         saveAllAsync().catch(console.error);
         try { renderChaptersList(); } catch (_) {}
         console.warn('[auto-purge] Removed', dupIndexes.length,

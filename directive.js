@@ -165,8 +165,10 @@ function _priceUnit(detail) {
     if (qElo > 0) lu *= _clamp(qElo / userElo, 0.55, 1.9);
     lu *= _modeMul();
     if (detail.firstTry) lu *= 1.15;
-    // Conquest headline chapter pays 1.5× for the day.
-    if (state.headline && detail.chapter === state.headline.chapter && !state.headline.done) lu *= 1.5;
+    // Conquest headline chapter pays 1.5× for the day. Folded on both sides:
+    // detail.chapter is the raw per-question string, and a headline filed
+    // under a case-variant spelling of the same chapter lost the multiplier.
+    if (state.headline && _foldChapter(detail.chapter) === _foldChapter(state.headline.chapter) && !state.headline.done) lu *= 1.5;
     // Overcharge reward: all LU ×1.25 for the overcharged day.
     if (meta.overcharge && meta.overcharge.date === _today()) lu *= meta.overcharge.luMul;
     // Rushed vanity solves: under 20% of the band target earns almost nothing.
@@ -180,8 +182,14 @@ function _priceUnit(detail) {
  *  Consumes a pending detail if a rich path left one; otherwise prices a
  *  plain unit (dashboard steppers, legacy paths). */
 function onSolveLogged(subject, delta) {
-    if (!state || (delta | 0) <= 0) return;
+    // Rehydrate BEFORE the null guard. runNewDayCycle awaits Directive.settle()
+    // — which nulls this module's state — and only then awaits ensureToday(),
+    // so a solve committed in that window (an in-flight submitPracticeLog whose
+    // changeCount already fired) used to hit the guard and be dropped: no LU,
+    // no accuracy, no quest progress, no history entry, while the vault had
+    // already recorded the solve.
     _ensureTodaySync();
+    if (!state || (delta | 0) <= 0) return;
     const sub = subject;
     const detail = { ...(_pendingDetail || {}), subject: sub };
     detail.type = (_pendingDetail && _pendingDetail.type === 'fix') ? 'fix' : 'solve';
@@ -201,7 +209,11 @@ function onSolveLogged(subject, delta) {
         if (state.accuracy.total >= 8 && state.accuracy.correct / state.accuracy.total < 0.4) state.taxActive = true;
     }
     state.lu[sub] = _round1((state.lu[sub] || 0) + gained);
-    if (detail.chapter) state.luByChapter[detail.chapter] = _round1((state.luByChapter[detail.chapter] || 0) + gained);
+    // Keyed on the folded chapter: a later solve under a case-variant
+    // spelling of the headline chapter wrote a second key, so the headline
+    // quest could never accumulate progress across the bank's spellings.
+    const _fk = _foldChapter(detail.chapter);
+    if (_fk) state.luByChapter[_fk] = _round1((state.luByChapter[_fk] || 0) + gained);
     _afterActivity();
 }
 
@@ -215,8 +227,11 @@ function markPending(detail) {
 // ── Non-solve LU sources ────────────────────────────────────────────────────
 
 function awardFocus(subject) {
-    if (!state) return;
+    // Rehydrate first — a fresh-day/empty recoverable state must not turn a
+    // focus block into a silent no-op (same midnight-settle hazard as
+    // onSolveLogged).
     _ensureTodaySync();
+    if (!state) return;
     const sub = SUBJECTS.indexOf(subject) >= 0 ? subject : 'physics';
     if (state.focusBlocks[sub] >= 3) return; // focus can't replace solving
     state.focusBlocks[sub] += 1;
@@ -226,8 +241,10 @@ function awardFocus(subject) {
 
 /** Bounty failure tax (replaces the old baseTargets +=5 / re-lock behaviour). */
 function applyBountyTax(subject) {
-    if (!state || state.bountyTaxed) return;
+    // Rehydrate first so the tax is never silently skipped on a day whose
+    // state hasn't been booted yet.
     _ensureTodaySync();
+    if (!state || state.bountyTaxed) return;
     const sub = SUBJECTS.indexOf(subject) >= 0 ? subject : 'physics';
     state.contract[sub] = Math.round(state.contract[sub] * 1.25);
     state.bountyTaxed = true;
@@ -274,7 +291,7 @@ function _updateQuestProgress() {
         }
     });
     if (state.headline && !state.headline.done) {
-        const got = state.luByChapter[state.headline.chapter] || 0;
+        const got = state.luByChapter[_foldChapter(state.headline.chapter)] || 0;
         state.headline.prog = _round1(got);
         if (got >= state.headline.luNeeded) {
             state.headline.done = true;
@@ -345,9 +362,16 @@ function _tsMs(v) {
     return Number.isFinite(t) ? t : null;
 }
 
-/** True when a mistake is due now or already overdue. */
-function _isDueNow(nextReviewAt) {
-    const t = _tsMs(nextReviewAt);
+/** True when a mistake is due now or already overdue. A mastered item is
+ *  deliberately NOT due: the Daily Core Queue (matrix.js) elects members on
+ *  getDueStatus(q).status === 'ready', and storage.js returns 'mastered' with
+ *  daysUntil Infinity for any isMastered question. The old bare timestamp
+ *  comparison kept a mastered item "due" forever — its nextReviewAt sits in
+ *  the past — so the contract LU, the Debt Collector quest and the morning
+ *  toast all described work the queue would never serve. */
+function _isDueNow(q) {
+    if (q && q.isMastered) return false;
+    const t = _tsMs(q ? q.nextReviewAt : null);
     if (t === null) return true;      // missing / unparsable → due
     return t <= Date.now();
 }
@@ -362,13 +386,24 @@ function _isDueNow(nextReviewAt) {
  * of a default that would drag real θ toward the middle.
  * Returns the sample-weighted θ (Elo, ~1200 scale) or null when unmeasured.
  */
+/** Chapter identity for the headline quest. Manual vault logs store the raw
+ *  typed string (matrix.js only collapses whitespace), so 'Rotational Motion'
+ *  and 'rotational motion' are two spellings of one chapter. Every other
+ *  chapter-keyed surface (matrix.js _chapterKey/_sameChapter, app.js
+ *  _chaptersMatch) folds trim+lowercase; not doing so here split the bucket,
+ *  so both halves fell under the `n < 2` eligibility floor and NO chapter was
+ *  ever headline-eligible. */
+function _foldChapter(ch) {
+    return String(ch == null ? '' : ch).trim().toLowerCase();
+}
+
 function _chapterThetaFor(theta, bank, ch) {
     const key = sub => sub + '::' + String(ch).trim().toLowerCase();
     let weightSum = 0;
     let thetaSum = 0;
     const seen = new Set();
     for (const q of bank) {
-        if (q.chapter !== ch) continue;
+        if (_foldChapter(q.chapter) !== _foldChapter(ch)) continue;
         const sub = normSubjKeyStrict(q.subject);
         if (!sub || seen.has(sub)) continue;
         seen.add(sub);
@@ -387,9 +422,11 @@ function _pickHeadline() {
     const now = Date.now();
     bank.forEach(q => {
         const ch = q.chapter; if (!ch) return;
-        const c = byChapter[ch] || (byChapter[ch] = { n: 0, due: 0, lastSolved: 0 });
+        const fk = _foldChapter(ch);
+        if (!fk) return;
+        const c = byChapter[fk] || (byChapter[fk] = { n: 0, due: 0, lastSolved: 0, display: ch });
         c.n += 1;
-        if ((q.errorReason || q.status === 'error' || q.status === 'wrong') && _isDueNow(q.nextReviewAt)) c.due += 1;
+        if ((q.errorReason || q.status === 'error' || q.status === 'wrong') && _isDueNow(q)) c.due += 1;
         const solvedAt = _tsMs(q.lastSolvedAt);
         if (solvedAt !== null) c.lastSolved = Math.max(c.lastSolved, solvedAt);
     });
@@ -417,11 +454,11 @@ function _pickHeadline() {
         const daysIdle = c.lastSolved ? (now - c.lastSolved) / 86400000 : 14;
         const neglect = Math.min(1, daysIdle / 14);
         const score = w * weak * (0.5 + leak) * (0.5 + neglect);
-        if (score > bestScore) { bestScore = score; best = { ch, w, due: c.due }; }
+        if (score > bestScore) { bestScore = score; best = { ch: c.display, fk: ch, w, due: c.due }; }
     });
     if (!best) return null;
     const subject = (() => {
-        const inChapter = bank.filter(q => q.chapter === best.ch);
+        const inChapter = bank.filter(q => _foldChapter(q.chapter) === _foldChapter(best.fk));
         for (const q of inChapter) {
             const sub = normSubjKeyStrict(q.subject);
             if (sub) return sub;
@@ -449,7 +486,7 @@ function _dueCountBySubject() {
     const out = { physics: 0, chemistry: 0, maths: 0 };
     bank.forEach(q => {
         if (!(q.errorReason || q.status === 'error' || q.status === 'wrong')) return;
-        if (!_isDueNow(q.nextReviewAt)) return;
+        if (!_isDueNow(q)) return;
         const sub = normSubjKeyStrict(q.subject);
         if (!sub) return;
         out[sub] += 1;
