@@ -1211,7 +1211,7 @@ export {
     backfillMemoryFields,
     retrievabilityFrom,
     retrievabilityAt,
-    currentRetrievability,
+    hasReviewRecord,
     updateMemoryOnReview,
     refineDifficultyAfterTag,
     weightedRetention,

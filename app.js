@@ -90,6 +90,7 @@ import {
     retrievabilityFrom,
     updateMemoryOnReview,
     chapterMemoryStats,
+    hasReviewRecord,
 } from './memory.js';
 
 // Cognitive Cortex v3 — brain-like scheduling layer (pure, zero-dep).
@@ -5866,47 +5867,53 @@ function _getActiveErrorBankCount() {
 }
 
 /**
- * Continuous, Non-Linear Biological Memory Construct — Chapter Health.
+ * Chapter Health — how exam-ready is this chapter RIGHT NOW.
  *
- * Replaces the legacy discrete model (flat 15% tax per `getDueStatus === 'ready'`
- * item) which produced severe telemetry distortion and crashed layout transitions
- * during active practice blocks. The new model is grounded in Bjork's *New Theory
- * of Disuse* and uses an exponential Retrieval Strength decay per item, then
- * aggregates all attempted items in the chapter into a single difficulty-weighted
- * harmonic accessibility score.
+ * Delegates to the Memory Kernel v2 (power-law retrievability, per-item
+ * stability). The kernel owns the arithmetic; this function owns WHICH
+ * questions count, and that choice is the whole ballgame:
  *
- *   RS_i(t) = e ^ ( -ln(2) · (Δt / S_i) )
- *   A_ch(t) = ( Σ Q_Elo,i · RS_i(t) ) / ( Σ Q_Elo,i ) · 100
+ *   universe = every bank question in the chapter
+ *   reviewed = the subset carrying objective review evidence (hasReviewRecord)
+ *   health   = Σ_universe ( qElo · R ) / Σ_universe ( qElo ) × 100
  *
- * where  Δt   = (Date.now() − lastReviewedAt) / 86_400_000   (days, float)
- *        S_i  = max(0.5, easeFactor)                          (stability, days)
+ * A question with no review record contributes ZERO retention. The legacy
+ * filter (`errorReason` && status ∈ error/solved/wrong) had two failure modes
+ * that made a barely-touched chapter read as near-perfect:
  *
- * This is a PURE READ — it never mutates the question objects, so it is safe to
- * call at high frequency from layout/telemetry loops (idempotent). Permanent
- * field attachment is performed once, at write time, inside
- * `calculateEloMigration` / `practiceSubmit` / `confirmErrorLog`.
+ *   1. It pooled ONLY previously-errored questions, so the solved material you
+ *      had actually studied was invisible while every untouched question was
+ *      invisible too — health described a handful of items, not the chapter.
+ *   2. The surviving errors mostly carried no timestamp, and `retrievabilityAt`
+ *      reads a missing anchor as Δt=0. Wrong answers you had never re-drilled
+ *      were therefore scoring a free 100% and out-weighing the one genuinely
+ *      stale item.
+ *
+ * Measured on a 680-question bank: a 79-question chapter with 2 reviewed
+ * questions reported 86.8% — the healthiest chapter in the app.
+ *
+ * This is a PURE READ (never mutates), so it is safe at high frequency from
+ * layout/telemetry loops. Permanent field attachment happens once, at write
+ * time, in `calculateEloMigration` / `practiceSubmit` / `confirmErrorLog`.
  *
  * @param {string} subject  Raw subject key (aliases auto-normalised).
  * @param {string} chapter  Chapter name.
- * @returns {number} Chapter health, clamped tightly to [10, 100]. Neutral 50
- *                   when no tracked items exist for the domain.
+ * @returns {number} Chapter health, clamped to [10, 100]. 50 only when the
+ *                   chapter holds no questions at all (genuinely unknown);
+ *                   10 when it holds material but none of it was studied.
  */
 function _getChapterHealth(subject, chapter) {
     const safeSubject = _normalizeSubjectKey(subject);
-    const qs = AppState.questionBank.filter(q =>
-        q.subject === safeSubject && _chaptersMatch(q.chapter, chapter) &&
-        q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong')
+    const universe = AppState.questionBank.filter(q =>
+        q.subject === safeSubject && _chaptersMatch(q.chapter, chapter)
     );
-    if (qs.length === 0) return 50; // neutral default for UI consistency
+    if (universe.length === 0) return 50;   // no material → nothing to be healthy about
+    const reviewed = universe.filter(hasReviewRecord);
+    if (reviewed.length === 0) return 10;    // material exists, none of it studied
 
-    // DELEGATED to the Memory Kernel v2 — power-law retrievability with real
-    // per-item stability (unbounded growth), replacing the legacy model that
-    // treated easeFactor (clamped ≤3.0) as a half-life in days. matrix.js's
-    // grid mirror delegates to the SAME kernel, so the visual, monitoring and
-    // scoring layers can no longer drift apart.
     try {
-        const stats = chapterMemoryStats(qs, { nowMs: Date.now() });
-        if (!stats) return 50;
+        const stats = chapterMemoryStats(reviewed, { universe, nowMs: Date.now() });
+        if (!stats) return 10;
         return Math.max(10, Math.min(100, stats.health));
     } catch (_) { return 50; }
 }

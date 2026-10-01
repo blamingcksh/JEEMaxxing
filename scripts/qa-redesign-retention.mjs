@@ -1,9 +1,10 @@
 // qa-redesign-retention.mjs — visual + functional QA for the redesigned
 // Retention Health card (.dash-card-decay / #chapter-decay-grid).
 // Serves the repo on 127.0.0.1:8812, seeds a realistic memory ledger
-// (healthy ~95% · fading 80-90% · critical <75%, one very long chapter name,
-// varied coverage), drives headless Edge/Chrome, asserts hydration +
-// statuses + drilldown, and drops screenshots into .qa-shots.
+// (coverage-aware health: retention × how much of the chapter was actually
+// reviewed — healthy ~95% · fading 80-90% · critical <80%, one very long
+// chapter name, varied coverage), drives headless Edge/Chrome, asserts
+// hydration + statuses + drilldown, and drops screenshots into .qa-shots.
 //
 // Usage: node scripts/qa-redesign-retention.mjs [before|after]
 import { chromium } from 'playwright-core';
@@ -166,6 +167,19 @@ const rowCount = await page.evaluate(() =>
     document.querySelectorAll('#chapter-decay-grid [onclick], #chapter-decay-grid .rh-row, #chapter-decay-grid .decay-row').length);
 assert(rowCount > 0, `grid populated (${rowCount} chapter rows)`);
 
+// Expand before counting: the grid collapses to 8 rows in risk order, and now
+// that coverage gates health, the chapters that can reach "ready" are exactly
+// the fully-covered ones — which sort LAST by risk and would be cropped out of
+// a truncated list. Band coverage is a property of the model, not of the
+// collapse affordance.
+await page.evaluate(() => {
+    const grid = document.getElementById('chapter-decay-grid');
+    if (grid && grid.dataset.expanded !== '1') {
+        grid.dataset.expanded = '1';
+        window.renderChapterDecayGrid();
+    }
+});
+
 // Statuses represented — parse "retention NN%" out of each row tooltip
 const bands = await page.evaluate(() => {
     const out = { ready: 0, fading: 0, critical: 0 };
@@ -174,7 +188,9 @@ const bands = await page.evaluate(() => {
     // Legacy SVG rows carry tooltips as <title> child nodes, not attributes
     document.querySelectorAll('#chapter-decay-grid title').forEach(t => texts.push(t.textContent));
     texts.forEach(txt => {
-        const m = /retention (\d+)%/.exec(txt || '');
+        // The row number is coverage-aware HEALTH, not raw retention — the
+        // tooltip leads with "health NN%" and then breaks out both factors.
+        const m = /health (\d+)%/.exec(txt || '');
         if (!m) return;
         const h = Number(m[1]);
         if (h >= 90) out.ready++; else if (h >= 80) out.fading++; else out.critical++;

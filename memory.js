@@ -150,6 +150,34 @@ export function currentRetrievability(q) {
 }
 
 /**
+ * Does this question carry objective evidence that it was ACTUALLY REVIEWED?
+ *
+ * The kernel needs this to separate "has a measured retention" from "is merely
+ * present in the bank". `retrievabilityAt` treats a missing timestamp as
+ * "seen right now" (the FSRS new-card convention), which is correct for
+ * SCHEDULING but catastrophic for AGGREGATION: a chapter holding one freshly
+ * logged error and 70 untouched questions would report near-perfect retention,
+ * because the error is the only item carrying weight and it decays from Δt=0.
+ *
+ * Evidence is deliberately narrow — only fields the app WRITES at review time.
+ * `status: 'solved'` is NOT evidence: bulk-seeded uploads ship as 'solved'
+ * with no logs, no timestamps and stability at the floor. Verified against a
+ * 680-question bank, where this rule and the wider `stability`/`currentInterval`
+ * signals agree on every single row.
+ *
+ * @param {object} q
+ * @returns {boolean}
+ */
+export function hasReviewRecord(q) {
+    if (!q || typeof q !== 'object') return false;
+    if (q.lastReviewedAt) return true;
+    if (Array.isArray(q.historyLogs) && q.historyLogs.length > 0) return true;
+    if (_num(q.reps, 0) >= 1) return true;
+    if (_num(q.solveCount, 0) > 0) return true;
+    return false;
+}
+
+/**
  * Update the memory state after ONE graded review. Reads the PRE-review
  * retrievability (that's what makes low-R successes grow stability most),
  * then mutates stability / difficultyD / reps / lapses in place.
@@ -234,49 +262,90 @@ const MAX_FORECAST_HORIZON_DAYS = 730;
 
 /**
  * Full chapter memory statistics for the Decay Grid v2.
- * @param {object[]} items  vault questions belonging to one chapter
- * @param {object} opts     { examDateMs?:number, nowMs?:number }
- * @returns {{count:number, health:number, forecastHealth:number|null,
- *                 criticalDays:number, weakest:{id:string,R:number}|null}|null}
+ *
+ * COVERAGE-AWARE BY CONSTRUCTION. `items` is the chapter's REVIEWED set (rows
+ * carrying review evidence) and `opts.universe` is EVERY question in the
+ * chapter. Health is the weighted mean retention over the WHOLE chapter:
+ *
+ *   health = Σ_all ( w_i · R_i ) / Σ_all ( w_i ) × 100,   R_i = 0 if unreviewed
+ *
+ * An item with no review record contributes ZERO — not "just seen at Δt=0".
+ * That single term is what makes an untouched chapter read as untouched: you
+ * cannot answer what you have never studied, so 6 reviewed items inside a
+ * 79-question chapter cap the chapter near 6/79 instead of reporting the
+ * handful you happened to touch. Retention and coverage stay separable for the
+ * UI (the grid draws coverage as its rail and retention as its stroke) because
+ * both factors are returned, but only their product drives `health`.
+ *
+ * `opts.universe` is REQUIRED — omitting it silently reverts to the
+ * coverage-blind reading this replaced, so there is no default to fall into.
+ *
+ * @param {object[]} items  reviewed questions belonging to one chapter
+ * @param {object} opts     { universe: object[], examDateMs?:number, nowMs?:number }
+ * @returns {{count:number, health:number, retention:number, coverage:number,
+ *             forecastHealth:number|null, forecastRetention:number|null,
+ *             criticalDays:number, weakest:{id:string,R:number}|null}|null}
  */
 export function chapterMemoryStats(items, opts) {
     if (!Array.isArray(items) || items.length === 0) return null;
     const o = opts || {};
-    const health01 = weightedRetention(items, 0, o.nowMs);
-    if (health01 == null) return null;
+    const universe = Array.isArray(o.universe) ? o.universe : null;
+    if (!universe || universe.length === 0) return null;
+    const now = _num(o.nowMs, Date.now());
 
-    let forecast01 = null;
-    let criticalDays = health01 < RETENTION_CRITICAL ? 0 : Infinity;
+    const retention01 = weightedRetention(items, 0, now);
+    if (retention01 == null) return null;
+
+    // Coverage: reviewed weight over the whole chapter's weight. Weight-based
+    // (not a raw count) so a chapter's qElo spread cannot masquerade as progress.
+    let wUniverse = 0;
+    for (const q of universe) wUniverse += _itemWeight(q);
+    let wReviewed = 0;
+    for (const q of items) wReviewed += _itemWeight(q);
+    const coverage = wUniverse > 0 ? Math.min(1, wReviewed / wUniverse) : 0;
+
+    // Forecast projects the REVIEWED set forward over the SAME universe
+    // denominator: material never studied stays at zero on exam day, because
+    // decay alone will not teach it.
+    let forecastHealth = null;
+    let forecastRetention = null;
     if (typeof o.examDateMs === 'number' && isFinite(o.examDateMs)) {
-        const now = _num(o.nowMs, Date.now());
         const daysToExam = Math.max(0, (o.examDateMs - now) / MS_PER_DAY);
-        forecast01 = weightedRetention(items, daysToExam, o.nowMs);
+        const projected = weightedRetention(items, daysToExam, now);
+        forecastRetention = projected == null ? null : projected * 100;
+        forecastHealth = coverage > 0 ? (projected || 0) * coverage * 100 : 0;
     }
-    // Days until weighted retention crosses the critical line: binary search
-    // over a monotone-decreasing curve — closed form is awkward with mixed
-    // stabilities, and 40 probes give sub-day precision over a 2y horizon.
+
+    // Days until the RETENTION of what you actually learned crosses the critical
+    // line — a pure decay horizon over the reviewed set. Folding coverage in here
+    // would pin every under-covered chapter to "now" and destroy the signal the
+    // horizon exists to carry.
+    let criticalDays = retention01 < RETENTION_CRITICAL ? 0 : Infinity;
     if (criticalDays === Infinity) {
         let lo = 0, hi = MAX_FORECAST_HORIZON_DAYS;
-        if (weightedRetention(items, hi, o.nowMs) >= RETENTION_CRITICAL) {
+        if (weightedRetention(items, hi, now) >= RETENTION_CRITICAL) {
             criticalDays = Infinity; // rock solid beyond horizon
         } else {
             for (let i = 0; i < 40; i++) {
                 const mid = (lo + hi) / 2;
-                if (weightedRetention(items, mid, o.nowMs) < RETENTION_CRITICAL) hi = mid; else lo = mid;
+                if (weightedRetention(items, mid, now) < RETENTION_CRITICAL) hi = mid; else lo = mid;
             }
             criticalDays = hi;
         }
     }
     let weakest = null;
-    const now = _num(o.nowMs, Date.now());
     for (const q of items) {
         const R = retrievabilityAt(q, now);
         if (!weakest || R < weakest.R) weakest = { id: String(q.id), R };
     }
     return {
         count: items.length,
-        health: health01 * 100,
-        forecastHealth: forecast01 == null ? null : forecast01 * 100,
+        total: universe.length,
+        health: retention01 * coverage * 100,
+        retention: retention01 * 100,
+        coverage,
+        forecastHealth,
+        forecastRetention,
         criticalDays,
         weakest,
     };
