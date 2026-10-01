@@ -188,7 +188,10 @@ async function _mergeCloudQuestionBank(cloudBank, tombstones) {
         // just failed — the card read "solved", the vault stopped surfacing
         // it, and the daily solved count diverged from the bank. One clock
         // decides the whole row: solved, interval and logs cannot disagree.
-        if (cloudSR >= localSR) {
+        // Strict `>`: on equal clocks neither side is newer, so keep local.
+        // `>=` let a same-ms remote snapshot arbitrarily win and drop a local
+        // solve; the tab path already uses `>`.
+        if (cloudSR > localSR) {
             for (const k of SR_MERGE_FIELDS) {
                 if (Object.prototype.hasOwnProperty.call(cloudQ, k)) localQ[k] = cloudQ[k];
             }
@@ -245,14 +248,35 @@ function _healAdoptedQ(q) {
         q.currentInterval = Number.isFinite(iv) && iv >= 0 ? iv : 0;
         if (typeof q.nextReviewAt !== 'string' || q.nextReviewAt === '' || isNaN(Date.parse(q.nextReviewAt))) {
             // A scheduled item with no parsable due date is silently invisible
-            // to every due filter; reschedule it from its interval.
-            const d = new Date();
-            d.setDate(d.getDate() + Math.max(0, q.currentInterval));
-            q.nextReviewAt = d.toISOString();
+            // to every due filter; reschedule it from its interval. Use ms
+            // math so fractional (sub-day) cortex horizons survive — setDate
+            // truncates 0.04d to 0d (due now instead of in ~1h).
+            q.nextReviewAt = new Date(Date.now() + Math.max(0, q.currentInterval) * 86400000).toISOString();
         }
         if (q.isMastered !== true) q.isMastered = false;
         if (!Array.isArray(q.historyLogs)) q.historyLogs = [];
+        // Drop corrupt log elements (null / non-object) like
+        // migrateQuestionBankSR does, so renderers never throw on .slice().
+        for (let i = q.historyLogs.length - 1; i >= 0; i--) {
+            if (!q.historyLogs[i] || typeof q.historyLogs[i] !== 'object') q.historyLogs.splice(i, 1);
+        }
         if (q.historyLogs.length > 30) q.historyLogs = q.historyLogs.slice(-30);
+        // Parity with migrateQuestionBankSR: adopted rows arrive from clients
+        // that may never have run the boot migration, so heal the same
+        // canonical fields here instead of letting corrupt values persist.
+        if (q.targetTimeMins == null || !isFinite(Number(q.targetTimeMins)) || Number(q.targetTimeMins) <= 0) q.targetTimeMins = 5;
+        if (q.qElo === undefined || q.qElo === null) q.qElo = 1200;
+        if (q.isAnomaly === undefined) q.isAnomaly = false;
+        if (q.qEloSource === undefined) q.qEloSource = 'uncalibrated';
+        if (q.qEloStampedBy === undefined) q.qEloStampedBy = null;
+        if (q.qEloStampedAt === undefined) q.qEloStampedAt = null;
+        if (typeof q.solveCount !== 'number') q.solveCount = 0;
+        if (q.lastSolvedAt === undefined) q.lastSolvedAt = null;
+        if (!Array.isArray(q.tags)) q.tags = [];
+        if (typeof q.skips !== 'number') q.skips = 0;
+        if (q.lastSkippedAt === undefined) q.lastSkippedAt = null;
+        if (!Array.isArray(q.skipReasons)) q.skipReasons = [];
+        if (q.modeRetired === undefined) q.modeRetired = false;
         backfillMemoryFields(q);
         migrateCortexFields(q);
     } catch (_) { /* healing is best-effort; never block a merge */ }
@@ -331,7 +355,11 @@ async function _adoptForeignBankUpdates() {
                     }
                     _healAdoptedQ(lq);
                 }
-                _bankSigs.set(key, rSig);
+                // Record OUR post-merge copy, not the remote signature: when
+                // local wins the SR clock, lq !== rq, and storing rSig poisons
+                // the next check (`_bankSig(lq) === ourLastSig` fails forever),
+                // stalling all future non-SR sync for this row.
+                _bankSigs.set(key, _bankSig(lq));
                 adopted++;
             }
         }
@@ -831,15 +859,27 @@ function _collectImageCacheFromBank() {
 }
 
 /**
- * Strip every heavy image payload off a bank question before it touches the
+ * Strip heavy image payloads off a bank question before it touches the
  * lightweight bank write — the image vault re-attaches them on load.
+ * Tiny (≤100 char) solution/option payloads are preserved: the vault only
+ * caches heavy ones and the IDB bank keeps the same two-field shape, so
+ * nulling them here lost them cross-device for good.
  */
 function _stripBankImages(q) {
     const copy = { ...q };
     copy.imageDataUrl = null;
     copy.diagramImageUrl = null;
-    copy.solutionImageUrl = null;
-    copy.optionImageUrls = null;
+    if (typeof copy.solutionImageUrl === 'string' && copy.solutionImageUrl.length > 100) {
+        copy.solutionImageUrl = null;
+    }
+    if (copy.optionImageUrls && typeof copy.optionImageUrls === 'object') {
+        const kept = {};
+        for (const k of Object.keys(copy.optionImageUrls)) {
+            const v = copy.optionImageUrls[k];
+            if (typeof v === 'string' && v.length <= 100) kept[k] = v;
+        }
+        copy.optionImageUrls = Object.keys(kept).length ? kept : null;
+    }
     return copy;
 }
 
@@ -1244,9 +1284,15 @@ export function resolveChapterWeightInfo(chapter) {
     });
 }
 
-/** Numeric shortcut for hot paths (grid risk math). */
-export function getChapterWeight(chapter) {
+/** Numeric shortcut for hot paths (grid risk math). Accepts the same optional
+ *  maps shape directive.js uses ({overrides, ai}); when supplied the resolver
+ *  honors them instead of re-reading AppState, so matrix.js cortex call sites
+ *  actually bind their maps instead of silently dropping them. */
+export function getChapterWeight(chapter, maps) {
     try {
+        if (maps && (maps.overrides !== undefined || maps.ai !== undefined)) {
+            return _resolveCW(chapter, maps).weight;
+        }
         return resolveChapterWeightInfo(chapter).weight;
     } catch (_) {
         return _DEFAULT_CHAPTER_W;

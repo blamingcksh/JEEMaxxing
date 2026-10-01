@@ -5064,21 +5064,38 @@ export function startPracticeWithQuestion(questions, index) {
     // ease-factor bump with NO schedule attached, so it could never become
     // due again. The SR drawer (submitPracticeLog) is the single writer of
     // the schedule, so vault items are routed there.
-    const _isVault = q => !!q && AppState.questionBank.indexOf(q) !== -1
+    // Vault identity is by id, not object identity: directive quest rows are
+    // cloned ({...q}) so indexOf() misses them and they slipped back to the
+    // modal, re-creating the no-schedule EF bump this gate exists to prevent.
+    const _bankIds = new Set(
+        AppState.questionBank.filter(b => b && b.id != null).map(b => String(b.id))
+    );
+    const _isVault = q => !!q && q.id != null && _bankIds.has(String(q.id))
         && (q.errorReason || q.status === 'error' || q.status === 'wrong');
-    // The gate must cover the WHOLE queue, not the index we were handed: the
-    // chapter grid passes its filtered array under, and practiceNext /
-    // practicePrev advance through it with no vault predicate of their own.
-    // Gating only the start index let a Grind run walk from an untouched card
-    // straight into a vault card, and the vault then earned the EF bump with
-    // no schedule. Strip the vault items out of the queue and route the first
-    // one to the drawer.
-    const _vaultAt = Array.isArray(questions)
-        ? questions.findIndex(_isVault)
-        : -1;
-    if (_vaultAt !== -1) {
-        openPracticeDrawer(questions[_vaultAt].id);
+    // The requested card wins: a vault card goes straight to the SR drawer.
+    // Otherwise strip vault items out of the standard queue so a Grind run
+    // cannot walk from an untouched card into a vault card (which earned the
+    // EF bump with no schedule). The non-vault remainder keeps its order and
+    // the start index is remapped onto it.
+    const _requested = Array.isArray(questions) ? questions[index] : null;
+    if (_isVault(_requested)) {
+        openPracticeDrawer(_requested.id);
         return;
+    }
+    if (Array.isArray(questions) && questions.some(_isVault)) {
+        const _filtered = questions.filter(q => !_isVault(q));
+        if (_filtered.length === 0) {
+            const _vaultAt = questions.findIndex(_isVault);
+            openPracticeDrawer(questions[_vaultAt].id);
+            return;
+        }
+        // Remap: count non-vault entries at or before the requested index.
+        let _seen = 0;
+        for (let i = 0; i <= index && i < questions.length; i++) {
+            if (!_isVault(questions[i])) _seen++;
+        }
+        questions = _filtered;
+        index = Math.max(0, Math.min(_seen - 1, _filtered.length - 1));
     }
     // Standard list entry — a mode left armed (e.g. ✕-closed mid-run) must not
     // leak its footer/nav state into this session.
@@ -7457,9 +7474,11 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         } else {
             questionObj.easeFactor = Math.max(1.3, (questionObj.easeFactor || 2.5) - 0.2);
         }
-        // Per-question SR revision clock (see matrix.js submitPracticeLog).
-        // This path owns the ease-factor write, so it owns the stamp.
-        questionObj.srUpdatedAt = Date.now();
+        // No srUpdatedAt stamp here: this path writes kernel/EF/qElo but never
+        // the schedule/history. The SR owner (matrix.js submitPracticeLog)
+        // stamps when the schedule actually lands — stamping here let an
+        // ordinary modal solve outrank a remote vault solve in LWW with a
+        // stale schedule attached.
 
         const oldGlobal = AppState.elo.global || 1200;
         const newGlobal = _computeGlobalMetaMMR(
@@ -7712,8 +7731,8 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         } else {
             questionObj.easeFactor = Math.max(1.3, (questionObj.easeFactor || 2.5) - 0.2);
         }
-        // Per-question SR revision clock (see matrix.js submitPracticeLog).
-        questionObj.srUpdatedAt = Date.now();
+        // No srUpdatedAt stamp here either (see above): schedule/history are
+        // written by the SR drawer, which stamps on commit.
     }
 
     // ── Step F: Master Global Meta-MMR Sync ──

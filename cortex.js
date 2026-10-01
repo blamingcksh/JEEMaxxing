@@ -722,11 +722,15 @@ export function commitCortexReview(q, snapshot, attempt, nowMs) {
         let stability = mem.stability;
 
         const vaultFirst = !!(attempt && attempt.vaultFirst);
+        const _correct = !!(attempt && attempt.correct);
         if ((vaultFirst || mem.reps === 1) && snapshot && isFinite(snapshot.ageAtSolveDays)) {
             const lat = snapshot.ageAtSolveDays;
             if (lat < P.HOT_STRIKE_DAYS) {
                 out.ageClass = 'hot';
-                stability = Math.min(180, stability * P.HOT_S_MULT);
+                // A failed retrieval must not boost stability: the kernel
+                // already processed the lapse, and S×1.15 here leaked into the
+                // next horizon even though the schedule stayed compressed.
+                if (_correct) stability = Math.min(180, stability * P.HOT_S_MULT);
             } else if (lat > P.COLD_REVIVAL_DAYS) {
                 out.ageClass = 'cold';
                 stability = Math.min(stability, P.COLD_S_CAP);
