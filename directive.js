@@ -204,7 +204,9 @@ function onSolveLogged(subject, delta) {
     if (detail.type === 'solve') {
         state.accuracy.total += 1;
         if (detail.isCorrect !== false && detail.firstTry !== false) state.accuracy.correct += 1;
-        if (detail.timeMins != null && detail.timeMins * 60 <= _bandTargetSecs(detail.qElo)) state.beats += 1;
+        // A 0-minute (instant) solve must not earn a "beats target" credit —
+        // it is already clamped to 0.3 LU above. Require a positive time.
+        if (detail.timeMins != null && detail.timeMins > 0 && detail.timeMins * 60 <= _bandTargetSecs(detail.qElo)) state.beats += 1;
         // Accuracy tax arms once the day has enough samples to be meaningful.
         if (state.accuracy.total >= 8 && state.accuracy.correct / state.accuracy.total < 0.4) state.taxActive = true;
     }

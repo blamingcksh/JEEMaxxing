@@ -128,8 +128,11 @@ export function _invalidateMatrixCtx() {
 // and storage.js's AppState is in TDZ until its own body finishes — the edge
 // made matrix.js evaluate mid-storage.js-body and throw
 // "Cannot access 'AppState' before initialization"). The CustomEvent hop keeps
-// the dependency direction acyclic.
-document.addEventListener('error-matrix:bank-mutated', _invalidateMatrixCtx);
+// the dependency direction acyclic. Guarded for Node (smoke tests import
+// this module without a DOM).
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('error-matrix:bank-mutated', _invalidateMatrixCtx);
+}
 
 const _cortexCache = { rev: -1, len: -1, ctx: null };
 
@@ -339,9 +342,10 @@ try {
 // Kept here, next to the drawer that owns the rollback, so the two cannot drift.
 const _BRIDGE_WRITTEN_FIELDS = [
     'stability', 'difficultyD', 'reps', 'lapses',      // memory kernel
-    'lastReviewedAt',
+    'lastReviewedAt', 'lastSolvedAt',                  // review clocks
     'easeFactor', 'solveCount',
     'qElo', 'qEloSource', 'qEloStampedAt', 'qEloStampedBy', 'isAnomaly',
+    '_lifelineAssisted',                              // lifeline flag (conditional write)
     'srUpdatedAt',                                      // merge clock
 ];
 
@@ -933,6 +937,8 @@ function _renderConfidenceSeg() {
         '</div>';
 }
 
+// UI bridge — guarded for Node (smoke tests import this module without a DOM).
+if (typeof window !== 'undefined') {
 window.srSetConfidence = function (level) {
     _drawerState.confidence = level;
     const seg = document.getElementById('sr-conf-seg');
@@ -942,6 +948,7 @@ window.srSetConfidence = function (level) {
         });
     }
 };
+} // end Node guard for srSetConfidence
 
 function _renderAnswerStage(q) {
     if (q.type === 'mcq' && Array.isArray(q.options) && q.options.length) {
@@ -1041,6 +1048,7 @@ function _renderTagEditorRow() {
         </div>`;
 }
 
+if (typeof window !== 'undefined') {
 window.srAddTag = function (raw) {
     const label = String(raw == null ? '' : raw).trim().slice(0, 40);
     if (!label) return;
@@ -1061,6 +1069,7 @@ window.srRemoveTag = function (encoded) {
     if (idx >= 0) tags.splice(idx, 1);
     _refreshTagEditor();
 };
+} // end Node guard for srAddTag/srRemoveTag
 
 /** Re-render just the editor row in place (keeps stopwatch/result state). */
 function _refreshTagEditor() {
@@ -1139,6 +1148,11 @@ function _keepGoingHTML(q, pendingDelta) {
 }
 
 function _applyResult(result, source, q) {
+    // Single-commit guard: the confirm button is hidden after the first commit
+    // but a programmatic double-commit would re-snapshot POST-first-bridge
+    // values, so abort would roll back only the second layer and leak the
+    // first Elo/kernel mutation. Second call is a no-op.
+    if (_drawerState.resultLocked) return;
     _drawerState.result = result;
     _drawerState.resultSource = source;
 
@@ -1719,6 +1733,21 @@ export function submitPracticeLog() {
     const q = AppState.questionBank.find(item => item.id != null && String(item.id) === String(qId));
     if (!q) return;
 
+    // Bounty drawer disarm: _armBountySession (app.js) started a 1s timeout
+    // that fires evaluateBountyOutcome(false) on expiry. A drawer solve must
+    // own the outcome instead — otherwise the timeout fires after the win and
+    // overwrites it with a lock + tax (or double-counts changeCount via both
+    // the modal and drawer paths). Clear the timer and latch the submitted
+    // flag now so the timeout handler is a no-op even if already queued.
+    const _bountyQ = (typeof window !== 'undefined' && window._bountyQuestion) || null;
+    const _isBountyDrawer = !!(AppState.bountyMode && _bountyQ && _bountyQ.id != null && String(_bountyQ.id) === String(qId));
+    if (_isBountyDrawer) {
+        try {
+            if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+            if (Array.isArray(AppState.practiceSubmittedFlags)) AppState.practiceSubmittedFlags[0] = true;
+        } catch (_) { /* bounty disarm never blocks the log */ }
+    }
+
     const timeSpent = _drawerState.timeSpentMins > 0 ? _drawerState.timeSpentMins : _drawerState.stopwatchSeconds / 60;
 
     // ── Undo the Elo-bridge EF nudge so computeSR sees the PRE-solve EF.
@@ -1728,10 +1757,18 @@ export function submitPracticeLog() {
     // logical review produced TWO ease-factor changes. The pre-solve EF is
     // restored for the duration of this commit (computeSR's own output is
     // clamped to the same [1.3, 3.0] band the nudge uses), so the persisted
-    // EF is exactly SM-2's answer for this solve. ──
+    // EF is exactly SM-2's answer for this solve.
+    // Delta-guarded: restore ONLY when the live value matches the known nudge
+    // (pre+0.15 / pre−0.2 with the same clamp). A blind `!==` restore would
+    // clobber a mid-drawer cloud/tab merge that moved EF underneath us.
     const _preSolveEF = Number.isFinite(_drawerState.preSolveEF) ? _drawerState.preSolveEF : Number(q.easeFactor);
-    const _eliBridgedEF = Number(q.easeFactor);
-    const _efWasNudged = Number.isFinite(_preSolveEF) && _preSolveEF !== _eliBridgedEF;
+    const _bridgedEF = Number(q.easeFactor);
+    let _efWasNudged = false;
+    if (Number.isFinite(_preSolveEF) && Number.isFinite(_bridgedEF) && _preSolveEF !== _bridgedEF) {
+        const _up = Math.min(3.0, _preSolveEF + 0.15);
+        const _down = Math.max(1.3, _preSolveEF - 0.2);
+        if (Math.abs(_bridgedEF - _up) < 1e-9 || Math.abs(_bridgedEF - _down) < 1e-9) _efWasNudged = true;
+    }
     if (_efWasNudged) q.easeFactor = _preSolveEF;
 
     // ── Cognitive Cortex v3: the PRE-commit memory state, captured at drawer
@@ -1910,9 +1947,13 @@ export function submitPracticeLog() {
     // re-sorted. Do not re-add it.
 
     // ✅ FIXED: Restored legacy status fields & balanced structural brackets
+    // Bounty drawer: the bounty state machine (evaluateBountyOutcome) owns the
+    // counters/ledger/directive unit for this solve — running both would
+    // double-count changeCount and stack a fix unit on top of bounty's solve.
+    // The drawer still owns status + schedule + history below.
     if (_drawerState.result === 'correct' && q.status !== 'solved') {
         q.status = 'solved';
-        if (subjKey) {
+        if (subjKey && !_isBountyDrawer) {
             // Cortex fix completion → price this unit at 1.4 LU (memory work).
             try {
                 Directive.markPending({
@@ -1921,12 +1962,11 @@ export function submitPracticeLog() {
                     chapter: q.chapter,
                     qElo: q.qElo || 0,
                     // The RESOLVED time (manual entry when the user typed one,
-                    // stopwatch otherwise), not the manual-only field —
-                    // `Number(timeSpentMins) || undefined` was `undefined` for
-                    // every stopwatch-driven solve, so directive.js's
-                    // rushed-vanity clamp never fired and a 6-second redrill
-                    // priced at full LU instead of 0.3.
-                    timeMins: Number.isFinite(timeSpent) && timeSpent > 0 ? timeSpent : undefined,
+                    // stopwatch otherwise), including an explicit 0 for an
+                    // instant answer — so directive.js's rushed-vanity clamp
+                    // (timeMins != null) fires and prices it at 0.3 instead of
+                    // full LU. Only a non-finite reading disables the clamp.
+                    timeMins: Number.isFinite(timeSpent) ? timeSpent : undefined,
                 });
             } catch (_) { /* Directive must never block the fix path */ }
             changeCount(subjKey, 1);   // canonical key — NaN guard
@@ -1981,6 +2021,10 @@ export function submitPracticeLog() {
                 // cannot have been removed — carry them over verbatim.
                 for (const raw of existing.slice(6)) add(raw, false);
                 q.tags = clean;
+                // Tags land AFTER the srUpdatedAt stamp above, so re-stamp when
+                // the draft actually changed — otherwise the merge clock does
+                // not cover the final row state.
+                q.srUpdatedAt = Date.now();
             }
         }
     } catch (_) { /* tag persistence must never block the log */ }
@@ -2031,10 +2075,22 @@ export function submitPracticeLog() {
 
     // The bridge snapshot is CONSUMED: this log records the historyLog, the
     // schedule and the merge clock that the moment-of-truth write needed.
-    // closePracticeDrawer must not roll it back.
+    // closePracticeDrawer must not roll it back. Capture the bounty verdict
+    // first — closePracticeDrawer resets _drawerState.
+    const _bountyVerdict = _drawerState.result === 'correct';
     _drawerState.preBridgeSnapshot = null;
     saveAllAsync().catch(console.error);
     closePracticeDrawer();
+    // Bounty drawer convergence: the SR drawer wrote the schedule above, so
+    // the bounty state machine still owns the win/loss bookkeeping. Without
+    // this the bounty stayed live after a drawer solve (no payoff, no lock).
+    if (_isBountyDrawer) {
+        try {
+            if (typeof window !== 'undefined' && typeof window.evaluateBountyOutcome === 'function') {
+                window.evaluateBountyOutcome(_bountyVerdict);
+            }
+        } catch (_) { /* bounty bookkeeping never blocks the log */ }
+    }
 
     // ── Staggered deferred UI rebuild ──────────────────────────────────────
     // The drawer-close transition, the green/red flash overlay, the streak
@@ -2113,9 +2169,11 @@ export function _purgeDeletedQuestion(target, targetId) {
     }
 
     // Queue snapshot: in-memory first, then the localStorage mirror, so a
-    // reload cannot resurrect the dead id.
+    // reload cannot resurrect the dead id. Compare as strings — callers pass
+    // raw numeric ids (Date.now()+i fallback) while snapshots hold strings.
+    const _targetStr = String(targetId);
     if (Array.isArray(_dailyQueueSnapshot.ids)) {
-        _dailyQueueSnapshot.ids = _dailyQueueSnapshot.ids.filter(id => String(id) !== targetId);
+        _dailyQueueSnapshot.ids = _dailyQueueSnapshot.ids.filter(id => String(id) !== _targetStr);
     }
     if (typeof localStorage !== 'undefined') {
         try {
@@ -2123,7 +2181,7 @@ export function _purgeDeletedQuestion(target, targetId) {
             if (raw) {
                 const parsed = JSON.parse(raw);
                 if (parsed && Array.isArray(parsed.ids)) {
-                    parsed.ids = parsed.ids.filter(id => String(id) !== targetId);
+                    parsed.ids = parsed.ids.filter(id => String(id) !== _targetStr);
                     localStorage.setItem(DAILY_QUEUE_LS_KEY, JSON.stringify(parsed));
                 }
             }
@@ -2757,6 +2815,11 @@ export function addErrorBlock() {
         qEloStampedBy: null,
         qEloStampedAt: null,
         solveCount: 0,
+        lastReviewedAt: new Date().toISOString(),
+        // Per-question SR revision clock (like confirmErrorLog): without this
+        // a rev-0 manual row loses LWW to any stamped peer until its first
+        // solve, and cloud/tab merges can silently drop it.
+        srUpdatedAt: Date.now(),
         // Cognitive Cortex v3 — creation anchor for age-at-solve priors.
         createdAt: new Date().toISOString(),
     };
@@ -3135,6 +3198,8 @@ function _sameChapter(a, b) {
 // Exposed for the Daily Briefing flow — the SAME health model the Chapter
 // Health Grid renders, so the boot flow's "weakest chapter first" ordering
 // always matches what the user sees in-app (no divergent reimplementation).
+// UI bridges — guarded for Node (smoke tests import this module without a DOM).
+if (typeof window !== 'undefined') {
 window.getChapterHealth = (subject, chapter) => {
     try {
         const qs = AppState.questionBank.filter(q =>
@@ -3165,6 +3230,7 @@ window.__cortexHuntTag = function (tag) {
         if (errorsNav && typeof window.switchTab === 'function') window.switchTab('errors', errorsNav);
     } catch (_) { /* navigation nicety — never crash on a chip tap */ }
 };
+} // end Node guard for UI bridges
 
 let _cortexStylesInjected = false;
 function _injectCortexStyles() {
@@ -3661,7 +3727,7 @@ export function openDecayDrilldown(subjectEnc, chapEnc) {
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(overlay);
 }
-window.openDecayDrilldown = openDecayDrilldown;
+if (typeof window !== 'undefined') window.openDecayDrilldown = openDecayDrilldown;
 
 // ── Dashboard card: per-chapter completion, weakest first ──────────────────
 // Mirrors the practice view's completion definition (app.js stats-row):
