@@ -308,7 +308,17 @@ Time-boxed bounty questions: answer within the countdown or the attempt is marke
   R(t,S) = (1 + (19/81) · t/S)^−0.5        ← power-law retrievability; R(S)=0.9
   pass:  S' = S · (1 + G·((11−D)/10)·S^−0.15·(e^(0.4·(1−R))−1))
   lapse: S' = max(0.5, F·((S+1)^0.25 − 1)·e^(0.3·(1−R))/D^0.2)
+
+  health = Σ_all ( qElo · R ) / Σ_all ( qElo ) × 100     ← chapter readiness
   ```
+  Chapter health is **coverage-aware**: the sum runs over EVERY question in the
+  chapter and a question with no review record contributes `R = 0`. You cannot
+  answer what you never studied, so a chapter where you have touched 6 of 79
+  questions caps near 6/79 instead of inheriting the 100% of the one you logged.
+  `hasReviewRecord` (timestamp / history log / `reps ≥ 1` / `solveCount > 0`) is
+  the evidence test — `status: 'solved'` deliberately does NOT qualify, because
+  bulk-seeded uploads ship as solved with nothing else attached. `stats.retention`
+  and `stats.coverage` are returned separately so the grid can show both.
 - **Elo v2**: Glicko-lite rating deviation (uncertainty-weighted K_eff), graded partial-credit scores, 3PL guess correction on 4-option MCQs, continuous retrievability gating (low-R recalls earn ~full credit), pre-reveal confidence capture → Brier-scored Calibration Report, chapter-level ability θ_c (`getChapterTheta`), and an AIR uncertainty cone + Top-100 gap panel in the rating popup.
 
 - `getDueStatus()` decides if an item is `ready`/`due`; the nav's "Vault" badge counts ready items (O(1) cached).

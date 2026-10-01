@@ -52,6 +52,7 @@ import {
     currentRetrievability,
     retrievabilityAt,
     hydrateMemory,
+    hasReviewRecord,
 } from './memory.js';
 
 // Cognitive Cortex v3 — brain-like scheduling layer (pure, zero DOM; same
@@ -3143,32 +3144,28 @@ export function openLightbox(src) {
 // ==================== SVG CHAPTER DECAY GRID ====================
 
 /**
- * Continuous Non-Linear Biological Memory Construct — local chapter-health
- * mirror for the Chapter Decay Grid.
+ * Chapter health — local mirror of app.js's `_getChapterHealth`, used by the
+ * Chapter Decay Grid. Kept local to matrix.js to avoid a circular module
+ * dependency on app.js (app.js already imports matrix.js); the ARITHMETIC is
+ * not reimplemented here, it is delegated to the same Memory Kernel v2 the app
+ * uses, so the grid, the Daily Briefing and the Elo engine can never disagree.
  *
- * Mirrors app.js's `_getChapterHealth` math EXACTLY (Bjork's New Theory of
- * Disuse: exponential Retrieval Strength decay + difficulty-weighted harmonic
- * accessibility mean). Kept local to matrix.js to avoid a circular module
- * dependency on app.js (app.js already imports matrix.js). The formula is
- * identical so the grid, the cat-banner scanner, and the Elo engine all
- * evaluate the same continuous percentage — no divergence between the
- * visual, monitoring, and scoring layers.
+ * Takes the chapter's FULL question population. Items without review evidence
+ * (`hasReviewRecord`) contribute zero retention inside the kernel, which is what
+ * stops a chapter you have barely touched from inheriting the 100% of the one
+ * question you happened to log — see app.js `_getChapterHealth` for the full
+ * rationale and the measured before/after.
  *
- *   RS_i(t) = e ^ ( -ln(2) · (Δt / S_i) )
- *   A_ch(t) = ( Σ Q_Elo,i · RS_i(t) ) / ( Σ Q_Elo,i ) · 100
- *
- * JIT-hydrates `easeFactor` / `qElo` / `lastReviewedAt` per the legacy
- * backward-compatibility blueprint (read-only; never mutates the source).
+ * @param {object[]} universe  every bank question in the chapter
+ * @returns {number} 10–100, or 50 when the chapter holds no questions at all.
  */
-function _matrixChapterHealthContinuous(questions) {
-    if (!questions || questions.length === 0) return 50;
-    // DELEGATED to the Memory Kernel v2 (memory.js) — the SAME power-law
-    // retrievability model app.js's _getChapterHealth now uses. One source of
-    // truth: the grid, the cat-banner scanner, the Daily Briefing and the Elo
-    // engine all evaluate the identical continuous percentage.
+function _matrixChapterHealthContinuous(universe) {
+    if (!Array.isArray(universe) || universe.length === 0) return 50;
+    const reviewed = universe.filter(hasReviewRecord);
+    if (reviewed.length === 0) return 10;  // material exists, none of it studied
     try {
-        const stats = chapterMemoryStats(questions, { nowMs: Date.now() });
-        if (!stats) return 50;
+        const stats = chapterMemoryStats(reviewed, { universe, nowMs: Date.now() });
+        if (!stats) return 10;
         return Math.max(10, Math.min(100, stats.health));
     } catch (_) { return 50; }
 }
@@ -3202,11 +3199,10 @@ function _sameChapter(a, b) {
 if (typeof window !== 'undefined') {
 window.getChapterHealth = (subject, chapter) => {
     try {
-        const qs = AppState.questionBank.filter(q =>
-            q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') &&
+        const universe = AppState.questionBank.filter(q =>
             _normSubj(q.subject) === _normSubj(subject) && _sameChapter(q.chapter, chapter)
         );
-        return _matrixChapterHealthContinuous(qs);
+        return _matrixChapterHealthContinuous(universe);
     } catch (_) { return 50; }
 };
 
@@ -3373,11 +3369,16 @@ function _examDateMsSafe() {
 export function renderChapterDecayGrid() {
     const container = document.getElementById('chapter-decay-grid');
     if (!container) return;
-    const allErrors = AppState.questionBank.filter(q =>
-        q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') && !isMockQuestion(q)
-    );
+    // Rows are built from EVERY non-mock bank question, not from the error
+    // vault. Deriving rows from `errorReason && status∈(error|solved|wrong)`
+    // made a chapter invisible unless it had a logged error, and left the
+    // untouched majority of a chapter's questions out of the health
+    // denominator entirely — so "6 of 79 studied" rendered as a near-full bar.
+    // The population below is the honest denominator; the kernel splits it into
+    // reviewed vs never-reviewed and scores the latter as zero retention.
     const chapterMap = {};
-    allErrors.forEach(q => {
+    AppState.questionBank.forEach(q => {
+        if (isMockQuestion(q)) return;         // test bulk must not dilute coverage
         if (isMockChapterName(q.chapter)) return; // belt-and-braces: unstamped Mock tiles never surface
         const subject = q.subject || '';
         const chapter = q.chapter || 'Uncategorized';
@@ -3391,26 +3392,18 @@ export function renderChapterDecayGrid() {
         chapterMap[key].questions.push(q);
     });
 
-    // Coverage denominators: EVERY registered bank question per chapter, so
-    // untouched chapters are visible as 0% attempted instead of invisible.
-    // Mock-test questions are excluded — test bulk must not dilute coverage.
-    const covTotals = {};
-    AppState.questionBank.forEach(q => {
-        if (isMockQuestion(q)) return;
-        const key = _chapterKey(q.subject, q.chapter);   // SAME key the grid rows group on
-        covTotals[key] = (covTotals[key] || 0) + 1;
-    });
-
     const examMs = _examDateMsSafe();
     const nowMs = Date.now();
 
     const chapters = Object.values(chapterMap).map(({ key, name, subject, questions }) => {
         const avgEF = questions.reduce((sum, q) => sum + _numOr(q.easeFactor, 2.5), 0) / questions.length;
-        const stats = chapterMemoryStats(questions, { examDateMs: examMs, nowMs: nowMs });
-        const health = stats ? stats.health : 50;
+        const reviewed = questions.filter(hasReviewRecord);
+        const stats = reviewed.length > 0
+            ? chapterMemoryStats(reviewed, { universe: questions, examDateMs: examMs, nowMs: nowMs })
+            : null;
+        const health = stats ? stats.health : 0;
         const forecast = stats ? stats.forecastHealth : null;
-        const total = covTotals[key] || questions.length;
-        const coverage = total > 0 ? questions.length / total : 1;
+        const coverage = questions.length > 0 ? reviewed.length / questions.length : 1;
         // Exam-aware risk: JEE weightage × how much retention will be MISSING
         // at exam time (falls back to current health without an exam date).
         const weight = getChapterWeight(name);
@@ -3439,7 +3432,7 @@ export function renderChapterDecayGrid() {
     // Most exam-dangerous chapter first.
     chapters.sort((a, b) => b.risk - a.risk);
     if (chapters.length === 0) {
-        container.innerHTML = '<div class="rh-empty">No retention data yet; log errors and they will surface here.</div>';
+        container.innerHTML = '<div class="rh-empty">No chapters yet — add questions to a chapter and it will surface here.</div>';
         return;
     }
 
@@ -3470,11 +3463,19 @@ export function renderChapterDecayGrid() {
         }
         const trend = ch.trend > 0 ? '<i class="rh-trend rh-up">↑</i>'
             : (ch.trend < 0 ? '<i class="rh-trend rh-dn">↓</i>' : '');
+        // The stroke is HEALTH (retention × coverage), not raw retention — say
+        // so, and show both factors, or a well-studied-but-shallow chapter and
+        // a thoroughly-drilled one become indistinguishable on hover.
+        const retTxt = ch.stats ? Math.round(ch.stats.retention) : null;
+        ch.title = `${ch.name} — health ${Math.round(h)}%`
+            + (retTxt != null ? ` · retention ${retTxt}%` : '')
+            + ` · coverage ${covPct}% · ${ch.questionCount} items`
+            + (retTxt != null ? ' · tap for item decay' : ' · nothing reviewed yet');
         return `<div class="rh-row rh-${band}" style="--i:${i}" role="button" tabindex="0"
                  data-subject="${_esc(encodeURIComponent(ch.subject || ''))}"
                  data-chapter="${_esc(encodeURIComponent(ch.name || ''))}"
-                 aria-label="${_esc(ch.name)}: ${Math.round(h)} percent retention"
-                 title="${_esc(ch.name)} — retention ${Math.round(h)}% · coverage ${covPct}% · ${ch.questionCount} items · tap for item decay"
+                 aria-label="${_esc(ch.name)}: ${Math.round(h)} percent health"
+                 title="${_esc(ch.title)}"
 ><span class="rh-name"><span class="ch-full">${_esc(ch.name)}</span><span class="ch-short" aria-hidden="true">${_esc(shortChapterName(ch.name))}</span></span><span class="rh-gauge" aria-hidden="true"><i class="rh-cov" style="width:${covPct}%"></i><i class="rh-line" style="width:${h.toFixed(1)}%"></i>${fc != null ? `<i class="rh-fc" style="left:${fc.toFixed(1)}%"></i>` : ''}<i class="rh-dot" style="left:${h.toFixed(1)}%"></i></span><span class="rh-val">${Math.round(h)}<em>%</em>${trend}</span><span class="rh-hz ${horizonCls}">${_esc(horizonTxt)}</span></div>`;
     }).join('');
 
@@ -3596,14 +3597,16 @@ export function openDecayDrilldown(subjectEnc, chapEnc) {
     let subject = '', chapterName = '';
     try { subject = decodeURIComponent(subjectEnc || ''); } catch (_) { subject = subjectEnc || ''; }
     try { chapterName = decodeURIComponent(chapEnc || ''); } catch (_) { chapterName = chapEnc || ''; }
-    // SAME membership predicate the grid row counts with (errorReason + logged
-    // status + non-mock), and the SAME canonical chapter key — otherwise the
-    // panel header claims more "tracked items" than the row it was opened from
-    // and lists items that row's numbers deliberately exclude.
+    // SAME membership predicate the row's health number is computed over
+    // (review evidence + non-mock) and the SAME canonical chapter key —
+    // otherwise the panel header claims more "tracked items" than the row it
+    // was opened from and lists items that row's numbers deliberately exclude.
+    // Never-reviewed questions are excluded on purpose: their retrievability
+    // reads as a misleading 100% (FSRS "new card" convention) and listing them
+    // green beside genuinely decayed items would contradict the row.
     const key = _chapterKey(subject, chapterName);
     const items = AppState.questionBank.filter(q =>
-        q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') &&
-        !isMockQuestion(q) && _chapterKey(q.subject, q.chapter) === key
+        hasReviewRecord(q) && !isMockQuestion(q) && _chapterKey(q.subject, q.chapter) === key
     );
     if (!items.length) {
         // Malformed args (decodeURIComponent fell back to a still-encoded name)
