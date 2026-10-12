@@ -31,6 +31,10 @@
 
 </div>
 
+> [!NOTE]
+> ### 🤡 What is this?
+> You are not studying; you are coping. JEEMaxxing is competitive ranked chess for JEE preparation because passively rereading notes was doing nothing for your single-digit mock scores. It treats exam prep like a sweat-drenched esport: your MMR crashes when you guess, Night Guard bullies you to sleep at 23:00 with progressive Elo decay, and a virtual 3D island grows while your social life completely evaporates. Stop whining, queue into Hardcore mode, and fix your skill issue.
+
 <br>
 
 ## 🧭 The Closed Feedback Loop
