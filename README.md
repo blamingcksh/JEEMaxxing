@@ -1,532 +1,238 @@
-# ⚡ JEEMaxxing — Locked In
+<div align="center">
 
-A **client-side JEE grind command center**: focus timers, a question vault with spaced-repetition scheduling, an Elo-style skill rating engine, a live growing forest, cloud backup, and accountability systems that actively police your procrastination.
+# ⚡ JEEMAXXING
 
-Everything runs in the browser. No build step, no server. All data lives in **IndexedDB + localStorage** (optionally mirrored to **Google Drive**), and the app works fully offline as an installable PWA.
+### *The High-Stakes Cognitive Exam Grind Command Center*
 
----
+[![PWA Ready](https://img.shields.io/badge/PWA-Offline_First-10b981?style=for-the-badge&logo=pwa&logoColor=white)](#)
+[![Stack](https://img.shields.io/badge/Architecture-Vanilla_ES6_•_Zero_Build-6366f1?style=for-the-badge&logo=javascript&logoColor=white)](#)
+[![Persistence](https://img.shields.io/badge/Storage-IndexedDB_•_Drive_Mirror-f59e0b?style=for-the-badge&logo=databricks&logoColor=white)](#)
+[![Math](https://img.shields.io/badge/TeX_Engine-Local_KaTeX-ec4899?style=for-the-badge&logo=latex&logoColor=white)](#)
+[![Rating](https://img.shields.io/badge/Skill_Engine-Elo_MMR_v2-8b5cf6?style=for-the-badge&logo=lichess&logoColor=white)](#)
 
-## 🗂️ Table of Contents
+<br>
 
-1. [Architecture Overview](#architecture-overview)
-2. [Module Map](#module-map)
-3. [Data & Persistence Layer](#data--persistence-layer)
-4. [Feature Breakdown](#feature-breakdown)
-   - [Study & Focus](#study--focus)
-   - [Question Bank & Ingestion](#question-bank--ingestion)
-   - [Practice & the Elo Engine](#practice--the-elo-engine)
-   - [Spaced Repetition & Error Matrix](#spaced-repetition--error-matrix)
-   - [Accountability (Slump Sentry / Checkpoints)](#accountability-slump-sentry--checkpoints)
-   - [Recovery Systems (CNS Load, Lifeline, Deload)](#recovery-systems-cns-load-lifeline-deload)
-   - [Gamification & Growth (Forest, Streaks)](#gamification--growth-forest-streaks)
-   - [Cloud Sync & Google Drive](#cloud-sync--google-drive)
-   - [Theme & UI Layer](#theme--ui-layer)
-5. [Internal Data Model](#internal-data-model)
-6. [Events & Global Hooks](#events--global-hooks)
-7. [Running Locally](#running-locally)
-8. [PWA & Offline](#pwa--offline)
-9. [Performance Notes](#performance-notes)
+<p align="center">
+  <b>A competitive, self-coaching examination command deck for JEE aspirants.</b><br>
+  Measures problem-solving like a competitive esport, schedules memory recall like Anki,<br>
+  polices burnout with biological telemetry — while an island archipelago thrives with your effort.
+</p>
 
 ---
 
-## 🧭 Architecture Overview
+[**Architecture**](#-architecture-overview) •
+[**Core Loop**](#-the-closed-feedback-loop) •
+[**Feature Engines**](#-feature-deep-dive) •
+[**Memory & Elo Math**](#-mathematical-foundations) •
+[**Theme System**](#-cyber-glass-design-system-v4) •
+[**Run Locally**](#-running-locally)
 
-JEEMaxxing is a **vanilla ES6 module** application. There is no framework, no bundler, and no npm build step — the browser's native `import`/`export` resolves everything, so you must serve the folder over HTTP (see [Running Locally](#running-locally)).
+---
 
-**Layering:**
+</div>
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  UI / Views        index.html · dashboard-clean.js · theme.js│
-├─────────────────────────────────────────────────────────────┤
-│  Feature Engines   app.js (orchestrator, ~11.5k lines)      │
-│                    matrix.js (SR + error vault)              │
-│                    pomodoro.js (focus timers)                │
-│                    checkpoint.js (accountability, passive)   │
-│                    grove-islands.js + forest-bg.js           │
-│                    + gallery-break.js                        │
-│                    cns-load.js · deload.js · lifeline.js     │
-│                    nightguard.js                             │
-├─────────────────────────────────────────────────────────────┤
-│  Charting          candlestick-engine.js (SVG graphs)        │
-├─────────────────────────────────────────────────────────────┤
-│  Persistence       storage.js (IndexedDB + Drive sync)       │
-│  PWA               sw.js · manifest.webmanifest              │
-│  Math rendering    vendor/katex/ (local KaTeX)               │
-└─────────────────────────────────────────────────────────────┘
+<br>
+
+## 🧭 The Closed Feedback Loop
+
+JEEMaxxing eliminates study friction by wrapping prep inside a strict, gamified closed-loop engine:
+
+```mermaid
+flowchart LR
+    A["⏱️ 1. LOCK IN\nSprint Widget (1.5× Elo)"] --> B["📥 2. INGEST\nOCR + AI Auto-Crop"]
+    B --> C["🎯 3. GRIND\nFlow & Hardcore Practice"]
+    C --> D["♟️ 4. RATE\nSubject Elo & AIR Curve"]
+    D --> E["🧠 5. HEAL\nSM-2 Spaced Error Vault"]
+    E --> F["🏝️ 6. GROW\nArchipelago World & Rings"]
+    F --> A
 ```
 
-**Key architectural rules:**
-
-- **Single source of truth** — `AppState` lives in `storage.js` and is mutated by every module; `saveAllAsync()` persists it.
-- **No circular module imports** — cross-module communication happens through `window.*` bridges (e.g. `window.calculateEloMigration`, `window._studySecsForCns`).
-- **Append-only UI modules** — files like `dashboard-clean.js`, `gallery-break.js`, `forest-island-juice.js` self-wire via IIFEs with guard flags (`window.__dashCleanInit`) and never modify the core files.
-
----
-
-## 🎨 Design System v4
-
-The UI runs on a single token foundation declared at the top of `styles.css` (`:root` → *DESIGN TOKENS v4*), consumed by a coherent layer at the **end** of the stylesheet (*DESIGN SYSTEM v4 — PROFESSIONAL LAYER*). All seven accent themes × both appearance modes re-skin live because every component color derives from `var(--accent)` / `color-mix()` — no hardcoded hex in the chrome.
-
-| Token family | Values |
-|---|---|
-| Type scale | `--fs-2xs` 9.5 → `--fs-2xl` clamp(22–27px), display/body/numeric font roles |
-| Space scale | `--sp-1` 4px → `--sp-8` 40px (4px base) |
-| Radius scale | `--r-sm` 8 · `--r-md` 10 (controls) · `--r-lg` 14 (rows) · `--r-xl` 20 (cards/modals) · `--r-full` pills |
-| Elevation | `--e-1…3` tinted shadows + `--ring-focus` focus ring |
-| Motion | `--t-fast/med/slow` + `--ease`/`--ease-spring`, reduced-motion guard |
-| Controls | `--ctl-h` 38 · `--ctl-h-sm` 31 · `--ctl-h-lg` 44 |
-
-**Shell (command bar v5).** The sidebar renders as a horizontal glass command bar: brand mark → compact icon utilities (theme, living-world) → centered nav (inline SVG icons, accent-tinted active pill + underline marker) → profile chip → collapse. Auto margins (not `justify-content: center`) keep the nav safely centered without the legacy centered-flex overflow bug.
-
-**Header.** Page identity (dynamic `#view-title` + date) on the left; quiet stat chips (Streak · Focus time, label-over-value with tinted icon squircles) and the calendar/sync action cluster on the right.
-
-**Redesign QA.** `scripts/redesign-probe.mjs` (shell contracts), `redesign-layout-qa.mjs` (4 viewports × 6 views: panning, collisions, HUD overlap), `redesign-theme-qa.mjs` (7 themes × 2 modes accent sweep), `redesign-interaction-qa.mjs` (widget sprint, modals, vault, practice flow).
+1. **Lock In** — Fire up deep work sprints with wall-clock precision; banking a true **×1.5 Elo multiplier** while ambient soundscapes play.
+2. **Ingest** — Feed problems via Gemini AI dumps, screenshot multi-crop OCR, or JSON bundles with automatic diagram extraction.
+3. **Grind** — Execute practice blocks tuned to your current fatigue level across Flow and Hardcore modes.
+4. **Rate** — Asymmetric chess-style Elo matchmaking reverse-engineers difficulty and benchmarks your All-India Rank (AIR).
+5. **Heal** — Fumbled questions land in the Error Matrix, scheduled by an FSRS/SM-2 power-law decay curve until permanently mastered.
+6. **Grow** — Solves water an evolving 3D island world, advancing streak fire and closing daily four-target rings.
 
 ---
 
-## 🧩 Module Map
+## 🏛️ Architecture Overview
 
-| File | Lines | Role |
-|---|---|---|
-| `index.html` | ~1,357 | Entire viewport: sidebar, dashboard, practice modal, upload modal, preview modal, forest canvas, error matrix, settings, script bootstrap. |
-| `app.js` | ~9,508 | **Orchestrator.** Boot sequence, all UI wiring, question bank browsing, practice flow, crop/ingestion, Elo engine, forest planting, streak logic, scratchpad. |
-| `storage.js` | ~2,039 | **Persistence core.** `AppState`, IndexedDB wrapper (`idbSet`/`idbGet`), Google Drive auth + sync, Gemini API calls, LaTeX repair, daily history ledger, target configs. |
-| `matrix.js` | ~2,070 | **Spaced repetition + error vault.** Error matrix UI, chapter decay grid, SR practice drawer, daily fix queue, chapter progress, Elo migration entry points. |
-| `pomodoro.js` | — | Deep-focus countdown timers, stopwatch mode, visualizer, mini widget, study-subject switching, bell audio. |
-| `checkpoint.js` | ~1,408 | **Slump Sentry / 4-pillar accountability system.** Scheduled checkpoints, idle detection, Proof-of-Work lockdown, Protocol Zero penalties. |
-| `candlestick-engine.js` | ~611 | SVG candlestick chart renderer powering the home-section graphs. |
-| `cns-load.js` | — | CNS load meter (fatigue telemetry) that gates flow/hardcore practice modes. |
-| `deload.js` | — | Deload-day engine: automatic + manual deload scheduling, streak preservation. |
-| `lifeline.js` | — | Flow-state lifeline: when CNS load is high, shifts practice difficulty windows easier. |
-| `nightguard.js` | — | Post-23:00 ELO-yield guard (×0.80/×0.55/×0.20 tiers), clock-rollback detection, sleep-debt ledger, hold-to-override. |
-| `grove-islands.js` | ~2,570 | The **island biome** forest: island canvas, trees, clouds, growth physics. |
-| `forest-island-full.js` | — | *(removed — folded into `grove-islands.js`)* |
-| `forest-island-juice.js` | — | *(removed — folded into `grove-islands.js` / `forest-bg.js`)* |
-| `forest-bg.js` | ~333 | Animated background layers for the forest (sky, stars, parallax). |
-| `forest-juice.js` | — | *(removed — folded into `grove-islands.js` / `forest-bg.js`)* |
-| `gallery-break.js` | — | **The Burn Reveal** — during a pomodoro break the app dissolves away to reveal a public-domain painting (Wikimedia, cached in IDB); reveal radius tracks break progress, quote + Continue button at 100%. |
-| `dashboard-clean.js` | ~200 | Declutter pass: hides banners, floating layout FAB, momentum legend, sidebar collapse persistence. *(No Time Bank card — that README claim was stale.)* |
-| `theme.js` | — | 7 accent themes × 2 appearance modes, live re-skinning. |
-| `fx.js` | — | Centralized sound / visual / haptic FX controller (`window.FX`): correct/wrong/super sounds, red flash, streak-shield glow, emoji bursts, haptics; prefs in `jeemax_fx_prefs`, honors `prefers-reduced-motion`. |
-| `checkpoint.js` | — | See above (accountability). |
-| `lifeline.js` | — | See above. |
-| `sw.js` | — | Service worker: network-first HTML, stale-while-revalidate assets, offline cache (`jeemax-v44`). |
-| `manifest.webmanifest` | — | PWA manifest (standalone, icons, dark background). |
-| `storage.js` | — | See above. |
+JEEMaxxing is built completely with **Vanilla ES6 modules**. There are **zero frameworks, zero bundlers, and zero npm build steps**. The browser's native module engine powers the entire application.
 
----
-
-## 💾 Data & Persistence Layer
-
-### `AppState` (single source of truth)
-
-Defined in `storage.js` and imported everywhere. It holds **all** user data:
-
-- `solved` / `studySecs` — per-subject daily solve counts and study seconds.
-- `questionBank` — every ingested question with Elo, scheduling, history logs.
-- `elo` — per-subject + global Elo ratings (`physics`, `chemistry`, `maths`, `global`).
-- `activeTargets` / `baseTargets` / `baseErrorTargets` — daily solve and error-resolution targets.
-- `extractedItems`, `currentQ`, `practiceQuestions`, `practiceSubmittedFlags` — active practice session state.
-- `currentSubject` / `currentChapter` / `currentFilter` — browsing context.
-- `driveAccessToken`, `driveRefreshToken` — Google Drive credentials.
-- `isAnomaly` flags, `practiceCorrectStreak`, `photoHidden`, `selectedMcq`, etc.
-
-### Two-layer storage
-
-1. **IndexedDB (primary)** — database `jeemaxxing_db`. All state and media blobs. Accessed via `idbSet(key, value)` / `idbGet(key)`.
-2. **localStorage (cache)** — quick config snapshots (`jeemax_theme`, `jeemax_ck_shields`, target lock dates, daily forest store).
-
-Writes go through `saveAllAsync()` → `flushSaves()` which coalesces and persists the whole `AppState` atomically, then (optionally) uploads to Drive.
-
-### Daily history ledger
-
-`getDailyHistory()` / `updateDailyHistory()` maintain a per-day solve-count ledger (`date → count`). It feeds:
-
-- Streak computation (see [Streaks](#streaks))
-- The Momentum candlestick graph (the old 15-day sparkline was removed)
-- Forest daily stores (`jeemax_forest_daily_v1`, mirrored to IndexedDB)
-- Deload 48h missed-day checks
-
-### Google Drive sync (optional)
-
-- OAuth2 implicit flow via Google Identity Services (`CLIENT_ID`, `SCOPES`).
-- On login, `initDrive()` → `initializeCloudFolder()` creates a private folder, then `syncStateToCloud()` uploads `system_state.json` plus media files.
-- `fetchMediaFromDrive(driveImageId)` lazily pulls question images; `cacheAllDriveImages()` pre-caches them offline.
-- `setupSyncHeartbeat()` runs periodic background sync; `executeUnifiedSync()` handles conflict-free merge with tombstones (`recordCloudTombstone`).
-- The service worker **never** intercepts Google API calls.
-
----
-
-## ✨ Feature Breakdown
-
----
-
-### 📚 Study & Focus
-
-#### Pomodoro / Deep-Focus Timer (`pomodoro.js`)
-
-- **Countdown timer** with start / pause / resume / quit; auto-tracks seconds into `studySecs` per subject.
-- **Stopwatch mode** (`toggleStopwatchMode`) for open-ended focus blocks.
-- **Break cycles**: after a focus block, break timer with `skipBreak` / `addBreakTime` / `finishAll`.
-- **Dynamic subject switching** (`toggleDynamicSubject`, `changeStudySubject`) — time accrues to the selected subject HUD.
-- **Audio**: `initAudioContext()` unlocks audio on first gesture; `playBell()` rings at session end; `confirmTimerNotification()` sends a notification.
-- **Visualizer + mini widget** (`toggleVisualizer`, `toggleMiniWidget`) — an always-on-top floating widget with a beacon on the sidebar nav.
-- **Ambient Sprint Widget** — the focus engine's permanent surface, docked bottom-right on *every* tab: idle pill with one-tap ▶ (starts a sprint at the suggested length) and a config popover (subject P/C/M, minutes ±5, rounds ±1, dynamic ⚡); running state shows a progress ring, countdown, live ×1.5 badge, "ends HH:MM", and inline pause/skip/end controls. Clicking a running pill jumps to Focus Mode.
-- **Focus tab v3 (minimal)** — single-column rebuild: slim "LOCK-IN" header, huge centered countdown over a hairline progress bar (the beaker is now opt-in via the ⚙ visualiser modal), one quiet setup strip that dims to 34% while a block runs (stays fully live in dynamic mode via `body.pomo-dynamic`), and the ledger + all-time totals as single-line pills instead of card grids.
-- **Soundscape session bridge** — "Auto-play on lock-in" toggle (persisted, default on): `transitionToStudy`/`transitionToStopwatch` call `FocusSound.autoStart()`. `FocusSound.duck()` dips the bed to 25% when the session bell rings, then swells back softly. Beds breathe: 1.4s linear fade-in on start, ~0.5s release on pause; preset changes crossfade graph-vs-graph (~0.9s) with no mute gap; engine failures surface in the status line instead of failing silently.
-- **Real ×1.5 Deep Work bonus** — while a study/stopwatch block runs, `body.pomo-active` + `window._pomoRunning` are set, which `_getDeepWorkBlockMultiplier()` reads to pay 1.5× ELO on every solve. Pausing, breaks, quitting and resets close the window (the badge never lies).
-- **Focus ledger** (`jeemax_focus_ledger`, per-day) — blocks done, forfeits, current chain, best chain, deep seconds. Completing a block grows the chain; abandoning one resets it to zero and logs a forfeit (abandoned seconds still count toward deep time). Surfaced in the widget tally and the Focus view's "Today's Burn" strip with chain pips.
-- **Quit friction** — ending a live study block opens a "Break the chain?" confirm that names the price (kept seconds vs. chain reset) with a "Keep Going" escape hatch; stopwatch stops ≥5 min count as completed blocks.
-- **Session receipts** — every completed block's modal carries a receipt: block length + subject, chain state, deep time today, and ELO earned during the block (snapshotted at block start).
-- **Commitment projection** — the Focus form states the contract live ("50m × 2 rounds ≈ 1h 50m committed · every solve banks ×1.5 ELO while you're locked in").
-
-#### Dashboard (`app.js` + `dashboard-clean.js`)
-
-- Per-subject **daily solve targets** (settable via `#set-tgt-[subject]`) and **error-resolution targets** (`#set-err-[subject]`), with a 24-hour lock (`jeeTargetLockDate`) so you can't nudge targets mid-day.
-- ~~**Time Bank card**~~ *(removed from the product; `dashboard-clean.js` no longer injects it)* — live per-subject study time lives in **Focus Mode**'s hour-stats instead.
-- **Loop-rail navigation** — sidebar arcs show progress toward today's physics/chemistry/maths targets plus a "fix" ring for error resolution. When all four rings close, the loop is "CLOSED"; after 18:00 with zero solves the sidebar flashes a "STREAK AT RISK" warning.
-- **Candlestick graphs** (`candlestick-engine.js`) — the home-section trend graphs (solves/time) rendered as SVG candlesticks with momentum colors.
-- **Momentum legend** injected into the Momentum Tracker by `dashboard-clean.js`.
-- **Floating layout FAB** — bento-toolbar panel tucked behind a pencil FAB; sidebar collapse state persists.
-
-#### Scratchpad (in `app.js`)
-
-A floating **drawing overlay** (canvas + toolbar with pencil, color palette, erase, color stashing) usable over any screen — questions, checkpoint lockdowns, etc. Optimized for pen input (desynchronized 2D context, non-passive touchstart bypass for iOS gesture latency). Exposed globally as `window.__scratchpad`.
-
----
-
-### 📥 Question Bank & Ingestion
-
-#### Ingestion paths
-
-1. **Screenshot crop** — upload a screenshot, crop the question region, run OCR → question text. (`cropImageFromBBox`, `readFileAsBase64`)
-2. **Gem text dump** (`processGemTextDump`) — paste a JSON/text dump of questions (e.g. generated by an AI model). A real-JSON fast path (`cleanAndParseJson`) heals bare-backslash LaTeX corruption; a legacy regex path handles freeform text.
-3. **JSON file upload** (`loadJsonDumpFile`) — reads a dump file into the text-add terminal, then runs the same ingestion.
-4. **Manual creation** — add questions directly.
-
-#### Ingestion pipeline (per question)
-
-- **Type classification**: `mcq` (single or multi-select), `numeric`, or `text`/free-response (auto-detected from options/answer shape).
-- **Gem qElo stamping** — if the dump carries `qElo`/`targetTimeMins`/`tags`/`model` metadata, the question is `gem-stamped` (trusted Elo, skips the warmup curve). Otherwise it's `uncalibrated` (chapter-average Elo + legacy warmup).
-- **Anti-cheat audit** (`_auditGemBatchByChapter`) — flags batches where ≥80% of questions land in elite tiers (T6–T7) against a low prior chapter average (`suspiciousDistribution`), and low-stdev automation (`suspiciousStdev`).
-- **Chapter-ceiling guard** — qElo is clamped to ±600 of the destination chapter's running average.
-- **LaTeX repair** — `repairLatex()` deterministically fixes broken delimiters/backslash runs; `mathOk()` validates; failed rows get `latexRepairFailed` flagged (never blocked).
-- **Placement** — questions land in the *active session's* subject/chapter; the Gem's own stamps are kept only as provenance (`gemSubject`/`gemChapter`).
-- **Gem auto-crop coordinates** — when the dump carries `imageRef` (which tagged source screenshot) + `cropBox` (crop region), ingestion opens the **🗺 Diagram Map**, counts the distinct tags, asks for one upload per tag, and auto-crops every referenced diagram into `diagramImageUrl` via `cropImageFromBBox` — no manual cropping.
-
-##### Gem diagram auto-crop (`imageRef` + `cropBox`)
-
-When a question's diagram lives inside one of the source screenshots, the Gem
-emits coordinates so the app crops it automatically:
-
-```json
-{
-  "extractedText": "A projectile is fired...",
-  "options": ["A) ...", "B) ..."],
-  "correctAnswer": "B",
-  "solution": "...",
-  "imageRef": "a1",
-  "cropBox": { "x": 0.12, "y": 0.30, "w": 0.40, "h": 0.35 },
-  "optionImages": { "A": { "imageRef": "a1", "cropBox": { "x": 0.55, "y": 0.10, "w": 0.30, "h": 0.40 } } },
-  "solutionImage": { "imageRef": "a2", "cropBox": { "x": 0.1, "y": 0.5, "w": 0.5, "h": 0.4 } }
-}
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  GLASS SHELL      index.html · dashboard-clean.js · theme.js · fx.js        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  CORE ENGINES     app.js                 Orchestrator, Day-Cycle, Ingestion │
+│                   matrix.js              Spaced Repetition & Error Vault    │
+│                   pomodoro.js            Deep Work & Sprint Timers          │
+│                   checkpoint.js          Accountability & Protocol Zero     │
+│                   cns-load.js · deload   Fatigue & Recovery Telemetry       │
+│                   nightguard.js          Circadian Decay & Sleep Debt       │
+│                   grove-islands.js       3D Archipelago Growth Engine       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ANALYTICS        candlestick-engine.js  SVG Cognitive Yield Momentum       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  PERSISTENCE      storage.js             IndexedDB (jeemaxxing_db) + Drive  │
+│  OFFLINE PWA      sw.js · manifest       Offline Cache (jeemax-v44)         │
+│  MATH ENGINE      vendor/katex/          Deterministic Offline TeX          │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- `imageRef` — tag of the source screenshot the diagram lives in (`a1`, `a2`, `s1`, …). Aliases: `imageTag`, `diagramRef`, `imgTag`, `sourceImage`; loose matches on `image`/`img`/`figure`/`imageNumber` are also accepted when the value is a short tag token (a URL or data URL is never treated as a tag).
-- `cropBox` — top-left (`x`,`y`) + size (`w`,`h`) as **fractions** (0–1) of the screenshot. Aliases: `bbox`, `box`, `crop`, `region`, `coords`, `cropCoords`; object or `[x, y, w, h]` array form; pixel-scale coordinates are auto-detected and normalized at crop time.
-
-**Option & solution images** — the same mechanism works for figures inside
-individual MCQ options and the worked solution:
-
-- `optionImages` — map of option letter → `{ imageRef, cropBox }` (or an array of `{ option, imageRef, cropBox }` entries). Aliases: `optionImageRefs`, `optionsImages`, `optionsImageRefs`, `optionsImg`. Renders under the matching option in preview **and** the practice modal.
-- `solutionImage` — `{ imageRef, cropBox }` (or a bare tag string). Aliases: `solImage`, `solutionImageRef`, `solutionRef`, `answerImage`, with standalone crop fallbacks `solutionCrop` / `solutionCropBox` / `solCropBox` / `answerCrop`. Renders above the worked solution in the solution popup.
-
-On ingest the app counts the distinct tags ("how many are there"), prompts one
-upload per tag, and auto-crops every referenced asset (diagram, per-option
-image, solution image) in a single pass — the manual ➕ Add Diagram flow
-remains as fallback. The copy-paste Gemini instruction block lives inside the
-🗺 Diagram Map modal.
-
-#### Preview modal
-
-Before saving, every extracted item is shown in a grid where you can:
-
-- Verify/edit the **answer key** per row (manual answer input).
-- **Add / wipe a diagram** asset (`window.triggerSurgicalDiagramUpload`, `window.yeetSurgicalDiagram`).
-- **🗺 Diagram Map** — reopen the auto-crop mapper for any question that references a tagged source image (`imageRef`).
-- Review type badges, options, solution/hint presence.
-- Then **Save All** commits the batch to the bank.
+> [!NOTE]
+> **Single Source of Truth**: All app state is owned by `AppState` inside `storage.js`. Changes are coalesced and committed atomically to IndexedDB via `saveAllAsync()`. Cross-module communication is decoupled through audited `window.*` bridges to prevent circular import locks.
 
 ---
 
-### 🎯 Practice & the Elo Engine
+## ⚡ Feature Deep-Dive
 
-#### Practice modes
-
-- **Standard / Grind Station** — the classic practice modal.
-- **Flow State (🎯)** and **Hardcore (⚡ HC)** — gated by your current CNS load and Elo; each has tuned P_win (difficulty) windows and reward multipliers (`PRACTICE_MODES`, `MODE_TUNING`).
-
-#### Question rendering (`renderPracticeQuestionModal`)
-
-- MCQ single / MCQ multi-select / numeric input / free-response (self-report) — all graded with exact tolerance (`|user − correct| < 1e-6` for numeric).
-- Images: base64 `imageDataUrl` or lazily fetched `driveImageId` from Drive.
-- **LaTeX**: every question body/answer/solution is escaped then hydrated by KaTeX (`processElementMath` — synchronous hydration + observer watchdog).
-- **Hide photo toggle**, solution popup (`showSolutionPopup`), time-on-question tracked per question (`timeTaken`).
-
-#### The Elo engine (in `app.js`)
-
-A **subject-segregated, uncapped cognitive matchmaking rating** ("MMR") that reverse-engineers each question's *Implied Difficulty Rating* (`qElo`) from your execution telemetry:
-
-- **K-factors** per subject: physics/chemistry `K=12`, maths `K=16`; asymmetric antagonistic scaling compresses gains at high ratings and cushions falls at low ones.
-- **Rank tiers**: `NPC 🧍` → `Skill Issue 💀` → `Cooking 🍳` → `Let Him Cook 👨🍳` → `Diffed the Exam 💀` → `Unhinged Gigachad 🗿`.
-- `calculateEloMigration()` merges: solve correctness, **time divergence** (your time vs. chapter average, with FAST/SLOW/BALANCED bonus pills), friction severity, chapter health, and mode multipliers into a single delta.
-- **Elo shift chips** (`injectEloShiftChip`) pop into the practice header + results banner with tier transition celebrations (emoji burst + super sound).
-- **First-attempt accuracy** (`_firstAttemptResult`) — accuracy is locked to your first ever attempt; re-solves never inflate it.
-
-#### Bounty mode
-
-Time-boxed bounty questions: answer within the countdown or the attempt is marked wrong; practice time is converged into daily study counters.
+### ⏱️ Deep-Focus Engine (`pomodoro.js` + `focus-sound.js`)
+* **Wall-Clock Hardened**: Resilient against tab backgrounding, browser sleep, and clock changes.
+* **Ambient Sprint Widget**: Docked persistently in the bottom-right corner across every view. Start sprints, adjust targets, or view live countdowns on demand.
+* **×1.5 Deep Work Multiplier**: Active study blocks trigger `body.pomo-active` which awards a genuine **1.5× Elo yield bonus** on all problem solves.
+* **Acoustic Soundscapes**: Built-in procedural rain, cafe, fireplace, and binaural white-noise generators that automatically duck during session bells.
+* **Quit Friction & Receipts**: Premature termination prompts a forfeit warning; completed blocks generate verified study receipts tracking deep seconds and Elo earned.
 
 ---
 
-### 🧠 Spaced Repetition & Error Matrix
-
-#### Error Vault (`matrix.js`)
-
-- **Error matrix** — every wrong/fumbled question is vaulted with friction reasons (`CALC`, `FORMULA`, `CONCEPT`, `APPROACH`).
-- **Filters**: all / errors / solved / by friction type / by due status; `filterErrors()` drives the list.
-- **Daily Fix Queue** (`toggleDailyQueue`) — auto-curates a weighted 20-question set: lowest ease-factor items first, sliced to paper-distribution targets.
-- **Chapter decay grid v2** (`renderChapterDecayGrid`) — exam-aware risk bars: JEE-weightage × forecast retention at your exam date, coverage underlay, "critical in Nd" chips, trend arrows and a fluency (τ) readout; tap any row for the per-item decay drilldown (`openDecayDrilldown`). Powered by **memory.js** — an FSRS-style three-state kernel (Difficulty / Stability / Retrievability, power-law forgetting curve, unbounded stability growth). `node scripts/smoke-memory-model.mjs` property-tests it.
-
-#### Spaced repetition math
-
-- **SuperMemo-2 variant** with multi-variable tuning: ease factor, friction severity weight, performance quality `q` (0.0–5.0 from autonomy vs. time ratio).
-- **Memory Kernel v2** (`memory.js`, canonical for BOTH the grid and `_getChapterHealth`):
-
-  ```
-  R(t,S) = (1 + (19/81) · t/S)^−0.5        ← power-law retrievability; R(S)=0.9
-  pass:  S' = S · (1 + G·((11−D)/10)·S^−0.15·(e^(0.4·(1−R))−1))
-  lapse: S' = max(0.5, F·((S+1)^0.25 − 1)·e^(0.3·(1−R))/D^0.2)
-
-  health = Σ_all ( qElo · R ) / Σ_all ( qElo ) × 100     ← chapter readiness
-  ```
-  Chapter health is **coverage-aware**: the sum runs over EVERY question in the
-  chapter and a question with no review record contributes `R = 0`. You cannot
-  answer what you never studied, so a chapter where you have touched 6 of 79
-  questions caps near 6/79 instead of inheriting the 100% of the one you logged.
-  `hasReviewRecord` (timestamp / history log / `reps ≥ 1` / `solveCount > 0`) is
-  the evidence test — `status: 'solved'` deliberately does NOT qualify, because
-  bulk-seeded uploads ship as solved with nothing else attached. `stats.retention`
-  and `stats.coverage` are returned separately so the grid can show both.
-- **Elo v2**: Glicko-lite rating deviation (uncertainty-weighted K_eff), graded partial-credit scores, 3PL guess correction on 4-option MCQs, continuous retrievability gating (low-R recalls earn ~full credit), pre-reveal confidence capture → Brier-scored Calibration Report, chapter-level ability θ_c (`getChapterTheta`), and an AIR uncertainty cone + Top-100 gap panel in the rating popup.
-
-- `getDueStatus()` decides if an item is `ready`/`due`; the nav's "Vault" badge counts ready items (O(1) cached).
-- **SR practice drawer** (`openPracticeDrawer`) — full spaced-repetition session: flip card, select options / self-report, autonomy & friction rating, optional stopwatch + manual time, hint/image toggles, then `submitPracticeLog()` feeds Elo migration.
-- **Error resolution dashboard** (`renderErrorResolutionDashboard`) — decay grid + penalty scars (the old 15-day sparkline was removed).
-- **Chapter progress** (`renderChapterProgressList`, `openChapterProgress`) — per-chapter mastery breakdown.
+### ♟️ Dynamic Elo / MMR Matchmaking (`app.js`)
+A chess-inspired cognitive matchmaking algorithm that tracks player skill and reverse-engineers question difficulty (`qElo`):
+* **Subject-Segregated MMR**: Individual ratings for Physics, Chemistry, and Mathematics (`K=12` for P/C, `K=16` for Maths) alongside an aggregated Global Rating.
+* **Competitive Ranks**:
+  $$\text{NPC 🧍} \longrightarrow \text{Skill Issue 💀} \longrightarrow \text{Cooking 🍳} \longrightarrow \text{Let Him Cook 👨‍🍳} \longrightarrow \text{Diffed the Exam 💀} \longrightarrow \text{Unhinged Gigachad 🗿}$$
+* **Speed Divergence**: Compares your execution time against chapter benchmarks to award `FAST`, `BALANCED`, or `SLOW` rating chips.
+* **Tamper-Resistant Accuracy**: First-attempt telemetry is permanently locked (`firstAttemptResult`); re-solves will never artificially inflate rating or metrics.
 
 ---
 
-### 🔒 Accountability (Slump Sentry / Checkpoints)
-
-> **⚠ STATUS: DECOMMISSIONED (passive).** The 1-second monitoring loop and its
-> penalty driver were **removed from the source** (`checkpoint.js` — "TODAY'S
-> LOOP: REMOVED"): it re-armed on every reload and kept writing Protocol-Zero
-> hard-zeros into the Fix Streak, so "closing it" never stuck. `cfg.enabled`
-> ships `false`, no tick driver exists, and the control-center UI stays hidden
-> and inert. **Stored penalties are kept as plain history for the graphs** —
-> they are never re-armed or re-written. Manual debug access survives via
-> `window.__checkpoint`. The table below documents how the system *worked*
-> before decommissioning.
-
-`checkpoint.js` — a hardened "4-pillar accountability checkpoint system" that actively guards your schedule. **8 known exploits patched** (documented in the file header):
-
-| Exploit | Defense |
-|---|---|
-| Silent death (tab closed/suspended) | `lastTickAt` gap detection, Wake Lock + Notification API, `visibilitychange` resume guard |
-| Palm/scroll activity spam | `reportDrawingActivity(x, y)` with movement threshold (>4px) |
-| Time-travel (clock rollback) | `lastKnownNow` high-water mark; rollback → **Protocol Zero** penalty |
-| Force-close during penalty | Atomic state persist + `restoreState()` resumes exact phase |
-| 1-second ghost miss | `processedToday` set; occurrence never pushed to tomorrow |
-| Focus-spam speedrun (rapid ticks) | Timestamp-based PoW timer (`powStartedAt + accumulated pause`), not tick count |
-| Multi-correct lockout | `submitAnswer` handles single/multi/integer/self-report |
-| localStorage amnesia | Dual-write IndexedDB + localStorage; penalties re-restored from IDB |
-
-**Flow:**
-
-1. At configured checkpoints (default `11:00`, `17:00`, `21:00`), if you've been **idle ≥ 120 min**, the checkpoint **arms**.
-2. A **grace modal** (default 15 min) counts down against an *absolute, calendar-anchored deadline* — refreshing or closing the tab can't extend it.
-3. **INITIATE CHECKPOINT** → **lockdown overlay** with the lowest-health due question, a **Proof-of-Work timer** (default 10 min, pauses when you stop drawing/typing), and full answer UI (single/multi/integer/self-report).
-4. Correct answer → checkpoint cleared. Wrong / abandon / timer expiry / clock rollback / missed grace → **PROTOCOL ZERO**: a permanent red spike scarred into your 15-day error graph + main predictive graph.
-5. A floating control center (hub button + panel) surfaces all state and lets you tweak config.
+### 🧠 Memory Kernel v2 & Error Matrix (`matrix.js` + `memory.js`)
+* **Spaced Repetition Vault**: Automatically captures misses and fumbles tagged by friction reason (`CALC`, `FORMULA`, `CONCEPT`, `APPROACH`).
+* **Power-Law Retrievability Curve**: Powered by a 3-variable state kernel (Difficulty $D$, Stability $S$, Retrievability $R$).
+* **Coverage-Aware Chapter Health**: A chapter with only 5 of 80 questions reviewed will never claim 100% mastery; readiness requires breadth.
+* **Daily Fix Queue**: Auto-curates today's highest-risk decayed memories based on upcoming exam weightage.
 
 ---
 
-### 🧬 Recovery Systems (CNS Load, Lifeline, Deload)
-
-#### CNS Load (`cns-load.js`)
-
-A **central-nervous-system fatigue meter** (0–1) built from study volume, elapsed sessions, and telemetry. High load gates demanding modes and feeds the lifeline. Exposed as `window.__cnsLoad`. Reset bridges: `window._studySecsForCns` (pomodoro quit) and `window._deloadDailyHistoryFn`.
-
-#### Flow-State Lifeline (`lifeline.js`)
-
-When `CNS_LOAD ≥ 0.80`, the lifeline shifts practice difficulty windows toward **easier problems** (per-mode P_win offsets) to pull you back into the flow channel. The catch: **ELO yield × 0.65** on lifeline-assisted solves. Auto-disables below 0.40; opt-out per solve; requires ≥3 unsolved questions in the easier band of the chapter.
-
-#### Deload Engine (`deload.js`)
-
-- **Automatic deload** — after sustained high volume (or 48h without missed days), a deload day is scheduled.
-- **Manual scheduling** (`scheduleDeloadFromUi`) — "🌿 Deload Day scheduled. Your streak is preserved."
-- On a deload day, the daily target loop treats it as an **Earned Rest day** — the streak counter is preserved and targets don't count against you.
-
-#### Night Guard (`nightguard.js`)
-
-Post-23:00 **"Diminishing Returns" guard** — a stepped ELO-yield degradation driven by the local clock: Tier 1 (23:00–01:00) ×0.80 🌙, Tier 2 (01:00–03:00) ×0.55 🌑, Tier 3 (03:00+) ×0.20 🛌 uninterruptible modal with force-CNS. Also detects clock rollback, tracks late-night overrides (3s hold-to-override) and keeps a sleep-debt ledger (consecutive short gaps → mood penalty). Pure read over AppState; persists its own tier/override state in localStorage.
+### 🧬 Recovery & Bio-Feedback Systems
+* **CNS Fatigue Meter (`cns-load.js`)**: Real-time telemetry monitoring mental strain based on solve density and time under tension. High load gates hardcore modes.
+* **Flow-State Lifeline (`lifeline.js`)**: Activates when $\text{CNS} \ge 0.80$, automatically lowering question difficulty to keep you in flow state (at an honest 0.65× Elo yield).
+* **Earned Deload Days (`deload.js`)**: High sustained training unlocks rest days that pause target penalties while fully preserving streaks.
+* **Night Guard (`nightguard.js`)**: Progressive late-night Elo decay past 23:00 ($\times 0.80 \to \times 0.55 \to \times 0.20$) to actively punish revenge bedtime procrastination.
 
 ---
 
-### 🌳 Gamification & Growth (Forest, Streaks)
-
-#### The Forest (multiple engines)
-
-The forest grows as you solve questions. Layers:
-
-- `forest-bg.js` — animated sky/stars/parallax backdrop (three.js, vendored build first with CDN fallbacks).
-- `grove-islands.js` — the bigger island archipelago with its own growth physics (~2.5k lines: growth curves, cloud movement, maturity stages, mini widget + full explorer).
-- Daily forest store (`jeemax_forest_daily_v1` in localStorage + IDB mirror) records daily growth per subject.
-
-> Note: the old `forest-island-full.js` / `forest-island-juice.js` /
-> `forest-juice.js` modules no longer exist — their roles were folded into
-> `grove-islands.js` and `forest-bg.js`.
-
-**Growth rules:** solves (and subject balance) plant/water trees; targets met grow trees to maturity; missed days can wilt them. The forest is a persistent visual progress bar for your grind.
-
-#### Streaks
-
-Computed from the daily history ledger:
-
-- Solving ≥1 question per day extends the streak.
-- **Deload days** preserve the streak.
-- After 18:00 with zero solves, the sidebar shows the "🚨 STREAK AT RISK" state.
+### 🏝️ Archipelago World & Gamification (`grove-islands.js` + `fx.js`)
+* **Growing Living World**: Study seconds and correct answers water a 3D isometric island archipelago rendered via Three.js. Harder questions cultivate rarer flora.
+* **Loop-Rail Navigation**: Sidebar rings for Physics, Chemistry, Maths, and Daily Fixes. Closing all four triggers the `LOOP CLOSED` victory state.
+* **Sensory FX**: Reactive synth audio, screen ripples, red error flashes, streak-shield glows, and haptic feedback (with full `prefers-reduced-motion` compliance).
 
 ---
 
-### ☁️ Cloud Sync & Google Drive
-
-See [Data & Persistence](#data--persistence-layer) — the key user-facing features:
-
-- **Link Google Drive** → creates a private cloud folder and mirrors `system_state.json` + media.
-- **Auto-sync heartbeat** + manual **Sync Now**; **Cache All Images** for offline Drive media.
-- **Cloud restore** — `loadStateFromCloud()` rehydrates state on a new device; tombstones prevent resurrected deletes.
-- Token expiry handling (`handleAuthExpiry`) keeps sync graceful.
+### 📥 Surgical Ingestion & Diagram Map
+* **Gemini AI Extraction**: Paste structured AI dumps with automatic LaTeX delimiter repair and anti-cheat statistical audits.
+* **Auto-Crop Coordinate Mapping**: Questions with diagram references (`imageRef` + `cropBox` fractions) can be auto-cropped from full-page test screenshots in a single pass.
+* **Multi-Format Grading**: Native evaluation for single MCQ, multi-select, numeric tolerances ($|u - c| < 10^{-6}$), and self-reported proofs.
 
 ---
 
-### 🎨 Theme & UI Layer
+## 📐 Mathematical Foundations
 
-`theme.js` — **7 accent themes**:
+### 1. Memory Kernel v2 (Retrievability & Stability)
 
-| Theme | Vibe |
-|---|---|
-| Furnace | Amber heat (stock) |
-| Synthwave | Violet neon haze |
-| Glacier | Ice-blue deep focus |
-| Overgrowth | Bioluminescent green |
-| Blood Moon | Crimson aggression |
-| Sakura | Rose quartz calm |
-| Stealth | Monochrome ops |
+$$\mathcal{R}(t, S) = \left( 1 + \frac{19}{81} \cdot \frac{t}{S} \right)^{-0.5}$$
 
-× **2 appearance modes**: `Midnight` (deep-night terminal) and `Dusk` (evening glass, ~65% dark). Persisted as `jeemax_theme` / `jeemax_mode`; live re-skins via `data-theme` / `data-mode` attributes.
-
-`fx.js` — **centralized FX controller** (`window.FX`): correct/wrong/super sounds, red-flash on errors, streak-shield glow, emoji bursts, and haptics — with persisted preferences (`jeemax_fx_prefs`) and reduced-motion support.
+* When recall succeeds (**Pass**):
+  $$S' = S \cdot \left[ 1 + G \cdot \left( \frac{11 - D}{10} \right) \cdot S^{-0.15} \cdot \left( e^{0.4(1 - \mathcal{R})} - 1 \right) \right]$$
+* When recall fails (**Lapse**):
+  $$S' = \max\left( 0.5, \, F \cdot \left( (S + 1)^{0.25} - 1 \right) \cdot \frac{e^{0.3(1 - \mathcal{R})}}{D^{0.2}} \right)$$
+* **Chapter Readiness (Coverage-Aware)**:
+  $$\text{Health} = \frac{\sum_{i \in \text{All Questions}} \left( \text{qElo}_i \cdot \mathcal{R}_i \right)}{\sum_{i \in \text{All Questions}} \text{qElo}_i} \times 100\%$$
 
 ---
 
-## 🗃️ Internal Data Model
+### 2. Elo Shift Delta
 
-### Question shape
+$$\Delta \text{Elo} = K_{\text{eff}} \cdot \left( S_{\text{actual}} - \mathbb{E}[S] \right) \cdot M_{\text{speed}} \cdot M_{\text{pomo}} \cdot M_{\text{mode}} \cdot M_{\text{night}}$$
 
-```js
-{
-  id, subject, chapter, type,               // 'mcq' | 'numeric' | 'text' | 'self-report'
-  extractedText, options[], correctAnswer,  // string | string[] | numeric
-  solution, hint,
-  imageDataUrl, diagramImageUrl, driveImageId,
-  optionImageUrls, solutionImageUrl,        // gem auto-crop outputs ({'A': dataUrl, ...} / dataUrl)
-  gemImage, gemOptionImages, gemSolutionImage,  // gem crop provenance (imageRef + cropBox coords)
-  qElo, targetTimeMins, isAnomaly,          // Elo schema
-  qEloSource,                                // 'gem-stamped' | 'uncalibrated'
-  qEloStampedBy, qEloStampedAt, tags, difficulty,
-  status,                                    // 'solved' | 'wrong' | 'error' | 'unsolved'
-  firstAttemptResult, historyLogs[],         // spaced-repetition timeline
-  easeFactor, lastReviewedAt, dueDate,       // SM-2 fields
-  timeTaken, errorReason,                    // friction tag (CALC/FORMULA/CONCEPT/APPROACH)
-  batchSuspiciousDistribution, batchSuspiciousStdev, latexRepairFailed
-}
-```
-
-### Elo schema
-
-- `AppState.elo = { physics, chemistry, maths, global }` — all default 1200.
-- `ELO_BANDS` / `BAND_TARGET_TIME` map Elo bands → target solve times.
-- `ELO_GEM_STAMP_TUNING` — reward deltas for gem-stamped questions.
-
-### Streak / targets
-
-- `baseTargets = { physics, chemistry, maths }` — daily solve targets.
-- `baseErrorTargets` — daily error-resolution targets.
-- `jeeTargetLockDate` — 24h lock key.
+Where:
+* $M_{\text{pomo}} = 1.5$ during active focus blocks
+* $M_{\text{night}} \in \{0.80, 0.55, 0.20\}$ past 23:00
+* $M_{\text{speed}}$ rewards answers faster than target time while damping guesses
 
 ---
 
-## 📡 Events & Global Hooks
+## 🎨 Cyber-Glass Design System v4
 
-| Hook | Fired by | Consumed by |
-|---|---|---|
-| `checkpoint:state` | `checkpoint.js` emit() | control panel / ignite button |
-| `checkpoint:penalty` | Protocol Zero | error-resolution + predictive graphs |
-| `window.__ckBumpTodayFix(subject)` | `matrix.js` on correct SR log | nav loop "fix" ring cache |
-| `window.__jmaxDataDirty` | save pipeline | memoized nav heavy-derivations |
-| `window._studySecsForCns` | app boot | CNS reset on pomodoro quit |
-| `window._deloadDailyHistoryFn` | app boot | deload 48h missed-day check |
-| `window.__cnsLoad` | `cns-load.js` | lifeline + mode gating |
-| `window.__scratchpad` | app boot | scratchpad API (`toggle`, `clear`, `getColor`, …) |
+The user interface runs on pure tokenized CSS (`:root` variables) featuring responsive glassmorphism and instant live re-skinning:
+
+<div align="center">
+
+| Theme | Palette | Aesthetic Vibe |
+| :--- | :--- | :--- |
+| **Furnace** | `#f97316` Amber / Flame | High-energy default focus |
+| **Synthwave** | `#8b5cf6` Neon Violet | Retro-futuristic cyberpunk night |
+| **Glacier** | `#0ea5e9` Arctic Cyan | Clean, cool, low-distraction deep work |
+| **Overgrowth** | `#10b981` Emerald Flora | Bioluminescent nature & calm |
+| **Blood Moon** | `#ef4444` Crimson / Scarlet | High-intensity hardcore grind |
+| **Sakura** | `#f43f5e` Rose Quartz | Soft contrast, aesthetic balance |
+| **Stealth** | `#71717a` Monochromatic Gray | Tactical zero-distraction terminal |
+
+**Dual Surface Modes**: `Midnight` (deep-black OLED terminal) & `Dusk` (translucent frosted glass).
+
+</div>
+
+---
+
+## 🗃️ Module Inventory
+
+| Module | Lines | Function |
+| :--- | :--- | :--- |
+| [`index.html`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/index.html) | ~1,357 | Single-page shell, modal overlays, scratchpad, HUD |
+| [`app.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/app.js) | ~9,500 | Orchestrator, boot sequence, practice engine, Elo rating |
+| [`storage.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/storage.js) | ~2,000 | `AppState` single source of truth, IndexedDB, Drive sync |
+| [`matrix.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/matrix.js) | ~2,070 | Error vault, spaced repetition scheduler, decay grid |
+| [`memory.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/memory.js) | ~300 | Mathematical kernel for FSRS/SM-2 stability & retrievability |
+| [`pomodoro.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/pomodoro.js) | ~1,200 | Hardened focus timers, sprint widget, deep work accounting |
+| [`checkpoint.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/checkpoint.js) | ~1,400 | Accountability framework, PoW challenges, Protocol Zero |
+| [`candlestick-engine.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/candlestick-engine.js) | ~600 | Custom SVG cognitive-yield momentum charts |
+| [`cns-load.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/cns-load.js) | ~400 | Real-time Central Nervous System fatigue telemetry |
+| [`deload.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/deload.js) | ~350 | Rest period scheduler with streak protection |
+| [`nightguard.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/nightguard.js) | ~450 | Late-night circadian yield decay & sleep debt ledger |
+| [`grove-islands.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/grove-islands.js) | ~2,570 | Three.js procedurally cultivated island world |
+| [`theme.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/theme.js) | ~200 | Dynamic token-switching across 7 themes × 2 appearance modes |
+| [`fx.js`](file:///c:/Users/Chaksh/Desktop/JEEmaxxing/fx.js) | ~350 | Web Audio API synth effects, haptics, and particle visuals |
 
 ---
 
 ## 🚀 Running Locally
 
-Because the app uses native ES modules, opening `index.html` via `file://` is blocked by CORS. Serve the folder:
+Because the project relies on native ES6 browser modules, serve the directory via any local HTTP server:
 
 ```bash
-# Option A: Python
+# Option 1: Python 3
 python3 -m http.server 8000
-# → http://localhost:8000
 
-# Option B: any static server
+# Option 2: Node.js (npx)
 npx serve .
 ```
 
-**No build step. No `npm install` required** (the only dependency entry, `freebuff`, is not needed to run).
+Navigate to `http://localhost:8000` in your browser.
+
+> [!TIP]
+> **Zero Installation Required**: No `npm install`, no compilation, no node daemons needed. Open and run instantly.
 
 ---
 
-## 📱 PWA & Offline
+## 📱 PWA & Offline Support
 
-- `manifest.webmanifest` — installable, standalone, dark theme, maskable icons.
-- `sw.js` (cache version `jeemax-v44`):
-  - **Network-first for HTML** — a cached `index.html` can never pin old code; fresh shell served every load, cached copy only when offline.
-  - **Stale-while-revalidate** for JS/CSS/fonts; CDN prefix whitelist (`jsdelivr`, `esm.sh`, `unpkg`, Google Identity).
-  - **KaTeX vendored locally** (`vendor/katex/`) so math renders offline.
-  - Activation **cannot fail** — all navigation reloads are `Promise.allSettled` so a rejected `client.navigate()` never aborts the update.
-  - Drive/Gemini API calls are never intercepted.
+- **Fully Offline**: All scripts, fonts, sounds, and math engines (KaTeX) are cached via Service Worker (`sw.js`, cache version `jeemax-v44`).
+- **Network-First HTML**: The shell always checks for updates when online, falling back to cache when offline so updates apply immediately without cache-trapping.
+- **Installable**: Supports full PWA installation on Android, iOS (Safari Add to Home Screen), macOS, and Windows.
 
 ---
 
-## ⚡ Performance Notes
-
-- **Memoized nav derivations** — the "fix today" count is an O(1)-cached per-day counter (`__ckBumpTodayFix` bumps instead of rescanning); the ready-count and lowest-health scans respect a 30s TTL + 2s min interval via `navHeavy()`.
-- **`nav-ck-ladder` innerHTML** only rewritten when the rungs actually change; the global Math observer no longer tree-walks the sidebar every tick.
-- **Chapter health is a pure read** (idempotent, JIT hydrates memory fields without mutating objects) so it's safe to call at high frequency.
-- **Scratchpad canvases** use `desynchronized: true` GPU fast paths and never call `getImageData()` during drawing.
-- **Service worker install** pre-caches only the essential shell; CDN assets are best-effort (`allSettled`) and never fail activation.
+<div align="center">
+  <sub>Engineered for relentless focus and elite mastery.</sub><br>
+  <b>Lock in. Close the loop. Maximize the rank.</b>
+</div>
