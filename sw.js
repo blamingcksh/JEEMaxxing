@@ -111,12 +111,17 @@
 //        (1,3,1), so it beats the DESIGN SYSTEM v4 / forest / drag / iPad-diet
 //        fills); styles-ipad.css gains comment notes about the superseded fill
 //        — its backdrop-filter kill is still load-bearing. No new files.
+// v57 — PRACTICE FLOW OVERHAUL: Practice stage stripped from 4 skins to strictly
+//        2 warm skins (Roast dark coffee & Parchment light paper). Clock island and
+//        thick bars replaced with a 2px ambient pace line; centered 720px focus column
+//        scaled for 60cm desk viewing; multiply diagram blend on warm paper; saccadic
+//        highlights for parameters; isolated question goal; hold-to-reveal flow gate.
 // v56 — SEPIA THEME: 8th accent theme (aged paper · warm ink) with paper
 //        surfaces in Midnight mode, plus a roast/parchment practice-stage
 //        pair that follows data-theme in both moon states. theme.js,
 //        styles.css, styles-practice-fullscreen.css + QA map changed in
 //        place — cache bump forces the swap.
-const VERSION = 'jeemax-v56';
+const VERSION = 'jeemax-v58';
 const SHELL = [
   './',
   './index.html',

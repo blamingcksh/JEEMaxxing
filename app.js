@@ -957,20 +957,25 @@ export function openModal(id) {
     if (!m) return;
     if (id === 'calendar-modal') renderCalendar();
     if (id === 'practice-modal') {
+        try {
+            if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            }
+        } catch (_) {}
         try { _ensureStreakLoop(); } catch (_) {}
         // Own the user's attention while a solve is on stage (P0-1 gate).
         SessionFocus.acquire('practice');
         try { document.body.classList.add('pq-active'); } catch (_) {}
-        // Default to moon-pressed (opaque focus backdrop) on every open.
-        // Render/Next/Prev never touch this — a mid-session moon toggle sticks.
+        // Default to Roast (warm dark coffee) on open; moon toggles to Parchment (warm light paper)
         try {
             document.body.classList.add('immersive-active');
             if (typeof _syncImmersiveBtn === 'function') _syncImmersiveBtn();
             else {
                 const _mb = document.getElementById('immersive-focus-btn');
-                if (_mb && _mb.classList.contains('pq-corner-moon')) { _mb.textContent = '◑'; _mb.style.color = '#38bdf8'; }
+                if (_mb && _mb.classList.contains('pq-corner-moon')) { _mb.textContent = '◑'; _mb.style.color = '#d4a017'; }
             }
         } catch (_) {}
+        try { _pqBindHold(); } catch (_) {}
     }
     // Manual Log-a-Mistake form: restore any unsaved draft [AUDIT P1-9].
     if (id === 'add-error-modal' && typeof window.__restoreAddErrorDraft === 'function') {
@@ -1022,6 +1027,11 @@ export function closeModal(e, id, force) {
     if (typeof e === 'string') { closeModalStr(e); return; }
     const m = document.getElementById(id);
     if (!m) return;
+    if (id === 'practice-modal' && !force) {
+        // Pure-display flow stage: clicking on paper background or stray taps must NEVER close the stage.
+        // Explicit exit is only via closePracticeModal() (the ✕ button) or Escape key.
+        return;
+    }
     if (force || (e && e.target === m)) {
         // ── Stray-tap guard [AUDIT P1-8] ──
         // A thumb landing just outside the card must not silently kill a
@@ -1041,6 +1051,11 @@ export function closeModal(e, id, force) {
             SessionFocus.release('practice');
             try { document.body.classList.remove('pq-active'); } catch (_) {}
             try { document.body.classList.remove('immersive-active'); } catch (_) {}
+            try {
+                if (document.fullscreenElement && document.exitFullscreen) {
+                    document.exitFullscreen().catch(() => {});
+                }
+            } catch (_) {}
             if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
             try { _pqCancelChromeFade(); } catch (_) {}
             // Parity with closePracticeModal(): a backdrop dismiss used to
@@ -1055,7 +1070,17 @@ export function closeModal(e, id, force) {
 export function closeModalStr(id) {
     const m = document.getElementById(id);
     if (!m) return;
-    if (id === 'practice-modal') { SessionFocus.release('practice'); try { document.body.classList.remove('pq-active'); } catch (_) {} try { document.body.classList.remove('immersive-active'); } catch (_) {} try { _pqCancelChromeFade(); } catch (_) {} }
+    if (id === 'practice-modal') {
+        SessionFocus.release('practice');
+        try { document.body.classList.remove('pq-active'); } catch (_) {}
+        try { document.body.classList.remove('immersive-active'); } catch (_) {}
+        try {
+            if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {});
+            }
+        } catch (_) {}
+        try { _pqCancelChromeFade(); } catch (_) {}
+    }
     _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     setTimeout(() => { if (!m.classList.contains('active')) m.style.display = 'none'; }, 300);
@@ -1080,7 +1105,17 @@ export function closeModalStr(id) {
 function forceHideModal(id) {
     const m = document.getElementById(id);
     if (!m) return;
-    if (id === 'practice-modal') { SessionFocus.release('practice'); try { document.body.classList.remove('pq-active'); } catch (_) {} try { document.body.classList.remove('immersive-active'); } catch (_) {} try { _pqCancelChromeFade(); } catch (_) {} }
+    if (id === 'practice-modal') {
+        SessionFocus.release('practice');
+        try { document.body.classList.remove('pq-active'); } catch (_) {}
+        try { document.body.classList.remove('immersive-active'); } catch (_) {}
+        try {
+            if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {});
+            }
+        } catch (_) {}
+        try { _pqCancelChromeFade(); } catch (_) {}
+    }
     _modalOpenTokens[id] = (_modalOpenTokens[id] || 0) + 1; // invalidate pending open rAF
     m.classList.remove('active');
     m.style.display = 'none';
@@ -5365,6 +5400,7 @@ export function updatePracticeTimerDisplay() {
         s = AppState.practiceSeconds % 60;
     const el = document.getElementById('question-timer');
     if (el) el.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    try { _pqUpdatePace(); } catch (_) {}
 }
 
 export function toggleOriginalPhoto() {
@@ -5416,8 +5452,301 @@ function _targetKeepGoingHTML(subject) {
     } catch (_) { return '<div class="pm-keep-going">💪 keep going</div>'; }
 }
 
+// ── Pure-Display Flow Blueprint Helpers ─────────────────────────────────────
+export function _pqDecorateText(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    try {
+        let bodyText = raw.trim();
+        let goalText = '';
+
+        // Check for subparts sequence (a)... (b)... or (i)... (ii)...
+        const hasLetterSeq = /(?:^|\s)\(a\)(?=\s)[\s\S]*?(?:^|\s)\(b\)(?=\s)/i.test(bodyText);
+        const hasRomanSeq  = /(?:^|\s)\(i\)(?=\s)[\s\S]*?(?:^|\s)\(ii\)(?=\s)/i.test(bodyText);
+        const hasSubparts = hasLetterSeq || hasRomanSeq;
+
+        if (hasSubparts) {
+            const subMatch = bodyText.match(/(?:^|\s)(\((?:a|i)\)(?=\s))/i);
+            if (subMatch) {
+                const subStart = subMatch.index + (subMatch[0].length - subMatch[1].length);
+                const beforeSub = bodyText.slice(0, subStart).trim();
+                let splitPos = subStart;
+                if (beforeSub.length > 12) {
+                    const lastStop = Math.max(
+                        beforeSub.lastIndexOf('. '),
+                        beforeSub.lastIndexOf('.\n'),
+                        beforeSub.lastIndexOf('\n'),
+                        beforeSub.lastIndexOf(':')
+                    );
+                    if (lastStop !== -1) {
+                        const candidate = beforeSub.slice(lastStop + 1).trim();
+                        if (/^(?:Calculate|Find|Estimate|Determine|Draw|Compute)\b/i.test(candidate)) {
+                            splitPos = lastStop + 1;
+                        }
+                    }
+                    goalText = bodyText.slice(splitPos).trim();
+                    bodyText = bodyText.slice(0, splitPos).trim();
+                }
+            }
+        }
+
+        // Check trailing ?
+        if (!goalText) {
+            const qmIndex = bodyText.lastIndexOf('?');
+            if (qmIndex !== -1 && qmIndex === bodyText.length - 1) {
+                const prevStop = Math.max(
+                    bodyText.lastIndexOf('. '),
+                    bodyText.lastIndexOf('.\n'),
+                    bodyText.lastIndexOf('\n')
+                );
+                if (prevStop > 12) {
+                    const splitPos = (bodyText[prevStop] === '.') ? prevStop + 1 : prevStop;
+                    goalText = bodyText.slice(splitPos).trim();
+                    bodyText = bodyText.slice(0, splitPos).trim();
+                }
+            }
+        }
+
+        // Check trailing imperative sentence
+        if (!goalText) {
+            const prevStop = Math.max(
+                bodyText.lastIndexOf('. '),
+                bodyText.lastIndexOf('.\n'),
+                bodyText.lastIndexOf('\n'),
+                bodyText.lastIndexOf('? '),
+                bodyText.lastIndexOf('?\n'),
+                bodyText.lastIndexOf('! '),
+                bodyText.lastIndexOf('!\n')
+            );
+            if (prevStop > 12) {
+                const splitPos = (bodyText[prevStop] === '.' || bodyText[prevStop] === '?' || bodyText[prevStop] === '!') ? prevStop + 1 : prevStop;
+                const candidate = bodyText.slice(splitPos).trim();
+                if (/^(?:Calculate|Find|Estimate|Determine|Draw|Compute)\b/i.test(candidate)) {
+                    goalText = candidate;
+                    bodyText = bodyText.slice(0, splitPos).trim();
+                }
+            }
+        }
+
+        const highlightPart = (txt) => {
+            const parts = txt.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|\\\[[\s\S]*?\\\]|\\\(.*?\\\))/g);
+            let res = parts.map(p => {
+                if (!p) return '';
+                if (p.startsWith('$') || p.startsWith('\\(') || p.startsWith('\\[')) {
+                    const isShortMath = p.length <= 28;
+                    return `<span class="param-highlight${isShortMath ? ' ph-nowrap' : ''}">${p}</span>`;
+                }
+                let esc = escapeHtml(p);
+                // Units and short variable assignments: nowrap
+                esc = esc.replace(
+                    /\b((?:[0-9]+(?:\.[0-9]+)?|[Oo]ne|[Tt]wo|[Tt]hree|[Ff]our|[Ff]ive)\s*(?:kW\/m[²2]|W\/m[²2]|kW|MW|GW|km|cm|mm|μm|nm|m|kg|g|mg|s|ms|μs|ns|K|mol|mmol|J|kJ|MJ|N|kN|Pa|kPa|MPa|V|mV|kV|W|Hz|kHz|MHz|GHz|°C|Ω|kΩ|MΩ|T|mT|h₀|m\/s[²2]?|km\/h|meter|metre|meters|metres|seconds?|minutes?|hours?|moles?)(?:\b|(?<=[²2]))|[A-Za-z](?:_[A-Za-z0-9]+)?\s*=\s*[0-9]+(?:\.[0-9]+)?\s*(?:km|cm|mm|m|kg|g|s|K|J|N|W|V|Pa|Hz|kW|kJ)?\b)/gi,
+                    '<span class="param-highlight ph-nowrap">$1</span>'
+                );
+                // Physics terms
+                esc = esc.replace(
+                    /\b(monoatomic\s+gas|ideal\s+monoatomic\s+gas|ideal\s+gas|negligible|isothermal|adiabatic|frictionless|uniform)\b/gi,
+                    '<span class="param-highlight">$1</span>'
+                );
+                return esc;
+            }).join('');
+
+            // Strip gaps before punctuation
+            res = res.replace(/<\/span>\s+([.,;:!?)])/g, '</span>$1');
+            res = res.replace(/(\()\s+<span class="param-highlight/g, '$1<span class="param-highlight');
+
+            // Tighten padding against adjoining parenthesis or punctuation
+            res = res.replace(/(\()<span class="param-highlight([^">]*)">/g, '$1<span class="param-highlight$2 ph-tight-l">');
+            res = res.replace(/<span class="param-highlight([^">]*)">([^<]+)<\/span>(?=[.,;:!?)'])/g, '<span class="param-highlight$1 ph-tight-r">$2</span>');
+
+            return res;
+        };
+
+        const decorateSection = (sectionText) => {
+            const hasL = /(?:^|\s)\(a\)(?=\s)[\s\S]*?(?:^|\s)\(b\)(?=\s)/i.test(sectionText);
+            const hasR = /(?:^|\s)\(i\)(?=\s)[\s\S]*?(?:^|\s)\(ii\)(?=\s)/i.test(sectionText);
+            if (!hasL && !hasR) return highlightPart(sectionText);
+
+            const markerRegex = /(?:^|(?<=\s))\((?:i{1,3}|iv|[a-e])\)(?=\s)/gi;
+            const matches = [];
+            let m;
+            while ((m = markerRegex.exec(sectionText)) !== null) {
+                matches.push({ index: m.index, length: m[0].length });
+            }
+            if (matches.length < 2) return highlightPart(sectionText);
+
+            let res = '';
+            if (matches[0].index > 0) {
+                res += highlightPart(sectionText.slice(0, matches[0].index));
+            }
+            for (let k = 0; k < matches.length; k++) {
+                const start = matches[k].index;
+                const end = (k + 1 < matches.length) ? matches[k + 1].index : sectionText.length;
+                const block = sectionText.slice(start, end);
+                res += `<span class="pq-subpart">${highlightPart(block)}</span>`;
+            }
+            return res;
+        };
+
+        let out = decorateSection(bodyText);
+        if (goalText) {
+            out += `<div class="question-goal">${decorateSection(goalText)}</div>`;
+        }
+        return out;
+    } catch (_) {
+        return escapeHtml(raw);
+    }
+}
+
+function _pqUpdatePace() {
+    try {
+        const paceEl = document.getElementById('pq-pace');
+        const modal = document.getElementById('practice-modal');
+        if (!paceEl || !modal || !modal.classList.contains('active')) return;
+        const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
+        if (submitted) {
+            paceEl.style.opacity = '0';
+            return;
+        }
+        let targetSecs = AppState._pqTargetSecs;
+        if (!targetSecs) {
+            if (AppState.bountyMode && AppState.bounty && AppState.bounty.timeLimit) {
+                targetSecs = AppState.bounty.timeLimit;
+            } else if (AppState.currentQ) {
+                targetSecs = _eloTargetSeconds(AppState.currentQ);
+            }
+            targetSecs = Math.max(60, targetSecs || 180);
+            AppState._pqTargetSecs = targetSecs;
+        }
+        const secs = AppState.practiceSeconds || 0;
+        const ratio = secs / targetSecs;
+        if (ratio < 0.8) {
+            paceEl.style.opacity = '0';
+        } else {
+            const factor = Math.min(1.0, (ratio - 0.8) / 0.2);
+            paceEl.style.opacity = (0.2 + factor * 0.75).toFixed(2);
+            if (factor >= 0.5) {
+                paceEl.style.background = 'var(--pq-pace-to)';
+            } else {
+                paceEl.style.background = 'var(--pq-pace-from)';
+            }
+        }
+    } catch (_) {}
+}
+
+function _pqSyncState() {
+    try {
+        const modal = document.getElementById('practice-modal');
+        if (!modal) return;
+        const q = AppState.currentQ;
+        const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
+        modal.setAttribute('data-pq-state', submitted ? 'answered' : 'solving');
+        const isFreeResponse = (!q || (q.type !== 'mcq' && q.type !== 'numeric'));
+        modal.classList.toggle('pq-is-free-response', isFreeResponse);
+
+        const hintEl = document.getElementById('pq-hold-hint');
+        if (hintEl) {
+            if (submitted) {
+                hintEl.textContent = '';
+            } else if (isFreeResponse) {
+                hintEl.textContent = '( Hold anywhere 0.8s to reveal )';
+            } else {
+                hintEl.textContent = '( Hold lock-in pill 0.8s to submit )';
+            }
+        }
+    } catch (_) {}
+}
+
+let _pqHoldBound = false;
+let _pqHoldTimer = null;
+let _pqHoldRingTimer = null;
+let _pqHoldStartX = 0;
+let _pqHoldStartY = 0;
+let _pqJustHeld = false;
+
+function _pqBindHold() {
+    if (_pqHoldBound) return;
+    const modal = document.getElementById('practice-modal');
+    if (!modal) return;
+    _pqHoldBound = true;
+
+    // Capture-phase click suppressor: swallows any click generated upon releasing an 800ms hold
+    modal.addEventListener('click', (e) => {
+        if (_pqJustHeld) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            _pqJustHeld = false;
+            return;
+        }
+    }, true);
+
+    const ringWrap = document.getElementById('pq-hold-ring-wrap');
+    const cancelHold = () => {
+        if (_pqHoldTimer) { clearTimeout(_pqHoldTimer); _pqHoldTimer = null; }
+        if (_pqHoldRingTimer) { clearTimeout(_pqHoldRingTimer); _pqHoldRingTimer = null; }
+        if (ringWrap) {
+            ringWrap.classList.remove('active');
+        }
+    };
+
+    modal.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        if (!modal.classList.contains('active')) return;
+        const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
+        if (submitted) return;
+        if (_pqChromeOverlayOpen()) return;
+
+        const q = AppState.currentQ;
+        const isFreeResponse = (!q || (q.type !== 'mcq' && q.type !== 'numeric'));
+
+        const submitBtn = document.getElementById('practice-submit-btn');
+        const isSubmitBtn = submitBtn && (submitBtn === e.target || submitBtn.contains(e.target));
+
+        const interactive = e.target.closest('button, input, textarea, select, a, .mcq-option, .skip-popover, #practice-image-lightbox');
+        if (interactive && !isSubmitBtn) {
+            return;
+        }
+
+        if (!isFreeResponse && !isSubmitBtn) {
+            return;
+        }
+
+        cancelHold();
+        _pqHoldStartX = e.clientX;
+        _pqHoldStartY = e.clientY;
+
+        if (ringWrap) {
+            ringWrap.style.left = e.clientX + 'px';
+            ringWrap.style.top = e.clientY + 'px';
+        }
+
+        _pqHoldRingTimer = setTimeout(() => {
+            if (ringWrap) ringWrap.classList.add('active');
+        }, 120);
+
+        _pqHoldTimer = setTimeout(() => {
+            cancelHold();
+            _pqJustHeld = true;
+            setTimeout(() => { _pqJustHeld = false; }, 450);
+            try { if (navigator.vibrate) navigator.vibrate(40); } catch (_) {}
+            practiceSubmit();
+        }, 800);
+    }, { passive: true });
+
+    modal.addEventListener('pointermove', (e) => {
+        if (!_pqHoldTimer) return;
+        const dist = Math.hypot(e.clientX - _pqHoldStartX, e.clientY - _pqHoldStartY);
+        if (dist > 22) {
+            cancelHold();
+        }
+    }, { passive: true });
+
+    modal.addEventListener('pointerup', cancelHold, { passive: true });
+    modal.addEventListener('pointercancel', cancelHold, { passive: true });
+}
+
 export function renderPracticeQuestionModal() {
     AppState.currentQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
+    AppState._pqTargetSecs = null;
     // ── Empty-queue guard ──
     // Mode exit / refill-failure paths clear the queue before this runs;
     // without the guard, reading `.imageDataUrl` off undefined throws and the
@@ -5457,8 +5786,18 @@ export function renderPracticeQuestionModal() {
     // full-width BELOW the grid.
     const _hasMedia = !!(questionImageHtml || diagramHtml);
     const _hasText = !!(AppState.currentQ.extractedText);
+    const _splitView = !!(_hasMedia && _hasText);
+    const modalEl = document.getElementById('practice-modal');
+    if (modalEl) modalEl.classList.toggle('pq-has-media', _splitView);
+    if (!submitted) {
+        const headerSlot = document.getElementById('elo-header-slot');
+        if (headerSlot) {
+            if (headerSlot._chipWipeTimer) { clearTimeout(headerSlot._chipWipeTimer); headerSlot._chipWipeTimer = null; }
+            headerSlot.innerHTML = '';
+        }
+    }
     const _textHtml = _hasText ?
-        `<div class="latex" id="latex-render">${escapeHtml(AppState.currentQ.extractedText)}</div>` : '';
+        `<div class="latex" id="latex-render">${_pqDecorateText(AppState.currentQ.extractedText)}</div>` : '';
     let html = `<div class="pq-solve-wrap" style="text-align:center;">`;
     if (_hasMedia && _hasText) {
         html += `<div class="pq-qa-grid"><div class="pq-qa-text">${_textHtml}</div>` +
@@ -5469,21 +5808,21 @@ export function renderPracticeQuestionModal() {
 
     if (submitted) {
         const correctAns = answerMathHTML(AppState.currentQ.correctAnswer || 'N/A');
-        html += `<div style="display:flex; justify-content:space-between; align-items:center;">`;
-        let keepGoing = '';
+        html += `<div class="pq-reveal-row">`;
         if (AppState.currentQ.status === 'solved') {
             html += `<div class="result-banner correct" style="flex:1;">✅ Clutched! The answer was: ${correctAns}</div>`;
-            keepGoing = _targetKeepGoingHTML(AppState.currentQ.subject);
         }
-        else if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') html +=
-            `<div class="result-banner wrong" style="flex:1;">❌ Fumbled. The answer was: ${correctAns}</div>`;
-        else html +=
-            `<div class="result-banner reveal" style="flex:1;">🔍 Answer revealed. It was: ${correctAns} — were you right?</div>`;
+        else if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') {
+            html += `<div class="result-banner wrong" style="flex:1;">❌ Fumbled. The answer was: ${correctAns}</div>`;
+        }
+        else {
+            html += `<div class="result-banner reveal" style="flex:1;">🔍 Answer revealed. It was: ${correctAns}<span class="pq-reveal-ask"> — were you right?</span></div>`;
+        }
         if (AppState.currentQ.solution && AppState.currentQ.solution.trim().length > 0) {
             html +=
                 `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">💡 Peep Solution</button>`;
         }
-        html += `</div>` + keepGoing + `</div>`;
+        html += `</div></div>`;
         container.innerHTML = html;
         // Hydrate LaTeX synchronously (the observer is a backup). Clear any
         // stale render stamp so a re-render is never skipped.
@@ -5502,6 +5841,9 @@ export function renderPracticeQuestionModal() {
         document.getElementById('practice-submit-btn').style.display = 'none';
         try { _updatePracticeHUD(); } catch (_) {}
         try { _pqCancelChromeFade(); } catch (_) {}
+        try { _pqSyncState(); } catch (_) {}
+        try { _pqUpdatePace(); } catch (_) {}
+        try { _pqBindHold(); } catch (_) {}
         return;
     }
 
@@ -5529,8 +5871,6 @@ export function renderPracticeQuestionModal() {
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
         document.getElementById('practice-submit-btn').innerText = 'Lock In Answer';
     } else {
-        html +=
-            `<p class="free-response-hint" style="margin-top:16px; color:#cbd5e1;">This is a free-response question. No multiple choice here.</p>`;
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
         document.getElementById('practice-submit-btn').innerText = 'Reveal Answer';
     }
@@ -5546,6 +5886,9 @@ export function renderPracticeQuestionModal() {
     });
     try { _updatePracticeHUD(); } catch (_) {}
     try { _pqArmChromeFade(); } catch (_) {}
+    try { _pqSyncState(); } catch (_) {}
+    try { _pqUpdatePace(); } catch (_) {}
+    try { _pqBindHold(); } catch (_) {}
 }
 
 export function toggleMcqOption(element, optionText) {
@@ -6845,7 +7188,10 @@ window.skipQuestion = skipQuestion;
 /** Advance to the next adaptive question (Continue button). */
 function _modeAdvance() {
     const mode = AppState.practiceFlowMode;
-    if (!mode || mode === 'standard') return;
+    if (!mode || mode === 'standard') {
+        practiceNext();
+        return;
+    }
     const curQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
     if (curQ) _modeSeenIds.add(curQ);
     _rebuildPracticeQuestionsForMode(_modeSeenIds);
@@ -8425,59 +8771,37 @@ function renderEloMatrix() {
  * Fires burstEmojis() + playSuperSound() when a ranking tier transition
  * occurs during this practice frame.
  */
-function injectEloShiftChip(eloResult) {
+function injectEloShiftChip(eloResult, options = {}) {
     if (!eloResult) return;
     const delta = eloResult.deltaSubject || 0;
     const sign = delta >= 0 ? '+' : '';
     const tier = getRankTierDetails(eloResult.newSubjectElo);
     const subjLabel = eloResult.subject.charAt(0).toUpperCase() + eloResult.subject.slice(1);
 
-    // ── Chip in the practice modal content (original location) ──
-    const container = document.getElementById('practice-modal-content');
-    if (container) {
-    // ── Time-bonus pill (FAST / SLOW / BALANCED) from calculateEloMigration's
-    // result.timeBonusFactor attachment. Only renders when meaningful so the
-    // chip stays clean on neutral solves. ──
-    const timeFactor = (typeof eloResult.timeBonusFactor === 'number') ? eloResult.timeBonusFactor : 1.0;
-    const tauShown  = (typeof eloResult.tauSeconds === 'number' && eloResult.tauSeconds > 0) ? eloResult.tauSeconds : null;
-    let timeChild = '';
-    if (timeFactor >= 1.10)      timeChild = `<span class="elo-shift-time time-fast">FAST ×${timeFactor.toFixed(2)}${tauShown ? ' · ' + Math.round(tauShown) + 's' : ''}</span>`;
-    else if (timeFactor <= 0.85) timeChild = `<span class="elo-shift-time time-slow">SLOW ×${timeFactor.toFixed(2)}${tauShown ? ' · ' + Math.round(tauShown) + 's' : ''}</span>`;
-    const modeTag = eloResult.modeActive ? `<span class="elo-shift-time time-mode">[${eloResult.modeActive === 'flow' ? '🎯 FLOW' : '⚡ HC'}]</span>` : '';
-    const chip = document.createElement('div');
-    chip.className = 'elo-shift-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
-    // Plain-language tooltip [AUDIT P1-10]: unexplained moving numbers read as
-    // judgment — say what moved and why, right where it moved.
-    chip.title = `${subjLabel} rating ${sign}${Math.round(delta)}. Solved faster than expected → up; slower, harder questions, Flow/Hardcore mode and late-night fatigue all shape it. It is a skill estimate, not a grade.`;
-    chip.innerHTML =
-        `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
-        `<span class="elo-shift-label">${subjLabel} Elo</span>` +
-        `<span class="elo-shift-tier">[${tier.name}]</span>` +
-        timeChild + modeTag;
-    container.appendChild(chip);
-        // Auto-remove after the animation completes.
-        setTimeout(() => { if (chip && chip.parentNode) chip.parentNode.removeChild(chip); }, 4200);
-    }
-
     // ── Chip in the practice header bar (dedicated slot next to streak) ──
-    // This is the prominent feedback the user sees front-and-center.
     // Supports both the main practice modal and the SR drawer.
     const headerSlot = document.getElementById('elo-header-slot')
                    || document.getElementById('sr-elo-header-slot');
     if (headerSlot) {
-        // Clear any PENDING wipe first — two solves within 4.2s otherwise
-        // race: the previous chip's timer erases the new chip early.
-        if (headerSlot._chipWipeTimer) clearTimeout(headerSlot._chipWipeTimer);
+        if (headerSlot._chipWipeTimer) {
+            clearTimeout(headerSlot._chipWipeTimer);
+            headerSlot._chipWipeTimer = null;
+        }
         headerSlot.innerHTML = '';
+        const isClean = options.outcome ? (options.outcome === 'clean') : (delta >= 0);
+        const label = isClean ? 'CLEAN LOCK' : 'SKILL ISSUE';
         const headerChip = document.createElement('div');
         headerChip.className = 'elo-header-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
-        headerChip.title = `${subjLabel} rating ${sign}${Math.round(delta)} — a live skill estimate shaped by your solve speed, question difficulty and practice mode.`;
+        headerChip.title = `${subjLabel} rating ${sign}${Math.round(delta)} · Rank: ${tier.name} — a live skill estimate shaped by your solve speed, question difficulty and practice mode.`;
         headerChip.innerHTML =
             `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
-            `<span class="elo-shift-tier">[${tier.name}]</span>`;
+            `<span class="elo-shift-tier">[${label}]</span>`;
         headerSlot.appendChild(headerChip);
-        // Auto-remove after the animation completes.
-        headerSlot._chipWipeTimer = setTimeout(() => { headerSlot.innerHTML = ''; headerSlot._chipWipeTimer = null; }, 4200);
+
+        // Auto-remove only in SR-drawer slot; in main practice footer, persist until next question/close
+        if (headerSlot.id === 'sr-elo-header-slot') {
+            headerSlot._chipWipeTimer = setTimeout(() => { headerSlot.innerHTML = ''; headerSlot._chipWipeTimer = null; }, 4200);
+        }
     }
 
     // Tier transition celebration — cascading emoji burst + synth fanfare.
@@ -8744,7 +9068,7 @@ export function practiceSubmit() {
 
     // ── Elo shift chip (injected AFTER the modal re-render so it survives) ──
     if (_eloResult) {
-        try { injectEloShiftChip(_eloResult); } catch (_) { /* ignore */ }
+        try { injectEloShiftChip(_eloResult, { outcome: isCorrect ? 'clean' : 'skill' }); } catch (_) { /* ignore */ }
     }
     // Refresh the dashboard MMR matrix so the new rating is visible immediately.
     try { renderEloMatrix(); } catch (_) { /* ignore */ }
@@ -8760,21 +9084,26 @@ export function practiceSubmit() {
             userElo: _modePerf.userElo,
         });
         _showModeContinueButton();
+    } else {
+        const contBtn = document.getElementById('practice-continue-btn');
+        if (contBtn && !AppState.practiceFlowMode) {
+            contBtn.textContent = 'Next Question →';
+            contBtn.style.display = '';
+        }
     }
 
     if (!isCorrect) {
         setTimeout(() => {
-            const cont = document.getElementById('practice-modal-content');
-            if (cont) {
+            const row = document.querySelector('#practice-modal-content .pq-reveal-row') || document.getElementById('practice-modal-content');
+            if (row) {
                 const btn = document.createElement('button');
                 btn.className = 'btn btn-danger';
                 btn.innerText = 'Send to the Vault (Log Error)';
-                btn.style.marginTop = '12px';
                 btn.onclick = () => {
                     AppState.pendingWrongQ = AppState.currentQ;
                     openModal('error-reason-modal');
                 };
-                cont.appendChild(btn);
+                row.appendChild(btn);
             }
         }, 50);
     }
@@ -8820,18 +9149,21 @@ export function addTextQuestionFollowUp() {
             changeCount(AppState.currentQ.subject, 1);
         }
         btnContainer.remove();
-        const banner = document.createElement('div');
-        banner.className = 'result-banner correct';
-        banner.innerText = 'Clean lock. Marked correct.';
-        container.appendChild(banner);
-        try { container.insertAdjacentHTML('beforeend', _targetKeepGoingHTML(AppState.currentQ.subject)); } catch (_) { /* decorative */ }
-        if (_eloRes) { try { injectEloShiftChip(_eloRes); } catch (_) { /* ignore */ } }
+        container.querySelector('.pq-reveal-ask')?.remove();
+        if (_eloRes) { try { injectEloShiftChip(_eloRes, { outcome: 'clean' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
         if (_modePerfTxt) {
             _modeNextTargetPwin(AppState.practiceFlowMode, { correct: true, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
             _showModeContinueButton();
+        } else {
+            const contBtn = document.getElementById('practice-continue-btn');
+            if (contBtn) {
+                contBtn.textContent = 'Next Question →';
+                contBtn.style.display = '';
+            }
         }
         document.getElementById('practice-submit-btn').style.display = 'none';
+        try { _pqSyncState(); } catch (_) {}
     };
 
     document.getElementById('text-wrong-btn').onclick = () => {
@@ -8858,26 +9190,34 @@ export function addTextQuestionFollowUp() {
             return;
         }
         btnContainer.remove();
-        const banner = document.createElement('div');
-        banner.className = 'result-banner wrong';
-        banner.innerText = 'Skill issue. Marked wrong.';
-        container.appendChild(banner);
-        if (_eloRes) { try { injectEloShiftChip(_eloRes); } catch (_) { /* ignore */ } }
+        container.querySelector('.pq-reveal-ask')?.remove();
+        if (_eloRes) { try { injectEloShiftChip(_eloRes, { outcome: 'skill' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
         const logBtn = document.createElement('button');
         logBtn.className = 'btn btn-danger';
         logBtn.innerText = 'Send to the Vault (Log Error)';
-        logBtn.style.marginTop = '8px';
         logBtn.onclick = () => {
             AppState.pendingWrongQ = AppState.currentQ;
             openModal('error-reason-modal');
         };
-        container.appendChild(logBtn);
+        const revealRow = container.querySelector('.pq-reveal-row');
+        if (revealRow) {
+            revealRow.appendChild(logBtn);
+        } else {
+            container.appendChild(logBtn);
+        }
         if (_modePerfTxt) {
             _modeNextTargetPwin(AppState.practiceFlowMode, { correct: false, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
             _showModeContinueButton();
+        } else {
+            const contBtn = document.getElementById('practice-continue-btn');
+            if (contBtn) {
+                contBtn.textContent = 'Next Question →';
+                contBtn.style.display = '';
+            }
         }
         document.getElementById('practice-submit-btn').style.display = 'none';
+        try { _pqSyncState(); } catch (_) {}
     };
 
     document.getElementById('practice-submit-btn').style.display = 'none';
@@ -9000,6 +9340,13 @@ export function practicePrev() {
 
 export function closePracticeModal() {
     closeModalStr('practice-modal');
+    const modalEl = document.getElementById('practice-modal');
+    if (modalEl) modalEl.classList.remove('pq-has-media');
+    const headerSlot = document.getElementById('elo-header-slot');
+    if (headerSlot) {
+        if (headerSlot._chipWipeTimer) { clearTimeout(headerSlot._chipWipeTimer); headerSlot._chipWipeTimer = null; }
+        headerSlot.innerHTML = '';
+    }
     if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
     // A lifeline pick that never reached a graded solve must not penalize the
     // next unrelated solve with its ×0.65 flag (leaked until the NEXT
@@ -9070,7 +9417,7 @@ function _syncImmersiveBtn() {
     const on = document.body.classList.contains('immersive-active');
     if (btn.classList.contains('pq-corner-moon')) {
         btn.textContent = on ? '◑' : '☾';
-        btn.style.color = on ? '#38bdf8' : '';
+        btn.style.color = on ? '#d4a017' : '';
     } else {
         btn.textContent = on ? '🔲 Exit' : '🕶 Lock In';
     }
