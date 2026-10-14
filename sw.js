@@ -121,7 +121,7 @@
 //        pair that follows data-theme in both moon states. theme.js,
 //        styles.css, styles-practice-fullscreen.css + QA map changed in
 //        place — cache bump forces the swap.
-const VERSION = 'jeemax-v59';
+const VERSION = 'jeemax-v60';
 const SHELL = [
   './',
   './index.html',

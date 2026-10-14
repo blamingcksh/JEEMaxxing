@@ -5673,6 +5673,10 @@ function _pqSyncState() {
         const q = AppState.currentQ;
         const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
         modal.setAttribute('data-pq-state', submitted ? 'answered' : 'solving');
+        if (submitted) {
+            try { updateStreakVisualizer(); } catch (_) {}
+            try { _ensureStreakLoop(); } catch (_) {}
+        }
         const isFreeResponse = (!q || (q.type !== 'mcq' && q.type !== 'numeric'));
         modal.classList.toggle('pq-is-free-response', isFreeResponse);
 
@@ -9375,7 +9379,10 @@ export function practicePrev() {
 export function closePracticeModal() {
     closeModalStr('practice-modal');
     const modalEl = document.getElementById('practice-modal');
-    if (modalEl) modalEl.classList.remove('pq-has-media');
+    if (modalEl) {
+        modalEl.classList.remove('pq-has-media');
+        modalEl.setAttribute('data-pq-state', 'solving');
+    }
     const headerSlot = document.getElementById('elo-header-slot');
     if (headerSlot) {
         if (headerSlot._chipWipeTimer) { clearTimeout(headerSlot._chipWipeTimer); headerSlot._chipWipeTimer = null; }

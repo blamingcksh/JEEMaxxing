@@ -766,17 +766,25 @@ body.immersive-active #practice-modal.pq-stage #text-wrong-btn {
   filter: brightness(1.06);
 }
 
-/* Streak and Elo */
-.pq-mini-status {
-  display: flex;
+/* Streak and Elo: strictly visible ONLY when answered / revealed in practice stage */
+#practice-modal .pq-mini-status,
+#practice-modal .streak-visualizer,
+#practice-modal[data-pq-state="solving"] .pq-mini-status,
+#practice-modal[data-pq-state="solving"] .streak-visualizer {
+  display: none !important;
+}
+
+#practice-modal[data-pq-state="answered"] .pq-mini-status {
+  display: flex !important;
   align-items: center;
   gap: 10px;
 }
-.pq-mini-status .streak-visualizer {
+#practice-modal[data-pq-state="answered"] .streak-visualizer,
+body.immersive-active #practice-modal[data-pq-state="answered"] .streak-visualizer {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  display: flex;
+  display: flex !important;
   align-items: center;
   gap: 4px;
 }

@@ -173,6 +173,18 @@ const parchmentBg = await page.evaluate(() => {
 });
 assert(parchmentBg === 'rgb(243, 239, 230)', 'Parchment .pq-qa-media has background-color: var(--pq-bg) (got: ' + parchmentBg + ')');
 
+// Verify streak fire is HIDDEN in Light mode while solving
+const streakSolvingLight = await page.evaluate(() => {
+    const viz = document.querySelector('#practice-modal #streak-visualizer');
+    const mini = document.querySelector('#practice-modal .pq-mini-status');
+    return {
+        vizDisplay: viz ? window.getComputedStyle(viz).display : null,
+        miniDisplay: mini ? window.getComputedStyle(mini).display : null
+    };
+});
+assert(streakSolvingLight.vizDisplay === 'none', 'Streak visualizer is hidden in Light mode while solving (got: ' + streakSolvingLight.vizDisplay + ')');
+assert(streakSolvingLight.miniDisplay === 'none', '.pq-mini-status is hidden in Light mode while solving (got: ' + streakSolvingLight.miniDisplay + ')');
+
 // Check Roast mode backing patch padding and background
 await page.evaluate(() => {
     document.body.classList.add('immersive-active');
@@ -226,7 +238,8 @@ const postReveal = await page.evaluate(() => {
         hasRevealRow: !!revealRow,
         hasPeepBtn: !!peepBtn,
         continueVisible: contBtn && contBtn.style.display !== 'none',
-        continueText: contBtn ? contBtn.textContent : ''
+        continueText: contBtn ? contBtn.textContent : '',
+        streakDisplay: window.getComputedStyle(document.querySelector('#practice-modal #streak-visualizer')).display
     };
 });
 
@@ -239,6 +252,15 @@ assert(!postReveal.hasKeepGoing, 'Redundant "10 more to today\'s target" line re
 assert(postReveal.hasRevealRow, 'Row 1 is .pq-reveal-row');
 assert(postReveal.hasPeepBtn, 'Peep Solution button rendered in reveal row');
 assert(postReveal.continueVisible && postReveal.continueText.includes('Next Question'), 'Row 2 footer contains "Next Question →"');
+assert(postReveal.streakDisplay === 'flex', 'Streak fire is visible post-reveal in Roast mode (got: ' + postReveal.streakDisplay + ')');
+
+// Check streak fire is ALSO visible post-reveal in Light mode (Parchment)
+await page.evaluate(() => { document.body.classList.remove('immersive-active'); });
+const streakLightRevealed = await page.evaluate(() => {
+    const viz = document.querySelector('#practice-modal #streak-visualizer');
+    return viz ? window.getComputedStyle(viz).display : null;
+});
+assert(streakLightRevealed === 'flex', 'Streak fire is visible post-reveal in Light mode (got: ' + streakLightRevealed + ')');
 
 console.log('── 4. Peep Solution Popup Above Practice Modal ──');
 // Click "Peep Solution" button
