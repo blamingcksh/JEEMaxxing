@@ -73,6 +73,25 @@ const unitTests = await page.evaluate(async () => {
     const t5 = _pqDecorateText('In the circuit: (a) find the current (b) find the power.');
     results.t5_subparts = t5.includes('class="pq-subpart"') && t5.includes('(a)') && t5.includes('(b)');
 
+    // Trailing bracketed hint after ?
+    const t6 = _pqDecorateText('A block slides on a rough surface. What is the final speed? [Given cos 36° = 0.8]');
+    results.t6_bracket_hint = t6.includes('<div class="question-goal">') &&
+        t6.includes('What is the final speed?') &&
+        t6.includes('[Given cos 36° = 0.8]') &&
+        t6.indexOf('What is the final speed?') > t6.indexOf('<div class="question-goal">') &&
+        t6.indexOf('[Given cos 36° = 0.8]') > t6.indexOf('<div class="question-goal">') &&
+        !t6.startsWith('<div class="question-goal">');
+
+    // Trailing parenthesized hint after ?
+    const t7 = _pqDecorateText('A stone is dropped from a cliff. What is the time taken? (Use g = 10 m/s²)');
+    results.t7_paren_hint = t7.includes('<div class="question-goal">') &&
+        t7.includes('What is the time taken?') &&
+        t7.includes('Use') &&
+        t7.includes('/s²') &&
+        t7.indexOf('What is the time taken?') > t7.indexOf('<div class="question-goal">') &&
+        t7.indexOf('Use') > t7.indexOf('<div class="question-goal">') &&
+        !t7.startsWith('<div class="question-goal">');
+
     return results;
 });
 
@@ -81,6 +100,8 @@ assert(unitTests.t2_snug_period, 'ideal gas. has snug period with ph-tight-r and
 assert(unitTests.t3_snug_parens, '( $V$ ) is snug without ballooned spaces and has tight padding');
 assert(unitTests.t4_imperative, 'Trailing sentence starting with Calculate is styled as .question-goal');
 assert(unitTests.t5_subparts, 'Subparts (a) and (b) are wrapped with .pq-subpart in goal block');
+assert(unitTests.t6_bracket_hint, 'Trailing [Given ...] block after ? is included in .question-goal');
+assert(unitTests.t7_paren_hint, 'Trailing (Use ...) block after ? is included in .question-goal');
 
 console.log('── 2. Diagram Enlargement in Split View ──');
 await page.evaluate(() => { window.switchTab('practice', document.querySelector('[data-tab="practice"]')); });
@@ -140,17 +161,32 @@ assert(splitMetrics.imgMaxHeight === '380px', '.pq-qa-media img max-height is 38
 assert(splitMetrics.imgMinWidth === '280px', '.pq-qa-media img min-width is 280px (got: ' + splitMetrics.imgMinWidth + ')');
 assert(splitMetrics.imgObjectFit === 'contain', '.pq-qa-media img object-fit is contain (got: ' + splitMetrics.imgObjectFit + ')');
 
-// Check Roast mode backing patch padding
+// Switch to Parchment mode (moon off) to verify light mode background
+await page.evaluate(() => {
+    document.body.classList.remove('immersive-active');
+});
+await page.waitForTimeout(100);
+
+const parchmentBg = await page.evaluate(() => {
+    const media = document.querySelector('.pq-qa-media');
+    return media ? window.getComputedStyle(media).backgroundColor : null;
+});
+assert(parchmentBg === 'rgb(243, 239, 230)', 'Parchment .pq-qa-media has background-color: var(--pq-bg) (got: ' + parchmentBg + ')');
+
+// Check Roast mode backing patch padding and background
 await page.evaluate(() => {
     document.body.classList.add('immersive-active');
 });
 await page.waitForTimeout(100);
 
-const roastPadding = await page.evaluate(() => {
+const roastStyles = await page.evaluate(() => {
     const media = document.querySelector('.pq-qa-media');
-    return media ? window.getComputedStyle(media).padding : null;
+    if (!media) return null;
+    const s = window.getComputedStyle(media);
+    return { padding: s.padding, bg: s.backgroundColor };
 });
-assert(roastPadding === '14px', 'Roast parchment backing patch padding is 14px (got: ' + roastPadding + ')');
+assert(roastStyles && roastStyles.padding === '14px', 'Roast parchment backing patch padding is 14px (got: ' + (roastStyles ? roastStyles.padding : null) + ')');
+assert(roastStyles && roastStyles.bg === 'rgb(239, 228, 203)', 'Roast .pq-qa-media backing patch is #efe4cb (got: ' + (roastStyles ? roastStyles.bg : null) + ')');
 
 console.log('── 3. Post-Reveal Collapse and [CLEAN LOCK] Fix ──');
 // Reveal the answer

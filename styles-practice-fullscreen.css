@@ -301,6 +301,11 @@ body.immersive-active .pq-qa-media {
   box-sizing: border-box;
 }
 
+/* Parchment light mode diagram backing so multiply blends directly against its parent */
+body:not(.immersive-active) .pq-qa-media {
+  background-color: var(--pq-bg);
+}
+
 /* Diagram blend: mix-blend-mode multiply + contrast boost + 4px inner crop */
 .pq-qa-media img,
 #practice-modal-img {
