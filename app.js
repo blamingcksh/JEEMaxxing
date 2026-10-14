@@ -5489,39 +5489,73 @@ export function _pqDecorateText(raw) {
             }
         }
 
-        // Check trailing ?
+        // Helper to detect trailing bracketed/parenthesized hint blocks like:
+        // [Given cos 36° = ...] or (Use g = 10 m/s²)
+        const isTrailingHint = (str) => {
+            if (!str || typeof str !== 'string') return false;
+            const s = str.trim();
+            if (!s || s.length > 300) return false;
+            const startsBracket = s.startsWith('[') || s.startsWith('(');
+            const endsBracket = /[\])][.;]?$/.test(s);
+            if (!startsBracket || !endsBracket) return false;
+            if (/^(?:\[|\()(?:Given|Use|Take|Assume|Note|Where|Hint|Constant|Data)\b/i.test(s)) return true;
+            if ((s.startsWith('[') && s.endsWith(']')) || (s.startsWith('[') && s.endsWith('].'))) return true;
+            if ((s.startsWith('(') && s.endsWith(')')) || (s.startsWith('(') && s.endsWith(').'))) return true;
+            return false;
+        };
+
+        // Check trailing ? (including when followed by a bracketed/parenthesized hint)
         if (!goalText) {
             const qmIndex = bodyText.lastIndexOf('?');
-            if (qmIndex !== -1 && qmIndex === bodyText.length - 1) {
-                const prevStop = Math.max(
-                    bodyText.lastIndexOf('. '),
-                    bodyText.lastIndexOf('.\n'),
-                    bodyText.lastIndexOf('\n')
-                );
-                if (prevStop > 12) {
-                    const splitPos = (bodyText[prevStop] === '.') ? prevStop + 1 : prevStop;
-                    goalText = bodyText.slice(splitPos).trim();
-                    bodyText = bodyText.slice(0, splitPos).trim();
+            if (qmIndex !== -1) {
+                const afterQm = bodyText.slice(qmIndex + 1).trim();
+                const hasTrailingHint = isTrailingHint(afterQm);
+                if (afterQm === '' || hasTrailingHint) {
+                    const textBeforeQm = bodyText.slice(0, qmIndex);
+                    const prevStop = Math.max(
+                        textBeforeQm.lastIndexOf('. '),
+                        textBeforeQm.lastIndexOf('.\n'),
+                        textBeforeQm.lastIndexOf('\n'),
+                        textBeforeQm.lastIndexOf('? '),
+                        textBeforeQm.lastIndexOf('?\n'),
+                        textBeforeQm.lastIndexOf('! '),
+                        textBeforeQm.lastIndexOf('!\n')
+                    );
+                    if (prevStop > 12) {
+                        const splitPos = (textBeforeQm[prevStop] === '.' || textBeforeQm[prevStop] === '?' || textBeforeQm[prevStop] === '!') ? prevStop + 1 : prevStop;
+                        goalText = bodyText.slice(splitPos).trim();
+                        bodyText = bodyText.slice(0, splitPos).trim();
+                    }
                 }
             }
         }
 
         // Check trailing imperative sentence
         if (!goalText) {
+            let searchTarget = bodyText;
+            let trailingHint = '';
+            const lastBracket = Math.max(bodyText.lastIndexOf('['), bodyText.lastIndexOf('('));
+            if (lastBracket !== -1) {
+                const potentialHint = bodyText.slice(lastBracket).trim();
+                if (isTrailingHint(potentialHint)) {
+                    trailingHint = bodyText.slice(lastBracket);
+                    searchTarget = bodyText.slice(0, lastBracket).trim();
+                }
+            }
             const prevStop = Math.max(
-                bodyText.lastIndexOf('. '),
-                bodyText.lastIndexOf('.\n'),
-                bodyText.lastIndexOf('\n'),
-                bodyText.lastIndexOf('? '),
-                bodyText.lastIndexOf('?\n'),
-                bodyText.lastIndexOf('! '),
-                bodyText.lastIndexOf('!\n')
+                searchTarget.lastIndexOf('. '),
+                searchTarget.lastIndexOf('.\n'),
+                searchTarget.lastIndexOf('\n'),
+                searchTarget.lastIndexOf('? '),
+                searchTarget.lastIndexOf('?\n'),
+                searchTarget.lastIndexOf('! '),
+                searchTarget.lastIndexOf('!\n')
             );
             if (prevStop > 12) {
-                const splitPos = (bodyText[prevStop] === '.' || bodyText[prevStop] === '?' || bodyText[prevStop] === '!') ? prevStop + 1 : prevStop;
-                const candidate = bodyText.slice(splitPos).trim();
+                const splitPos = (searchTarget[prevStop] === '.' || searchTarget[prevStop] === '?' || searchTarget[prevStop] === '!') ? prevStop + 1 : prevStop;
+                const candidate = searchTarget.slice(splitPos).trim();
                 if (/^(?:Calculate|Find|Estimate|Determine|Draw|Compute)\b/i.test(candidate)) {
-                    goalText = candidate;
+                    goalText = (candidate + (trailingHint ? ' ' + trailingHint.trim() : '')).trim();
                     bodyText = bodyText.slice(0, splitPos).trim();
                 }
             }
