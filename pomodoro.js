@@ -830,6 +830,12 @@ function _finalizeQuit(countForfeit) {
     lastTickAt = null;
     document.getElementById('timer-status').textContent = countForfeit ? "Session Forfeit." : "Tracking Stopped.";
     hydrateFocusStats();
+    try {
+        const _h = new Date().getHours();
+        if ((_h >= 21 || _h < 5) && window.TuckIn && typeof window.TuckIn.renderDoor === 'function') {
+            window.TuckIn.renderDoor();
+        }
+    } catch (_) {}
     if (_resetPomoTimer) clearTimeout(_resetPomoTimer);
     _resetPomoTimer = setTimeout(() => resetPomoUI(), 1000);
 }
@@ -943,6 +949,12 @@ function handleTimerEnd() {
                 receipt
             );
         }
+        try {
+            const _h = new Date().getHours();
+            if ((_h >= 21 || _h < 5) && window.TuckIn && typeof window.TuckIn.renderDoor === 'function') {
+                window.TuckIn.renderDoor();
+            }
+        } catch (_) {}
     } else if (pomoState === 'BREAK') {
         currentSession++;
         // Gallery Break replaces the "☕ Break Over" popup: full reveal → quote

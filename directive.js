@@ -171,6 +171,8 @@ function _priceUnit(detail) {
     if (state.headline && _foldChapter(detail.chapter) === _foldChapter(state.headline.chapter) && !state.headline.done) lu *= 1.5;
     // Overcharge reward: all LU ×1.25 for the overcharged day.
     if (meta.overcharge && meta.overcharge.date === _today()) lu *= meta.overcharge.luMul;
+    // Hemingway Bridge Bonus (Phase 2): first solve of a cross-eligible bridge
+    if (detail.bridge) lu *= (detail.bridgeMul || 1.25);
     // Rushed vanity solves: under 20% of the band target earns almost nothing.
     if (detail.timeMins != null && detail.timeMins * 60 < 0.2 * _bandTargetSecs(detail.qElo)) lu = Math.min(lu, 0.3);
     return lu;
@@ -849,8 +851,14 @@ function renderDashboardCard() {
         ? `<button class="btn btn-primary dir-box-btn" onclick="window.DIRECTIVE_UI.spin()">🎁 Open the box</button>`
         : '';
 
+    let nightMsg = 'Done is done. Tomorrow\u2019s is ready.';
+    try {
+        if (window.TuckIn && typeof window.TuckIn.isSealedToday === 'function' && window.TuckIn.isSealedToday()) {
+            nightMsg = '🔒 Sealed. Sleep well.';
+        }
+    } catch (_) {}
     const foot = night
-        ? `<div class="dir-foot dir-night-calm">Done is done. Tomorrow\u2019s is ready.</div>`
+        ? `<div class="dir-foot dir-night-calm">${nightMsg}</div>`
         : `<div class="dir-foot">${boxBtn || `<span class="dir-box-hint">🎁 Clear the day to open the box</span>`}</div>`;
 
     host.innerHTML = `
@@ -923,7 +931,18 @@ function _openSpin(reason) {
                 const done = document.createElement('button');
                 done.className = 'btn btn-primary';
                 done.textContent = 'Claim';
-                done.addEventListener('click', () => { modal.remove(); renderDashboardCard(); });
+                done.addEventListener('click', () => {
+                    modal.remove();
+                    renderDashboardCard();
+                    try {
+                        const h = new Date().getHours();
+                        if ((h >= 19 || h < 5) && window.TuckIn && typeof window.TuckIn.open === 'function') {
+                            window.TuckIn.open({ source: 'dayclear' });
+                        } else if (window.Bridge && typeof window.Bridge.stage === 'function') {
+                            window.Bridge.stage({ kind: 'auto' });
+                        }
+                    } catch (_) {}
+                });
                 modal.querySelector('.dir-spin-box').appendChild(done);
                 go.remove();
             }

@@ -118,6 +118,19 @@ CLOUD & DATA (storage.js)
   2-minute heartbeat + manual Sync Now. Persistence failures surface a
   warning banner - never silent data loss.
 
+HEMINGWAY BRIDGE & TUCK-IN RITUAL (bridge.js + tuckin.js)
+  Zero-friction next-day re-entry and 15-second evening closing ritual:
+  - Bridge: Stages tomorrow's first move at session close (abandoned unsubmitted
+    question with elapsedSecs offset, explicit park, or auto-picked Flow question).
+    Presented on dashboard as a single-tap card after daily mood check; stem hidden
+    for curiosity gap. Crossing on next bridge-day (05:00 cutoff) awards x1.25 LU
+    bonus. Tracks time-to-first-solve (ttfsSecs) without Elo speed pollution.
+  - Tuck-In: Evening ritual (19:00 - 04:59) with peak-end receipt, mind-dump
+    note offload, process chips (seen-before-you-set rule with 20s glance),
+    and hold-to-seal ring (1.2s or Enter key). Puts Sprout Isle Pip to sleep.
+    Awards overnight Dawn Capsule (seeds + optional 22% hot start) evaluated
+    at dawn if sleep >= 6h with zero night relapses.
+
 UI / THEMES (styles.css + theme.js)
   Token-based design system: 7 accent themes (Furnace, Synthwave, Glacier,
   Overgrowth, Blood Moon, Sakura, Stealth) x Midnight/Dusk appearance modes,
