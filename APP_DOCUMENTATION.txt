@@ -458,6 +458,10 @@ INDEXEDDB - database "jeemaxxing_db", version 1, ONE store "storage"
   jeemax_solved_by_date_v1 ................ permanent daily ledger (object map)
   jeemax_daily_history .................... same ledger as sorted array mirror
   jeemax_last_settled_date / jeemax_forest_daily_v1 (IDB mirrors)
+  jeemax_bridge_v1 ........................ Hemingway Bridge state (first move, timer offset, kind)
+  jeemax_bridge_stats ..................... bridge stats, streaks, ttfs (time-to-first-solve)
+  jeemax_tuckin_v1 ........................ Tuck-In state (sealedAt, mindNote, capsule, rain)
+  jeemax_tuckin_stats ..................... Tuck-In ritual history and metrics
   galleryArt:<painting-id> ................ Burn Reveal cached painting Blobs
   Separate database: "checkpoint-db" (checkpoint.js dual-write state)
 

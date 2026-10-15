@@ -59,6 +59,8 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <link rel="stylesheet" href="styles-retention.css">
 <link rel="stylesheet" href="styles-chapters.css">
 <link rel="stylesheet" href="directive.css">
+<link rel="stylesheet" href="bridge.css">
+<link rel="stylesheet" href="tuckin.css">
 <!-- ── iPad / coarse-pointer hardening layer (must stay LAST — see file header) ── -->
 <link rel="stylesheet" href="styles-dashboard.css">
 <link rel="stylesheet" href="styles-practice-fullscreen.css?v=7">
@@ -226,6 +228,9 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
               which stays last so the iPad standalone hardening wins).
         ════════════════════════════════════════════ -->
         <section id="view-dashboard" class="view-section active">
+            <!-- ── Hemingway Bridge & Tuck-In banners (fixed mounts above the bento grid) ── -->
+            <div id="bridge-banner" hidden></div>
+            <div id="tuckin-door-banner" hidden></div>
             <div class="dash-grid">
 
                 <!-- ── CONSISTENCY — a year of daily output vs target
@@ -780,7 +785,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     ontouchend="window._nightguardOverrideEnd=Date.now();if(window._nightguardOverrideStart&&Date.now()-window._nightguardOverrideStart>=3000){window._nightguardOverrideStart=null;window.__nightGuard.recordOverride();document.getElementById('nightguard-modal').classList.remove('active');document.body.classList.remove('nightguard-tint');}else{window._nightguardOverrideStart=null;document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override';setTimeout(()=>{document.getElementById('nightguard-override-btn').textContent='Hold for 3s to override'},1000)}">
                 Hold for 3s to override
             </button>
-            <button class="btn btn-primary" onclick="window.location.reload()">End Session</button>
+            <button class="btn btn-primary" onclick="window.TuckIn ? window.TuckIn.open({source:'nightguard'}) : window.location.reload()">🌙 Seal the day</button>
         </div>
     </div>
     <style>

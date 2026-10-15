@@ -120,8 +120,12 @@
 //        surfaces in Midnight mode, plus a roast/parchment practice-stage
 //        pair that follows data-theme in both moon states. theme.js,
 //        styles.css, styles-practice-fullscreen.css + QA map changed in
-//        place — cache bump forces the swap.
-const VERSION = 'jeemax-v60';
+// v61 — HEMINGWAY BRIDGE & TUCK-IN RITUAL: bridge.js, bridge.css, tuckin.js,
+//        tuckin.css join the shell precache. Zero-friction morning bridge with
+//        single-tap resume and curiosity gap, plus 15-second evening Tuck-In
+//        ritual with peak-end receipt, hold-to-seal ring, Isle sleep sync,
+//        and overnight Dawn Capsule delivery.
+const VERSION = 'jeemax-v61';
 const SHELL = [
   './',
   './index.html',
@@ -132,9 +136,13 @@ const SHELL = [
   './styles-chapters.css',
   './styles-ipad.css',
   './directive.css',
+  './bridge.css',
+  './tuckin.css',
   './app.js',
   './storage.js',
   './directive.js',
+  './bridge.js',
+  './tuckin.js',
   './memory.js',
   './chapter-weights.js',
   './mock.js',

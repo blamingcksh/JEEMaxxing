@@ -193,7 +193,7 @@ const W={
   drought:0, missedActive:false, dayF:1, nightF:0, goldF:0,
   harvestQueue:[], lastHarvestScan:0,
   petting:false, lastFullClearEvt:-1e12, lastHeadlineEvt:-1e12,
-  wind:1, timelapse:false, ambT:9, rippleT:3.5, movedIn:false
+  wind:1, timelapse:false, ambT:9, rippleT:3.5, movedIn:false, tuckedIn:false
 };
 let SAVE=null;
 try{ const raw=localStorage.getItem(KEY); if(raw) SAVE=JSON.parse(raw); }catch(e){ SAVE=null; }
@@ -1037,6 +1037,7 @@ function updatePip(dt,now){
   if(pip.action) want=pip.action.mode;
   else if(W.petting) want='pet';
   else if(W.missedActive) want='wilt';
+  else if(W.tuckedIn) want='sleep';
   else if(focusActive) want='study';
   else if(totalSolved===0&&(st.focusSecondsToday||0)===0) want='sleep';
   if(want!==pip.mode){
@@ -1345,9 +1346,18 @@ function doFullClear(soft){
   queueSave();
 }
 function isleEvent(name,data){
-  if(!W.ready) return; data=data||{};
+  if(!W.ready) return false; data=data||{};
   const now=performance.now();
   switch(name){
+    case 'tuckIn': {
+      W.tuckedIn=true;
+      floater('goodnight Pip 🌙',new THREE.Vector3(pip.g.position.x,4,pip.g.position.z),0.9);
+      break; }
+    case 'wake': {
+      W.tuckedIn=false;
+      pipAction('stretch',1500);
+      floater('morning! ☀️',new THREE.Vector3(pip.g.position.x,4,pip.g.position.z),0.9);
+      break; }
     case 'solve': {
       const subj=SUBJECTS.includes(data.subject)?data.subject:pick(SUBJECTS);
       const diff=clamp01(+data.difficulty||0.3);
@@ -1384,6 +1394,7 @@ function isleEvent(name,data){
       floater('+'+n+' 🌰 '+(data.reason||''),new THREE.Vector3(POS.stall[0],4.5,POS.stall[1]),0.9);
       sfx.buy(); queueSave(); break; }
   }
+  return true;
 }
 function buy(itemId){
   if(!W.ready) return false;

@@ -66,11 +66,22 @@ import {
 
 // ── Daily Directive (target-system v2) ──
 import { Directive } from './directive.js';
+import './bridge.js';
+import './tuckin.js';
 
 /** Stage full LU pricing context for the next solve unit logged through
  *  changeCount(). One-shot; silently ignored if the Directive isn't live. */
 function _directiveMarkSolve(q, isCorrect, timeMins) {
     try {
+        let bridgeBonus = false;
+        let bridgeMul = 1.25;
+        if (window.Bridge && typeof window.Bridge.onSubmit === 'function') {
+            const br = window.Bridge.onSubmit(q);
+            if (br && br.bonus) {
+                bridgeBonus = true;
+                if (br.bridgeMul) bridgeMul = br.bridgeMul;
+            }
+        }
         Directive.markPending({
             type: 'solve',
             subject: q.subject,
@@ -79,6 +90,8 @@ function _directiveMarkSolve(q, isCorrect, timeMins) {
             timeMins: timeMins != null ? timeMins : (AppState._frozenTextQSeconds || AppState.practiceSeconds || 0) / 60,
             firstTry: q.firstAttemptResult === 'correct',
             isCorrect,
+            bridge: bridgeBonus,
+            bridgeMul,
         });
     } catch (_) { /* Directive must never break the solve path */ }
 }
@@ -1271,6 +1284,7 @@ export async function calibrateMood(mood) {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     document.getElementById('top-date').textContent =
         `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+    try { window.dispatchEvent(new CustomEvent('jmax:mood-set')); } catch (_) {}
 }
 
 // ── Night-Guard Monitoring Loop ────────────────────────────────────────────
@@ -5091,7 +5105,7 @@ export function saveEditQuestion() {
     showQuestionList();
 }
 
-export function startPracticeWithQuestion(questions, index) {
+export function startPracticeWithQuestion(questions, index, opts = null) {
     // Vault (error-matrix) items must go through the SR drawer, never the
     // standard practice modal: the modal's practiceSubmit path calls
     // calculateEloMigration, which nudges easeFactor and stamps the memory
@@ -5142,6 +5156,7 @@ export function startPracticeWithQuestion(questions, index) {
     AppState.practiceSubmittedFlags = new Array(questions.length).fill(false);
     if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
     AppState.practiceSeconds = 0;
+    AppState.practiceDisplayOffset = (opts && opts.displayOffsetSecs) ? Math.max(0, opts.displayOffsetSecs | 0) : 0;
     updatePracticeTimerDisplay();
     AppState.practiceTimer = setInterval(() => {
         AppState.practiceSeconds++;
@@ -5396,8 +5411,9 @@ function _armBountySession(q) {
 }
 
 export function updatePracticeTimerDisplay() {
-    let m = Math.floor(AppState.practiceSeconds / 60),
-        s = AppState.practiceSeconds % 60;
+    const totalSecs = (AppState.practiceSeconds || 0) + (AppState.practiceDisplayOffset || 0);
+    let m = Math.floor(totalSecs / 60),
+        s = totalSecs % 60;
     const el = document.getElementById('question-timer');
     if (el) el.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     try { _pqUpdatePace(); } catch (_) {}
@@ -9377,6 +9393,22 @@ export function practicePrev() {
 }
 
 export function closePracticeModal() {
+    // Check for Hemingway Bridge abandonment candidate before resetting timer / state
+    try {
+        const _currIdx = AppState.currentPracticeIndex;
+        const _q = (AppState.practiceQuestions && _currIdx != null) ? AppState.practiceQuestions[_currIdx] : null;
+        const _submitted = AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[_currIdx];
+        const _secs = (AppState.practiceSeconds || 0) + (AppState.practiceDisplayOffset || 0);
+        const _mode = AppState.practiceFlowMode || 'standard';
+        const _isBounty = !!AppState.bountyMode;
+        if (_q && !_submitted && !_isBounty && (_mode === 'standard' || _mode === 'flow' || _mode === 'adaptive') && _secs >= 20) {
+            if (window.Bridge && typeof window.Bridge.stage === 'function') {
+                window.Bridge.stage({ kind: 'abandoned', question: _q, elapsedSecs: _secs });
+            }
+        }
+    } catch (_) {}
+    AppState.practiceDisplayOffset = 0;
+
     closeModalStr('practice-modal');
     const modalEl = document.getElementById('practice-modal');
     if (modalEl) {
@@ -9403,6 +9435,11 @@ export function closePracticeModal() {
     if (document.getElementById('practice-question-list-view').classList.contains('active')) {
         showQuestionList();
     }
+    try {
+        if (window.TuckIn && typeof window.TuckIn.renderDoor === 'function') {
+            window.TuckIn.renderDoor();
+        }
+    } catch (_) {}
 }
 
 export async function deleteQuestion(id) {
@@ -10193,6 +10230,12 @@ async function runNewDayCycle(todayStr) {
     // persisted mood until the briefing recalibrates it). Must run after
     // settle() so the retired day is archived first. ──
     try { await Directive.ensureToday(); } catch (_) {}
+    try {
+        if (window.Bridge) {
+            window.Bridge.expireStale();
+            window.Bridge.stage({ kind: 'auto' });
+        }
+    } catch (_) {}
     updateUI();
 
     // ── Daily Mood Check popup ──
@@ -10248,6 +10291,8 @@ async function initApp() {
         // so LU pricing can't miss a path (practice, SR fix, stepper, mock, bounty).
         onSolveLogged: (subject, delta) => {
             try { Directive.onSolveLogged(subject, delta); } catch (_) { /* never block counters */ }
+            try { if (window.Bridge && typeof window.Bridge.onUnit === 'function') window.Bridge.onUnit(); } catch (_) {}
+            try { if (window.TuckIn && typeof window.TuckIn.onActivity === 'function') window.TuckIn.onActivity(); } catch (_) {}
         },
         updateStudyTimeHeader: () => {
             import('./pomodoro.js').then(m => m.updateStudyTimeHeader());
@@ -10379,6 +10424,46 @@ async function initApp() {
             window.BootSequence.maybeShow();
         }
     } catch (_) { /* never block initApp */ }
+
+    // ── Hemingway Bridge & Tuck-In Runtime Setup ──
+    try {
+        if (window.Bridge && typeof window.Bridge.configure === 'function') {
+            window.Bridge.configure({
+                getQuestionBank: () => AppState.questionBank,
+                getCurrentElo: (subj) => (AppState.cognitiveProfile && AppState.cognitiveProfile[subj]) || 1200,
+                startPracticeWithQuestion: (qs, idx, opts) => startPracticeWithQuestion(qs, idx, opts),
+            });
+            window.Bridge.renderBanner();
+        }
+    } catch (e) { console.warn('[Bridge] configure error:', e); }
+
+    try {
+        if (window.TuckIn && typeof window.TuckIn.configure === 'function') {
+            window.TuckIn.configure({
+                getQuestionBank: () => AppState.questionBank,
+                getCurrentElo: (subj) => (AppState.cognitiveProfile && AppState.cognitiveProfile[subj]) || 1200,
+                getDirectiveState: () => (window.Directive && typeof window.Directive.getState === 'function' ? window.Directive.getState() : null),
+                getSproutIsleState: () => (window.SproutIsle && typeof window.SproutIsle.getState === 'function' ? window.SproutIsle.getState() : null),
+                onIsleEvent: (ev) => (window.SproutIsle && typeof window.SproutIsle.isleEvent === 'function' ? window.SproutIsle.isleEvent(ev) : false),
+                onPlayRain: () => (typeof playRainSound === 'function' ? playRainSound() : null),
+            });
+            window.TuckIn.renderDoor();
+        }
+    } catch (e) { console.warn('[TuckIn] configure error:', e); }
+
+    try {
+        window.addEventListener('jmax:mood-set', () => {
+            if (window.Bridge && typeof window.Bridge.present === 'function') {
+                window.Bridge.present();
+            }
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                if (window.Bridge && typeof window.Bridge.present === 'function') window.Bridge.present();
+                if (window.TuckIn && typeof window.TuckIn.renderDoor === 'function') window.TuckIn.renderDoor();
+            }
+        });
+    } catch (_) {}
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
@@ -10924,6 +11009,21 @@ window.DIRECTIVE_UI = {
             Directive.renderSettingsPanel();
         } catch (_) {}
     },
+};
+
+// ── Hemingway Bridge UI surface ──
+window.BRIDGE_UI = {
+    pickup: () => { try { if (window.Bridge) window.Bridge.pickup(); } catch (_) {} },
+    openModal: () => { try { if (window.Bridge) window.Bridge.openModal(); } catch (_) {} },
+    dismissModal: () => { try { if (window.Bridge) window.Bridge.dismissModal(); } catch (_) {} },
+    reroll: () => { try { if (window.Bridge) window.Bridge.reroll(); } catch (_) {} },
+};
+
+// ── Night Hook v2 (Tuck-In) UI surface ──
+window.TUCKIN_UI = {
+    open: (opts) => { try { if (window.TuckIn) window.TuckIn.open(opts); } catch (_) {} },
+    close: () => { try { if (window.TuckIn) window.TuckIn.close(); } catch (_) {} },
+    seal: () => { try { if (window.TuckIn) window.TuckIn.seal(); } catch (_) {} },
 };
 window.testGeminiKey = testGeminiKey;
 window.toggleVisualizer = toggleVisualizer;
