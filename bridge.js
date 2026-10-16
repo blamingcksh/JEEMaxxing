@@ -91,11 +91,23 @@ function _chaptersMatch(a, b) {
  * Target: P(win) ~ 0.80 (Flow band, qElo ≈ userElo - 240).
  * If CNS >= 0.80 (Lifeline level): qElo ≈ userElo - 330.
  */
-function pickQuestion(preferredSubject = null) {
+function pickQuestion(preferredSubjectOrOpts = null) {
+    let preferredSubject = null;
+    let excludeQids = [];
+    if (typeof preferredSubjectOrOpts === 'string') {
+        preferredSubject = preferredSubjectOrOpts;
+    } else if (preferredSubjectOrOpts && typeof preferredSubjectOrOpts === 'object') {
+        preferredSubject = preferredSubjectOrOpts.preferredSubject || null;
+        if (Array.isArray(preferredSubjectOrOpts.excludeQids)) {
+            excludeQids = preferredSubjectOrOpts.excludeQids.map(id => String(id));
+        } else if (preferredSubjectOrOpts.excludeQid != null) {
+            excludeQids = [String(preferredSubjectOrOpts.excludeQid)];
+        }
+    }
     const bank = _deps.getBank() || [];
     if (!bank.length) return null;
 
-    const bQid = _deps.bountyQid();
+    const bQid = _deps.bountyQid ? _deps.bountyQid() : null;
     const isMock = _deps.isMockQuestion || (() => false);
     const hlChapter = _deps.headlineChapter && _deps.headlineChapter();
     const cns = _deps.maxCns ? _deps.maxCns() : 0;
@@ -104,9 +116,10 @@ function pickQuestion(preferredSubject = null) {
     // Filter valid candidate pool
     const candidates = bank.filter(q => {
         if (!q || q.id == null) return false;
+        if (excludeQids.includes(String(q.id))) return false;
         if (preferredSubject && q.subject && q.subject.toLowerCase() !== preferredSubject.toLowerCase()) return false;
-        if (q.id === bQid) return false; // never cannibalise bounty boss
-        if (isMock(q)) return false;     // never mock papers
+        if (bQid && q.id === bQid) return false; // never cannibalise bounty boss
+        if (q.isMock || isMock(q)) return false;     // never mock papers
         if (q.status === 'solved' || q.firstAttemptResult === 'correct') return false; // unsolved
         if (q.errorReason || q.status === 'error' || q.status === 'wrong') return false; // vault items excluded
         return true;
@@ -189,6 +202,7 @@ async function stage(opts = {}) {
         id: 'br_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         kind,
         explicit: isExplicit,
+        morningWarmStart: !!opts.morningWarmStart,
         questionId: q.id,
         subject: q.subject || 'physics',
         chapter: q.chapter || 'General',
@@ -222,9 +236,50 @@ async function stage(opts = {}) {
 /**
  * Glance at an auto-picked question stem before sealing.
  * Marks previewedAt so process chips unlock (seen-before-you-set rule).
+ * If qOverride is provided, stages/glances that specific question.
  */
-async function glance() {
+async function glance(qOverride = null) {
     await _load();
+    if (qOverride && qOverride.id) {
+        if (!_liveBridge) {
+            _liveBridge = {
+                id: 'br_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                kind: 'auto',
+                explicit: false,
+                questionId: qOverride.id,
+                subject: qOverride.subject || 'physics',
+                chapter: qOverride.chapter || 'General',
+                qElo: Number(qOverride.qElo) || 1200,
+                elapsedSecs: 0,
+                previewedAt: Date.now(),
+                stuckAt: null,
+                firstMove: '',
+                mindNote: '',
+                stagedAt: Date.now(),
+                stagedBday: getBridgeDay(),
+                expiresAt: Date.now() + 48 * 3600e3,
+                presentedBday: null,
+                openedAt: null,
+                crossedAt: null,
+                bonusBday: null,
+                bonusMul: 1.25,
+            };
+        } else {
+            _liveBridge.questionId = qOverride.id;
+            _liveBridge.subject = qOverride.subject || _liveBridge.subject;
+            _liveBridge.chapter = qOverride.chapter || _liveBridge.chapter;
+            _liveBridge.qElo = Number(qOverride.qElo) || _liveBridge.qElo;
+            _liveBridge.previewedAt = Date.now();
+        }
+        await _save();
+        const rawText = String(qOverride.text || qOverride.questionText || '').trim();
+        const snippet = rawText.length > 120 ? rawText.slice(0, 117) + '…' : rawText;
+        return {
+            text: snippet || 'Question diagram / content ready.',
+            hasDiagram: !!(qOverride.diagramImage || qOverride.image),
+        };
+    }
+
     if (!_liveBridge) return null;
     _liveBridge.previewedAt = Date.now();
     await _save();
@@ -415,7 +470,7 @@ function _renderPickupCard() {
 
     const modal = document.createElement('div');
     modal.id = 'bridge-pickup-modal';
-    modal.className = 'modal-overlay bridge-pickup-overlay';
+    modal.className = 'modal-overlay bridge-pickup-overlay active';
 
     let firstMoveText = b.firstMove ? `First move: "${b.firstMove}"` : '';
     if (b.stuckAt) {
@@ -459,12 +514,14 @@ function _renderPickupCard() {
 }
 
 /** Render fixed dashboard banner above the bento grid */
-function renderBanner() {
+async function renderBanner() {
+    await _load();
     const el = document.getElementById('bridge-banner');
     if (!el) return;
 
     if (!_liveBridge || Date.now() > (_liveBridge.expiresAt || Infinity) || _liveBridge.crossedAt) {
         el.hidden = true;
+        el.className = '';
         el.innerHTML = '';
         return;
     }
@@ -475,12 +532,13 @@ function renderBanner() {
 
     el.hidden = false;
 
-    if (eligible) {
-        // Cross-eligible morning banner
+    if (eligible || b.morningWarmStart) {
+        // Cross-eligible morning banner or warm start
         el.className = 'bridge-banner bridge-banner-ready';
+        const badge = eligible ? '🌉 BRIDGE READY' : '🌉 WARM START';
         el.innerHTML = `
             <div class="bridge-banner-content">
-                <span class="bridge-banner-badge">🌉 BRIDGE READY</span>
+                <span class="bridge-banner-badge">${badge}</span>
                 <span class="bridge-banner-text"><b>${b.subject.toUpperCase()}</b> · ${b.chapter} · ${b.firstMove ? `"${b.firstMove}"` : '~3 min'}</span>
             </div>
             <button class="btn btn-primary btn-sm bridge-banner-btn" onclick="window.Bridge.pickUp()">Pick up →</button>
@@ -505,14 +563,43 @@ function renderBanner() {
                     <span class="bridge-banner-badge">${isLate ? '🌙 PARKED. SLEEP.' : '🔒 PARKED FOR TOMORROW'}</span>
                     <span class="bridge-banner-text">${b.subject.toUpperCase()} · ${b.chapter} · ready at 05:00</span>
                 </div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <button class="btn btn-secondary btn-sm bridge-banner-btn" onclick="window.Bridge.pickUp()" title="Solve today without overnight bonus">Practice</button>
+                    <button class="btn btn-secondary btn-sm bridge-banner-btn" onclick="window.TuckIn && window.TuckIn.open({ source: 'manual' })" title="Open Tuck-In">🌙 Tuck in</button>
+                </div>
             `;
         }
     }
 }
 
+/** Ensure morning presentation and t0 tracking on boot */
+async function ensureBootPresented() {
+    await _load();
+    if (!_stats) return;
+    const currentBday = getBridgeDay();
+    if (!_stats.days[currentBday]) _stats.days[currentBday] = {};
+    if (!_stats.days[currentBday].t0) {
+        _stats.days[currentBday].t0 = Date.now();
+        await _save();
+    }
+    if (_liveBridge && isCrossEligible(_liveBridge) && _liveBridge.presentedBday !== currentBday) {
+        await present();
+    }
+}
+
 // ── Public Surface ──────────────────────────────────────────────────────────
 export const Bridge = {
-    configure(deps) { _deps = Object.assign(_deps, deps); },
+    async configure(deps) {
+        if (!deps) return;
+        const mapped = Object.assign({}, deps);
+        if (deps.getQuestionBank && !deps.getBank) mapped.getBank = deps.getQuestionBank;
+        if (deps.getCurrentElo && !deps.getElo) mapped.getElo = deps.getCurrentElo;
+        if (deps.startPracticeWithQuestion && !deps.startPractice) mapped.startPractice = deps.startPracticeWithQuestion;
+        _deps = Object.assign(_deps, mapped);
+        await _load();
+        renderBanner();
+    },
+    load: _load,
     stage,
     pickQuestion,
     glance,
@@ -524,6 +611,7 @@ export const Bridge = {
     onUnit,
     onMoodSet,
     present,
+    ensureBootPresented,
     renderBanner,
     expireStale,
     isCrossEligible: (now) => isCrossEligible(_liveBridge, now),
@@ -532,4 +620,4 @@ export const Bridge = {
     getBridgeDay,
 };
 
-window.Bridge = Bridge;
+if (typeof window !== 'undefined') window.Bridge = Bridge;

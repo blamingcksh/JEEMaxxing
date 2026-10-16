@@ -215,7 +215,7 @@ async function open(opts = {}) {
     }
 
     if (!bridgeQ) {
-        bridgeQ = _deps.pickBridgeQuestion ? _deps.pickBridgeQuestion() : null;
+        bridgeQ = _deps.pickBridgeQuestion ? _deps.pickBridgeQuestion() : (window.Bridge && window.Bridge.pickQuestion ? window.Bridge.pickQuestion() : null);
         isUnseen = true;
     }
 
@@ -235,9 +235,13 @@ async function open(opts = {}) {
         beats = dirState.beats || 0;
     }
 
+    if (typeof SessionFocus !== 'undefined' && SessionFocus.acquire) {
+        SessionFocus.acquire('tuckin');
+    }
+
     const overlay = document.createElement('div');
     overlay.id = 'tuckin-overlay';
-    overlay.className = 'modal-overlay tuckin-overlay';
+    overlay.className = 'modal-overlay tuckin-overlay active';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
     overlay.setAttribute('aria-label', 'Tuck in the day');
@@ -383,13 +387,17 @@ async function open(opts = {}) {
             glanceBtn.textContent = '…';
             let res = null;
             if (window.Bridge && typeof window.Bridge.glance === 'function') {
-                res = await window.Bridge.glance();
+                res = await window.Bridge.glance(bridgeQ);
             }
             const stemEl = overlay.querySelector('#tuckin-stem-preview');
-            stemEl.hidden = false;
-            stemEl.textContent = res && res.text ? `"${res.text}"` : 'Question ready.';
-            overlay.querySelector('#tuckin-glance-wrap').hidden = true;
-            overlay.querySelector('#tuckin-chips-wrap').hidden = false;
+            if (stemEl) {
+                stemEl.hidden = false;
+                stemEl.textContent = res && res.text ? `"${res.text}"` : 'Question ready.';
+            }
+            const gw = overlay.querySelector('#tuckin-glance-wrap');
+            if (gw) gw.hidden = true;
+            const cw = overlay.querySelector('#tuckin-chips-wrap');
+            if (cw) cw.hidden = false;
             isUnseen = false;
             renderChips();
         });
@@ -398,23 +406,36 @@ async function open(opts = {}) {
     // Swap button
     overlay.querySelector('#tuckin-swap-btn').addEventListener('click', async () => {
         if (window.Bridge && typeof window.Bridge.pickQuestion === 'function') {
-            const nextQ = window.Bridge.pickQuestion();
+            const exclude = bridgeQ && bridgeQ.id ? [bridgeQ.id] : [];
+            const nextQ = window.Bridge.pickQuestion({ excludeQids: exclude });
             if (nextQ) {
                 bridgeQ = nextQ;
                 isAbandoned = false;
                 isUnseen = true;
+                selectedFirstMove = '';
+                selectedStuckAt = null;
                 overlay.querySelector('.tuckin-bridge-topic').innerHTML = `<b>${(nextQ.subject || 'physics').toUpperCase()}</b> · ${nextQ.chapter} · ~3 min`;
-                overlay.querySelector('#tuckin-stem-preview').hidden = true;
+                const stemEl = overlay.querySelector('#tuckin-stem-preview');
+                if (stemEl) {
+                    stemEl.hidden = true;
+                    stemEl.textContent = '';
+                }
                 const gw = overlay.querySelector('#tuckin-glance-wrap');
-                if (gw) gw.hidden = false;
-                overlay.querySelector('#tuckin-chips-wrap').hidden = true;
+                if (gw) {
+                    gw.hidden = false;
+                    const gb = gw.querySelector('#tuckin-glance-btn');
+                    if (gb) { gb.disabled = false; gb.textContent = '👁 Glance at it (20s)'; }
+                }
+                const cw = overlay.querySelector('#tuckin-chips-wrap');
+                if (cw) cw.hidden = true;
+                renderChips();
             }
         }
     });
 
     // Close button
     overlay.querySelector('#tuckin-close').addEventListener('click', () => {
-        overlay.remove();
+        TuckIn.close();
     });
 
     // ── Hold to seal mechanics ──
@@ -563,7 +584,7 @@ function _showGoodnightScreen(overlay) {
     }, 60000);
 
     card.querySelector('#tuckin-gn-done').addEventListener('click', () => {
-        overlay.remove();
+        TuckIn.close();
     });
 }
 
@@ -575,6 +596,7 @@ async function renderDoor() {
 
     if (!isTuckInHour() || isSealedToday() || (SessionFocus && SessionFocus.isBusy())) {
         el.hidden = true;
+        el.className = '';
         el.innerHTML = '';
         return;
     }
@@ -583,6 +605,7 @@ async function renderDoor() {
     // Door 1 activates at >= 21:30 or if late
     if (currentHour < 21 && currentHour >= 5) {
         el.hidden = true;
+        el.className = '';
         return;
     }
 
@@ -599,10 +622,30 @@ async function renderDoor() {
 
 // ── Public Surface ──────────────────────────────────────────────────────────
 export const TuckIn = {
-    configure(deps) { _deps = Object.assign(_deps, deps); },
+    configure(deps) {
+        if (!deps) return;
+        const mapped = Object.assign({}, deps);
+        if (deps.getQuestionBank && !deps.getBank) mapped.getBank = deps.getQuestionBank;
+        if (deps.getCurrentElo && !deps.getElo) mapped.getElo = deps.getCurrentElo;
+        if (deps.onIsleEvent && !deps.isleEvent) mapped.isleEvent = deps.onIsleEvent;
+        if (deps.onPlayRain && !deps.focusSound) mapped.focusSound = deps.onPlayRain;
+        _deps = Object.assign(_deps, mapped);
+        if (!_deps.focusSound && typeof window !== 'undefined' && window.FocusSound) {
+            _deps.focusSound = window.FocusSound;
+        }
+        if (!_deps.isleEvent && typeof window !== 'undefined' && window.Isle && window.Isle.event) {
+            _deps.isleEvent = (ev, data) => window.Isle.event(ev, data);
+        }
+    },
     load: _load,
     open,
-    close: () => { const o = document.getElementById('tuckin-modal'); if (o) o.remove(); },
+    close: () => {
+        const o = document.getElementById('tuckin-overlay');
+        if (o) o.remove();
+        if (typeof SessionFocus !== 'undefined' && SessionFocus.release) {
+            SessionFocus.release('tuckin');
+        }
+    },
     onActivity,
     getDawnLine,
     renderDoor,
@@ -612,4 +655,4 @@ export const TuckIn = {
     getStats: () => _stats,
 };
 
-window.TuckIn = TuckIn;
+if (typeof window !== 'undefined') window.TuckIn = TuckIn;

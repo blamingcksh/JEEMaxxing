@@ -851,15 +851,15 @@ function renderDashboardCard() {
         ? `<button class="btn btn-primary dir-box-btn" onclick="window.DIRECTIVE_UI.spin()">🎁 Open the box</button>`
         : '';
 
-    let nightMsg = 'Done is done. Tomorrow\u2019s is ready.';
+    let nightMsg = '<button class="btn btn-secondary btn-sm dir-tuckin-btn" onclick="window.TuckIn && window.TuckIn.open({source:\'directive\'})">🌙 Tuck in the day</button>';
     try {
         if (window.TuckIn && typeof window.TuckIn.isSealedToday === 'function' && window.TuckIn.isSealedToday()) {
-            nightMsg = '🔒 Sealed. Sleep well.';
+            nightMsg = '<span class="dir-sealed-badge">🔒 Sealed · Sleep well</span>';
         }
     } catch (_) {}
     const foot = night
         ? `<div class="dir-foot dir-night-calm">${nightMsg}</div>`
-        : `<div class="dir-foot">${boxBtn || `<span class="dir-box-hint">🎁 Clear the day to open the box</span>`}</div>`;
+        : `<div class="dir-foot">${boxBtn || (state.fullCleared ? nightMsg : `<span class="dir-box-hint">🎁 Clear the day to open the box</span>`)}</div>`;
 
     host.innerHTML = `
         <div class="dir-today-row">${todayLine}${status}</div>

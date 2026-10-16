@@ -9513,6 +9513,30 @@ export function practicePrev() {
     }
 }
 
+export function parkCurrentPracticeQuestion() {
+    try {
+        const _currIdx = AppState.currentPracticeIndex;
+        const _q = (AppState.practiceQuestions && _currIdx != null) ? AppState.practiceQuestions[_currIdx] : null;
+        const _secs = (AppState.practiceSeconds || 0) + (AppState.practiceDisplayOffset || 0);
+        if (!_q) return;
+        if (window.Bridge && typeof window.Bridge.stage === 'function') {
+            window.Bridge.stage({
+                kind: 'parked',
+                question: _q,
+                elapsedSecs: _secs,
+                explicit: true,
+            });
+            if (typeof window.__jmaxAppToast === 'function') {
+                window.__jmaxAppToast('🌉 Question parked as tomorrow’s bridge.');
+            }
+        }
+        closePracticeModal();
+    } catch (e) {
+        console.error('parkCurrentPracticeQuestion error:', e);
+    }
+}
+window.parkCurrentPracticeQuestion = parkCurrentPracticeQuestion;
+
 export function closePracticeModal() {
     // Check for Hemingway Bridge abandonment candidate before resetting timer / state
     try {
@@ -10363,7 +10387,7 @@ async function runNewDayCycle(todayStr) {
     try {
         if (window.Bridge) {
             window.Bridge.expireStale();
-            window.Bridge.stage({ kind: 'auto' });
+            window.Bridge.stage({ kind: 'auto', morningWarmStart: true });
         }
     } catch (_) {}
     updateUI();
@@ -10449,6 +10473,62 @@ async function initApp() {
     // deleted papers left stamped orphans: relabel what still belongs to a
     // live paper (`Mock: <name>` tiles), permanently remove the rest.
     try { cleanupMockOrphans(); } catch (_) {}
+
+    // ── Hemingway Bridge & Tuck-In Runtime Setup ──
+    // Configure BEFORE day rollover so morning auto-staging and expiration can read the bank and Elo.
+    try {
+        if (window.Bridge && typeof window.Bridge.configure === 'function') {
+            window.Bridge.configure({
+                getBank: () => AppState.questionBank || [],
+                getElo: (subj) => (AppState.elo && AppState.elo[subj]) || 1200,
+                bountyQid: () => AppState.activeBountyQuestionId,
+                isBountyMode: () => !!AppState.bountyMode,
+                isMockQuestion: (q) => { try { return (typeof Mocks !== 'undefined' && Mocks.isMockQuestion) ? Mocks.isMockQuestion(q) : false; } catch (_) { return false; } },
+                isMockDay: () => { try { const d = Directive.getState(); return !!(d && d.mockDay && !d.mockDay.done); } catch (_) { return false; } },
+                isDeloadToday: () => { try { return (typeof DeloadEngine !== 'undefined' && DeloadEngine.isDeloadActive) ? DeloadEngine.isDeloadActive() : false; } catch (_) { return false; } },
+                maxCns: () => { try { return (typeof CNSLoad !== 'undefined' && CNSLoad.getCurrentLoad) ? CNSLoad.getCurrentLoad() : 0; } catch (_) { return 0; } },
+                headlineChapter: () => { try { const d = Directive.getState(); return d && d.headline && !d.headline.done ? { subject: d.headline.subject, chapter: d.headline.chapter } : null; } catch (_) { return null; } },
+                startPractice: (qs, idx, opts) => startPracticeWithQuestion(qs, idx, opts),
+                toast: (msg) => { if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast(msg); },
+            });
+        }
+    } catch (e) { console.warn('[Bridge] configure error:', e); }
+
+    try {
+        if (window.TuckIn && typeof window.TuckIn.configure === 'function') {
+            window.TuckIn.configure({
+                getDirectiveState: () => Directive.getState(),
+                getFocusLedger: () => (window.POMO_API && window.POMO_API.getFocusLedger ? window.POMO_API.getFocusLedger() : null),
+                getStreak: () => (AppState.streak && AppState.streak.current) || 0,
+                getBank: () => AppState.questionBank || [],
+                stageBridge: (opts) => window.Bridge && window.Bridge.stage(opts),
+                pickBridgeQuestion: (opts) => window.Bridge && window.Bridge.pickQuestion(opts),
+                glanceBridge: (q) => window.Bridge && window.Bridge.glance(q),
+                setBridgeFirstMove: (v) => window.Bridge && window.Bridge.setFirstMove(v),
+                setBridgeStuckAt: (v) => window.Bridge && window.Bridge.setStuckAt(v),
+                getLiveBridge: () => window.Bridge && window.Bridge.getLiveBridge(),
+                toast: (msg) => { if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast(msg); },
+                sound: (name) => { try { window.FX && window.FX.sound && window.FX.sound(name); } catch (_) {} },
+                haptic: (name) => { try { window.FX && window.FX.haptic && window.FX.haptic(name); } catch (_) {} },
+                isleEvent: (ev, data) => (window.Isle && typeof window.Isle.event === 'function' ? window.Isle.event(ev, data) : false),
+                focusSound: window.FocusSound || null,
+            });
+        }
+    } catch (e) { console.warn('[TuckIn] configure error:', e); }
+
+    try {
+        window.addEventListener('jmax:mood-set', () => {
+            if (window.Bridge && typeof window.Bridge.onMoodSet === 'function') {
+                window.Bridge.onMoodSet();
+            }
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                if (window.Bridge && typeof window.Bridge.renderBanner === 'function') window.Bridge.renderBanner();
+                if (window.TuckIn && typeof window.TuckIn.renderDoor === 'function') window.TuckIn.renderDoor();
+            }
+        });
+    } catch (_) {}
 
     // Verify day rollover — gated on the LAST ACTUALLY-SETTLED day, NOT the
     // mood-calibration date. The old gate (jeemax_last_calibrated_date) is
@@ -10553,47 +10633,16 @@ async function initApp() {
         if (window.BootSequence && typeof window.BootSequence.maybeShow === 'function') {
             window.BootSequence.maybeShow();
         }
-    } catch (_) { /* never block initApp */ }
-
-    // ── Hemingway Bridge & Tuck-In Runtime Setup ──
-    try {
-        if (window.Bridge && typeof window.Bridge.configure === 'function') {
-            window.Bridge.configure({
-                getQuestionBank: () => AppState.questionBank,
-                getCurrentElo: (subj) => (AppState.cognitiveProfile && AppState.cognitiveProfile[subj]) || 1200,
-                startPracticeWithQuestion: (qs, idx, opts) => startPracticeWithQuestion(qs, idx, opts),
-            });
+        if (window.Bridge && typeof window.Bridge.ensureBootPresented === 'function') {
+            window.Bridge.ensureBootPresented();
+        }
+        if (window.Bridge && typeof window.Bridge.renderBanner === 'function') {
             window.Bridge.renderBanner();
         }
-    } catch (e) { console.warn('[Bridge] configure error:', e); }
-
-    try {
-        if (window.TuckIn && typeof window.TuckIn.configure === 'function') {
-            window.TuckIn.configure({
-                getQuestionBank: () => AppState.questionBank,
-                getCurrentElo: (subj) => (AppState.cognitiveProfile && AppState.cognitiveProfile[subj]) || 1200,
-                getDirectiveState: () => (window.Directive && typeof window.Directive.getState === 'function' ? window.Directive.getState() : null),
-                getSproutIsleState: () => (window.SproutIsle && typeof window.SproutIsle.getState === 'function' ? window.SproutIsle.getState() : null),
-                onIsleEvent: (ev) => (window.SproutIsle && typeof window.SproutIsle.isleEvent === 'function' ? window.SproutIsle.isleEvent(ev) : false),
-                onPlayRain: () => (typeof playRainSound === 'function' ? playRainSound() : null),
-            });
+        if (window.TuckIn && typeof window.TuckIn.renderDoor === 'function') {
             window.TuckIn.renderDoor();
         }
-    } catch (e) { console.warn('[TuckIn] configure error:', e); }
-
-    try {
-        window.addEventListener('jmax:mood-set', () => {
-            if (window.Bridge && typeof window.Bridge.present === 'function') {
-                window.Bridge.present();
-            }
-        });
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                if (window.Bridge && typeof window.Bridge.present === 'function') window.Bridge.present();
-                if (window.TuckIn && typeof window.TuckIn.renderDoor === 'function') window.TuckIn.renderDoor();
-            }
-        });
-    } catch (_) {}
+    } catch (_) { /* never block initApp */ }
 }
 
 document.addEventListener('DOMContentLoaded', initApp);

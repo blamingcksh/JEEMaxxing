@@ -8,6 +8,10 @@
     width: 100%;
 }
 
+#tuckin-door-banner[hidden] {
+    display: none !important;
+}
+
 .tuckin-door-banner {
     display: flex;
     align-items: center;
@@ -49,11 +53,17 @@
 /* ── Tuck-In Modal Overlay ── */
 .tuckin-overlay {
     z-index: 2147483015;
-    display: flex;
+    display: flex !important;
+    opacity: 1 !important;
     align-items: center;
     justify-content: center;
     background: rgba(8, 6, 20, 0.75);
     backdrop-filter: blur(10px);
+}
+
+.tuckin-overlay[hidden],
+.tuckin-overlay [hidden] {
+    display: none !important;
 }
 
 .tuckin-card {

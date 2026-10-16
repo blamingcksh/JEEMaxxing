@@ -1073,6 +1073,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
     <!-- Top-right ghost corner controls -->
     <nav class="pq-corner pq-corner-r" aria-label="Practice Controls">
+        <button class="pq-ghost pq-corner-park" id="practice-park-btn" onclick="window.parkCurrentPracticeQuestion && window.parkCurrentPracticeQuestion()" aria-label="Park for tomorrow" title="Park question as tomorrow's bridge">🌉</button>
         <button class="pq-ghost pq-next" id="practice-next-btn" onclick="practiceNext()" aria-label="Next question">›</button>
         <button class="pq-ghost pq-corner-moon" id="immersive-focus-btn" onclick="toggleImmersive()" aria-label="Toggle Roast / Parchment theme" title="Toggle warm dark/light theme">☾</button>
         <button class="pq-ghost pq-corner-close" onclick="closePracticeModal()" aria-label="Close practice">✕</button>

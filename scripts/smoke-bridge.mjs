@@ -74,9 +74,11 @@ globalThis.indexedDB = {
 // Fake DOM
 const elements = new Map();
 function fakeEl(tag = 'div') {
+    let _id = '';
     const el = {
         tag,
-        id: '',
+        get id() { return _id; },
+        set id(v) { _id = v; if (v) elements.set(v, el); },
         className: '',
         textContent: '',
         innerHTML: '',
@@ -94,13 +96,13 @@ function fakeEl(tag = 'div') {
             },
             contains(c) { return this._set.has(c); },
         },
-        setAttribute(k, v) { el[k] = v; },
-        removeAttribute(k) { delete el[k]; },
+        setAttribute(k, v) { el[k] = v; if (k === 'id') { _id = v; if (v) elements.set(v, el); } },
+        removeAttribute(k) { delete el[k]; if (k === 'id') { elements.delete(_id); _id = ''; } },
         addEventListener() {},
         appendChild(c) { el.children.push(c); return c; },
         querySelector(sel) { return fakeEl(); },
         querySelectorAll(sel) { return []; },
-        remove() {},
+        remove() { if (_id) elements.delete(_id); },
     };
     return el;
 }
@@ -239,6 +241,26 @@ ok(nextDayResult && nextDayResult.bonus === true && nextDayResult.bridgeMul === 
 
 const stats = Bridge.getStats();
 ok(stats && stats.crossed >= 1, 'Stats recorded bridge cross');
+
+// ── Test 7: Question Swap with Exclusion ────────────────────────────────────
+console.log('\n[7] Question Swap with Exclusion');
+const swappedQ = Bridge.pickQuestion({ excludeQids: ['q1'] });
+ok(swappedQ && swappedQ.id === 'q2', 'pickQuestion with excludeQids:["q1"] returned q2');
+
+// ── Test 8: Glance with Question Override ───────────────────────────────────
+console.log('\n[8] Glance with Question Override');
+const glanceRes = await Bridge.glance(chemAuto);
+ok(glanceRes && glanceRes.text.includes('Enthalpy'), 'glance(chemAuto) returned question stem for q2');
+
+// ── Test 9: Pickup Modal .active Class ──────────────────────────────────────
+console.log('\n[9] Pickup Modal .active Class');
+await Bridge.stage({ kind: 'parked', question: autoQ, explicit: true, force: true });
+live = Bridge.getLiveBridge();
+live.stagedBday = '2026-10-14'; // staged yesterday
+live.stagedAt = Date.now() - 8 * 3600e3; // 8 hours ago
+await Bridge.present();
+const modalEl = document.getElementById('bridge-pickup-modal');
+ok(modalEl && modalEl.className.includes('active'), 'bridge-pickup-modal contains "active" class');
 
 console.log('\n── Hemingway Bridge Smoke Test Result ──');
 if (failures === 0) {
