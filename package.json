@@ -12,7 +12,9 @@
     "smoke": "node scripts/smoke-answer-resolve.mjs && node scripts/smoke-pomo-config.mjs && node scripts/smoke-boot-sequence.mjs && node scripts/smoke-practice-nav.mjs && node scripts/smoke-report-engine.mjs && node scripts/smoke-bridge.mjs && node scripts/smoke-tuckin.mjs",
     "smoke:memory": "node scripts/smoke-memory-model.mjs",
     "smoke:weights": "node scripts/smoke-chapter-weight.mjs",
-    "qa": "node scripts/qa-boot-sequence.mjs",
+    "qa": "node scripts/qa-today-progress.mjs",
+    "qa-analysis": "node scripts/qa-smart-report.mjs",
+    "qa-stale": "node scripts/audit-retention.mjs",
     "qa-progress": "node scripts/qa-today-progress.mjs",
     "qa-focus": "node scripts/qa-focus-mode.mjs && node scripts/qa-focus-layout.mjs && node scripts/qa-focus-sound.mjs"
   }

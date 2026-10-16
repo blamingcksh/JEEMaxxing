@@ -311,7 +311,18 @@
     fab.title = 'Metronome (M)';
     fab.innerHTML = SVG_METRO + '<span class="metro-fab-badge" id="metro-fab-badge">' + prefs.bpm + '</span>';
     fab.addEventListener('click', function (e) { e.stopPropagation(); togglePanel(); });
-    document.body.appendChild(fab);
+    var forestBtn = document.getElementById('forest-bg-btn');
+    var themeBtn = document.getElementById('theme-btn');
+    var sb = document.getElementById('sidebar') || document.querySelector('.sidebar');
+    if (forestBtn && forestBtn.parentNode) {
+      forestBtn.parentNode.insertBefore(fab, forestBtn.nextSibling);
+    } else if (themeBtn && themeBtn.parentNode) {
+      themeBtn.parentNode.insertBefore(fab, themeBtn.nextSibling);
+    } else if (sb) {
+      sb.appendChild(fab);
+    } else {
+      document.body.appendChild(fab);
+    }
 
     pop = document.createElement('div');
     pop.id = 'metro-pop';

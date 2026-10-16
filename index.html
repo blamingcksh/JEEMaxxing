@@ -154,22 +154,22 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         </div>
 
         <ul class="nav-menu" role="list">
-            <li><a class="nav-item active" data-tab="dashboard" href="#dashboard" onclick="switchTab('dashboard', this);return false;">
+            <li><a class="nav-item active" data-tab="dashboard" href="#dashboard" title="Grind Hub (Alt+1)" onclick="switchTab('dashboard', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.75" y="3.75" width="7" height="7" rx="1.8"/><rect x="13.25" y="3.75" width="7" height="7" rx="1.8"/><rect x="3.75" y="13.25" width="7" height="7" rx="1.8"/><rect x="13.25" y="13.25" width="7" height="7" rx="1.8"/></svg></span>
                 <span class="text-label">Grind Hub</span></a></li>
-            <li><a class="nav-item" data-tab="pomodoro" href="#focus" onclick="switchTab('pomodoro', this);return false;">
+            <li><a class="nav-item" data-tab="pomodoro" href="#focus" title="Focus Mode (Alt+2)" onclick="switchTab('pomodoro', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 4.5 13.5H11L10 21.5 19.5 10.5H12.5Z"/></svg></span>
                 <span class="text-label">Focus Mode</span></a></li>
-            <li><a class="nav-item" data-tab="errors" href="#vault" onclick="switchTab('errors', this);return false;">
+            <li><a class="nav-item" data-tab="errors" href="#vault" title="The Vault (Alt+3)" onclick="switchTab('errors', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 19 5.8V11c0 4.6-2.9 8.1-7 10-4.1-1.9-7-5.4-7-10V5.8Z"/></svg></span>
                 <span class="text-label">The Vault</span></a></li>
-            <li><a class="nav-item" data-tab="practice" href="#practice" onclick="switchTab('practice', this);return false;">
+            <li><a class="nav-item" data-tab="practice" href="#practice" title="Grind Station (Alt+4)" onclick="switchTab('practice', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.4C10.1 4.8 7.2 4.2 3.8 4.5V18c3.4-.3 6.3.3 8.2 1.9 1.9-1.6 4.8-2.2 8.2-1.9V4.5c-3.4-.3-6.3.3-8.2 1.9Z"/><path d="M12 6.4V19.9"/></svg></span>
                 <span class="text-label">Grind Station</span></a></li>
-            <li><a class="nav-item" data-tab="mocks" href="#mocks" onclick="switchTab('mocks', this);return false;">
+            <li><a class="nav-item" data-tab="mocks" href="#mocks" title="Mocks (Alt+5)" onclick="switchTab('mocks', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.25"/><path d="M12 7.5V12l3 2"/></svg></span>
                 <span class="text-label">Mocks</span></a></li>
-            <li><a class="nav-item" data-tab="settings" href="#config" onclick="switchTab('settings', this);return false;">
+            <li><a class="nav-item" data-tab="settings" href="#config" title="Config (Alt+6)" onclick="switchTab('settings', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 5h-6.8"/><path d="M10.2 5H3"/><path d="M21 12h-8.8"/><path d="M8.2 12H3"/><path d="M21 19h-4.8"/><path d="M12.2 19H3"/><path d="M14.2 3v4"/><path d="M8.2 10v4"/><path d="M16.2 17v4"/></svg></span>
                 <span class="text-label">Config</span></a></li>
         </ul>
@@ -231,6 +231,22 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <!-- ── Hemingway Bridge & Tuck-In banners (fixed mounts above the bento grid) ── -->
             <div id="bridge-banner" hidden></div>
             <div id="tuckin-door-banner" hidden></div>
+            <!-- ── Quick Action bar (low-friction 1-click stateful launchers) ── -->
+            <div id="dash-quick-bar" class="dash-quick-bar">
+                <button type="button" class="dash-quick-btn" id="dq-attack-btn">
+                    <span class="dq-icon">🎯</span>
+                    <span class="dq-label" id="dq-attack-label">Attack Weakest Chapter →</span>
+                </button>
+                <button type="button" class="dash-quick-btn" id="dq-vault-btn">
+                    <span class="dq-icon">🛡️</span>
+                    <span class="dq-label" id="dq-vault-label">Open Error Vault →</span>
+                </button>
+                <button type="button" class="dash-quick-btn" id="dq-focus-btn">
+                    <span class="dq-icon">⚡</span>
+                    <span class="dq-label" id="dq-focus-label">Lock In 50m →</span>
+                </button>
+            </div>
+
             <div class="dash-grid">
 
                 <!-- ── CONSISTENCY — a year of daily output vs target
@@ -376,6 +392,22 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                             <button class="btn-break-opt" onclick="addBreakTime(1)">+1 Min</button>
                             <button class="btn-break-opt" onclick="addBreakTime(5)">+5 Min</button>
                         </div>
+                    </div>
+
+                    <!-- 1-Click Duration Presets -->
+                    <div class="pomo-presets-bar" id="pomo-presets-bar" role="group" aria-label="Duration presets">
+                        <button type="button" class="pomo-preset-btn" data-grind="25" data-chill="5" onclick="window.setPomoPreset && window.setPomoPreset(25, 5)">
+                            <span class="pomo-preset-title">25 / 5</span>
+                            <span class="pomo-preset-sub">25m grind · 5m chill</span>
+                        </button>
+                        <button type="button" class="pomo-preset-btn active" data-grind="50" data-chill="10" onclick="window.setPomoPreset && window.setPomoPreset(50, 10)">
+                            <span class="pomo-preset-title">50 / 10</span>
+                            <span class="pomo-preset-sub">50m grind · 10m chill</span>
+                        </button>
+                        <button type="button" class="pomo-preset-btn" data-grind="90" data-chill="15" onclick="window.setPomoPreset && window.setPomoPreset(90, 15)">
+                            <span class="pomo-preset-title">90 / 15</span>
+                            <span class="pomo-preset-sub">90m grind · 15m chill</span>
+                        </button>
                     </div>
 
                     <!-- Setup strip — one quiet row under the timer.
@@ -589,13 +621,19 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <h2 class="box-title center-head">Pick Your Arena</h2>
                 <div class="subject-cards">
                     <div class="subject-card" onclick="selectSubject('physics')">
-                        <div class="subject-icon">⚛️</div><h3>Physics</h3>
+                        <div class="subject-icon">⚛️</div>
+                        <h3>Physics</h3>
+                        <div class="subject-card-meta" id="subj-meta-physics">Loading…</div>
                     </div>
                     <div class="subject-card" onclick="selectSubject('chemistry')">
-                        <div class="subject-icon">🧪</div><h3>Chemistry</h3>
+                        <div class="subject-icon">🧪</div>
+                        <h3>Chemistry</h3>
+                        <div class="subject-card-meta" id="subj-meta-chemistry">Loading…</div>
                     </div>
                     <div class="subject-card" onclick="selectSubject('maths')">
-                        <div class="subject-icon">📐</div><h3>Maths</h3>
+                        <div class="subject-icon">📐</div>
+                        <h3>Maths</h3>
+                        <div class="subject-card-meta" id="subj-meta-maths">Loading…</div>
                     </div>
                 </div>
             </div>
@@ -1677,6 +1715,7 @@ window.clearMatrixFilters = function () {
         pomodoro:  'Focus Mode',
         errors:    'The Vault',
         practice:  'Grind Station',
+        mocks:     'Mocks',
         settings:  'Config'
     };
     function sync() {

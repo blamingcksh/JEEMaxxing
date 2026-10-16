@@ -45,9 +45,9 @@
    runs full-width on top; Today's Progress · Retention · Chapter Progress
    sit in three equal columns below (4/4/4). */
 #view-dashboard .dash-card-variance { grid-column: span 12; }
-#view-dashboard .dash-card-tracker  { grid-column: span 4; }
-#view-dashboard .dash-card-decay    { grid-column: span 4; }
-#view-dashboard .dash-card-progress { grid-column: span 4; }
+#view-dashboard .dash-card-tracker  { grid-column: span 4; align-self: stretch; height: 100%; display: flex; flex-direction: column; }
+#view-dashboard .dash-card-decay    { grid-column: span 4; align-self: stretch; height: 100%; display: flex; flex-direction: column; }
+#view-dashboard .dash-card-progress { grid-column: span 4; align-self: stretch; height: 100%; display: flex; flex-direction: column; }
 
 /* Entry cascade — the legacy fxRise handles 1-4; extend to six cards. */
 .view-section.active .dash-card:nth-child(5) { animation-delay: 0.22s; }
@@ -321,10 +321,14 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
     border-color: var(--line-strong);
     background: var(--bg-surface-hover);
 }
-#view-dashboard .dash-card-tracker .tp-step-btn:active { transform: scale(0.9); }
-#view-dashboard .dash-card-tracker .tp-step-btn:focus-visible {
-    outline: none;
-    box-shadow: var(--ring-focus);
+#view-dashboard .dash-card-tracker .tp-step-btn:last-child {
+    border-color: rgba(245, 158, 11, 0.35);
+    color: var(--text-primary);
+    background: rgba(245, 158, 11, 0.08);
+}
+#view-dashboard .dash-card-tracker .tp-step-btn:last-child:hover {
+    border-color: rgba(245, 158, 11, 0.65);
+    background: rgba(245, 158, 11, 0.16);
 }
 
 /* Elo monitor — inline stat chip, no chrome. */
@@ -338,6 +342,7 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
     background: color-mix(in srgb, var(--text-primary) 4%, transparent);
     box-shadow: none;
     font-family: var(--font-num);
+    margin-right: 10px;
     flex: 0 0 auto;
     cursor: default;
 }
@@ -591,6 +596,7 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
     --dv-3: color-mix(in srgb, var(--accent) 76%, transparent);
     --dv-4: var(--accent);
     --dv-glow: color-mix(in srgb, var(--accent) 45%, transparent);
+    padding: 16px 20px 14px;
 }
 #view-dashboard .daily-variance-scroll { padding: 0 2px 4px; }
 #view-dashboard .daily-variance-month {
@@ -731,17 +737,44 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
 #view-dashboard.bento-edit .bento-handle-v::before,
 #view-dashboard.bento-edit .bento-card-ctrls { opacity: 1; }
 
+#dash-quick-bar #dc-layout-fab,
 #dc-layout-fab {
-    background: var(--bg-surface);
-    border: 1px solid var(--line);
-    color: var(--text-secondary);
-    border-radius: var(--r-md);
-    box-shadow: var(--e-2);
-    transition: color 0.18s var(--ease), border-color 0.18s var(--ease);
+    position: static !important;
+    margin-left: auto !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 10px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+    opacity: 0.75 !important;
+    flex-shrink: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    color: var(--text-secondary) !important;
+    padding: 0 !important;
+    transform: none !important;
 }
-#dc-layout-fab:hover { color: var(--text-primary); border-color: var(--line-strong); }
-#dc-layout-fab.active { color: var(--accent); border-color: var(--accent-a30); }
+#dc-layout-fab:hover {
+    opacity: 1 !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--line-strong) !important;
+}
+#dc-layout-fab.active {
+    color: var(--accent) !important;
+    border-color: var(--accent-a30) !important;
+    opacity: 1 !important;
+}
 .bento-toolbar.dc-fab-panel {
+    position: fixed !important;
+    top: 140px !important;
+    right: 24px !important;
+    bottom: auto !important;
+    z-index: 980 !important;
     background: var(--bg-raise);
     border: 1px solid var(--line);
     border-radius: var(--r-lg);

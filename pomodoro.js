@@ -536,6 +536,31 @@ try {
     });
 } catch (_) {}
 
+export function setPomoPreset(grind, chill) {
+    const studyInput = document.getElementById('pomo-study');
+    const breakInput = document.getElementById('pomo-break');
+    if (studyInput) {
+        studyInput.value = grind;
+        studyInput.dispatchEvent(new Event('input', { bubbles: true }));
+        studyInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (breakInput) {
+        breakInput.value = chill;
+        breakInput.dispatchEvent(new Event('input', { bubbles: true }));
+        breakInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (typeof updateProjection === 'function') updateProjection();
+    if (typeof updateDisplay === 'function' && !_pomoRunning) {
+        timeLeft = grind * 60;
+        updateDisplay();
+    }
+    document.querySelectorAll('.pomo-preset-btn').forEach(btn => {
+        const g = parseInt(btn.dataset.grind, 10);
+        btn.classList.toggle('active', g === grind);
+    });
+}
+try { window.setPomoPreset = setPomoPreset; } catch (_) {}
+
 // ---- Improved bell (persistent AudioContext) ----
 export function initAudioContext() {
     if (!bellAudioCtx) {
