@@ -392,6 +392,7 @@ function _resetDrawerState() {
         result: null,           // 'correct' | 'incorrect'
         resultSource: null,     // 'auto' (graded against loaded answer) | 'self' (user-reported)
         selectedOptions: [],    // MCQ letters the user picked, e.g. ['A'] or ['A','C']
+        numericAnswer: '',      // Numeric answer string if q.type === 'numeric'
         imageHidden: false,
         // [AUDIT P1-7] Honest default: a fresh solve IS independent work.
         // Preselecting removes one mandatory tap per card; hint/solution stay
@@ -428,6 +429,7 @@ function _startStopwatch() {
             const s = (_drawerState.stopwatchSeconds % 60).toString().padStart(2, '0');
             el.textContent = `${m}:${s}`;
         }
+        _srUpdatePace();
     }, 1000);
 }
 
@@ -435,11 +437,266 @@ function _pauseStopwatch() {
     if (_drawerState.stopwatchInterval) { clearInterval(_drawerState.stopwatchInterval); _drawerState.stopwatchInterval = null; }
 }
 
+// ── Pure-Display Flow Blueprint Helpers for Error Matrix ────────────────────
+
+function _decorateVaultQuestionText(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    if (typeof window !== 'undefined' && typeof window._pqDecorateText === 'function') {
+        return window._pqDecorateText(raw);
+    }
+    return _esc(raw);
+}
+
+function _getActiveVaultQueue(currentQId) {
+    let queue = [];
+    if (typeof document !== 'undefined') {
+        const visibleEls = Array.from(document.querySelectorAll('#error-list-container .error-block:not(.hidden), #daily-queue-list .error-block:not(.hidden)'));
+        queue = visibleEls.map(el => {
+            const idAttr = el.id || '';
+            if (idAttr.startsWith('err-block-')) {
+                try { return decodeURIComponent(idAttr.slice('err-block-'.length)); } catch (_) { return idAttr.slice('err-block-'.length); }
+            }
+            return el.getAttribute('data-qid') || '';
+        }).filter(Boolean);
+    }
+
+    if (!queue.length && typeof AppState !== 'undefined' && Array.isArray(AppState.questionBank)) {
+        const curSubject = AppState.currentErrorSubject || AppState.currentSubject || null;
+        const matching = AppState.questionBank.filter(q => {
+            if (!q || q.id == null) return false;
+            if (curSubject && q.subject !== curSubject) return false;
+            return q.errorReason && ['error', 'wrong', 'solved'].includes(q.status);
+        });
+        queue = matching.map(q => String(q.id));
+    }
+
+    const currentStr = String(currentQId == null ? '' : currentQId);
+    let curIdx = queue.findIndex(id => String(id) === currentStr);
+    if (curIdx === -1 && currentStr) {
+        queue.unshift(currentStr);
+        curIdx = 0;
+    }
+    return {
+        queue,
+        index: Math.max(0, curIdx),
+        total: Math.max(1, queue.length),
+        prevId: curIdx > 0 ? queue[curIdx - 1] : null,
+        nextId: curIdx >= 0 && curIdx < queue.length - 1 ? queue[curIdx + 1] : null,
+    };
+}
+
+let _srIdleTimer = null;
+function _srArmChromeFade(overlay) {
+    if (!overlay) return;
+    const resetIdle = () => {
+        overlay.classList.remove('pq-chrome-faded');
+        if (_srIdleTimer) { clearTimeout(_srIdleTimer); _srIdleTimer = null; }
+        if (!_drawerState.resultLocked) {
+            _srIdleTimer = setTimeout(() => {
+                if (!_drawerState.resultLocked) {
+                    overlay.classList.add('pq-chrome-faded');
+                }
+            }, 3500);
+        }
+    };
+    overlay.addEventListener('pointermove', resetIdle, { passive: true });
+    overlay.addEventListener('keydown', resetIdle, { passive: true });
+    resetIdle();
+}
+
+let _srHoldTimer = null;
+let _srHoldRingTimer = null;
+let _srHoldStartX = 0;
+let _srHoldStartY = 0;
+let _srJustHeld = false;
+
+function _srBindHold(overlay) {
+    if (!overlay) return;
+
+    // Capture-phase click suppressor: swallows any click generated upon releasing an 800ms hold
+    overlay.addEventListener('click', (e) => {
+        if (_srJustHeld) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            _srJustHeld = false;
+            return;
+        }
+    }, true);
+
+    const ringWrap = document.getElementById('sr-hold-ring-wrap');
+    const cancelHold = () => {
+        if (_srHoldTimer) { clearTimeout(_srHoldTimer); _srHoldTimer = null; }
+        if (_srHoldRingTimer) { clearTimeout(_srHoldRingTimer); _srHoldRingTimer = null; }
+        if (ringWrap) ringWrap.classList.remove('active');
+    };
+
+    overlay.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        if (_drawerState.resultLocked) return;
+
+        const interactive = e.target.closest('button, input, textarea, select, a, .sr-mcq-option, .sr-conf-btn, .sr-friction-pill, .sr-toggle-btn');
+        const cb = document.getElementById('sr-confirm-btn') || document.getElementById('sr-reveal-answer-btn');
+        const isConfirmBtn = cb && (cb === e.target || cb.contains(e.target));
+        if (interactive && !isConfirmBtn) return;
+
+        cancelHold();
+        _srHoldStartX = e.clientX;
+        _srHoldStartY = e.clientY;
+
+        if (ringWrap) {
+            ringWrap.style.left = e.clientX + 'px';
+            ringWrap.style.top = e.clientY + 'px';
+        }
+
+        _srHoldRingTimer = setTimeout(() => {
+            if (ringWrap) ringWrap.classList.add('active');
+        }, 120);
+
+        _srHoldTimer = setTimeout(() => {
+            cancelHold();
+            _srJustHeld = true;
+            setTimeout(() => { _srJustHeld = false; }, 450);
+            try { if (navigator.vibrate) navigator.vibrate(40); } catch (_) {}
+            const q = _currentDrawerQuestion();
+            if (!q) return;
+            if (q.type === 'mcq') {
+                if (_drawerState.selectedOptions.length > 0) srConfirmAnswer();
+            } else if (q.type === 'numeric') {
+                if (_drawerState.numericAnswer) srConfirmAnswer();
+            } else {
+                srRevealAnswer();
+            }
+        }, 800);
+    }, { passive: true });
+
+    overlay.addEventListener('pointermove', (e) => {
+        if (!_srHoldTimer) return;
+        if (Math.hypot(e.clientX - _srHoldStartX, e.clientY - _srHoldStartY) > 22) {
+            cancelHold();
+        }
+    }, { passive: true });
+
+    overlay.addEventListener('pointerup', cancelHold, { passive: true });
+    overlay.addEventListener('pointercancel', cancelHold, { passive: true });
+}
+
+function _srBindKeys(overlay) {
+    if (!overlay) return;
+    overlay.addEventListener('keydown', (e) => {
+        const tag = (e.target && e.target.tagName) || '';
+        const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable);
+        if (isEditing) return;
+
+        if (e.key === 'ArrowLeft' || e.key === '[') {
+            e.preventDefault();
+            srPracticePrev();
+            return;
+        }
+        if (e.key === 'ArrowRight' || e.key === ']') {
+            e.preventDefault();
+            srPracticeNext();
+            return;
+        }
+        if (e.key === ' ' && !_drawerState.resultLocked) {
+            const q = _currentDrawerQuestion();
+            if (q && q.type === 'mcq' && _drawerState.selectedOptions.length > 0) {
+                e.preventDefault();
+                srConfirmAnswer();
+            } else if (q && q.type === 'numeric' && _drawerState.numericAnswer) {
+                e.preventDefault();
+                srConfirmAnswer();
+            } else if (q && q.type !== 'mcq' && q.type !== 'numeric') {
+                e.preventDefault();
+                srRevealAnswer();
+            }
+        } else if (e.key === 'Enter' && _drawerState.resultLocked) {
+            const canSubmit = _drawerState.result && _drawerState.autonomy;
+            if (canSubmit) {
+                e.preventDefault();
+                submitPracticeLogAndNext();
+            }
+        }
+    });
+}
+
+function _srUpdatePace() {
+    try {
+        const paceEl = document.getElementById('sr-pace');
+        const overlay = document.getElementById('sr-practice-overlay');
+        if (!paceEl || !overlay) return;
+        if (_drawerState.resultLocked) {
+            paceEl.style.opacity = '0';
+            return;
+        }
+        const targetSecs = (_drawerState.targetTimeMins || 5) * 60;
+        const secs = _drawerState.stopwatchSeconds || 0;
+        const ratio = secs / Math.max(60, targetSecs);
+        if (ratio < 0.8) {
+            paceEl.style.opacity = '0';
+        } else {
+            const factor = Math.min(1.0, (ratio - 0.8) / 0.2);
+            paceEl.style.opacity = (0.2 + factor * 0.75).toFixed(2);
+            if (factor >= 0.5) {
+                paceEl.style.background = 'var(--pq-pace-to)';
+            } else {
+                paceEl.style.background = 'var(--pq-pace-from)';
+            }
+        }
+    } catch (_) {}
+}
+
+export function srPracticePrev() {
+    const qInfo = _getActiveVaultQueue(_drawerState.qId);
+    if (qInfo.prevId) {
+        openPracticeDrawer(qInfo.prevId);
+    }
+}
+
+export function srPracticeNext() {
+    const qInfo = _getActiveVaultQueue(_drawerState.qId);
+    if (qInfo.nextId) {
+        openPracticeDrawer(qInfo.nextId);
+    } else {
+        closePracticeDrawer();
+    }
+}
+
+export function submitPracticeLogAndNext() {
+    const qInfo = _getActiveVaultQueue(_drawerState.qId);
+    const nextId = qInfo.nextId;
+    submitPracticeLog({ keepOpenForNext: !!nextId });
+    if (nextId) {
+        openPracticeDrawer(nextId);
+    }
+}
+
+export function srOnNumericInput(val) {
+    if (_drawerState.resultLocked) return;
+    _drawerState.numericAnswer = String(val || '').trim();
+    const cb = document.getElementById('sr-confirm-btn');
+    if (cb) cb.disabled = _drawerState.numericAnswer.length === 0;
+}
+
+export function srOpenSolution() {
+    const q = _currentDrawerQuestion();
+    if (!q) return;
+    const solZone = document.getElementById('sr-solution-display-zone');
+    if (!solZone) return;
+    const isHidden = solZone.style.display === 'none';
+    solZone.style.display = isHidden ? 'block' : 'none';
+    const btn = document.getElementById('sr-peep-sol-btn');
+    if (btn) btn.classList.toggle('active', isHidden);
+    if (isHidden && window.katex) {
+        _renderKatexIn(solZone);
+    }
+}
+
 // ── Open Practice Drawer ───────────────────────────────────────────────────
-// Full-screen blurred modal. Shows the WHOLE question (text + image, image
-// hideable), lets the user pick MCQ options, auto-grades against the loaded
-// correct answer (or asks for a self-report when no answer is on file), then
-// reveals the autonomy / friction / time tagging stage.
+// Full-screen Roast & Parchment stage takeover (.pq-stage). Shows the full question
+// text with distance-readable typography, side-by-side QA column when diagram/image
+// exists, hold-to-reveal ring, ambient pace line, continuous queue navigation,
+// and compact SR reflection card.
 
 export function openPracticeDrawer(qId) {
     // Handler args arrive percent-encoded (_jsId); older callers may pass the
@@ -455,28 +712,11 @@ export function openPracticeDrawer(qId) {
     _drawerState.targetTimeMins = q.targetTimeMins || 5;
 
     // ── Freeze the PRE-SOLVE kernel state NOW, before any answer is given ──
-    // calculateEloMigration fires at the moment of truth and advances
-    // q.reps / q.stability / q.difficultyD; submitPracticeLog then needs the
-    // PRE-solve values to decide whether this item was already kernel-owned
-    // (cortex scheduler eligibility) and to compute the interval without
-    // double-counting the just-committed review.
     try {
         const _pre = hydrateMemory(q);
         _drawerState.preSolveReps = Number(_pre.reps) || 0;
-        // Capability: hydrateMemory does not carry easeFactor, so read it off
-        // the raw question the same way computeSR does (with the same 2.5
-        // default and NaN guard) — this is the value SM-2 must step FROM.
         const _rawEF = Number(q.easeFactor);
         _drawerState.preSolveEF = Number.isFinite(_rawEF) ? _rawEF : 2.5;
-        // Cortex PRE-commit telemetry, captured here alongside the other
-        // pre-solve values. The Elo bridge (+ kernel) runs at the moment of
-        // truth — long before submitPracticeLog — and rewrites stability and
-        // lastReviewedAt. Snapshotting in submitPracticeLog therefore read the
-        // POST-solve memory state across a zero-day gap: sBefore was really an
-        // sAfter, and rBefore came out ~1.0 on nearly every row. daysOverdue
-        // and ageAtSolveDays are unaffected by the ordering (nextReviewAt and
-        // createdAt are untouched until computeSR), but they belong with this
-        // block so the snapshot is one honest unit.
         try {
             _drawerState.cortexSnapshot = preReviewSnapshot(q);
         } catch (_) {
@@ -490,75 +730,136 @@ export function openPracticeDrawer(qId) {
     }
 
     const dueInfo = getDueStatus(q);
-    const hasImage = (q.imageDataUrl && q.imageDataUrl.length > 100) || !!q.driveImageId
-        || (q.diagramImageUrl && q.diagramImageUrl.length > 100);
+    const hasText = !!(q.extractedText && q.extractedText.trim().length > 0);
+    const hasImage = !!((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId
+        || (q.diagramImageUrl && q.diagramImageUrl.length > 100));
+    const splitView = hasImage && hasText;
+    const isFreeResponse = (!q || (q.type !== 'mcq' && q.type !== 'numeric'));
+
+    const queueInfo = _getActiveVaultQueue(qId);
 
     const overlay = document.createElement('div');
-    overlay.className = 'sr-practice-overlay';
+    overlay.className = `sr-practice-overlay pq-stage${splitView ? ' pq-has-media' : ''}${isFreeResponse ? ' pq-is-free-response' : ''}`;
     overlay.id = 'sr-practice-overlay';
+    overlay.setAttribute('data-pq-state', 'solving');
+
     // Own the user's attention while a review is on stage (P0-1 gate).
     SessionFocus.acquire('vault-drawer');
-    // Click on the backdrop (not the drawer itself) closes the drawer.
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closePracticeDrawer();
-    });
+    try {
+        document.body.classList.add('pq-active');
+        document.body.classList.add('immersive-active');
+    } catch (_) {}
+    const isRoast = typeof document !== 'undefined' && document.body.classList.contains('immersive-active');
+
+    const mediaHtml = _renderQuestionMedia(q);
+    const textHtml = q.extractedText
+        ? `<div class="latex sr-question-text" id="sr-question-text">${_decorateVaultQuestionText(q.extractedText)}</div>`
+        : (hasImage ? '' : `<div class="sr-question-text sr-muted">No question text on file — refer to the image above.</div>`);
+    const hintHtml = q.hint ? `<div class="sr-hint-block">
+        <button class="sr-hint-toggle" id="sr-hint-toggle" type="button" onclick="srToggleHint()">💡 Hint</button>
+        <div class="sr-hint-body" id="sr-hint-body" style="display:none;">${_esc(q.hint)}</div>
+    </div>` : '';
 
     overlay.innerHTML = `
-        <div class="sr-practice-drawer sr-practice-modal" id="sr-drawer-${_esc(qId)}" role="dialog" aria-modal="true">
-            <!-- ── Flow Lifeline ribbon: thin banner along top when CNS_LOAD fires ── -->
-            <div class="sr-lifeline-ribbon" id="sr-lifeline-ribbon" style="display:none">
-                <span style="margin-right:8px">🌊 Lifeline active for 1× solve. Aim 80%+ first.</span>
-                <button class="sr-lifeline-dismiss" style="font-size:11px;padding:2px 8px;background:none;border:1px solid rgba(147,197,253,0.4);color:#93c5fd;border-radius:3px;cursor:pointer"
-                        onclick="if(window.__lifeline){window.__lifeline.dismissForCurrentSolve();document.getElementById('sr-lifeline-ribbon').style.display='none';}">
-                    I'd rather keep grinding
-                </button>
+        <div class="pq-pace sr-pace" id="sr-pace" aria-hidden="true"></div>
+        <div class="pq-hold-ring-wrap" id="sr-hold-ring-wrap" aria-hidden="true">
+            <svg class="pq-hold-ring" viewBox="0 0 44 44">
+                <circle class="pq-hold-ring-bg" cx="22" cy="22" r="19"></circle>
+                <circle class="pq-hold-ring-fg" cx="22" cy="22" r="19"></circle>
+            </svg>
+        </div>
+
+        <!-- Hidden compatibility bridge for timer, HUD & test runner metrics -->
+        <div class="pq-sr-bridge" aria-hidden="true">
+            <div class="sr-stopwatch" id="sr-stopwatch-btn" onclick="srToggleStopwatch()" role="button" tabindex="0" title="Click to pause/resume">
+                <span id="sr-stopwatch-display">00:00</span>
+                <span class="sr-pulse-dot running" id="sr-pulse-dot"></span>
             </div>
-            <div class="sr-drawer-header">
-                <div>
-                    <div class="sr-drawer-title">${_esc(q.chapter || 'Unknown')} · Practice</div>
-                    <div class="sr-drawer-sub">${_esc(q.subject || '')}${dueInfo.label ? ' · ' + _esc(dueInfo.label) : ''}</div>
-                </div>
-                <div class="sr-drawer-header-actions">
-                    <div class="streak-visualizer" id="sr-streak-visualizer"><canvas id="sr-streak-canvas" width="16" height="16"></canvas></div>
-                    <div id="sr-elo-header-slot" class="elo-header-slot"></div>
-                    ${hasImage ? `<button class="sr-hide-img-btn" id="sr-hide-img-btn" type="button" onclick="srToggleImage()">👁 Hide Image</button>` : ''}
-                    <button class="sr-drawer-close" onclick="closePracticeDrawer()" aria-label="Close practice drawer">✕</button>
-                </div>
-            </div>
-            <div class="sr-drawer-body">
-                <!-- Question stage: full question text + image (hideable) -->
-                <div class="sr-question-stage" id="sr-question-stage">
-                    ${_renderQuestionMedia(q)}
-                    ${q.extractedText
-                        ? `<div class="latex sr-question-text" id="sr-question-text">${_esc(q.extractedText)}</div>`
-                        : `<div class="sr-question-text sr-muted">No question text on file — refer to the image above.</div>`}
-                    ${q.hint ? `<div class="sr-hint-block">
-                        <button class="sr-hint-toggle" id="sr-hint-toggle" type="button" onclick="srToggleHint()">💡 Hint</button>
-                        <div class="sr-hint-body" id="sr-hint-body" style="display:none;">${_esc(q.hint)}</div>
-                    </div>` : ''}
+            <span class="sr-drawer-title" id="sr-stage-ch-title">${_esc(shortChapterName(q.chapter || 'Unknown'))}</span>
+            <span class="sr-drawer-sub" id="sr-stage-sub-title">${_esc(q.subject || '')}${dueInfo.label ? ' · ' + _esc(dueInfo.label) : ''}</span>
+            <div class="streak-visualizer" id="sr-streak-visualizer"><canvas id="sr-streak-canvas" width="16" height="16"></canvas></div>
+            <div id="sr-elo-header-slot" class="elo-header-slot"></div>
+        </div>
+
+        <!-- Ghost corners -->
+        <nav class="pq-corner pq-corner-l pq-corner-tl" aria-label="Question Navigation">
+            <button class="pq-ghost pq-corner-btn pq-prev sr-nav-prev" id="sr-nav-prev-btn" type="button" aria-label="Previous card ([)" title="Previous card ([)" onclick="srPracticePrev()" ${!queueInfo.prevId ? 'disabled' : ''}>‹</button>
+            <span class="pq-queue-pos" id="sr-queue-pos">${_esc(shortChapterName(q.chapter || 'Unknown'))} · ${queueInfo.index + 1}/${queueInfo.total}</span>
+        </nav>
+
+        <nav class="pq-corner pq-corner-r pq-corner-tr" aria-label="Practice Controls">
+            <button class="pq-ghost pq-corner-btn pq-next sr-nav-next" id="sr-nav-next-btn" type="button" aria-label="Next card (])" title="Next card (])" onclick="srPracticeNext()" ${!queueInfo.nextId ? 'disabled' : ''}>›</button>
+            ${hasImage ? `<button class="pq-ghost pq-corner-btn sr-hide-img-btn" id="sr-hide-img-btn" type="button" aria-label="Toggle diagram" title="Toggle diagram" onclick="srToggleImage()">👁</button>` : ''}
+            <button class="pq-ghost pq-corner-btn pq-corner-moon" id="sr-moon-btn" type="button" aria-label="Toggle Roast / Parchment theme" title="Toggle warm dark/light theme" style="${isRoast ? 'color:#d4a017;' : ''}" onclick="toggleImmersiveTheme()">${isRoast ? '◑' : '☾'}</button>
+            <button class="pq-ghost pq-corner-btn pq-corner-close sr-drawer-close" type="button" onclick="closePracticeDrawer()" aria-label="Close practice drawer" title="Esc to close">✕</button>
+        </nav>
+
+        <!-- Center focus stage -->
+        <div class="pq-shell">
+            <div class="sr-practice-drawer sr-practice-modal pq-body pq-focus-container" id="sr-drawer-${_esc(qId)}" role="dialog" aria-modal="true">
+                <!-- Flow Lifeline ribbon -->
+                <div class="sr-lifeline-ribbon" id="sr-lifeline-ribbon" style="display:none">
+                    <span style="margin-right:8px">🌊 Lifeline active for 1× solve. Aim 80%+ first.</span>
+                    <button class="sr-lifeline-dismiss" style="font-size:11px;padding:2px 8px;background:none;border:1px solid rgba(147,197,253,0.4);color:#93c5fd;border-radius:3px;cursor:pointer"
+                            onclick="if(window.__lifeline){window.__lifeline.dismissForCurrentSolve();document.getElementById('sr-lifeline-ribbon').style.display='none';}">
+                        I'd rather keep grinding
+                    </button>
                 </div>
 
-                <!-- Answer stage: MCQ options (selectable) or self-report -->
-                <div class="sr-answer-stage" id="sr-answer-stage">
-                    ${_renderAnswerStage(q)}
+                <div class="sr-drawer-body pq-solve-wrap">
+                    ${splitView ? `
+                        <div class="pq-qa-grid">
+                            <div class="pq-qa-text">
+                                ${textHtml}
+                                ${hintHtml}
+                            </div>
+                            <div class="pq-qa-media">
+                                ${mediaHtml}
+                            </div>
+                        </div>
+                    ` : `
+                        ${mediaHtml}
+                        ${textHtml}
+                        ${hintHtml}
+                    `}
+
+                    <!-- Answer stage: MCQ options (selectable), numeric, or confidence+reveal -->
+                    <div class="sr-answer-stage" id="sr-answer-stage">
+                        ${_renderAnswerStage(q)}
+                    </div>
+
+                    <!-- Result banner (filled once answered) -->
+                    <div class="sr-result-zone" id="sr-result-zone"></div>
+
+                    <!-- Tagging stage (revealed AFTER the result is known) -->
+                    <div class="sr-tag-stage" id="sr-tag-stage" style="display:none;">
+                        ${_renderTagStage()}
+                    </div>
                 </div>
 
-                <!-- Result banner (filled once answered) -->
-                <div class="sr-result-zone" id="sr-result-zone"></div>
-
-                <!-- Tagging stage (revealed AFTER the result is known) -->
-                <div class="sr-tag-stage" id="sr-tag-stage" style="display:none;">
-                    ${_renderTagStage()}
+                <div class="sr-drawer-footer pq-result-strip">
+                    <div class="sr-footer-summary" id="sr-footer-summary"></div>
+                    <div class="sr-footer-actions">
+                        <button class="sr-submit-next-btn" id="sr-submit-next-btn" onclick="submitPracticeLogAndNext()" disabled>Log &amp; Next →</button>
+                        <button class="sr-submit-btn" id="sr-submit-btn" onclick="submitPracticeLog()" disabled>Log Attempt</button>
+                    </div>
                 </div>
-            </div>
-            <div class="sr-drawer-footer">
-                <div class="sr-footer-summary" id="sr-footer-summary"></div>
-                <button class="sr-submit-btn" id="sr-submit-btn" onclick="submitPracticeLog()" disabled>Log Attempt</button>
             </div>
         </div>
+
+        <!-- Bottom-Center hold hint -->
+        <div class="pq-hold-hint" id="sr-hold-hint" aria-hidden="true">${isFreeResponse ? '( Hold anywhere 0.8s to reveal )' : '( Hold lock-in pill 0.8s to submit )'}</div>
     `;
 
     document.body.appendChild(overlay);
+
+    try {
+        if (typeof window._syncImmersiveBtn === 'function') window._syncImmersiveBtn();
+    } catch (_) {}
+
+    _srArmChromeFade(overlay);
+    _srBindHold(overlay);
+    _srBindKeys(overlay);
 
     // ── Flow Lifeline: show the ribbon if CNS_LOAD is above threshold ──
     requestAnimationFrame(() => {
@@ -578,14 +879,14 @@ export function openPracticeDrawer(qId) {
 
 export function closePracticeDrawer() {
     SessionFocus.release('vault-drawer');
-    // Abort rollback: the Elo bridge + memory kernel write their fields (and
-    // the srUpdatedAt merge clock) at the MOMENT OF TRUTH, before "Log
-    // Attempt". If the user backs out here — backdrop tap, ✕ — the mutation
-    // would persist with no historyLog, no SM-2 schedule and a fresh merge
-    // clock that makes the phantom review authoritative across devices and
-    // sibling tabs. Restore exactly the fields the bridge wrote.
-    // submitPracticeLog clears the snapshot as it consumes the review, so a
-    // completed log is never rolled back.
+    try {
+        document.body.classList.remove('pq-active');
+        document.body.classList.remove('immersive-active');
+        if (typeof window._syncImmersiveBtn === 'function') window._syncImmersiveBtn();
+    } catch (_) {}
+    if (_srIdleTimer) { clearTimeout(_srIdleTimer); _srIdleTimer = null; }
+    if (_srHoldTimer) { clearTimeout(_srHoldTimer); _srHoldTimer = null; }
+    if (_srHoldRingTimer) { clearTimeout(_srHoldRingTimer); _srHoldRingTimer = null; }
     const _snap = _drawerState.preBridgeSnapshot;
     if (_snap) {
         try {
@@ -976,6 +1277,17 @@ function _renderAnswerStage(q) {
                 <button class="sr-confirm-btn" id="sr-confirm-btn" type="button" onclick="srConfirmAnswer()" disabled>Confirm Answer</button>
             </div>`;
     }
+    if (q.type === 'numeric') {
+        return `
+            <div class="sr-numeric-block">
+                <div class="sr-numeric-label">Enter numeric answer</div>
+                <div class="sr-numeric-input-wrap">
+                    <input type="text" inputmode="decimal" class="sr-numeric-input" id="sr-numeric-input" placeholder="Type your answer…" oninput="srOnNumericInput(this.value)" onkeydown="if(event.key==='Enter'&&!this.disabled){srConfirmAnswer();}">
+                </div>
+                ${_renderConfidenceSeg()}
+                <button class="sr-confirm-btn" id="sr-confirm-btn" type="button" onclick="srConfirmAnswer()" disabled>Confirm Answer</button>
+            </div>`;
+    }
     // Non-MCQ: the answer stays HIDDEN until the user taps "Reveal Answer"
     // (parity with the question-bank practice modal — the stored answer must
     // never be visible while the user is still attempting the question).
@@ -983,9 +1295,8 @@ function _renderAnswerStage(q) {
     if (_hasLoadedAnswer(q)) {
         return `
             <div class="sr-self-report sr-self-report-inline">
-                <div class="sr-self-report-label">Free-response question — solved it? Tap to reveal the answer, then grade yourself.</div>
                 ${_renderConfidenceSeg()}
-                <button class="sr-confirm-btn" id="sr-reveal-answer-btn" type="button" onclick="srRevealAnswer()">🔍 Reveal Answer</button>
+                <button class="pq-submit sr-confirm-btn" id="sr-reveal-answer-btn" type="button" onclick="srRevealAnswer()">Reveal Answer</button>
             </div>`;
     }
     return `
@@ -1032,7 +1343,7 @@ function _renderTagEditorRow() {
         '#' + _esc(s.label) + '</button>'
     ).join('');
     return `
-        <div class="sr-row">
+        <div class="sr-row sr-tag-editor-row">
             <div class="sr-row-label">Personal Tags <span style="opacity:.55;font-weight:400;">(#vocabulary the engine learns from — optional)</span></div>
             <div class="sr-tagedit" id="sr-tagedit">
                 <div class="sr-tagedit-chips" id="sr-tagedit-chips">${chips || '<span class="sr-tagedit-none">No tags yet</span>'}</div>
@@ -1081,9 +1392,8 @@ function _refreshTagEditor() {
 function _renderTagStage() {
     return `
         <div class="sr-tag-divider">Now log your attempt ↓</div>
-        <div id="sr-tag-editor-holder">${_renderTagEditorRow()}</div>
         <!-- Autonomy -->
-        <div class="sr-row">
+        <div class="sr-row sr-autonomy-row">
             <div class="sr-row-label">Autonomy Level</div>
             <div class="sr-toggle-group sr-toggle-group-3">
                 <button class="sr-toggle-btn${_drawerState.autonomy === 'independent' ? ' active' : ''}" data-group="autonomy" data-value="independent" onclick="srSetAutonomy('independent')">🧠 Independent</button>
@@ -1092,24 +1402,25 @@ function _renderTagStage() {
             </div>
         </div>
         <!-- Friction Type -->
-        <div class="sr-row">
-            <div class="sr-row-label">Friction Type <span style="opacity:.55;font-weight:400;">(optional — tap any that apply)</span></div>
+        <div class="sr-row sr-friction-row">
+            <div class="sr-row-label">Friction Type <span class="sr-sub-label">(optional — tap any that apply)</span></div>
             <div class="sr-friction-pills">
-                ${SR_FRICTION_TYPES.map(ft => `<button class="sr-friction-pill" data-friction="${ft}" onclick="srToggleFriction('${ft}')">${SR_FRICTION_LABELS[ft]}</button>`).join('')}
+                ${SR_FRICTION_TYPES.map(ft => `<button class="sr-friction-pill${_drawerState.frictionTypes.includes(ft) ? ' active' : ''}" data-friction="${ft}" onclick="srToggleFriction('${ft}')">${SR_FRICTION_LABELS[ft]}</button>`).join('')}
             </div>
         </div>
-        <!-- Time -->
-        <div class="sr-row">
-            <div class="sr-row-label">Time Spent</div>
-            <div class="sr-time-row">
-                <button class="sr-stopwatch" id="sr-stopwatch-btn" onclick="srToggleStopwatch()" type="button">
-                    <span id="sr-stopwatch-display">00:00</span>
-                    <span class="sr-pulse-dot" id="sr-pulse-dot"></span>
-                </button>
-                <button class="sr-manual-toggle" id="sr-manual-toggle" onclick="srToggleManualTime()" type="button">Manual</button>
-                <input type="number" class="sr-manual-input" id="sr-manual-input" style="display:none;" min="0" step="0.5" placeholder="0" oninput="srUpdateManualTime(this.value)">
-                <span class="sr-manual-unit" id="sr-manual-unit" style="display:none;">min</span>
-                <span class="sr-target-ref">Target: ${_drawerState.targetTimeMins}m</span>
+        <!-- Compact Meta Row: Personal Tags & Manual Time -->
+        <div class="sr-compact-meta-row">
+            <div class="sr-meta-section sr-tags-section">
+                <div id="sr-tag-editor-holder">${_renderTagEditorRow()}</div>
+            </div>
+            <div class="sr-meta-section sr-time-section">
+                <div class="sr-time-row">
+                    <span class="sr-stopwatch" id="sr-final-stopwatch">${Math.floor(_drawerState.stopwatchSeconds / 60).toString().padStart(2, '0')}:${(_drawerState.stopwatchSeconds % 60).toString().padStart(2, '0')}</span>
+                    <span class="sr-target-ref">Target: ${_drawerState.targetTimeMins}m</span>
+                    <button class="sr-manual-toggle" id="sr-manual-toggle" onclick="srToggleManualTime()" type="button">Manual</button>
+                    <input type="number" class="sr-manual-input" id="sr-manual-input" style="display:none;" min="0" step="0.5" placeholder="0" oninput="srUpdateManualTime(this.value)">
+                    <span class="sr-manual-unit" id="sr-manual-unit" style="display:none;">min</span>
+                </div>
             </div>
         </div>`;
 }
@@ -1172,21 +1483,15 @@ function _applyResult(result, source, q) {
     // migration (fired below) and submitPracticeLog() both use the instant
     // the user committed their answer — NOT the "Log Attempt" click.
     _drawerState.resultLocked = true;
-    // An explicitly typed manual time is the user's own reading of the
-    // solve — it wins over the stopwatch, which manual mode pauses and
-    // therefore leaves frozen at a stale pre-manual reading. Without this
-    // the Elo engine scored the pre-manual seconds while the log stored the
-    // typed minutes, and the two disagreed by an arbitrary amount.
     _drawerState.frozenTimeMins = _drawerState.timeSpentMins > 0
         ? _drawerState.timeSpentMins
         : _drawerState.stopwatchSeconds / 60;
-    // The Manual toggle + input live INSIDE the tag stage, which is hidden
-    // until this function reveals it — so they are the user's ONLY way to
-    // state how long the attempt really took, and they stay usable here by
-    // design. The stopwatch stays frozen (above); the manual value is the
-    // user's correction of the duration and submitPracticeLog() prefers it for
-    // the historyLog + SR schedule. The Elo chip intentionally reports the
-    // decision-instant stopwatch cost, which is what that engine prices.
+
+    const overlay = document.getElementById('sr-practice-overlay');
+    if (overlay) {
+        overlay.setAttribute('data-pq-state', 'answered');
+        overlay.classList.remove('pq-chrome-faded');
+    }
 
     const zone = document.getElementById('sr-result-zone');
     if (zone) {
@@ -1205,22 +1510,47 @@ function _applyResult(result, source, q) {
         const solImg = (q.solutionImageUrl && q.solutionImageUrl.length > 100)
             ? `<img class="sr-solution-img" src="${_safeImgSrc(q.solutionImageUrl)}" alt="Solution diagram">`
             : '';
+        let solPeepBtn = '';
+        if ((q.solution && q.solution.trim().length > 0) || (q.solutionImageUrl && q.solutionImageUrl.length > 100)) {
+            solPeepBtn = `<button class="pq-peep-btn" id="sr-peep-sol-btn" type="button" onclick="srOpenSolution()">💡 Peep Solution</button>` +
+                `<div class="sr-solution-display" id="sr-solution-display-zone" style="display:none;">` +
+                `<div class="sr-sol-heading">Solution</div>` +
+                (q.solution ? `<div class="sr-sol-body">${_esc(q.solution)}</div>` : '') +
+                solImg +
+                `</div>`;
+        }
         if (result === 'correct') {
             const oh = document.body.classList.contains('overheat-active');
             const pendingDelta = (q && q.status !== 'solved') ? (oh ? 3 : 1) : (oh ? 2 : 0);
-            zone.innerHTML = `<div class="sr-result-banner correct">✅ Correct${suffix}</div>${_keepGoingHTML(q, pendingDelta)}${solImg}`;
+            zone.innerHTML = `<div class="sr-result-banner correct">✅ Correct${suffix}</div>${_keepGoingHTML(q, pendingDelta)}${solImg}${solPeepBtn}`;
         } else {
-            zone.innerHTML = `<div class="sr-result-banner incorrect">❌ Incorrect${suffix}</div>${solImg}`;
+            zone.innerHTML = `<div class="sr-result-banner incorrect">❌ Incorrect${suffix}</div>${solImg}${solPeepBtn}`;
         }
     }
 
     // Reveal the tagging stage
     const tagStage = document.getElementById('sr-tag-stage');
-    if (tagStage) tagStage.style.display = 'flex';
+    if (tagStage) {
+        tagStage.style.display = 'flex';
+        const finalSw = document.getElementById('sr-final-stopwatch');
+        if (finalSw) {
+            const m = Math.floor(_drawerState.stopwatchSeconds / 60).toString().padStart(2, '0');
+            const s = (_drawerState.stopwatchSeconds % 60).toString().padStart(2, '0');
+            finalSw.textContent = `${m}:${s}`;
+        }
+    }
 
     // Hide the confirm button
     const cb = document.getElementById('sr-confirm-btn');
     if (cb) cb.style.display = 'none';
+
+    // Handle numeric input disabling & result styling
+    const numInput = document.getElementById('sr-numeric-input');
+    if (numInput) {
+        numInput.disabled = true;
+        numInput.classList.remove('correct', 'incorrect');
+        numInput.classList.add(result === 'correct' ? 'correct' : 'incorrect');
+    }
 
     if (source === 'auto') {
         // Mark MCQ options: correct → green, selected-wrong → red
@@ -1529,6 +1859,28 @@ export function srSelectOption(el) {
 export function srConfirmAnswer() {
     const q = _currentDrawerQuestion();
     if (!q) return;
+
+    if (q.type === 'numeric') {
+        const userVal = String(_drawerState.numericAnswer || '').trim();
+        if (!userVal) return;
+        if (_hasLoadedAnswer(q)) {
+            const correctRaw = Array.isArray(q.correctAnswer) ? q.correctAnswer[0] : q.correctAnswer;
+            const uNum = parseFloat(userVal);
+            const cNum = parseFloat(correctRaw);
+            let isCorrect = false;
+            if (Number.isFinite(uNum) && Number.isFinite(cNum)) {
+                const tol = Math.max(0.05, Math.abs(cNum) * 0.01);
+                isCorrect = Math.abs(uNum - cNum) <= tol;
+            } else {
+                isCorrect = userVal.toLowerCase() === String(correctRaw).trim().toLowerCase();
+            }
+            _applyResult(isCorrect ? 'correct' : 'incorrect', 'auto', q);
+        } else {
+            _showSelfReportPrompt(q);
+        }
+        return;
+    }
+
     if (_drawerState.selectedOptions.length === 0) return;
     // An answer can be on file yet unresolvable to letters; with an empty
     // correct set EVERY pick compares as wrong, so route to the self-report
@@ -1588,9 +1940,15 @@ export function srToggleImage() {
     // Toggle the whole media stage (question image + gem diagram) so hiding
     // the photo hides every visual — parity with the practice modal.
     const media = document.getElementById('sr-question-media');
+    const overlay = document.getElementById('sr-practice-overlay');
     const btn = document.getElementById('sr-hide-img-btn');
     if (media) media.style.display = _drawerState.imageHidden ? 'none' : 'block';
-    if (btn) btn.textContent = _drawerState.imageHidden ? '👁 Show Image' : '👁 Hide Image';
+    if (overlay) {
+        const q = _currentDrawerQuestion();
+        const hasText = !!(q && q.extractedText && q.extractedText.trim().length > 0);
+        overlay.classList.toggle('pq-has-media', !_drawerState.imageHidden && hasText);
+    }
+    if (btn) btn.textContent = _drawerState.imageHidden ? '👁 Show Image' : '👁';
 }
 
 // Reveal/hide the Gem-provided hint WITHOUT revealing the answer — aligns with
@@ -1719,11 +2077,13 @@ function _updateDrawerUI() {
     const canSubmit = _drawerState.result && _drawerState.autonomy;
     const btn = document.getElementById('sr-submit-btn');
     if (btn) btn.disabled = !canSubmit;
+    const nextBtn = document.getElementById('sr-submit-next-btn');
+    if (nextBtn) nextBtn.disabled = !canSubmit;
 }
 
 // ── Submit Practice Log ────────────────────────────────────────────────────
 
-export function submitPracticeLog() {
+export function submitPracticeLog(opts) {
     const qId = _drawerState.qId;
     if (!qId) return;
 
@@ -2081,7 +2441,9 @@ export function submitPracticeLog() {
     const _bountyVerdict = _drawerState.result === 'correct';
     _drawerState.preBridgeSnapshot = null;
     saveAllAsync().catch(console.error);
-    closePracticeDrawer();
+    if (!opts?.keepOpenForNext) {
+        closePracticeDrawer();
+    }
     // Bounty drawer convergence: the SR drawer wrote the schedule above, so
     // the bounty state machine still owns the win/loss bookkeeping. Without
     // this the bounty stayed live after a drawer solve (no payoff, no lock).
@@ -4105,4 +4467,28 @@ export function renderErrorResolutionDashboard() {
         el.textContent = String(todayCounts[subj]);
         el.classList.toggle('is-zero', !todayCounts[subj]);
     });
+}
+
+if (typeof window !== 'undefined') {
+    window.openPracticeDrawer = openPracticeDrawer;
+    window.closePracticeDrawer = closePracticeDrawer;
+    window.srSelectOption = srSelectOption;
+    window.srConfirmAnswer = srConfirmAnswer;
+    window.srSelfReport = srSelfReport;
+    window.srRevealAnswer = srRevealAnswer;
+    window.srToggleImage = srToggleImage;
+    window.srToggleHint = srToggleHint;
+    window.srSetResult = srSetResult;
+    window.srSetAutonomy = srSetAutonomy;
+    window.srToggleFriction = srToggleFriction;
+    window.srToggleStopwatch = srToggleStopwatch;
+    window.srToggleManualTime = srToggleManualTime;
+    window.srUpdateManualTime = srUpdateManualTime;
+    window.submitPracticeLog = submitPracticeLog;
+    window.submitPracticeLogAndNext = submitPracticeLogAndNext;
+    window.srPracticePrev = srPracticePrev;
+    window.srPracticeNext = srPracticeNext;
+    window.srOnNumericInput = srOnNumericInput;
+    window.srOpenSolution = srOpenSolution;
+    window._getActiveVaultQueue = _getActiveVaultQueue;
 }

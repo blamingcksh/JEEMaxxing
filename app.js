@@ -151,9 +151,10 @@ import {
     // ── Daily Fix Queue (wired to the inline onclick in index.html) ──
     toggleDailyQueue, activateDailyQueue,
     // ── SR practice log imports (new) ──
-    openPracticeDrawer, closePracticeDrawer, submitPracticeLog,
+    openPracticeDrawer, closePracticeDrawer, submitPracticeLog, submitPracticeLogAndNext,
     srSetResult, srSetAutonomy, srToggleFriction,
     srToggleStopwatch, srToggleManualTime, srUpdateManualTime,
+    srPracticePrev, srPracticeNext, srOnNumericInput, srOpenSolution,
     toggleCardHistory,
     // ── Practice drawer MCQ flow (new) ──
     srSelectOption, srConfirmAnswer, srSelfReport, srToggleImage,
@@ -5638,12 +5639,15 @@ export function _pqDecorateText(raw) {
 
         let out = decorateSection(bodyText);
         if (goalText) {
-            out += `<div class="question-goal">${decorateSection(goalText)}</div>`;
+            out += ` <div class="question-goal">${decorateSection(goalText)}</div>`;
         }
         return out;
     } catch (_) {
         return escapeHtml(raw);
     }
+}
+if (typeof window !== 'undefined') {
+    window._pqDecorateText = _pqDecorateText;
 }
 
 function _pqUpdatePace() {
@@ -9490,20 +9494,29 @@ export function triggerRedFlash() {
 }
 
 function _syncImmersiveBtn() {
-    const btn = document.getElementById('immersive-focus-btn');
-    if (!btn) return;
     const on = document.body.classList.contains('immersive-active');
-    if (btn.classList.contains('pq-corner-moon')) {
-        btn.textContent = on ? '◑' : '☾';
-        btn.style.color = on ? '#d4a017' : '';
-    } else {
-        btn.textContent = on ? '🔲 Exit' : '🕶 Lock In';
-    }
+    const btns = [
+        document.getElementById('immersive-focus-btn'),
+        document.getElementById('sr-moon-btn')
+    ].filter(Boolean);
+    btns.forEach(btn => {
+        if (btn.classList.contains('pq-corner-moon')) {
+            btn.textContent = on ? '◑' : '☾';
+            btn.style.color = on ? '#d4a017' : '';
+        } else {
+            btn.textContent = on ? '🔲 Exit' : '🕶 Lock In';
+        }
+    });
 }
 
 export function toggleImmersive() {
     document.body.classList.toggle('immersive-active');
     _syncImmersiveBtn();
+}
+if (typeof window !== 'undefined') {
+    window.toggleImmersiveTheme = toggleImmersive;
+    window.toggleImmersive = toggleImmersive;
+    window._syncImmersiveBtn = _syncImmersiveBtn;
 }
 
 // ==================== EFFECTS & VISUALS ====================
@@ -11249,6 +11262,11 @@ window.updateStreakVisualizer = updateStreakVisualizer;
 window.openPracticeDrawer = openPracticeDrawer;
 window.closePracticeDrawer = closePracticeDrawer;
 window.submitPracticeLog = submitPracticeLog;
+window.submitPracticeLogAndNext = submitPracticeLogAndNext;
+window.srPracticePrev = srPracticePrev;
+window.srPracticeNext = srPracticeNext;
+window.srOnNumericInput = srOnNumericInput;
+window.srOpenSolution = srOpenSolution;
 window.srSetResult = srSetResult;
 window.srSetAutonomy = srSetAutonomy;
 window.srToggleFriction = srToggleFriction;
