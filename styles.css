@@ -100,6 +100,7 @@
 
     /* ── Motion ── */
     --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-out-quart: cubic-bezier(0.23, 1, 0.32, 1);
     --ease-spring: cubic-bezier(0.34, 1.35, 0.44, 1);
     --t-fast: 130ms;
     --t-med: 210ms;
@@ -170,8 +171,8 @@ body {
     z-index: 0;
     pointer-events: none;
     background-image:
-        repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.035) 0 1px, transparent 1px 52px),
-        repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.035) 0 1px, transparent 1px 52px);
+        repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.01) 0 1px, transparent 1px 52px),
+        repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.01) 0 1px, transparent 1px 52px);
     mask-image: radial-gradient(ellipse 90% 80% at 50% 20%, #000 30%, transparent 100%);
     -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 20%, #000 30%, transparent 100%);
 }
@@ -5665,8 +5666,8 @@ html[data-mode="dusk"] body::before {
 }
 html[data-mode="dusk"] .bg-grid-overlay {
   background-image:
-    repeating-linear-gradient(0deg,  rgba(255,246,228,0.05) 0 1px, transparent 1px 52px),
-    repeating-linear-gradient(90deg, rgba(255,246,228,0.05) 0 1px, transparent 1px 52px);
+    repeating-linear-gradient(0deg,  rgba(255,246,228,0.014) 0 1px, transparent 1px 52px),
+    repeating-linear-gradient(90deg, rgba(255,246,228,0.014) 0 1px, transparent 1px 52px);
 }
 
 /* ── Warm scrollbars ───────────────────────────────────────────────────── */
@@ -11034,13 +11035,14 @@ html[data-mode="dusk"] #view-dashboard .dash-card-momentum .kicker {
 .glow-wrapper {
     border-radius: var(--r-xl);
     padding: 1px;
-    background: linear-gradient(160deg, var(--accent-a18), transparent 38%, color-mix(in srgb, var(--telemetry) 16%, transparent) 82%, transparent);
+    background: rgba(255, 255, 255, 0.07);
     overflow: hidden;
 }
 .glow-wrapper::before { display: none; }
 .glow-box-inner {
     border-radius: calc(var(--r-xl) - 1px) !important;
-    background: linear-gradient(180deg, rgba(17, 20, 29, 0.92), rgba(10, 12, 18, 0.96)) !important;
+    background: rgba(15, 18, 26, 0.96) !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--e-2) !important;
 }
 /* A running session re-arms the ring (pomodoro.js toggles body.pomo-active) */
@@ -12839,8 +12841,8 @@ html[data-mode="dusk"][data-theme="sepia"] body::before {
 }
 html[data-theme="sepia"] .bg-grid-overlay {
   background-image:
-    repeating-linear-gradient(0deg,  rgba(139, 90, 43, 0.045) 0 1px, transparent 1px 52px),
-    repeating-linear-gradient(90deg, rgba(139, 90, 43, 0.045) 0 1px, transparent 1px 52px);
+    repeating-linear-gradient(0deg,  rgba(139, 90, 43, 0.015) 0 1px, transparent 1px 52px),
+    repeating-linear-gradient(90deg, rgba(139, 90, 43, 0.015) 0 1px, transparent 1px 52px);
 }
 
 /* ── 3 · Gradient text — the white→gray headline gradients painted the
@@ -13382,4 +13384,488 @@ html[data-theme="sepia"] .moodpop-spark { color: #b5651d !important; }
 html[data-theme="sepia"] .moodpop-mascot {
   background: radial-gradient(circle at 32% 26%, #fffdf6, #f6efdd 58%, #efe3c8) !important;
   box-shadow: 0 12px 28px rgba(90,64,32,0.35), inset 0 0 0 2px rgba(255,253,246,0.95) !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   UI/UX POLISH SUITE — audited friction, hierarchy, and mobile layout fixes
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* 1 · Floating Bottom-Right Widgets de-collision */
+body:not(:has(#view-dashboard.active)) #dc-layout-fab {
+    display: none !important;
+}
+
+#dash-quick-bar #dc-layout-fab,
+#dc-layout-fab {
+    position: static !important;
+    margin-left: auto !important;
+    bottom: auto !important;
+    right: auto !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 10px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+    opacity: 0.75 !important;
+    flex-shrink: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+#dc-layout-fab:hover,
+#dc-layout-fab:focus-visible {
+    opacity: 1 !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--line-strong) !important;
+}
+.bento-toolbar.dc-fab-panel {
+    position: fixed !important;
+    top: 140px !important;
+    right: 24px !important;
+    bottom: auto !important;
+    z-index: 980 !important;
+}
+
+/* Docked top-bar utility: #metro-fab sits in #sidebar beside #forest-bg-btn */
+#sidebar #metro-fab,
+#sidebar .metro-fab,
+body.dc-active #sidebar .metro-fab,
+.metro-fab {
+    position: relative !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 10px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+    transform: none !important;
+    flex-shrink: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: var(--text-secondary) !important;
+    opacity: 0.85 !important;
+}
+#sidebar #metro-fab:hover,
+#sidebar .metro-fab:hover,
+body.dc-active #sidebar .metro-fab:hover,
+.metro-fab:hover,
+.metro-fab:focus-visible,
+.metro-fab.playing {
+    opacity: 1 !important;
+    background: rgba(255, 255, 255, 0.09) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    color: var(--text-primary) !important;
+    transform: none !important;
+}
+#sidebar .metro-fab svg,
+.metro-fab svg {
+    width: 18px !important;
+    height: 18px !important;
+}
+#sidebar .metro-fab-badge,
+.metro-fab-badge {
+    display: none !important;
+}
+.metro-pop,
+#metro-pop {
+    position: fixed !important;
+    top: 72px !important;
+    left: 20px !important;
+    bottom: auto !important;
+    right: auto !important;
+}
+
+/* Mini Pomodoro Widget — Hide when on Focus Mode or when idle */
+#pomo-mini-widget[data-state="idle"] {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(8px) scale(0.96) !important;
+    transition: opacity 180ms ease, transform 180ms var(--ease-out-quart) !important;
+}
+#pomo-mini-widget[data-state="idle"]:hover,
+#pomo-mini-widget[data-state="idle"]:focus-within,
+#pomo-mini-widget[data-state="idle"][data-pop] {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: none !important;
+}
+body:has(#view-pomodoro.active) #pomo-mini-widget {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(8px) scale(0.96) !important;
+    display: none !important;
+}
+#pomo-mini-widget[data-state="study"],
+#pomo-mini-widget[data-state="break"],
+#pomo-mini-widget[data-state="work"],
+#pomo-mini-widget[data-state="paused"] {
+    bottom: 72px !important;
+    right: 20px !important;
+    z-index: 940 !important;
+}
+
+/* 2 · Micro-interaction feedback (Emil Kowalski style) */
+.btn, .nav-item, .tp-btn, .pomo-preset-btn, .practice-mode-btn, .sc-preset, .dash-quick-btn {
+    transition: transform 140ms var(--ease-out-quart), background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.btn:active:not(:disabled),
+.nav-item:active:not(:disabled),
+.tp-btn:active:not(:disabled),
+.pomo-preset-btn:active:not(:disabled),
+.practice-mode-btn:active:not(:disabled),
+.sc-preset:active:not(:disabled),
+.dash-quick-btn:active:not(:disabled) {
+    transform: scale(0.97) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+    .btn, .nav-item, .tp-btn, .pomo-preset-btn, .practice-mode-btn, .sc-preset, .dash-quick-btn {
+        transform: none !important;
+        transition: none !important;
+    }
+}
+
+/* 3 · Eyebrow kicker clutter elimination */
+.kicker,
+.view-section .kicker,
+.mock-hero .kicker,
+.mk-head .kicker,
+.vault-title-col .kicker,
+.vt-title .kicker,
+#practice-subject-view .kicker {
+    display: none !important;
+}
+
+/* 4 · Mobile Navigation Bar & Fixed Chrome Offset (<=768px) */
+@media (max-width: 768px) {
+    #sidebar, .sidebar {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        filter: none !important;
+        transform: none !important;
+        perspective: none !important;
+        contain: none !important;
+        will-change: auto !important;
+        background: rgba(10, 12, 18, 0.96) !important;
+    }
+    #sidebar .nav-menu {
+        position: fixed !important;
+        top: auto !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100vw !important;
+        height: calc(62px + env(safe-area-inset-bottom)) !important;
+        padding: 4px 8px calc(4px + env(safe-area-inset-bottom)) !important;
+        background: rgba(10, 12, 18, 0.96) !important;
+        backdrop-filter: blur(16px) !important;
+        -webkit-backdrop-filter: blur(16px) !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+        display: grid !important;
+        grid-template-columns: repeat(6, 1fr) !important;
+        align-items: center !important;
+        justify-items: center !important;
+        gap: 2px !important;
+        z-index: 1000 !important;
+        overflow: visible !important;
+        margin: 0 !important;
+    }
+    #sidebar .nav-menu .nav-item {
+        position: relative !important;
+        width: 100% !important;
+        min-height: 48px !important;
+        padding: 4px 2px !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        align-items: center !important;
+        gap: 3px !important;
+        border-radius: 10px !important;
+    }
+    #sidebar .nav-menu .nav-item .icon {
+        margin: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    #sidebar .nav-menu .nav-item .text-label {
+        display: block !important;
+        font-size: 9.5px !important;
+        line-height: 1.25 !important;
+        padding-bottom: 2px !important;
+        letter-spacing: 0.01em !important;
+        opacity: 0.85 !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        max-width: 100% !important;
+        text-align: center !important;
+    }
+    #sidebar .nav-menu .nav-item .nav-ck-beacon,
+    #sidebar .nav-menu .nav-item .pomo-nav-dot,
+    .nav-item .nav-ck-beacon {
+        position: absolute !important;
+        top: 6px !important;
+        right: calc(50% - 14px) !important;
+        margin: 0 !important;
+    }
+    #sidebar .nav-menu .nav-item .nav-ck-badge,
+    .nav-item .nav-ck-badge {
+        position: absolute !important;
+        top: 4px !important;
+        right: calc(50% - 18px) !important;
+        margin: 0 !important;
+    }
+    #sidebar .user-profile {
+        margin-left: auto !important;
+    }
+    .main-content {
+        padding-bottom: calc(80px + env(safe-area-inset-bottom)) !important;
+    }
+    .pomo-mini-widget {
+        bottom: calc(126px + env(safe-area-inset-bottom)) !important;
+    }
+    #calibration-report,
+    #calibration-report .calib-warmup,
+    .calib-strip,
+    .main-content .badge.calib-strip {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        line-height: 1.4 !important;
+        max-width: 100% !important;
+        height: auto !important;
+    }
+}
+
+/* 5 · The Vault empty image card collapse & inline badge */
+.vault-shell.vault-v2 .emf-search-wrap,
+.emf-search-wrap {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+}
+.error-block:has(.error-img-box--empty),
+.vault-shell.vault-v2 .error-block:has(.error-img-box--empty),
+.error-block.is-no-img,
+.vault-shell.vault-v2 .error-block.is-no-img {
+    grid-template-columns: 1fr auto !important;
+}
+.error-img-box.error-img-box--empty {
+    display: none !important;
+}
+.sr-due-badge.sr-due-badge--inline {
+    position: static !important;
+    display: inline-flex !important;
+    vertical-align: middle !important;
+    margin-left: 8px !important;
+    transform: none !important;
+}
+
+/* 5b · Desktop Navbar badge inline & kill red pulse vertical line */
+.nav-item .nav-ck-badge {
+    position: static !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin-left: 6px !important;
+    transform: none !important;
+    vertical-align: middle !important;
+}
+.nav-item.nav-ck-pulse::after {
+    display: none !important;
+}
+
+/* 6 · Dashboard Quick Launch Bar */
+.dash-quick-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.dash-quick-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: rgba(20, 24, 34, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.dash-quick-btn:hover {
+    border-color: rgba(255, 178, 36, 0.4);
+    color: var(--text-primary);
+    background: rgba(28, 34, 48, 0.95);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+.dash-quick-btn .dq-icon {
+    font-size: 13px;
+    line-height: 1;
+}
+
+/* 7 · Pomodoro Duration Presets Bar */
+.pomo-presets-bar {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.pomo-preset-btn {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 7px 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: var(--font-body);
+}
+.pomo-preset-btn:hover {
+    border-color: rgba(255, 178, 36, 0.35);
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.06);
+}
+.pomo-preset-btn.active {
+    border-color: rgba(255, 178, 36, 0.7);
+    background: rgba(255, 178, 36, 0.12);
+    color: #ffb224;
+    box-shadow: 0 0 16px -4px rgba(255, 178, 36, 0.3);
+}
+.pomo-preset-title {
+    font-family: var(--font-num);
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.2;
+}
+.pomo-preset-sub {
+    font-size: 10px;
+    opacity: 0.7;
+    line-height: 1;
+    margin-top: 2px;
+}
+
+/* 8 · Arena Cards Subtitle */
+.subject-card-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    font-family: var(--font-num);
+    letter-spacing: 0.02em;
+}
+
+/* 9 · Chapter List Rows */
+@media (hover: hover) {
+    .chapter-item .delete-chapter {
+        opacity: 0;
+        transition: opacity 140ms ease, color 140ms ease;
+    }
+    .chapter-item:hover .delete-chapter,
+    .chapter-item:focus-within .delete-chapter {
+        opacity: 0.75;
+    }
+    .chapter-item .delete-chapter:hover {
+        opacity: 1;
+        color: var(--glow-red);
+    }
+}
+.chapter-item-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+.chapter-solve-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0.7;
+    transition: opacity 140ms ease, color 140ms ease;
+}
+.chapter-item:hover .chapter-solve-hint {
+    opacity: 1;
+    color: var(--accent);
+}
+.chapter-stat-pill {
+    font-size: 10px;
+    font-family: var(--font-num);
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    margin-left: 8px;
+}
+
+/* 10 · Question Card Body & Button */
+.question-card {
+    cursor: pointer;
+    transition: transform 140ms var(--ease-out-quart), border-color 140ms ease, box-shadow 140ms ease;
+}
+.question-card:hover {
+    border-color: rgba(245, 158, 11, 0.45);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.6);
+}
+.question-card .practice-single-btn,
+.question-card .grind-btn {
+    background: rgba(245, 158, 11, 0.12) !important;
+    color: #fbbf24 !important;
+    border: 1px solid rgba(245, 158, 11, 0.28) !important;
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.question-card:hover .practice-single-btn,
+.question-card:hover .grind-btn,
+.question-card .practice-single-btn:hover,
+.question-card .grind-btn:hover {
+    background: #ffb224 !important;
+    color: #12121a !important;
+    border-color: #ffb224 !important;
+}
+
+/* 11 · Settings cards visual hierarchy */
+#view-settings .settings-card {
+    background: rgba(15, 18, 26, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: var(--r-xl);
+    padding: 22px;
+}
+#view-settings .settings-card .btn-primary {
+    background: rgba(245, 158, 11, 0.16) !important;
+    color: #fbbf24 !important;
+    border: 1px solid rgba(245, 158, 11, 0.35) !important;
+}
+#view-settings .settings-card .btn-primary:hover {
+    background: #ffb224 !important;
+    color: #12121a !important;
+    border-color: #ffb224 !important;
+}
+
+/* 12 · Compact Dashboard Header */
+#main-header {
+    margin-bottom: 14px !important;
+}
+#calibration-report {
+    white-space: normal;
+    max-width: 100%;
 }

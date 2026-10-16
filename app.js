@@ -1037,6 +1037,34 @@ try {
     }, false);
 } catch (_) {}
 
+// ── Global low-friction tab navigation shortcuts (Alt+1 .. Alt+6) ──
+try {
+    const TAB_KEY_MAP = {
+        '1': 'dashboard',
+        '2': 'pomodoro',
+        '3': 'errors',
+        '4': 'practice',
+        '5': 'mocks',
+        '6': 'settings'
+    };
+    document.addEventListener('keydown', function (e) {
+        if (!e.altKey || e.ctrlKey || e.metaKey) return;
+        const targetTab = TAB_KEY_MAP[e.key];
+        if (!targetTab) return;
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+        const activeModal = document.querySelector('.modal-overlay.active:not(#practice-modal)');
+        if (activeModal && activeModal.style.display !== 'none') return;
+        if (window._mockRunnerActive) return;
+
+        e.preventDefault();
+        const nav = document.querySelector(`.nav-item[data-tab="${targetTab}"]`);
+        if (typeof window.switchTab === 'function') {
+            window.switchTab(targetTab, nav);
+        }
+    }, false);
+} catch (_) {}
+
 export function closeModal(e, id, force) {
     if (typeof e === 'string') { closeModalStr(e); return; }
     const m = document.getElementById(id);
@@ -1200,11 +1228,12 @@ export async function switchTab(viewId, element) {
     if (element) element.classList.add('active');
 
     const header = document.getElementById('main-header');
-
-    if (viewId === 'pomodoro' || viewId === 'errors' || viewId === 'practice') {
-        header.classList.add('hidden');
-    } else {
-        header.classList.remove('hidden');
+    if (header) {
+        if (viewId !== 'dashboard') {
+            header.classList.add('hidden');
+        } else {
+            header.classList.remove('hidden');
+        }
     }
 
     // Flush any pending coalesced save BEFORE re-reading the bank from IDB,
@@ -1354,6 +1383,78 @@ function _updatePaceTick(barId) {
     } catch (_) { /* cosmetic only */ }
 }
 
+function updateQuickLaunchAndArena() {
+    try {
+        const attackBtn = document.getElementById('dq-attack-btn');
+        const attackLbl = document.getElementById('dq-attack-label');
+        const vaultBtn = document.getElementById('dq-vault-btn');
+        const vaultLbl = document.getElementById('dq-vault-label');
+        const focusBtn = document.getElementById('dq-focus-btn');
+
+        let weakest = null;
+        let lowestAcc = 1.1;
+        const allChapters = AppState.chapters || {};
+        for (const [subj, chaps] of Object.entries(allChapters)) {
+            for (const ch of (chaps || [])) {
+                const qs = (AppState.questionBank || []).filter(q => q.subject === subj && _chaptersMatch(q.chapter, ch));
+                const solvedQs = qs.filter(q => q.status === 'solved');
+                const wrongQs = qs.filter(q => q.status === 'wrong');
+                const attempts = solvedQs.length + wrongQs.length;
+                const acc = attempts > 0 ? solvedQs.length / attempts : 0.5;
+                if (acc < lowestAcc || !weakest) {
+                    lowestAcc = acc;
+                    weakest = { subject: subj, chapter: ch };
+                }
+            }
+        }
+        if (weakest && attackLbl) {
+            attackLbl.textContent = `Attack Weakest: ${weakest.chapter} →`;
+            if (attackBtn && !attackBtn.dataset.bound) {
+                attackBtn.dataset.bound = '1';
+                attackBtn.onclick = () => {
+                    const nav = document.querySelector('[data-tab="practice"]');
+                    if (typeof window.switchTab === 'function') window.switchTab('practice', nav);
+                    if (typeof window.selectSubject === 'function') window.selectSubject(weakest.subject);
+                    if (typeof window.openChapterDetail === 'function') window.openChapterDetail(weakest.chapter);
+                };
+            }
+        }
+
+        const now = Date.now();
+        const dueErrors = (AppState.questionBank || []).filter(q => q.status === 'wrong' || (q.reviewDue && q.reviewDue <= now)).length;
+        if (vaultLbl) {
+            vaultLbl.textContent = dueErrors > 0 ? `Vault Due: ${dueErrors} error${dueErrors === 1 ? '' : 's'} →` : 'Open Error Vault →';
+        }
+        if (vaultBtn && !vaultBtn.dataset.bound) {
+            vaultBtn.dataset.bound = '1';
+            vaultBtn.onclick = () => {
+                const nav = document.querySelector('[data-tab="errors"]');
+                if (typeof window.switchTab === 'function') window.switchTab('errors', nav);
+            };
+        }
+
+        if (focusBtn && !focusBtn.dataset.bound) {
+            focusBtn.dataset.bound = '1';
+            focusBtn.onclick = () => {
+                const nav = document.querySelector('[data-tab="pomodoro"]');
+                if (typeof window.switchTab === 'function') window.switchTab('pomodoro', nav);
+            };
+        }
+    } catch (_) {}
+
+    try {
+        ['physics', 'chemistry', 'maths'].forEach(sub => {
+            const metaEl = document.getElementById(`subj-meta-${sub}`);
+            if (metaEl) {
+                const chCount = (AppState.chapters && AppState.chapters[sub] && AppState.chapters[sub].length) || 0;
+                const qCount = (AppState.questionBank || []).filter(q => q.subject === sub).length;
+                const eloVal = (AppState.elo && AppState.elo[sub]) ? Math.round(AppState.elo[sub]) : 1500;
+                metaEl.textContent = `${chCount} chapters · ${qCount} questions · ${eloVal} ELO`;
+            }
+        });
+    } catch (_) {}
+}
+
 export async function updateUI() {
     // ── Daily Directive heat (v2): meters are denominated in Load Units once
     // the Directive has computed today's contract; the legacy count/target
@@ -1398,9 +1499,17 @@ export async function updateUI() {
     let variance = totalTgt === 0 ? 0 : ((totalSolved - totalTgt) / totalTgt) * 100;
     let varEl = document.getElementById('variance-val');
     if (varEl) {
-        varEl.textContent = (variance > 0 ? "+" : "") + variance.toFixed(1) + "%";
-        varEl.style.color = variance >= 0 ? 'var(--glow-green)' : 'var(--glow-red)';
+        if (totalSolved === 0) {
+            varEl.textContent = 'Ready';
+            varEl.style.color = 'var(--text-muted)';
+            varEl.dataset.state = 'ready';
+        } else {
+            varEl.textContent = (variance > 0 ? "+" : "") + variance.toFixed(1) + "%";
+            varEl.style.color = variance >= 0 ? 'var(--glow-green)' : 'var(--glow-red)';
+            varEl.dataset.state = variance >= 0 ? 'positive' : 'negative';
+        }
     }
+    updateQuickLaunchAndArena();
 
     // ── Today's Progress ledger: each subject renders through its own
     // hairline stroke ({sub}-bar, written above); the hub drives ONE
@@ -2181,8 +2290,12 @@ export function renderChaptersList() {
         // Mock-test chapters wear their label + badge so test uploads are
         // visibly grouped instead of masquerading as syllabus chapters.
         const _mockBadge = isMockChapterName(ch) ? '<span class="mock-chapter-badge" title="Mock test chapter">🧪</span>' : '';
+        const chQuestions = (AppState.questionBank || []).filter(q => q.subject === AppState.currentSubject && _chaptersMatch(q.chapter, ch));
+        const qCount = chQuestions.length;
+        const countPill = `<span class="chapter-stat-pill">${qCount} Q</span>`;
         div.innerHTML =
-            `<span>${_mockBadge}${escapeHtml(ch)}</span><span class="delete-chapter" onclick="event.stopPropagation(); deleteChapter('${escapeAttribute(ch)}')">🗑</span>`;
+            `<span class="chapter-item-title">${_mockBadge}${escapeHtml(ch)} ${countPill}</span>` +
+            `<span class="chapter-item-right"><span class="chapter-solve-hint">Solve →</span><span class="delete-chapter" onclick="event.stopPropagation(); deleteChapter('${escapeAttribute(ch)}')">🗑</span></span>`;
         div.onclick = () => openChapterDetail(ch);
         cont.appendChild(div);
     });
@@ -4919,8 +5032,12 @@ if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
             <div style="display:flex; justify-content:space-between;"><strong>Q ${idx + 1}</strong><span class="status-badge ${statusClass}">${statusText}</span></div>
             <div class="question-preview-text">${imgHtml}</div>
             ${timeDisplay}
-            <button class="btn btn-primary practice-single-btn" data-index="${idx}" style="width:100%; margin-top:12px;">Grind →</button>
+            <button class="btn btn-primary practice-single-btn grind-btn" data-index="${idx}" style="width:100%; margin-top:12px;">Grind →</button>
         `;
+        card.onclick = (e) => {
+            if (e.target.closest('.three-dot, .card-close-btn')) return;
+            startPracticeWithQuestion(filteredQuestions, idx);
+        };
         container.appendChild(card);
     });
 

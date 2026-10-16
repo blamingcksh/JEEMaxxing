@@ -3048,22 +3048,25 @@ function _buildErrorCardHTML(q, dueInfo) {
     const isCurrentBounty = AppState.bounty.active && !AppState.bounty.done && AppState.bounty.date === today &&
         String(q.id) === String(AppState.bounty.questionId);
     let bountyClass = isCurrentBounty ? 'bounty-active-error' : '';
+    const isNoImg = imgHtml.includes('error-img-none');
+    const imgBoxClass = isNoImg ? 'error-img-box error-img-box--empty' : 'error-img-box';
+    const noImgClass = isNoImg ? ' is-no-img' : '';
 
     // Inline-handler args use _jsId (percent-encoded): _esc alone survives the
     // attribute boundary but is HTML-decoded before the handler compiles, so a
     // quote in q.id could still break out into the JS string.
     return `
-            <div class="error-block ${bountyClass}" id="err-block-${_jsId(q.id)}"
+            <div class="error-block ${bountyClass}${noImgClass}" id="err-block-${_jsId(q.id)}"
                  data-type="${_esc(q.errorReason || 'conceptual')}"
                  data-sr-status="${_esc(due.status)}"
                  data-subject="${_esc(q.subject)}"
                  onclick="openPracticeDrawer('${_jsId(q.id)}')" title="Open practice session">
-                <div class="error-img-box">
+                <div class="${imgBoxClass}">
                     ${imgHtml}
-                    <span class="sr-due-badge sr-due--${_esc(due.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(due, q))}</span>
+                    ${!isNoImg ? `<span class="sr-due-badge sr-due--${_esc(due.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(due, q))}</span>` : ''}
                 </div>
                 <div class="error-details">
-                    <div class="error-chapter">${_esc(q.chapter || 'Unknown')}${huntMirror}</div>
+                    <div class="error-chapter">${_esc(q.chapter || 'Unknown')}${huntMirror}${isNoImg ? ` <span class="sr-due-badge sr-due-badge--inline sr-due--${_esc(due.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(due, q))}</span>` : ''}</div>
                     <div class="error-tag-row">
                         <span class="error-tag error-tag--${_esc(q.errorReason || 'conceptual')}" style="color:${tagStyle.color};background:${tagStyle.bg};">${_esc(tagLabel)}</span>
                         ${tags.length
@@ -4252,9 +4255,10 @@ export function openChapterProgress(subj, encodedName) {
     try {
         const name = decodeURIComponent(encodedName);
         AppState.currentSubject = subj;
-        if (typeof window.openChapterDetail === 'function') window.openChapterDetail(name);
         const nav = document.querySelector('[data-tab="practice"]');
         if (typeof window.switchTab === 'function') window.switchTab('practice', nav);
+        if (typeof window.selectSubject === 'function') window.selectSubject(subj);
+        if (typeof window.openChapterDetail === 'function') window.openChapterDetail(name);
     } catch (e) { /* never block card clicks */ }
 }
 

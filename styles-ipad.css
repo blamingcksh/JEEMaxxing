@@ -40,15 +40,38 @@
     }
 }
 
-/* ── 3. FAB de-collision [AUDIT P1-4] ───────────────────────────────────────
-   #dc-layout-fab (z950) parks exactly on top of #metro-fab (z900) because
-   dashboard-clean.js keeps `dc-active` on <body> permanently. Stack the
-   metronome above it, and lift its popover with it. */
-body.dc-active .metro-fab {
-    bottom: calc(84px + env(safe-area-inset-bottom));
+/* ── 3. FAB de-collision: docked into header and quick bar ── */
+#sidebar #metro-fab,
+#sidebar .metro-fab,
+body.dc-active #sidebar .metro-fab,
+.metro-fab {
+    position: relative !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 10px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+    transform: none !important;
+    flex-shrink: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
-body.dc-active .metro-pop {
-    bottom: calc(148px + env(safe-area-inset-bottom));
+.metro-pop,
+#metro-pop {
+    position: fixed !important;
+    top: calc(72px + env(safe-area-inset-top)) !important;
+    left: calc(20px + env(safe-area-inset-left)) !important;
+    bottom: auto !important;
+    right: auto !important;
 }
 
 /* ── 4. Safe-area insets for all fixed chrome [AUDIT P1-6] ─────────────────
@@ -63,21 +86,17 @@ body.dc-active .metro-pop {
     bottom: calc(20px + env(safe-area-inset-bottom));
     left: calc(80px + env(safe-area-inset-left));
 }
+#dash-quick-bar #dc-layout-fab,
 #dc-layout-fab {
-    bottom: calc(22px + env(safe-area-inset-bottom));
-    right: calc(22px + env(safe-area-inset-right));
+    position: static !important;
+    margin-left: auto !important;
+    bottom: auto !important;
+    right: auto !important;
 }
 .bento-toolbar.dc-fab-panel {
-    bottom: calc(82px + env(safe-area-inset-bottom));
-    right: calc(22px + env(safe-area-inset-right));
-}
-.metro-fab {
-    bottom: calc(20px + env(safe-area-inset-bottom));
-    right: calc(20px + env(safe-area-inset-right));
-}
-.metro-pop {
-    bottom: calc(84px + env(safe-area-inset-bottom));
-    right: calc(20px + env(safe-area-inset-right));
+    top: calc(140px + env(safe-area-inset-top)) !important;
+    right: calc(24px + env(safe-area-inset-right)) !important;
+    bottom: auto !important;
 }
 #cp-control-panel {
     bottom: calc(80px + env(safe-area-inset-bottom));
