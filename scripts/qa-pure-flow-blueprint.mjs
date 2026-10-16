@@ -108,14 +108,14 @@ const layoutCheck = await page.evaluate(() => {
     return {
         topIslandPresent: !!topIsland,
         paceLinePresent: !!paceLine,
-        shellWidthMax720: shellWidth <= 720 && shellWidth > 0,
+        shellWidthMax720: shellWidth <= (document.getElementById('practice-modal')?.classList.contains('pq-has-media') ? 920 : 720) && shellWidth > 0,
         timerHiddenFromView: timerRect ? (timerRect.width <= 1 || timerRect.height <= 1) : false
     };
 });
 
 assert(!layoutCheck.topIslandPresent, 'Top island pill (.pq-top) is completely eliminated');
 assert(layoutCheck.paceLinePresent, '2px Ambient Pace Line (#pq-pace) is present');
-assert(layoutCheck.shellWidthMax720, 'Focus column (.pq-shell) constrained to <= 720px');
+assert(layoutCheck.shellWidthMax720, 'Focus column (.pq-shell) constrained to <= 720px (or 920px with media)');
 assert(layoutCheck.timerHiddenFromView, 'Timer display is visually hidden from viewport');
 
 // 2. Check Saccadic highlighting & Goal isolation

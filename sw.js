@@ -125,7 +125,7 @@
 //        single-tap resume and curiosity gap, plus 15-second evening Tuck-In
 //        ritual with peak-end receipt, hold-to-seal ring, Isle sleep sync,
 //        and overnight Dawn Capsule delivery.
-const VERSION = 'jeemax-v61';
+const VERSION = 'jeemax-v62';
 const SHELL = [
   './',
   './index.html',
