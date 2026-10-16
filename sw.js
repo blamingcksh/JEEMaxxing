@@ -120,12 +120,16 @@
 //        surfaces in Midnight mode, plus a roast/parchment practice-stage
 //        pair that follows data-theme in both moon states. theme.js,
 //        styles.css, styles-practice-fullscreen.css + QA map changed in
+// v63 — PRACTICE MATH ESCAPE: _pqDecorateText now escapes HTML characters
+//        (<, &, >) inside math delimiters before wrapping them in param-highlight
+//        spans, preventing browser tag parser corruption (e.g. $10<n\le 100$)
+//        and unclosed nowrap overflow. app.js updated.
 // v61 — HEMINGWAY BRIDGE & TUCK-IN RITUAL: bridge.js, bridge.css, tuckin.js,
 //        tuckin.css join the shell precache. Zero-friction morning bridge with
 //        single-tap resume and curiosity gap, plus 15-second evening Tuck-In
 //        ritual with peak-end receipt, hold-to-seal ring, Isle sleep sync,
 //        and overnight Dawn Capsule delivery.
-const VERSION = 'jeemax-v62';
+const VERSION = 'jeemax-v63';
 const SHELL = [
   './',
   './index.html',

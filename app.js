@@ -5701,7 +5701,7 @@ export function _pqDecorateText(raw) {
                 if (!p) return '';
                 if (p.startsWith('$') || p.startsWith('\\(') || p.startsWith('\\[')) {
                     const isShortMath = p.length <= 28;
-                    return `<span class="param-highlight${isShortMath ? ' ph-nowrap' : ''}">${p}</span>`;
+                    return `<span class="param-highlight${isShortMath ? ' ph-nowrap' : ''}">${escapeHtml(p)}</span>`;
                 }
                 let esc = escapeHtml(p);
                 // Units and short variable assignments: nowrap
