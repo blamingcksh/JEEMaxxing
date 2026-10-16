@@ -8,6 +8,10 @@
     width: 100%;
 }
 
+#bridge-banner[hidden] {
+    display: none !important;
+}
+
 .bridge-banner {
     display: flex;
     align-items: center;
@@ -68,11 +72,17 @@
 /* ── Pickup Modal / Bottom Card ── */
 .bridge-pickup-overlay {
     z-index: 2147483010;
-    display: flex;
+    display: flex !important;
+    opacity: 1 !important;
     align-items: center;
     justify-content: center;
     background: rgba(5, 5, 10, 0.65);
     backdrop-filter: blur(8px);
+}
+
+.bridge-pickup-overlay[hidden],
+.bridge-pickup-overlay [hidden] {
+    display: none !important;
 }
 
 .bridge-pickup-card {

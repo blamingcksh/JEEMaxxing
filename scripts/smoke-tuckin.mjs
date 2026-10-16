@@ -75,9 +75,11 @@ globalThis.indexedDB = {
 // Fake DOM
 const elements = new Map();
 function fakeEl(tag = 'div') {
+    let _id = '';
     const el = {
         tag,
-        id: '',
+        get id() { return _id; },
+        set id(v) { _id = v; if (v) elements.set(v, el); },
         className: '',
         textContent: '',
         innerHTML: '',
@@ -98,8 +100,8 @@ function fakeEl(tag = 'div') {
             },
             contains(c) { return this._set.has(c); },
         },
-        setAttribute(k, v) { el[k] = v; },
-        removeAttribute(k) { delete el[k]; },
+        setAttribute(k, v) { el[k] = v; if (k === 'id') { _id = v; if (v) elements.set(v, el); } },
+        removeAttribute(k) { delete el[k]; if (k === 'id') { elements.delete(_id); _id = ''; } },
         addEventListener() {},
         removeEventListener() {},
         appendChild(c) { el.children.push(c); return c; },
@@ -109,7 +111,7 @@ function fakeEl(tag = 'div') {
             return child;
         },
         querySelectorAll(sel) { return []; },
-        remove() {},
+        remove() { if (_id) elements.delete(_id); },
     };
     return el;
 }
@@ -180,7 +182,11 @@ ok(state && state.capsule, 'TuckIn initialized default state');
 // ── Test 2: Modal Open & Peak-End Receipt ───────────────────────────────────
 console.log('\n[2] Peak-End Receipt & Ritual');
 await TuckIn.open({ source: 'door1' });
-ok(document.body.children.length > 0, 'TuckIn modal mounted to DOM');
+const overlayEl = document.getElementById('tuckin-overlay');
+ok(overlayEl !== null, 'TuckIn modal mounted to DOM with id tuckin-overlay');
+ok(overlayEl && overlayEl.className.includes('active'), 'tuckin-overlay contains "active" class');
+TuckIn.close();
+ok(document.getElementById('tuckin-overlay') === null, 'TuckIn.close cleanly unmounted tuckin-overlay');
 
 // ── Test 3: Hold-to-Seal & Pip Sleep ────────────────────────────────────────
 console.log('\n[3] Sealing & Pip Sleep Event');
