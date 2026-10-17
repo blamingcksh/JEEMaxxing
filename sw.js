@@ -137,7 +137,7 @@
 //        victory banner and a Contract Breach guard. index.html, pomodoro.js,
 //        app.js, styles.css and styles-practice-fullscreen.css changed;
 //        focus-sound.js removed from the shell.
-const VERSION = 'jeemax-v64';
+const VERSION = 'jeemax-v65';
 const SHELL = [
   './',
   './index.html',
