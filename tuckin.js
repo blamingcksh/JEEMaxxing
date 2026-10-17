@@ -630,9 +630,6 @@ export const TuckIn = {
         if (deps.onIsleEvent && !deps.isleEvent) mapped.isleEvent = deps.onIsleEvent;
         if (deps.onPlayRain && !deps.focusSound) mapped.focusSound = deps.onPlayRain;
         _deps = Object.assign(_deps, mapped);
-        if (!_deps.focusSound && typeof window !== 'undefined' && window.FocusSound) {
-            _deps.focusSound = window.FocusSound;
-        }
         if (!_deps.isleEvent && typeof window !== 'undefined' && window.Isle && window.Isle.event) {
             _deps.isleEvent = (ev, data) => window.Isle.event(ev, data);
         }

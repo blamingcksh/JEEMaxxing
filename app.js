@@ -138,6 +138,9 @@ import {
     popSetSubject, popAdjustMinutes, popAdjustRounds, popStart,
     notifyKeepGoing, hydrateFocusStats, updateProjection,
     getFocusLedger, widgetPauseToggle,
+    // ── Integrated Lock-In Ritual Engine (Flow / Hardcore background timer) ──
+    openLockinSetupModal, consumePendingLockinExpiry, isLockinStudyRunning,
+    completeLockinOnPoolExhausted, requestLockinEarlyExitConfirm, noteLockinSolve,
 } from './pomodoro.js';
 
 // Replace the existing matrix.js import block with:
@@ -1041,7 +1044,6 @@ try {
 try {
     const TAB_KEY_MAP = {
         '1': 'dashboard',
-        '2': 'pomodoro',
         '3': 'errors',
         '4': 'practice',
         '5': 'mocks',
@@ -1243,11 +1245,6 @@ export async function switchTab(viewId, element) {
     bootCumStudy();
     restoreDailyCountsIntoSolved();
     if (viewId === 'practice') showPracticeSubview('practice-subject-view');
-    if (viewId === 'pomodoro') {
-        // Refresh today's burn ledger + commitment projection on entry.
-        try { hydrateFocusStats(); } catch (_) {}
-        try { updateProjection(); } catch (_) {}
-    }
     if (viewId === 'errors') {
         assignDailyBountyIfNeeded();
         try { refreshBountyRail(); } catch (_) {}
@@ -2240,7 +2237,7 @@ export function startMultiChapterMode() {
     AppState.currentChapterSelection = chapters;
     AppState.currentFilter = 'all';
     closeModalStr('multi-chapter-mode-modal');
-    _setPracticeMode(_multiChapterMode);
+    _ensureLockinSetup(_multiChapterMode);
 }
 
 export function openChapterDetail(ch) {
@@ -7316,6 +7313,10 @@ window.openSkipPopover = openSkipPopover;
  * the next pick via the reason, then advances to a fresh question.
  */
 function skipQuestion(reason) {
+    // A Lock-In block whose clock already ran out defers its transition until
+    // the user actually leaves the current question — consume it here instead
+    // of advancing to a fresh question.
+    if (consumePendingLockinExpiry()) return;
     const mode = AppState.practiceFlowMode;
     if (!mode || mode === 'standard') return;
     const q = AppState.practiceQuestions[AppState.currentPracticeIndex];
@@ -7362,6 +7363,9 @@ window.skipQuestion = skipQuestion;
 
 /** Advance to the next adaptive question (Continue button). */
 function _modeAdvance() {
+    // Silent-expiry handoff: if the background Lock-In block already expired,
+    // leave the stage for the earned break instead of serving a new question.
+    if (consumePendingLockinExpiry()) return;
     const mode = AppState.practiceFlowMode;
     if (!mode || mode === 'standard') {
         practiceNext();
@@ -7433,6 +7437,55 @@ function _serveModeEntry(entry) {
     }
     renderPracticeQuestionModal();
 }
+
+/**
+ * Pre-flight for a Lock-In entry. Hardcore's daily cap and the "is there at
+ * least one mode-eligible question" probe both gate the Ritual Chamber so the
+ * user never signs a pact that cannot be started.
+ */
+function _hardcoreCapReached() {
+    if (AppState.hardcoreDailyDate !== todayLocalKey()) return false;
+    return (AppState.hardcoreDailyCount || 0) >= (MODE_TUNING.hardcore.capPerDay || 8);
+}
+
+function _hasModeEligibleQuestion(mode) {
+    if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return false;
+    const cfg = MODE_TUNING[mode] || {};
+    const subject = _normalizeSubjectKey(AppState.currentSubject);
+    const sel = AppState.currentChapterSelection;
+    const chapter = AppState.currentChapter;
+    return AppState.questionBank.some(q =>
+        q.subject === subject &&
+        (Array.isArray(sel) && sel.length
+            ? sel.some(ch => _chaptersMatch(q.chapter, ch))
+            : _chaptersMatch(q.chapter, chapter)) &&
+        _isUnexecutedModeQuestion(q) &&
+        typeof q.qElo === 'number' && isFinite(q.qElo) &&
+        !q.isAnomaly && !q.modeRetired &&
+        (mode !== 'hardcore' || !cfg.minQeloFloor || q.qElo >= cfg.minQeloFloor)
+    );
+}
+
+/** Open the Mode-Reactive Lock-In Ritual Chamber, then enter the mode. */
+function _ensureLockinSetup(mode, customCtx) {
+    if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return;
+    const label = mode === 'flow' ? 'Flow' : 'Hardcore';
+    if (mode === 'hardcore' && _hardcoreCapReached()) {
+        (window.__jmaxAppToast || alert)('Daily Hardcore cap reached (' + (MODE_TUNING.hardcore.capPerDay || 8) + '). Override tomorrow with full send.');
+        return;
+    }
+    if (!_hasModeEligibleQuestion(mode)) {
+        (window.__jmaxAppToast || alert)('No ' + label + '-eligible questions in this chapter. Add or unsolve some first.');
+        return;
+    }
+    const ctx = Object.assign({
+        subject: AppState.currentSubject,
+        chapter: AppState.currentChapter,
+        chapterSelection: AppState.currentChapterSelection,
+    }, customCtx || {});
+    openLockinSetupModal(mode, ctx, () => { _setPracticeMode(mode); });
+}
+window.__ensureLockinSetup = _ensureLockinSetup;
 
 /** Set the active practice mode and persist it. */
 function _setPracticeMode(mode) {
@@ -7531,6 +7584,22 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
     if (mode === 'standard' || !PRACTICE_MODES.includes(mode)) return;
     const q = _pickQuestionForMode(AppState.currentSubject, AppState.currentChapter, mode, seenSet);
     if (!q) {
+        // ── Lock-In: the whole eligible pool was cleared before the clock ran
+        // out. Bank the elapsed block and crown the run with the Arena Cleared
+        // banner instead of the plain "exiting to standard" toast. ──
+        if (completeLockinOnPoolExhausted()) {
+            AppState.practiceFlowMode = 'standard';
+            _modeAdaptive.targetPwin = null;
+            _renderModeBadge();
+            _renderModeFooter();
+            saveAllAsync().catch(console.error);
+            AppState.practiceQuestions = [];
+            AppState.practiceSubmittedFlags = [];
+            AppState.currentPracticeIndex = 0;
+            AppState.practiceSeconds = 0;
+            _clearModeHistory();
+            return;
+        }
         // No more mode-eligible questions in this chapter — gracefully exit
         // the mode so the user is not stuck staring at a blank practice modal.
         const label = mode === 'flow' ? 'Flow' : 'Hardcore';
@@ -7642,7 +7711,7 @@ function _renderModeButtonsIntoChapterDetail() {
     flow.innerHTML = '🎯 Flow';
     flow.title = 'Flow State · P_win ∈ [0.75, 0.85]';
     flow.onclick = (e) => {
-        _playModeClickRipple(e, flow); _setPracticeMode('flow'); _playModeSound('flow');
+        _playModeClickRipple(e, flow); _ensureLockinSetup('flow'); _playModeSound('flow');
     };
     flow.addEventListener('mouseenter', (e) => _spawnModeHoverParticles(e, flow, 'flow'));
     row.appendChild(flow);
@@ -7654,7 +7723,7 @@ function _renderModeButtonsIntoChapterDetail() {
     hardcore.innerHTML = '⚡ Hardcore';
     hardcore.title = 'Hardcore / Overclock · P_win ∈ [0.35, 0.50]';
     hardcore.onclick = (e) => {
-        _playModeClickRipple(e, hardcore); _setPracticeMode('hardcore'); _playModeSound('hardcore');
+        _playModeClickRipple(e, hardcore); _ensureLockinSetup('hardcore'); _playModeSound('hardcore');
     };
     hardcore.addEventListener('mouseenter', (e) => _spawnModeHoverParticles(e, hardcore, 'hardcore'));
     row.appendChild(hardcore);
@@ -7768,10 +7837,21 @@ function _renderModeBadge() {
     // Visual toggle state intentionally removed — pills are plain action buttons.
 }
 
-// Expose the public entry points so the onclick handlers work from inline HTML
+// Expose the public entry points so programmatic callers / smoke tests work directly,
+// while UI buttons route through _ensureLockinSetup (window.__ensureLockinSetup).
 window.startFlowPractice     = () => _setPracticeMode('flow');
 window.startHardcorePractice = () => _setPracticeMode('hardcore');
 window.exitPracticeMode      = () => _exitPracticeMode();
+
+// ── Lock-In break auto-ignition ────────────────────────────────────────────
+// Called by pomodoro.js the instant an earned break ends (00:00 or Skip Rest).
+// Re-opens the practice stage in the SAME mode with a fresh adaptive question,
+// without re-triggering the Ritual Chamber.
+window.__resumePracticeFromLockinBreak = (sess) => {
+    const mode = (sess && sess.mode) || AppState.practiceFlowMode;
+    if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return;
+    try { _setPracticeMode(mode); } catch (e) { console.warn('[lockin] resume failed', e); }
+};
 
 function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth, questionObj) {
     // Elo pricing + commit are per-subject counter writes (AppState.elo[key],
@@ -9259,6 +9339,7 @@ export function practiceSubmit() {
             userElo: _modePerf.userElo,
         });
         _showModeContinueButton();
+        try { noteLockinSolve(); } catch (_) {}
     } else {
         const contBtn = document.getElementById('practice-continue-btn');
         if (contBtn && !AppState.practiceFlowMode) {
@@ -9330,6 +9411,7 @@ export function addTextQuestionFollowUp() {
         if (_modePerfTxt) {
             _modeNextTargetPwin(AppState.practiceFlowMode, { correct: true, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
             _showModeContinueButton();
+            try { noteLockinSolve(); } catch (_) {}
         } else {
             const contBtn = document.getElementById('practice-continue-btn');
             if (contBtn) {
@@ -9384,6 +9466,7 @@ export function addTextQuestionFollowUp() {
         if (_modePerfTxt) {
             _modeNextTargetPwin(AppState.practiceFlowMode, { correct: false, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
             _showModeContinueButton();
+            try { noteLockinSolve(); } catch (_) {}
         } else {
             const contBtn = document.getElementById('practice-continue-btn');
             if (contBtn) {
@@ -9514,6 +9597,7 @@ export function practicePrev() {
 }
 
 export function parkCurrentPracticeQuestion() {
+    if (consumePendingLockinExpiry()) return;
     try {
         const _currIdx = AppState.currentPracticeIndex;
         const _q = (AppState.practiceQuestions && _currIdx != null) ? AppState.practiceQuestions[_currIdx] : null;
@@ -9538,6 +9622,12 @@ export function parkCurrentPracticeQuestion() {
 window.parkCurrentPracticeQuestion = parkCurrentPracticeQuestion;
 
 export function closePracticeModal() {
+    // ── Lock-In gate ───────────────────────────────────────────────────────
+    // If the block's clock already expired, bank it and hand off to the break
+    // (consume returns true and closes the stage itself). Otherwise, closing
+    // mid-block is a contract breach — ask before voiding the escrow.
+    if (consumePendingLockinExpiry()) return;
+    if (isLockinStudyRunning() && requestLockinEarlyExitConfirm()) return;
     // Check for Hemingway Bridge abandonment candidate before resetting timer / state
     try {
         const _currIdx = AppState.currentPracticeIndex;
@@ -10511,7 +10601,6 @@ async function initApp() {
                 sound: (name) => { try { window.FX && window.FX.sound && window.FX.sound(name); } catch (_) {} },
                 haptic: (name) => { try { window.FX && window.FX.haptic && window.FX.haptic(name); } catch (_) {} },
                 isleEvent: (ev, data) => (window.Isle && typeof window.Isle.event === 'function' ? window.Isle.event(ev, data) : false),
-                focusSound: window.FocusSound || null,
             });
         }
     } catch (e) { console.warn('[TuckIn] configure error:', e); }
@@ -12199,8 +12288,6 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       // beacons
-      const mini = $('pomo-mini-widget');
-      setBeacon('pomodoro', 'Focus Mode', !!(mini && !mini.classList.contains('hidden')));
       setBeacon('practice', 'Grind Station', CK.sessionOpen && CK.sessionCorrect > 0);
     } catch (e) { ckErr(e); }
   }
