@@ -10657,13 +10657,17 @@ async function initApp() {
     saveAllAsync().catch(console.error);
     startMidnightRolloverWatcher();
 
-    document.getElementById('vis-beaker').style.display = 'none';
-    document.getElementById('vis-bar').style.display = 'block';
+    const visBeaker = document.getElementById('vis-beaker');
+    if (visBeaker) visBeaker.style.display = 'none';
+    const visBar = document.getElementById('vis-bar');
+    if (visBar) visBar.style.display = 'block';
 
     const d = new Date();
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    document.getElementById('top-date').textContent =
-        `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+    const topDate = document.getElementById('top-date');
+    if (topDate) {
+        topDate.textContent = `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+    }
 
     await renderGraph();
     updateUI();
