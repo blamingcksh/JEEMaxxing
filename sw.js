@@ -129,7 +129,15 @@
 //        single-tap resume and curiosity gap, plus 15-second evening Tuck-In
 //        ritual with peak-end receipt, hold-to-seal ring, Isle sleep sync,
 //        and overnight Dawn Capsule delivery.
-const VERSION = 'jeemax-v63';
+// v64 — INTEGRATED PRACTICE LOCK-IN: the standalone Pomodoro "Focus Mode" tab,
+//        floating sprint widget and focus-sound.js ambient soundscape are gone.
+//        A mode-reactive Lock-In Ritual Chamber (#lockin-setup-modal) + earned
+//        Museum Break HUD (#lockin-break-hud) now live inside Flow/Hardcore
+//        practice, with escrow time accounting, silent expiry, an Arena Cleared
+//        victory banner and a Contract Breach guard. index.html, pomodoro.js,
+//        app.js, styles.css and styles-practice-fullscreen.css changed;
+//        focus-sound.js removed from the shell.
+const VERSION = 'jeemax-v64';
 const SHELL = [
   './',
   './index.html',
@@ -155,7 +163,6 @@ const SHELL = [
   './fx.js',
   './matrix.js',
   './pomodoro.js',
-  './focus-sound.js',
   './metronome.js',
   './theme.js',
   './dashboard-clean.js',

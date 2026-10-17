@@ -3,6 +3,31 @@ import { formatTime, formatStudyDuration, saveAllAsync, studySecs, SessionFocus 
 import { GalleryBreak } from './gallery-break.js';
 import { NightGuard } from './nightguard.js';
 
+// ── Null-safe element lookup ──────────────────────────────────────────────
+// The standalone Focus Mode view and the Ambient Sprint widget were removed in
+// the Integrated Lock-In overhaul. Legacy render paths (and the Node smoke
+// tests' DOM stubs) may still look them up, so every lookup returns a detached
+// no-op element instead of null — a missing node can never throw mid-tick.
+function _stubEl() {
+    return {
+        textContent: '', innerHTML: '', value: '', disabled: false, hidden: false,
+        onclick: null, style: {}, dataset: {},
+        classList: { add() {}, remove() {}, toggle() { return false; }, contains() { return false; } },
+        setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
+        addEventListener() {}, removeEventListener() {}, dispatchEvent() {},
+        appendChild(c) { return c; }, removeChild() {}, remove() {},
+        querySelector() { return null; }, querySelectorAll() { return []; },
+        contains() { return false; }, focus() {}, blur() {}, click() {},
+        getBoundingClientRect() { return { width: 0, height: 0, left: 0, top: 0, right: 0, bottom: 0 }; },
+    };
+}
+function $(id) {
+    try {
+        const el = document.getElementById(id);
+        return el || _stubEl();
+    } catch (_) { return _stubEl(); }
+}
+
 // ---- Pomodoro-specific state (module-scoped) ----
 let timerInterval, secondsLeft, totalSecondsForState, pomoState = 'IDLE',
     currentSession = 1,
@@ -21,7 +46,7 @@ let timerStartTime = null;        // Date.now() at start/resume
 // getConfig() exposes the persisted last-used setup (Daily Briefing / restore).
 window.__pomodoro = {
     getTimerStartTime: () => timerStartTime,
-    isRunning: () => pomoState !== 'IDLE',
+    isRunning: () => pomoState !== 'IDLE' || (lockinSession && lockinSession.active),
     getConfig: () => readPomoConfig(),
     getLedger: () => getFocusLedger(),
 };
@@ -99,7 +124,7 @@ function _setDeepWorkActive(on) {
 const MINI_RING_CIRC = 2 * Math.PI * 15.5;   // matches r=15.5 in index.html
 
 function _updateMiniRing(percent) {
-    const arc = document.getElementById('mini-ring-arc');
+    const arc = $('mini-ring-arc');
     if (!arc) return;
     const p = Math.min(1, Math.max(0, percent || 0));
     arc.style.strokeDashoffset = String(MINI_RING_CIRC * (1 - p));
@@ -107,13 +132,13 @@ function _updateMiniRing(percent) {
 
 /** data-state drives the whole widget skin: idle | study | break */
 function syncWidget(state) {
-    const w = document.getElementById('pomo-mini-widget');
+    const w = $('pomo-mini-widget');
     if (!w || typeof w.setAttribute !== 'function') return;   // stub-safe
     w.setAttribute('data-state', state);
 }
 
 function syncWidgetPaused(paused) {
-    const w = document.getElementById('pomo-mini-widget');
+    const w = $('pomo-mini-widget');
     if (!w) return;
     if (typeof w.setAttribute !== 'function') return;         // stub-safe
     if (paused) w.setAttribute('data-paused', '');
@@ -122,7 +147,7 @@ function syncWidgetPaused(paused) {
 
 /** "ends 14:35" — the wall-clock moment the live block pays out. */
 function _updateMiniEnd() {
-    const el = document.getElementById('mini-end');
+    const el = $('mini-end');
     if (!el) return;
     if (isPaused || pomoState === 'IDLE' || pomoState === 'STOPWATCH' || !timerStartTime || !timerTotalSeconds) {
         el.textContent = '';
@@ -135,7 +160,7 @@ function _updateMiniEnd() {
 }
 
 function _updateMiniTally() {
-    const el = document.getElementById('mini-tally');
+    const el = $('mini-tally');
     if (!el) return;
     el.textContent = focusLedger.done > 0 ? `${focusLedger.done} done today` : '';
 }
@@ -152,7 +177,7 @@ function _eloSnapshot() {
 
 // Lock/unlock the chapter-question filter dropdown while the timer runs.
 function syncFilterLock() {
-    const filterEl = document.getElementById('question-filter');
+    const filterEl = $('question-filter');
     if (filterEl) filterEl.disabled = pomoState !== 'IDLE';
 }
 let timerTotalSeconds = 0;        // total seconds for countdown
@@ -166,6 +191,7 @@ let _blockCreditedSecs = 0;      // study seconds actually credited this block (
 
 let bellAudioCtx = null;
 let _pomoPendingAction = null;   // replaces window._pomoPendingAction
+let _notifyVariant = null;       // '' | 'victory' | 'breach' | 'complete' — themes #timer-notify-modal
 
 // ── Pomodoro config persistence ────────────────────────────────────────────
 // The last-used timer setup is snapshotted to localStorage the moment a
@@ -177,11 +203,17 @@ const POMO_CONFIG_KEY = 'jeemax_pomo_config';
 
 export function savePomoConfig() {
     try {
+        // The Lock-In Ritual Chamber (#lockin-grind/#lockin-chill/#lockin-rounds)
+        // is the live setup surface now; fall back to the legacy Focus Mode
+        // inputs when it isn't mounted (smoke tests / stripped shells).
+        const lg = document.getElementById('lockin-grind');
+        const lb = document.getElementById('lockin-chill');
+        const lr = document.getElementById('lockin-rounds');
         const cfg = {
             subject: studySubject,
-            study: parseInt(document.getElementById('pomo-study').value, 10) || 50,
-            break: parseInt(document.getElementById('pomo-break').value, 10) || 10,
-            sessions: parseInt(document.getElementById('pomo-sessions').value, 10) || 1,
+            study: lg ? (parseInt(lg.value, 10) || 50) : (parseInt($('pomo-study').value, 10) || 50),
+            break: lb ? (parseInt(lb.value, 10) || 10) : (parseInt($('pomo-break').value, 10) || 10),
+            sessions: lr ? (parseInt(lr.value, 10) || 1) : (parseInt($('pomo-sessions').value, 10) || 1),
             stopwatch: isStopwatchMode,
             dynamic: dynamicSubject,
         };
@@ -218,13 +250,13 @@ export function applyPomoConfig() {
     const cfg = readPomoConfig();
     if (!cfg) return false;
     const setVal = (id, val) => {
-        const el = document.getElementById(id);
+        const el = $(id);
         if (el) el.value = val;
     };
     setVal('pomo-study', cfg.study);
     setVal('pomo-break', cfg.break);
     setVal('pomo-sessions', cfg.sessions);
-    const subjectEl = document.getElementById('pomo-subject');
+    const subjectEl = $('pomo-subject');
     if (subjectEl && isValidSubjectKey(cfg.subject)) {
         subjectEl.value = cfg.subject;
         if (studySubject !== cfg.subject) changeStudySubject();
@@ -245,6 +277,9 @@ export function applyPomoConfig() {
 
 // ---- Page Visibility Listener (fixes background freezing) ----
 document.addEventListener('visibilitychange', async () => {
+    if (!document.hidden && lockinSession.active && lockinSession.running) {
+        _lockinTick();
+    }
     if (document.hidden) return;
     if (pomoState === 'IDLE' || !timerStartTime || isPaused) return;
 
@@ -257,8 +292,8 @@ document.addEventListener('visibilitychange', async () => {
             secondsLeft = stopwatchAccumulated;
             creditStudySeconds(studySubject, elapsed);
         }
-        document.getElementById('timer-display').textContent = formatTime(secondsLeft);
-        document.getElementById('mini-time').textContent = formatTime(secondsLeft);
+        $('timer-display').textContent = formatTime(secondsLeft);
+        $('mini-time').textContent = formatTime(secondsLeft);
         return;
     }
 
@@ -268,13 +303,13 @@ document.addEventListener('visibilitychange', async () => {
     secondsLeft = remaining;
 
     // Update display
-    document.getElementById('timer-display').textContent = formatTime(secondsLeft);
-    document.getElementById('mini-time').textContent = formatTime(secondsLeft);
+    $('timer-display').textContent = formatTime(secondsLeft);
+    $('mini-time').textContent = formatTime(secondsLeft);
     const percent = timerTotalSeconds ? ((timerTotalSeconds - remaining) / timerTotalSeconds) * 100 : 0;
     if (visualMode === 'bar') {
-        document.getElementById('pomo-progress').style.width = `${percent}%`;
+        $('pomo-progress').style.width = `${percent}%`;
     } else {
-        document.getElementById('pomo-beaker-fill').style.height = `${percent}%`;
+        $('pomo-beaker-fill').style.height = `${percent}%`;
     }
     _updateMiniRing(percent / 100);
     if (pomoState === 'BREAK') GalleryBreak.setProgress(percent / 100);
@@ -293,12 +328,12 @@ document.addEventListener('visibilitychange', async () => {
 // ---- Visual toggles ----
 export function toggleVisualizer() {
     visualMode = visualMode === 'bar' ? 'beaker' : 'bar';
-    document.getElementById('vis-bar').style.display = visualMode === 'bar' ? 'block' : 'none';
-    document.getElementById('vis-beaker').style.display = visualMode === 'beaker' ? 'block' : 'none';
+    $('vis-bar').style.display = visualMode === 'bar' ? 'block' : 'none';
+    $('vis-beaker').style.display = visualMode === 'beaker' ? 'block' : 'none';
 }
 
 export function toggleMiniWidget() {
-    const widget = document.getElementById('pomo-mini-widget');
+    const widget = $('pomo-mini-widget');
     widget.classList.toggle('collapsed');
 }
 
@@ -317,8 +352,8 @@ function _seedPopConfig() {
     // starting; the persisted config is only a fallback for empty inputs.
     // (Seeding from the stale config first used to make ▶ run the OLD length
     // and silently rewrite the input the user had just changed.)
-    popMinutes = parseInt(document.getElementById('pomo-study')?.value, 10) || (cfg ? cfg.study : 25);
-    popRounds = parseInt(document.getElementById('pomo-sessions')?.value, 10) || (cfg ? cfg.sessions : 1);
+    popMinutes = parseInt($('pomo-study')?.value, 10) || (cfg ? cfg.study : 25);
+    popRounds = parseInt($('pomo-sessions')?.value, 10) || (cfg ? cfg.sessions : 1);
     popMinutes = Math.min(120, Math.max(5, popMinutes));
     popRounds = Math.min(8, Math.max(1, popRounds));
 }
@@ -331,24 +366,24 @@ function _popReason() {
 
 function _syncPopControls() {
     _seedPopConfig();
-    const mEl = document.getElementById('pop-minutes');
+    const mEl = $('pop-minutes');
     if (mEl) mEl.textContent = String(popMinutes);
-    const rEl = document.getElementById('pop-rounds');
+    const rEl = $('pop-rounds');
     if (rEl) rEl.textContent = String(popRounds);
-    const reasonEl = document.getElementById('pop-reason');
+    const reasonEl = $('pop-reason');
     if (reasonEl) reasonEl.textContent = _popReason();
     document.querySelectorAll('#pop-subjects .pop-sub').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.subject === studySubject);
     });
-    const dyn = document.getElementById('pop-dynamic');
+    const dyn = $('pop-dynamic');
     if (dyn) dyn.classList.toggle('on', dynamicSubject);
     // Idle pill preview mirrors the suggestion.
-    const timeEl = document.getElementById('mini-time');
+    const timeEl = $('mini-time');
     if (timeEl && pomoState === 'IDLE') timeEl.textContent = formatTime(popMinutes * 60);
-    const statusEl = document.getElementById('mini-status');
+    const statusEl = $('mini-status');
     if (statusEl && pomoState === 'IDLE') statusEl.textContent = 'SPRINT';
     _updateMiniTally();
-    const reason2 = document.getElementById('mini-reason');
+    const reason2 = $('mini-reason');
     if (reason2) reason2.textContent = focusLedger.done > 0 ? '' : 'tap ▶ to lock in';
 }
 
@@ -359,8 +394,8 @@ export function openPomoPop() {
         return;
     }
     popOpen = true;
-    const pop = document.getElementById('pomo-pop');
-    const w = document.getElementById('pomo-mini-widget');
+    const pop = $('pomo-pop');
+    const w = $('pomo-mini-widget');
     if (pop) pop.classList.add('open');
     if (w && typeof w.setAttribute === 'function') w.setAttribute('data-pop', '');
     _syncPopControls();
@@ -368,8 +403,8 @@ export function openPomoPop() {
 
 export function closePomoPop() {
     popOpen = false;
-    const pop = document.getElementById('pomo-pop');
-    const w = document.getElementById('pomo-mini-widget');
+    const pop = $('pomo-pop');
+    const w = $('pomo-mini-widget');
     if (pop) pop.classList.remove('open');
     if (w && typeof w.removeAttribute === 'function') w.removeAttribute('data-pop');
 }
@@ -378,14 +413,14 @@ export function closePomoPop() {
 if (typeof document.addEventListener === 'function') {
     document.addEventListener('click', (e) => {
         if (!popOpen) return;
-        const w = document.getElementById('pomo-mini-widget');
+        const w = $('pomo-mini-widget');
         if (w && !w.contains(e.target)) closePomoPop();
     });
 }
 
 export function popSetSubject(sub) {
     if (!isValidSubjectKey(sub)) return;
-    const select = document.getElementById('pomo-subject');
+    const select = $('pomo-subject');
     if (select) { select.value = sub; changeStudySubject(); }
     else { studySubject = sub; updateMiniSubject(); }
     _syncPopControls();
@@ -394,7 +429,7 @@ export function popSetSubject(sub) {
 export function popAdjustMinutes(delta) {
     _seedPopConfig();
     popMinutes = Math.min(120, Math.max(5, popMinutes + delta));
-    const input = document.getElementById('pomo-study');
+    const input = $('pomo-study');
     if (input) input.value = String(popMinutes);   // write-through: form stays source of truth
     updateProjection();
     _syncPopControls();
@@ -403,7 +438,7 @@ export function popAdjustMinutes(delta) {
 export function popAdjustRounds(delta) {
     _seedPopConfig();
     popRounds = Math.min(8, Math.max(1, popRounds + delta));
-    const input = document.getElementById('pomo-sessions');
+    const input = $('pomo-sessions');
     if (input) input.value = String(popRounds);
     updateProjection();
     _syncPopControls();
@@ -413,11 +448,11 @@ export function popAdjustRounds(delta) {
 export function startSprintFromWidget() {
     if (pomoState !== 'IDLE') return;
     _seedPopConfig();
-    const studyInput = document.getElementById('pomo-study');
+    const studyInput = $('pomo-study');
     if (studyInput) studyInput.value = String(popMinutes);
-    const sessionsInput = document.getElementById('pomo-sessions');
+    const sessionsInput = $('pomo-sessions');
     if (sessionsInput) sessionsInput.value = String(popRounds);
-    const select = document.getElementById('pomo-subject');
+    const select = $('pomo-subject');
     if (select && isValidSubjectKey(studySubject)) select.value = studySubject;
     closePomoPop();
     startTimer();
@@ -435,7 +470,7 @@ export function popStart() {
  */
 export function widgetPauseToggle() {
     if (pomoState === 'IDLE') return;
-    const btn = document.getElementById('mini-pause');
+    const btn = $('mini-pause');
     if (isPaused) {
         resumeTimer();
         if (btn) btn.textContent = '▮▮';
@@ -460,13 +495,13 @@ export function toggleDynamicSubject(btn) {
 }
 
 export function changeStudySubject() {
-    const select = document.getElementById('pomo-subject');
+    const select = $('pomo-subject');
     if (!select || !isValidSubjectKey(select.value)) return;
     studySubject = select.value;
     updateMiniSubject();
 
     // Live status line refresh while a session is underway.
-    const status = document.getElementById('timer-status');
+    const status = $('timer-status');
     if (!status) return;
     if (pomoState === 'STOPWATCH') {
         status.textContent = `Stopwatch: ${studySubject.toUpperCase()}`;
@@ -476,7 +511,7 @@ export function changeStudySubject() {
 }
 
 function updateMiniSubject() {
-    const badge = document.getElementById('mini-subject');
+    const badge = $('mini-subject');
     if (badge) badge.textContent = studySubject.toUpperCase();
 }
 
@@ -484,22 +519,22 @@ export function updateStudyTimeHeader() {
     const total = studySecs.physics + studySecs.chemistry + studySecs.maths;
     const th = Math.floor(total / 3600);
     const tm = Math.floor((total % 3600) / 60);
-    const headTime = document.getElementById('top-study-time'); // header chip removed — stay null-safe
+    const headTime = $('top-study-time'); // header chip removed — stay null-safe
     if (headTime) headTime.textContent = th > 0 ? `${th}h ${tm}m` : `${tm}m`;
-    document.getElementById('stat-hrs-physics').textContent = formatStudyDuration(studySecs.physics);
-    document.getElementById('stat-hrs-chemistry').textContent = formatStudyDuration(studySecs.chemistry);
-    document.getElementById('stat-hrs-maths').textContent = formatStudyDuration(studySecs.maths);
+    $('stat-hrs-physics').textContent = formatStudyDuration(studySecs.physics);
+    $('stat-hrs-chemistry').textContent = formatStudyDuration(studySecs.chemistry);
+    $('stat-hrs-maths').textContent = formatStudyDuration(studySecs.maths);
 }
 
 // ── Commitment projection ─────────────────────────────────────────────────
 // Before locking in, the form states the contract in plain numbers: what
 // you're signing up for and what it pays. Updates live on every input.
 export function updateProjection() {
-    const el = document.getElementById('pomo-projection');
+    const el = $('pomo-projection');
     if (!el) return;
-    const study = parseInt(document.getElementById('pomo-study')?.value, 10) || 0;
-    const chill = parseInt(document.getElementById('pomo-break')?.value, 10) || 0;
-    const rounds = parseInt(document.getElementById('pomo-sessions')?.value, 10) || 1;
+    const study = parseInt($('pomo-study')?.value, 10) || 0;
+    const chill = parseInt($('pomo-break')?.value, 10) || 0;
+    const rounds = parseInt($('pomo-sessions')?.value, 10) || 1;
     if (study <= 0 || rounds <= 0) { el.textContent = ''; return; }
     const totalMin = study * rounds + chill * Math.max(0, rounds - 1);
     const h = Math.floor(totalMin / 60);
@@ -509,13 +544,13 @@ export function updateProjection() {
 
 // ── Focus view hydration (ledger strip + chain pips) ──────────────────────
 export function hydrateFocusStats() {
-    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
     set('fs-done', String(focusLedger.done));
     set('fs-deep', formatStudyDuration(focusLedger.deep));
     set('fs-chain', String(focusLedger.chain));
     set('fs-best', String(focusLedger.best));
     set('fs-forfeit', String(focusLedger.forfeit));
-    const pips = document.getElementById('chain-pips');
+    const pips = $('chain-pips');
     if (pips) {
         const slots = Math.max(5, focusLedger.chain, Math.min(focusLedger.best, 10));
         let html = '';
@@ -531,14 +566,14 @@ export function hydrateFocusStats() {
 // Bind the projection to form edits (guarded — module may load under stubs).
 try {
     ['pomo-study', 'pomo-break', 'pomo-sessions'].forEach(id => {
-        const el = document.getElementById(id);
+        const el = $(id);
         if (el) el.addEventListener('input', updateProjection);
     });
 } catch (_) {}
 
 export function setPomoPreset(grind, chill) {
-    const studyInput = document.getElementById('pomo-study');
-    const breakInput = document.getElementById('pomo-break');
+    const studyInput = $('pomo-study');
+    const breakInput = $('pomo-break');
     if (studyInput) {
         studyInput.value = grind;
         studyInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -708,27 +743,39 @@ function _focusToast(msg) {
 // receiptHTML (optional) renders a session receipt — what the finished block
 // paid out — inside the modal. Kept as escaped, pre-built markup rows.
 function showTimerNotification(title, icon, message, nextAction, receiptHTML) {    _pomoPendingAction = nextAction;
-    document.getElementById('notify-title').textContent = title;
-    document.getElementById('notify-icon').textContent = icon;
-    document.getElementById('notify-message').textContent = message;
+    _setNotifyVariant('');
+    $('notify-title').textContent = title;
+    $('notify-icon').textContent = icon;
+    $('notify-message').textContent = message;
 
-    const receipt = document.getElementById('notify-receipt');
+    const receipt = $('notify-receipt');
     if (receipt) {
         if (receiptHTML) { receipt.innerHTML = receiptHTML; receipt.hidden = false; }
         else { receipt.innerHTML = ''; receipt.hidden = true; }
     }
-    const secondary = document.getElementById('notify-secondary');
+    const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
+    const primary = $('notify-primary');
+    if (primary) primary.textContent = "Let's Go";
 
     playBell(); // bell now safe to call
 
-    document.getElementById('timer-notify-modal').classList.add('active');
+    $('timer-notify-modal').classList.add('active');
 
-    document.getElementById('btn-start').style.display = 'none';
-    document.getElementById('btn-pause').style.display = 'none';
-    document.getElementById('btn-quit').style.display = 'none';
-    document.getElementById('break-actions').classList.remove('active');
-    document.getElementById('pomo-mini-widget').classList.add('hidden');
+    $('btn-start').style.display = 'none';
+    $('btn-pause').style.display = 'none';
+    $('btn-quit').style.display = 'none';
+    $('break-actions').classList.remove('active');
+    $('pomo-mini-widget').classList.add('hidden');
+}
+
+/** Theme #timer-notify-modal for the Lock-In variants (victory/breach/complete). */
+function _setNotifyVariant(variant) {
+    _notifyVariant = variant || null;
+    const modal = document.getElementById('timer-notify-modal');
+    if (!modal || typeof modal.setAttribute !== 'function') return;
+    if (variant) modal.setAttribute('data-notify-variant', variant);
+    else modal.removeAttribute('data-notify-variant');
 }
 
 function _receiptRows(rows) {
@@ -755,9 +802,14 @@ function _blockCompletionReceipt(plannedSecs) {
 }
 
 export function confirmTimerNotification() {
-    document.getElementById('timer-notify-modal').classList.remove('active');
-    const secondary = document.getElementById('notify-secondary');
+    const variant = _notifyVariant;
+    $('timer-notify-modal').classList.remove('active');
+    const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
+    _setNotifyVariant('');
+    // Lock-In variants own their own confirm semantics.
+    if (variant === 'breach') { stayLockedIn(); return; }
+    if (variant === 'victory' || variant === 'complete') return;
     if (_pomoPendingAction) {
         const action = _pomoPendingAction;
         _pomoPendingAction = null;
@@ -767,13 +819,16 @@ export function confirmTimerNotification() {
     }
 }
 
-/** "Keep Going" on the quit-confirm — un-breaks the clock and resumes. */
+/** "Keep Going" / "Stay Locked In" — un-breaks the clock and resumes. */
 export function notifyKeepGoing() {
-    document.getElementById('timer-notify-modal').classList.remove('active');
-    const secondary = document.getElementById('notify-secondary');
+    const variant = _notifyVariant;
+    $('timer-notify-modal').classList.remove('active');
+    const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
+    _setNotifyVariant('');
     _pomoPendingAction = null;
-    document.getElementById('pomo-mini-widget').classList.remove('hidden');
+    if (variant === 'breach') { voidLockinBlock(); return; }
+    $('pomo-mini-widget').classList.remove('hidden');
     resumeTimer();
 }
 
@@ -795,12 +850,12 @@ function requestQuitConfirm() {
 
     _pomoPendingAction = () => _finalizeQuit(true);
 
-    document.getElementById('notify-title').textContent = 'Break the chain?';
-    document.getElementById('notify-icon').textContent = '⛓️';
-    document.getElementById('notify-message').textContent =
+    $('notify-title').textContent = 'Break the chain?';
+    $('notify-icon').textContent = '⛓️';
+    $('notify-message').textContent =
         `${formatTime(elapsed)} of ${studySubject.toUpperCase()} still counts — but your ${focusLedger.chain}-block chain resets to zero.`;
 
-    const receipt = document.getElementById('notify-receipt');
+    const receipt = $('notify-receipt');
     if (receipt) {
         receipt.innerHTML = _receiptRows([
             { k: 'Kept', v: `${formatTime(elapsed)} logged to ${studySubject.toUpperCase()}` },
@@ -809,16 +864,16 @@ function requestQuitConfirm() {
         ]);
         receipt.hidden = false;
     }
-    const secondary = document.getElementById('notify-secondary');
+    const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'block';
 
     // No bell here — this modal is a warning, not a reward.
-    document.getElementById('timer-notify-modal').classList.add('active');
-    document.getElementById('btn-start').style.display = 'none';
-    document.getElementById('btn-pause').style.display = 'none';
-    document.getElementById('btn-quit').style.display = 'none';
-    document.getElementById('break-actions').classList.remove('active');
-    document.getElementById('pomo-mini-widget').classList.add('hidden');
+    $('timer-notify-modal').classList.add('active');
+    $('btn-start').style.display = 'none';
+    $('btn-pause').style.display = 'none';
+    $('btn-quit').style.display = 'none';
+    $('break-actions').classList.remove('active');
+    $('pomo-mini-widget').classList.add('hidden');
 }
 
 /** Actual teardown. countForfeit=true burns the chain and logs the forfeit. */
@@ -833,8 +888,8 @@ function _finalizeQuit(countForfeit) {
     _setDeepWorkActive(false);
     syncWidgetPaused(false);
 
-    document.getElementById('timer-notify-modal').classList.remove('active');
-    const secondary = document.getElementById('notify-secondary');
+    $('timer-notify-modal').classList.remove('active');
+    const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
     _pomoPendingAction = null;
 
@@ -853,7 +908,7 @@ function _finalizeQuit(countForfeit) {
 
     timerEndTriggered = true; // prevent handleTimerEnd from firing later
     lastTickAt = null;
-    document.getElementById('timer-status').textContent = countForfeit ? "Session Forfeit." : "Tracking Stopped.";
+    $('timer-status').textContent = countForfeit ? "Session Forfeit." : "Tracking Stopped.";
     hydrateFocusStats();
     try {
         const _h = new Date().getHours();
@@ -897,8 +952,8 @@ export function executeTimerTick() {
     if (pomoState === 'STOPWATCH') {
         // Count up from previous accumulated time
         secondsLeft = stopwatchAccumulated + elapsed;
-        document.getElementById('timer-display').textContent = formatTime(secondsLeft);
-        document.getElementById('mini-time').textContent = formatTime(secondsLeft);
+        $('timer-display').textContent = formatTime(secondsLeft);
+        $('mini-time').textContent = formatTime(secondsLeft);
 
         // Update study seconds and save periodically
         creditStudySeconds(studySubject, deltaSecs);
@@ -906,14 +961,14 @@ export function executeTimerTick() {
     } else {
         // Countdown: recalc remaining from true elapsed time
         secondsLeft = Math.max(0, timerTotalSeconds - elapsed);
-        document.getElementById('timer-display').textContent = formatTime(secondsLeft);
-        document.getElementById('mini-time').textContent = formatTime(secondsLeft);
+        $('timer-display').textContent = formatTime(secondsLeft);
+        $('mini-time').textContent = formatTime(secondsLeft);
 
         const percent = timerTotalSeconds ? ((timerTotalSeconds - secondsLeft) / timerTotalSeconds) * 100 : 0;
         if (visualMode === 'bar') {
-            document.getElementById('pomo-progress').style.width = `${percent}%`;
+            $('pomo-progress').style.width = `${percent}%`;
         } else {
-            document.getElementById('pomo-beaker-fill').style.height = `${percent}%`;
+            $('pomo-beaker-fill').style.height = `${percent}%`;
         }
         _updateMiniRing(percent / 100);
 
@@ -940,7 +995,7 @@ export function executeTimerTick() {
 
 // ---- What happens when timer reaches 0 ----
 function handleTimerEnd() {
-    document.getElementById('pomo-mini-widget').classList.add('hidden');
+    $('pomo-mini-widget').classList.add('hidden');
     _setDeepWorkActive(false);   // block over — the ×1.5 window closes with it
 
     if (pomoState === 'STUDY') {
@@ -1000,12 +1055,12 @@ function handleTimerEnd() {
 }
 
 function startBreakAfterPopup() {
-    document.getElementById('pomo-mini-widget').classList.remove('hidden');
+    $('pomo-mini-widget').classList.remove('hidden');
     transitionToBreak();
 }
 
 function startStudyAfterBreakPopup() {
-    document.getElementById('pomo-mini-widget').classList.remove('hidden');
+    $('pomo-mini-widget').classList.remove('hidden');
     transitionToStudy();
 }
 
@@ -1019,7 +1074,7 @@ function finishAllAfterPopup() {
 // restore never trips toggle side effects (e.g. toggleStopwatchMode always
 // runs resetPomoUI()).
 function _syncStopwatchUI() {
-    const targetBtn = document.getElementById('stopwatch-toggle-btn');
+    const targetBtn = $('stopwatch-toggle-btn');
     if (targetBtn) {
         targetBtn.textContent = isStopwatchMode ? 'On' : 'Off';
         targetBtn.style.background = isStopwatchMode ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.08)';
@@ -1037,7 +1092,7 @@ function _syncStopwatchUI() {
 
 // Pure UI reflection of dynamicSubject — same rationale as _syncStopwatchUI.
 function _syncDynamicSubjectUI() {
-    const targetBtn = document.getElementById('dynamic-subject-btn');
+    const targetBtn = $('dynamic-subject-btn');
     if (targetBtn) {
         targetBtn.classList.toggle('on', dynamicSubject);
         targetBtn.title = dynamicSubject
@@ -1050,7 +1105,7 @@ function _syncDynamicSubjectUI() {
 
     // While running, keep the subject picker usable (or re-lock it).
     if (pomoState !== 'IDLE') {
-        const select = document.getElementById('pomo-subject');
+        const select = $('pomo-subject');
         if (select) select.disabled = !dynamicSubject;
     }
 }
@@ -1074,12 +1129,12 @@ export function startTimer() {
     // ── Night Guard: log session start for sleep-debt ledger ──
     try { NightGuard.logSessionStart(); } catch (_) {}
     syncFilterLock();
-    const chosenSubject = document.getElementById('pomo-subject').value;
+    const chosenSubject = $('pomo-subject').value;
     studySubject = isValidSubjectKey(chosenSubject) ? chosenSubject : 'physics';
     document.querySelectorAll('#view-pomodoro .pomo-input, #view-pomodoro .pomo-select').forEach(el => el.disabled = true);
-    if (dynamicSubject) document.getElementById('pomo-subject').disabled = false;
+    if (dynamicSubject) $('pomo-subject').disabled = false;
     updateMiniSubject();
-    document.getElementById('btn-start').style.display = 'none';
+    $('btn-start').style.display = 'none';
 
     // Initialize audio context on user gesture
     initAudioContext();
@@ -1089,7 +1144,7 @@ export function startTimer() {
     if (isStopwatchMode) {
         transitionToStopwatch();
     } else {
-        totalSessions = parseInt(document.getElementById('pomo-sessions').value) || 1;
+        totalSessions = parseInt($('pomo-sessions').value) || 1;
         currentSession = 1;
         transitionToStudy();
     }
@@ -1111,11 +1166,11 @@ export function transitionToStopwatch() {
     secondsLeft = 0;
     stopwatchAccumulated = 0; // start fresh
     timerTotalSeconds = 0;    // not used
-    document.getElementById('timer-status').textContent = `Stopwatch: ${studySubject.toUpperCase()}`;
+    $('timer-status').textContent = `Stopwatch: ${studySubject.toUpperCase()}`;
 
-    document.getElementById('pomo-mini-widget').classList.remove('hidden');
-    document.getElementById('mini-status').textContent = 'STOPWATCH';
-    document.getElementById('mini-status').className = 'mini-status study';
+    $('pomo-mini-widget').classList.remove('hidden');
+    $('mini-status').textContent = 'STOPWATCH';
+    $('mini-status').className = 'mini-status study';
     updateMiniSubject();
     syncWidget('study');
     syncWidgetPaused(false);
@@ -1125,15 +1180,15 @@ export function transitionToStopwatch() {
     _updateMiniRing(1);
     _updateMiniTally();
 
-    document.getElementById('btn-pause').style.display = 'inline-block';
-    document.getElementById('btn-pause').textContent = "Pause";
-    document.getElementById('btn-pause').onclick = pauseTimer;
-    document.getElementById('btn-quit').style.display = 'inline-block';
-    document.getElementById('btn-quit').textContent = "Stop";
-    document.getElementById('break-actions').classList.remove('active');
+    $('btn-pause').style.display = 'inline-block';
+    $('btn-pause').textContent = "Pause";
+    $('btn-pause').onclick = pauseTimer;
+    $('btn-quit').style.display = 'inline-block';
+    $('btn-quit').textContent = "Stop";
+    $('break-actions').classList.remove('active');
 
-    document.getElementById('pomo-progress').style.background = 'var(--gradient-glow)';
-    document.getElementById('pomo-progress').style.width = '100%';
+    $('pomo-progress').style.background = 'var(--gradient-glow)';
+    $('pomo-progress').style.width = '100%';
 
     isPaused = false;
     timerStartTime = Date.now(); // mark real start
@@ -1143,14 +1198,14 @@ export function transitionToStopwatch() {
 
 export function transitionToStudy() {
     pomoState = 'STUDY';
-    const studyVal = parseInt(document.getElementById('pomo-study').value) || 50;
+    const studyVal = parseInt($('pomo-study').value) || 50;
     timerTotalSeconds = studyVal * 60;
     secondsLeft = timerTotalSeconds;
-    document.getElementById('timer-status').textContent = `Studying ${studySubject.toUpperCase()} (${currentSession}/${totalSessions})`;
+    $('timer-status').textContent = `Studying ${studySubject.toUpperCase()} (${currentSession}/${totalSessions})`;
 
-    document.getElementById('pomo-mini-widget').classList.remove('hidden');
-    document.getElementById('mini-status').textContent = `STUDY ${currentSession}/${totalSessions}`;
-    document.getElementById('mini-status').className = 'mini-status study';
+    $('pomo-mini-widget').classList.remove('hidden');
+    $('mini-status').textContent = `STUDY ${currentSession}/${totalSessions}`;
+    $('mini-status').className = 'mini-status study';
     updateMiniSubject();
     syncWidget('study');
     syncWidgetPaused(false);
@@ -1162,18 +1217,18 @@ export function transitionToStudy() {
     _updateMiniEnd();
     _updateMiniTally();
 
-    document.getElementById('btn-pause').style.display = 'inline-block';
-    document.getElementById('btn-pause').textContent = "Pause";
-    document.getElementById('btn-pause').onclick = pauseTimer;
-    document.getElementById('btn-quit').style.display = 'inline-block';
-    document.getElementById('btn-quit').textContent = "Quit";
+    $('btn-pause').style.display = 'inline-block';
+    $('btn-pause').textContent = "Pause";
+    $('btn-pause').onclick = pauseTimer;
+    $('btn-quit').style.display = 'inline-block';
+    $('btn-quit').textContent = "Quit";
     // Back to quit semantics (a BREAK phase rebinds this to skipBreak).
-    document.getElementById('btn-quit').onclick = () => quitTimer();
-    document.getElementById('break-actions').classList.remove('active');
+    $('btn-quit').onclick = () => quitTimer();
+    $('break-actions').classList.remove('active');
 
-    document.getElementById('pomo-progress').style.background = 'var(--gradient-glow)';
-    document.getElementById('pomo-progress').style.width = '0%';
-    document.getElementById('pomo-beaker-fill').style.height = '0%';
+    $('pomo-progress').style.background = 'var(--gradient-glow)';
+    $('pomo-progress').style.width = '0%';
+    $('pomo-beaker-fill').style.height = '0%';
 
     isPaused = false;
     timerStartTime = Date.now();
@@ -1185,14 +1240,14 @@ export function transitionToStudy() {
 
 export function transitionToBreak() {
     pomoState = 'BREAK';
-    const breakVal = parseInt(document.getElementById('pomo-break').value) || 10;
+    const breakVal = parseInt($('pomo-break').value) || 10;
     timerTotalSeconds = breakVal * 60;
     secondsLeft = timerTotalSeconds;
-    document.getElementById('timer-status').textContent = `Break Time ☕ (${currentSession}/${totalSessions})`;
+    $('timer-status').textContent = `Break Time ☕ (${currentSession}/${totalSessions})`;
 
-    document.getElementById('pomo-mini-widget').classList.remove('hidden');
-    document.getElementById('mini-status').textContent = 'BREAK';
-    document.getElementById('mini-status').className = 'mini-status break';
+    $('pomo-mini-widget').classList.remove('hidden');
+    $('mini-status').textContent = 'BREAK';
+    $('mini-status').className = 'mini-status break';
     updateMiniSubject();
     syncWidget('break');
     syncWidgetPaused(false);
@@ -1201,20 +1256,20 @@ export function transitionToBreak() {
     _updateMiniRing(0);
     _updateMiniEnd();
 
-    document.getElementById('btn-pause').style.display = 'inline-block';
-    document.getElementById('btn-pause').textContent = "Pause";
-    document.getElementById('btn-pause').onclick = pauseTimer;
-    document.getElementById('btn-quit').style.display = 'inline-block';
-    document.getElementById('btn-quit').textContent = "Skip Break";
+    $('btn-pause').style.display = 'inline-block';
+    $('btn-pause').textContent = "Pause";
+    $('btn-pause').onclick = pauseTimer;
+    $('btn-quit').style.display = 'inline-block';
+    $('btn-quit').textContent = "Skip Break";
     // The markup wires this button to quitTimer(); left alone it would tear
     // the whole run down ("Tracking Stopped.") instead of advancing to the
     // next study block. Rebind it to skipBreak for the break phase.
-    document.getElementById('btn-quit').onclick = skipBreak;
-    document.getElementById('break-actions').classList.remove('active');
+    $('btn-quit').onclick = skipBreak;
+    $('break-actions').classList.remove('active');
 
-    document.getElementById('pomo-progress').style.background = 'var(--gradient-glow)';
-    document.getElementById('pomo-progress').style.width = '0%';
-    document.getElementById('pomo-beaker-fill').style.height = '0%';
+    $('pomo-progress').style.background = 'var(--gradient-glow)';
+    $('pomo-progress').style.width = '0%';
+    $('pomo-beaker-fill').style.height = '0%';
 
     isPaused = false;
     timerStartTime = Date.now();
@@ -1246,9 +1301,9 @@ export function pauseTimer() {
     _setDeepWorkActive(false);   // paused clock ≠ deep work — bonus closes
     syncWidgetPaused(true);
     _updateMiniEnd();
-    document.getElementById('timer-status').textContent = (pomoState === 'STOPWATCH') ? "Stopwatch Paused" : "Timer Paused";
-    document.getElementById('btn-pause').textContent = "Resume";
-    document.getElementById('btn-pause').onclick = resumeTimer;
+    $('timer-status').textContent = (pomoState === 'STOPWATCH') ? "Stopwatch Paused" : "Timer Paused";
+    $('btn-pause').textContent = "Resume";
+    $('btn-pause').onclick = resumeTimer;
 }
 
 export function resumeTimer() {
@@ -1266,19 +1321,19 @@ export function resumeTimer() {
     }
 
     if (pomoState === 'STOPWATCH') {
-        document.getElementById('timer-status').textContent = `Stopwatch: ${studySubject.toUpperCase()}`;
+        $('timer-status').textContent = `Stopwatch: ${studySubject.toUpperCase()}`;
     } else if (pomoState === 'STUDY') {
-        document.getElementById('timer-status').textContent = `Studying ${studySubject.toUpperCase()} (${currentSession}/${totalSessions})`;
+        $('timer-status').textContent = `Studying ${studySubject.toUpperCase()} (${currentSession}/${totalSessions})`;
     } else {
-        document.getElementById('timer-status').textContent = `Break Time ☕ (${currentSession}/${totalSessions})`;
+        $('timer-status').textContent = `Break Time ☕ (${currentSession}/${totalSessions})`;
     }
     updateMiniSubject();
     if (pomoState === 'STUDY' || pomoState === 'STOPWATCH') _setDeepWorkActive(true);
     syncWidgetPaused(false);
     _updateMiniEnd();
 
-    document.getElementById('btn-pause').textContent = "Pause";
-    document.getElementById('btn-pause').onclick = pauseTimer;
+    $('btn-pause').textContent = "Pause";
+    $('btn-pause').onclick = pauseTimer;
     timerInterval = setInterval(executeTimerTick, 1000);
 }
 
@@ -1298,8 +1353,8 @@ export function resetPomoUI() {
     pomoState = 'IDLE';
     syncFilterLock();
     GalleryBreak.abort();
-    document.getElementById('timer-notify-modal').classList.remove('active');
-    const secondary = document.getElementById('notify-secondary');
+    $('timer-notify-modal').classList.remove('active');
+    const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
     _pomoPendingAction = null;
     if (_resetPomoTimer) { clearTimeout(_resetPomoTimer); _resetPomoTimer = null; }
@@ -1308,14 +1363,14 @@ export function resetPomoUI() {
     syncWidgetPaused(false);
 
     document.querySelectorAll('#view-pomodoro .pomo-input, #view-pomodoro .pomo-select').forEach(el => el.disabled = false);
-    document.getElementById('btn-start').style.display = 'inline-block';
-    document.getElementById('btn-pause').style.display = 'none';
-    document.getElementById('btn-quit').style.display = 'none';
-    document.getElementById('btn-quit').textContent = "Quit";
-    document.getElementById('break-actions').classList.remove('active');
+    $('btn-start').style.display = 'inline-block';
+    $('btn-pause').style.display = 'none';
+    $('btn-quit').style.display = 'none';
+    $('btn-quit').textContent = "Quit";
+    $('break-actions').classList.remove('active');
 
-    document.getElementById('pomo-progress').style.width = '0%';
-    document.getElementById('pomo-beaker-fill').style.height = '0%';
+    $('pomo-progress').style.width = '0%';
+    $('pomo-beaker-fill').style.height = '0%';
 
     timerStartTime = null;
     timerEndTriggered = false;
@@ -1324,16 +1379,16 @@ export function resetPomoUI() {
     lastSavedStudyMinute = 0;
 
     if (isStopwatchMode) {
-        document.getElementById('timer-display').textContent = "00:00";
-        document.getElementById('timer-status').textContent = "Ready to Track";
+        $('timer-display').textContent = "00:00";
+        $('timer-status').textContent = "Ready to Track";
     } else {
-        const studyVal = parseInt(document.getElementById('pomo-study').value) || 50;
-        document.getElementById('timer-display').textContent = formatTime(studyVal * 60);
-        document.getElementById('timer-status').textContent = "Ready to Focus";
+        const studyVal = parseInt($('pomo-study').value) || 50;
+        $('timer-display').textContent = formatTime(studyVal * 60);
+        $('timer-status').textContent = "Ready to Focus";
     }
 
     // Back to the always-visible idle pill — the one-tap entry point.
-    const widget = document.getElementById('pomo-mini-widget');
+    const widget = $('pomo-mini-widget');
     if (widget) widget.classList.remove('hidden');
     syncWidget('idle');
     _updateMiniRing(0);
@@ -1361,8 +1416,8 @@ export function addBreakTime(extraMinutes) {
     timerTotalSeconds += extraSeconds;
     secondsLeft += extraSeconds;
     // Update the timer display immediately
-    document.getElementById('timer-display').textContent = formatTime(secondsLeft);
-    document.getElementById('mini-time').textContent = formatTime(secondsLeft);
+    $('timer-display').textContent = formatTime(secondsLeft);
+    $('mini-time').textContent = formatTime(secondsLeft);
     _updateMiniEnd();
     // The next tick will handle the rest
 }
@@ -1370,9 +1425,9 @@ export function addBreakTime(extraMinutes) {
 export function finishAll() {
     clearInterval(timerInterval);
     saveAllAsync().catch(console.error);
-    document.getElementById('pomo-mini-widget').classList.add('hidden');
-    document.getElementById('timer-display').textContent = "00:00";
-    document.getElementById('timer-status').textContent = "All sessions complete!";
+    $('pomo-mini-widget').classList.add('hidden');
+    $('timer-display').textContent = "00:00";
+    $('timer-status').textContent = "All sessions complete!";
     // Reset UI fully
     resetPomoUI();
 }
@@ -1383,3 +1438,593 @@ export function finishAll() {
 // under DOM stubs in the smoke tests.
 try { hydrateFocusStats(); } catch (_) {}
 try { _syncPopControls(); } catch (_) {}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOCK-IN RITUAL ENGINE
+// ---------------------------------------------------------------------------
+// The deeply-integrated focus timer for Flow / Hardcore practice. There is no
+// visible countdown while a question is on screen (zero clock anxiety): the
+// background block runs in escrow, silently expires, and banks its time only
+// when the block actually completes. Earned breaks bloom a Museum Glass HUD
+// over the GalleryBreak painting and auto-ignite back into the same mode.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const LOCKIN_MODES = ['flow', 'hardcore'];
+const LOCKIN_KICKERS = {
+    flow: '// FLOW STATE LOCK-IN · P(WIN) 75–85% · ×1.5 ELO',
+    hardcore: '// OVERCLOCK CRUCIBLE · P(WIN) 35–50% · 1.8× WIN × 1.5× DEEP WORK',
+};
+
+/** Live Lock-In session state (also handed to app.js on confirm / resume). */
+export const lockinSession = {
+    active: false,
+    mode: 'flow',
+    subject: 'physics',
+    chapter: '',
+    chapterSelection: null,
+    studyMins: 50,
+    breakMins: 10,
+    totalSessions: 1,
+    currentSession: 1,
+    phase: 'STUDY',                 // 'STUDY' | 'BREAK'
+    expiredPendingTransition: false,
+    solvedInRun: 0,
+    startElo: 1200,
+    running: false,
+    voided: false,
+};
+
+let _lockinTimer = null;
+let _lockinEndsAt = 0;
+let _lockinTotalSecs = 0;
+let _lockinLeftSecs = 0;
+let _lockinCreditedSecs = 0;       // escrow seconds accrued this STUDY block
+let _lockinPausedLeft = 0;
+let _lockinOnConfirm = null;
+
+// ── small helpers ─────────────────────────────────────────────────────────
+function _clamp(n, lo, hi) { n = parseInt(n, 10); if (!isFinite(n)) n = lo; return Math.min(hi, Math.max(lo, n)); }
+function _inputVal(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+function _setInputVal(id, v) { const el = document.getElementById(id); if (el) el.value = String(v); }
+function _currentSubjectElo(subj) {
+    try { const A = window.AppState; return (A && A.elo && A.elo[subj]) || 1200; } catch (_) { return 1200; }
+}
+function _clearLockinTick() { if (_lockinTimer) { clearInterval(_lockinTimer); _lockinTimer = null; } }
+function _isPracticeOpen() {
+    const m = document.getElementById('practice-modal');
+    return !!(m && m.classList && typeof m.classList.contains === 'function' && m.classList.contains('active'));
+}
+function _addPaceGlow() { const m = document.getElementById('practice-modal'); if (m) m.classList.add('pq-lockin-complete-glow'); }
+function _removePaceGlow() { const m = document.getElementById('practice-modal'); if (m) m.classList.remove('pq-lockin-complete-glow'); }
+
+// ── Session configuration draft / setup chamber ───────────────────────────
+export function openLockinSetupModal(mode, context, onConfirmStart) {
+    if (!LOCKIN_MODES.includes(mode)) return false;
+    const ctx = context || {};
+    lockinSession.mode = mode;
+    lockinSession.subject = isValidSubjectKey(ctx.subject) ? ctx.subject
+        : (isValidSubjectKey(studySubject) ? studySubject : 'physics');
+    lockinSession.chapter = ctx.chapter || '';
+    lockinSession.chapterSelection = Array.isArray(ctx.chapterSelection) ? ctx.chapterSelection.slice() : null;
+    lockinSession.startElo = _currentSubjectElo(lockinSession.subject);
+    lockinSession.voided = false;
+    _lockinOnConfirm = typeof onConfirmStart === 'function' ? onConfirmStart : null;
+
+    // Seed the draft from the last-used config so returning users land on
+    // their habitual block length.
+    const cfg = readPomoConfig();
+    const defRounds = cfg && cfg.sessions >= 2 ? cfg.sessions : 2;
+    _setInputVal('lockin-grind', _clamp(cfg ? cfg.study : 50, 5, 180));
+    _setInputVal('lockin-chill', _clamp(cfg ? cfg.break : 10, 1, 60));
+    _setInputVal('lockin-rounds', _clamp(defRounds, 1, 8));
+
+    const modal = document.getElementById('lockin-setup-modal');
+    if (modal && typeof modal.setAttribute === 'function') modal.setAttribute('data-lockin-mode', mode);
+    const kicker = document.getElementById('lockin-kicker');
+    if (kicker) kicker.textContent = LOCKIN_KICKERS[mode] || LOCKIN_KICKERS.flow;
+    const title = document.getElementById('lockin-title');
+    if (title) title.textContent = mode === 'hardcore' ? 'Enter the Crucible' : 'Sign the Pact';
+
+    _syncLockinPresetActive();
+    _renderLockinTimeline();
+    _renderLockinChain();
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+    }
+    return true;
+}
+
+export function closeLockinSetupModal() {
+    const el = document.getElementById('lockin-setup-modal');
+    if (el) {
+        el.classList.remove('active');
+        setTimeout(() => { if (!el.classList.contains('active')) el.style.display = 'none'; }, 250);
+    }
+    _lockinOnConfirm = null;
+}
+
+/** Commit the pact: persist the draft, chime, start the block, open practice. */
+export function confirmLockinSetup() {
+    const study = _clamp(_inputVal('lockin-grind'), 5, 180);
+    const chill = _clamp(_inputVal('lockin-chill'), 1, 60);
+    const rounds = _clamp(_inputVal('lockin-rounds'), 1, 8);
+    lockinSession.studyMins = study;
+    lockinSession.breakMins = chill;
+    lockinSession.totalSessions = rounds;
+    lockinSession.currentSession = 1;
+    lockinSession.active = true;
+    lockinSession.solvedInRun = 0;
+    lockinSession.startElo = _currentSubjectElo(lockinSession.subject);
+    studySubject = lockinSession.subject;
+    try {
+        localStorage.setItem(POMO_CONFIG_KEY, JSON.stringify({
+            subject: lockinSession.subject, study, break: chill, sessions: rounds,
+            stopwatch: false, dynamic: false,
+        }));
+    } catch (_) {}
+
+    const cb = _lockinOnConfirm;
+    _lockinOnConfirm = null;
+    closeLockinSetupModal();
+    _removePaceGlow();
+    initAudioContext();
+    playStartChime();
+    _startLockinStudy();
+
+    if (cb) { try { cb(lockinSession); } catch (e) { console.warn('[lockin] confirm callback failed', e); } }
+}
+
+export function applyLockinPreset(grind, chill) {
+    _setInputVal('lockin-grind', _clamp(grind, 5, 180));
+    _setInputVal('lockin-chill', _clamp(chill, 1, 60));
+    _syncLockinPresetActive();
+    _renderLockinTimeline();
+}
+
+export function stepLockinField(field, delta) {
+    const map = { grind: ['lockin-grind', 5, 180], chill: ['lockin-chill', 1, 60], rounds: ['lockin-rounds', 1, 8] };
+    const spec = map[field];
+    if (!spec) return;
+    const [id, lo, hi] = spec;
+    const cur = parseInt(_inputVal(id), 10) || lo;
+    _setInputVal(id, _clamp(cur + (parseInt(delta, 10) || 0), lo, hi));
+    _syncLockinPresetActive();
+    _renderLockinTimeline();
+}
+
+export function refreshLockinTimeline() { _syncLockinPresetActive(); _renderLockinTimeline(); }
+
+function _syncLockinPresetActive() {
+    const grind = parseInt(_inputVal('lockin-grind'), 10);
+    const chill = parseInt(_inputVal('lockin-chill'), 10);
+    const btns = document.querySelectorAll('#lockin-presets .lockin-preset');
+    if (!btns || !btns.forEach) return;
+    btns.forEach(btn => {
+        const g = parseInt(btn.dataset && btn.dataset.grind, 10);
+        const c = parseInt(btn.dataset && btn.dataset.chill, 10);
+        btn.classList.toggle('active', g === grind && c === chill);
+    });
+}
+
+function _renderLockinTimeline() {
+    const study = _clamp(_inputVal('lockin-grind'), 5, 180);
+    const chill = _clamp(_inputVal('lockin-chill'), 1, 60);
+    const rounds = _clamp(_inputVal('lockin-rounds'), 1, 8);
+    const total = study * rounds + chill * Math.max(0, rounds - 1);
+
+    const track = document.getElementById('lockin-timeline-track');
+    if (track) {
+        let html = '';
+        for (let r = 0; r < rounds; r++) {
+            html += `<span class="lt-block lt-grind" style="flex:${study} 1 0">GRIND ${study}m</span>`;
+            if (r < rounds - 1) html += `<span class="lt-block lt-rest" style="flex:${chill} 1 0">REST ${chill}m</span>`;
+        }
+        track.innerHTML = html;
+    }
+    const totalEl = document.getElementById('lockin-total-time');
+    if (totalEl) {
+        const h = Math.floor(total / 60);
+        totalEl.textContent = (h > 0 ? `${h}h ${total % 60}m` : `${total}m`) + ' committed';
+    }
+    const fin = document.getElementById('lockin-finish-time');
+    if (fin) {
+        const end = new Date(Date.now() + total * 60 * 1000);
+        let label = '--:--';
+        try { label = end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (_) {}
+        fin.textContent = 'Finishes at ' + label;
+    }
+}
+
+function _renderLockinChain() {
+    const pips = document.getElementById('lockin-chain-pips');
+    if (pips) {
+        const n = focusLedger.chain;
+        const slots = Math.max(5, n, Math.min(focusLedger.best, 10));
+        let html = '';
+        for (let i = 0; i < slots; i++) html += `<span class="chain-pip${i < n ? ' lit' : ''}${i === n - 1 ? ' tip' : ''}"></span>`;
+        pips.innerHTML = html;
+    }
+    const cn = document.getElementById('lockin-chain-n');
+    if (cn) cn.textContent = String(focusLedger.chain);
+}
+
+// ── Study / break phase machine ───────────────────────────────────────────
+function _startLockinStudy() {
+    lockinSession.phase = 'STUDY';
+    lockinSession.running = true;
+    lockinSession.expiredPendingTransition = false;
+    studySubject = lockinSession.subject;
+    _lockinTotalSecs = Math.max(1, lockinSession.studyMins) * 60;
+    _lockinLeftSecs = _lockinTotalSecs;
+    _lockinCreditedSecs = 0;
+    _lockinEndsAt = Date.now() + _lockinTotalSecs * 1000;
+    _setDeepWorkActive(true);
+    _removePaceGlow();
+    _clearLockinTick();
+    _lockinTimer = setInterval(_lockinTick, 1000);
+    try { NightGuard.logSessionStart(); } catch (_) {}
+}
+
+function _lockinTick() {
+    if (!lockinSession.active || !lockinSession.running) return;
+    const left = Math.max(0, Math.round((_lockinEndsAt - Date.now()) / 1000));
+    const delta = Math.max(1, _lockinLeftSecs - left);
+    _lockinLeftSecs = left;
+    if (lockinSession.phase === 'STUDY') {
+        _lockinCreditedSecs += delta;
+        if (left <= 0) { _onLockinStudyExpire(); return; }
+    } else {
+        _updateLockinBreakHud();
+        if (left <= 0) { _onLockinBreakExpire(); return; }
+    }
+}
+
+function _elapsedStudySecs() {
+    const fromLeft = Math.max(0, _lockinTotalSecs - _lockinLeftSecs);
+    return Math.min(_lockinTotalSecs, Math.max(fromLeft, _lockinCreditedSecs | 0));
+}
+
+/** Deposit the escrowed block into the day's ledger + study-time counters. */
+function _commitCompletedStudyBlock() {
+    const secs = _elapsedStudySecs();
+    _lockinCreditedSecs = 0;
+    if (secs <= 0) return 0;
+    const subj = lockinSession.subject;
+    studySubject = subj;
+    studySecs[subj] += secs;
+    try { updateStudyTimeHeader(); } catch (_) {}
+    _ledgerCompleteBlock(secs);
+    try { saveAllAsync().catch(() => {}); } catch (_) {}
+    try { window.dispatchEvent(new CustomEvent('jmax:pomo-block-done')); } catch (_) {}
+    return secs;
+}
+
+function _onLockinStudyExpire() {
+    _clearLockinTick();
+    lockinSession.running = false;
+    _lockinLeftSecs = 0;
+    // Silent expiry — never interrupt a live solve.
+    if (_isPracticeOpen()) {
+        lockinSession.expiredPendingTransition = true;
+        _addPaceGlow();
+        return;
+    }
+    _commitCompletedStudyBlock();
+    _advanceToBreakOrFinish();
+}
+
+function _advanceToBreakOrFinish() {
+    _setDeepWorkActive(false);
+    _removePaceGlow();
+    try { NightGuard.logSessionEnd(); } catch (_) {}
+    if (lockinSession.currentSession < lockinSession.totalSessions) {
+        _startLockinBreak();
+    } else {
+        _finishLockinCycle();
+    }
+}
+
+function _startLockinBreak() {
+    lockinSession.phase = 'BREAK';
+    lockinSession.running = true;
+    _lockinTotalSecs = Math.max(1, lockinSession.breakMins) * 60;
+    _lockinLeftSecs = _lockinTotalSecs;
+    _lockinCreditedSecs = 0;
+    _lockinEndsAt = Date.now() + _lockinTotalSecs * 1000;
+    _clearLockinTick();
+    _lockinTimer = setInterval(_lockinTick, 1000);
+    playBell();
+    try { GalleryBreak.begin(); } catch (e) { console.warn('[lockin] GalleryBreak failed', e); }
+    _showLockinBreakHud();
+}
+
+function _onLockinBreakExpire() {
+    _clearLockinTick();
+    lockinSession.running = false;
+    _endLockinBreak();
+}
+
+export function skipLockinRest() {
+    if (!lockinSession.active || lockinSession.phase !== 'BREAK') return;
+    _clearLockinTick();
+    lockinSession.running = false;
+    _endLockinBreak();
+}
+
+export function addLockinRest(mins) {
+    if (!lockinSession.active || lockinSession.phase !== 'BREAK') return;
+    const extra = Math.max(0, parseInt(mins, 10) || 0) * 60;
+    _lockinTotalSecs += extra;
+    _lockinLeftSecs += extra;
+    _lockinEndsAt += extra * 1000;
+    _updateLockinBreakHud();
+}
+
+function _endLockinBreak() {
+    try { GalleryBreak.abort(); } catch (_) {}
+    _hideLockinBreakHud();
+    if (!lockinSession.active) return;
+    lockinSession.currentSession += 1;
+    _startLockinStudy();
+    // Auto-ignition: re-open the practice stage in the exact same mode.
+    const resume = (typeof window !== 'undefined') ? window.__resumePracticeFromLockinBreak : null;
+    if (typeof resume === 'function') {
+        try { resume(lockinSession); } catch (e) { console.warn('[lockin] resume failed', e); }
+    }
+}
+
+/** Clean exit from the break HUD after a completed block — no penalty. */
+export function endLockinSession() {
+    if (!lockinSession.active) return;
+    // The HUD only shows between blocks; guard a mid-study call anyway.
+    if (lockinSession.phase === 'STUDY' && lockinSession.running && !lockinSession.expiredPendingTransition) {
+        requestLockinEarlyExitConfirm();
+        return;
+    }
+    _clearLockinTick();
+    lockinSession.running = false;
+    try { GalleryBreak.abort(); } catch (_) {}
+    _hideLockinBreakHud();
+    _setDeepWorkActive(false);
+    _resetLockinState();
+    try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal(); } catch (_) {}
+}
+
+function _finishLockinCycle() {
+    _removePaceGlow();
+    _resetLockinState();
+    try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal(); } catch (_) {}
+    showLockinComplete();
+}
+
+function _resetLockinState() {
+    _clearLockinTick();
+    lockinSession.active = false;
+    lockinSession.running = false;
+    lockinSession.expiredPendingTransition = false;
+    lockinSession.phase = 'STUDY';
+    lockinSession.currentSession = 1;
+    lockinSession.solvedInRun = 0;
+    _lockinCreditedSecs = 0;
+    _lockinLeftSecs = 0;
+    _lockinTotalSecs = 0;
+    _removePaceGlow();
+}
+
+// ── Public queries / hooks consumed by app.js ─────────────────────────────
+export function isLockinStudyRunning() {
+    return !!(lockinSession.active && lockinSession.phase === 'STUDY' &&
+        lockinSession.running && !lockinSession.expiredPendingTransition && _lockinLeftSecs > 0);
+}
+
+/** Count a solved question toward the run's telemetry receipt. */
+export function noteLockinSolve() {
+    if (lockinSession.active) lockinSession.solvedInRun += 1;
+}
+
+/**
+ * Called when the user advances, skips, parks or closes the practice stage.
+ * If the background block already expired, banks its escrow time and moves to
+ * the earned break (or final receipt). Returns true when it handled the exit
+ * (the caller should not proceed with its own advance).
+ */
+export function consumePendingLockinExpiry() {
+    if (!lockinSession.active) return false;
+    if (!lockinSession.expiredPendingTransition) return false;
+    lockinSession.expiredPendingTransition = false;
+    _removePaceGlow();
+    _commitCompletedStudyBlock();
+    // Close the practice stage first so the earned painting can bloom unblocked.
+    try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal(); } catch (_) {}
+    _advanceToBreakOrFinish();
+    return true;
+}
+
+/** Mid-timer answer-pool exhaustion — bank everything and crown the run. */
+export function completeLockinOnPoolExhausted() {
+    if (!lockinSession.active) return false;
+    const elapsed = _elapsedStudySecs();
+    const solved = lockinSession.solvedInRun | 0;
+    const mode = lockinSession.mode;
+    const subject = lockinSession.subject;
+    const netElo = _currentSubjectElo(subject) - lockinSession.startElo;
+    const chain = focusLedger.chain;
+    _commitCompletedStudyBlock();
+    _clearLockinTick();
+    lockinSession.running = false;
+    _setDeepWorkActive(false);
+    _resetLockinState();
+    const pm = document.getElementById('practice-modal');
+    if (pm && !pm.classList.contains('hidden')) {
+        if (typeof window.closePracticeModal === 'function') {
+            try { window.closePracticeModal({ skipLockinCheck: true }); } catch (_) {}
+        } else {
+            pm.classList.add('hidden');
+        }
+    }
+    showLockinVictory({ elapsed, solved, netElo, chain, mode });
+    return true;
+}
+
+/** Contract-breach gate — pause the clock and ask before voiding the block. */
+export function requestLockinEarlyExitConfirm() {
+    if (!isLockinStudyRunning()) return false;
+    _lockinPausedLeft = _lockinLeftSecs;
+    _clearLockinTick();
+    lockinSession.running = false;
+    _setDeepWorkActive(false);
+    showLockinBreach();
+    return true;
+}
+
+/** "Stay Locked In" — resume the paused block. */
+export function stayLockedIn() {
+    if (!lockinSession.active) return;
+    if (lockinSession.phase !== 'STUDY' || lockinSession.expiredPendingTransition) return;
+    lockinSession.running = true;
+    _lockinLeftSecs = Math.max(1, _lockinPausedLeft || _lockinLeftSecs);
+    _lockinEndsAt = Date.now() + _lockinLeftSecs * 1000;
+    _setDeepWorkActive(true);
+    _clearLockinTick();
+    _lockinTimer = setInterval(_lockinTick, 1000);
+}
+
+/** "Void Block & Exit" — discard the uncommitted escrow, break the chain. */
+export function voidLockinBlock() {
+    _clearLockinTick();
+    const wasActive = lockinSession.active;
+    lockinSession.running = false;
+    lockinSession.active = false;
+    lockinSession.voided = true;
+    _lockinCreditedSecs = 0;
+    _setDeepWorkActive(false);
+    _removePaceGlow();
+    try { GalleryBreak.abort(); } catch (_) {}
+    _hideLockinBreakHud();
+    if (wasActive) {
+        _ledgerForfeit(0);
+        try { window.dispatchEvent(new CustomEvent('jmax:pomo-forfeit')); } catch (_) {}
+    }
+    _resetLockinState();
+    try { if (typeof window.exitPracticeMode === 'function') window.exitPracticeMode(); } catch (_) {}
+}
+
+// ── Break HUD ─────────────────────────────────────────────────────────────
+function _showLockinBreakHud() {
+    const hud = document.getElementById('lockin-break-hud');
+    if (!hud) return;
+    _updateLockinBreakHud();
+    hud.classList.add('active');
+}
+function _hideLockinBreakHud() {
+    const hud = document.getElementById('lockin-break-hud');
+    if (hud) hud.classList.remove('active');
+}
+function _updateLockinBreakHud() {
+    const badge = document.getElementById('lbh-badge');
+    if (badge) badge.textContent = `✦ BLOCK ${lockinSession.currentSession}/${lockinSession.totalSessions} SEALED · +${lockinSession.studyMins}m BANKED`;
+    const timeEl = document.getElementById('lbh-time');
+    if (timeEl) timeEl.textContent = formatTime(Math.max(0, _lockinLeftSecs));
+    const nextEl = document.getElementById('lbh-next');
+    if (nextEl) {
+        const icon = lockinSession.mode === 'hardcore' ? '⚡ Hardcore' : '🎯 Flow State';
+        const chap = lockinSession.chapter ? ` (${lockinSession.chapter})` : '';
+        nextEl.textContent = `Next: Round ${lockinSession.currentSession + 1}/${lockinSession.totalSessions} · ${icon}${chap}`;
+    }
+    const arc = document.getElementById('lbh-ring-arc');
+    const p = _lockinTotalSecs ? Math.min(1, Math.max(0, 1 - (_lockinLeftSecs / _lockinTotalSecs))) : 0;
+    try { GalleryBreak.setProgress(p); } catch (_) {}
+    if (arc) {
+        const circ = 2 * Math.PI * 19;
+        arc.style.strokeDasharray = String(circ);
+        arc.style.strokeDashoffset = String(circ * (1 - p));
+    }
+}
+
+// ── Notification variants ─────────────────────────────────────────────────
+export function showLockinVictory(data) {
+    const d = data || {};
+    _setNotifyVariant('victory');
+    $('notify-icon').textContent = '🏆';
+    $('notify-title').textContent = 'Chapter Pool Cleared!';
+    $('notify-message').textContent = 'You conquered every eligible question before the clock ran out. The lock-in timer stops here — all elapsed time has been banked.';
+    const receipt = $('notify-receipt');
+    if (receipt) {
+        receipt.innerHTML = _receiptRows([
+            { k: 'Elapsed grind credited', v: formatStudyDuration(d.elapsed || 0) },
+            { k: 'Questions solved', v: String(d.solved || 0) },
+            { k: 'Net subject ELO', v: `${(d.netElo || 0) >= 0 ? '+' : ''}${d.netElo || 0}` },
+            { k: 'Focus chain', v: String(d.chain || 0) },
+        ]);
+        receipt.hidden = false;
+    }
+    const secondary = $('notify-secondary');
+    if (secondary) secondary.style.display = 'none';
+    const primary = $('notify-primary');
+    if (primary) primary.textContent = "Let's Go";
+    playBell();
+    $('timer-notify-modal').classList.add('active');
+}
+
+export function showLockinBreach() {
+    _setNotifyVariant('breach');
+    const elapsed = _elapsedStudySecs();
+    $('notify-icon').textContent = '⛓️';
+    $('notify-title').textContent = 'Void This Lock-In Block?';
+    $('notify-message').textContent = "Closing the practice stage now ends your lock-in timer early. This specific block's time period will NOT be counted.";
+    const receipt = $('notify-receipt');
+    if (receipt) {
+        receipt.innerHTML = _receiptRows([
+            { k: 'Escrow time voided', v: `${formatTime(elapsed)} (0m will be counted)` },
+            { k: 'Focus chain', v: `chain of ${focusLedger.chain} → 0` },
+            { k: 'Mode multiplier', v: lockinSession.mode === 'hardcore' ? '1.8× WIN bonus lost' : '×1.5 Deep Work bonus lost' },
+        ]);
+        receipt.hidden = false;
+    }
+    const secondary = $('notify-secondary');
+    if (secondary) { secondary.textContent = 'Void Block & Exit'; secondary.style.display = 'block'; }
+    const primary = $('notify-primary');
+    if (primary) primary.textContent = 'Stay Locked In →';
+    // No bell — this is a warning, not a reward.
+    $('timer-notify-modal').classList.add('active');
+}
+
+export function showLockinComplete() {
+    _setNotifyVariant('complete');
+    $('notify-icon').textContent = '🎉';
+    $('notify-title').textContent = '🏁 Lock-In Cycle Complete';
+    $('notify-message').textContent = 'Every block sealed. Time banked, chain grown. Take the win — you earned the rest.';
+    const receipt = $('notify-receipt');
+    if (receipt) {
+        receipt.innerHTML = _receiptRows([
+            { k: 'Blocks sealed', v: String(Math.max(1, lockinSession.totalSessions)) },
+            { k: 'Deep today', v: formatStudyDuration(focusLedger.deep) },
+            { k: 'Focus chain', v: String(focusLedger.chain) },
+        ]);
+        receipt.hidden = false;
+    }
+    const secondary = $('notify-secondary');
+    if (secondary) secondary.style.display = 'none';
+    const primary = $('notify-primary');
+    if (primary) primary.textContent = "Let's Go";
+    playBell();
+    $('timer-notify-modal').classList.add('active');
+}
+
+// ── Inline-onclick bridges (index.html) ───────────────────────────────────
+try {
+    window.lockinClose = closeLockinSetupModal;
+    window.lockinConfirm = confirmLockinSetup;
+    window.lockinPreset = applyLockinPreset;
+    window.lockinStep = stepLockinField;
+    window.lockinRefresh = refreshLockinTimeline;
+    window.skipLockinRest = skipLockinRest;
+    window.addLockinRest = addLockinRest;
+    window.endLockinSession = endLockinSession;
+    window.voidLockinBlock = voidLockinBlock;
+    window.stayLockedIn = stayLockedIn;
+} catch (_) {}
+
+// ── Tuck-In / bridge focus-ledger bridge (app.js reads window.POMO_API) ────
+try { window.POMO_API = { getFocusLedger, getLockinSession: () => ({ ...lockinSession }) }; } catch (_) {}

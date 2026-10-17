@@ -13869,3 +13869,808 @@ body:has(#view-pomodoro.active) #pomo-mini-widget {
     white-space: normal;
     max-width: 100%;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   13 · LOCK-IN RITUAL CHAMBER & BACKGROUND TIMER ENGINE
+   High-craft aesthetic styling for Mode-Reactive Setup, Floating Museum
+   Break HUD, and Phase Transition Variants (Victory, Breach, Complete).
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Lock-In Ritual Chamber Modal ── */
+#lockin-setup-modal,
+.lockin-setup-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 10050 !important;
+    background: rgba(6, 8, 14, 0.82) !important;
+    backdrop-filter: blur(18px) !important;
+    -webkit-backdrop-filter: blur(18px) !important;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.22s ease-out;
+}
+#lockin-setup-modal.active,
+.lockin-setup-backdrop.active {
+    display: flex !important;
+}
+#lockin-setup-modal.hidden,
+.lockin-setup-backdrop.hidden {
+    display: none !important;
+}
+
+/* Mode-Reactive Custom Properties */
+#lockin-setup-modal[data-lockin-mode="flow"],
+.lockin-setup-card[data-mode="flow"] {
+    --lockin-accent: #10b981;
+    --lockin-accent-rgb: 16, 185, 129;
+    --lockin-accent-glow: rgba(16, 185, 129, 0.24);
+    --lockin-accent-border: rgba(16, 185, 129, 0.35);
+    --lockin-accent-surface: rgba(16, 185, 129, 0.08);
+}
+#lockin-setup-modal[data-lockin-mode="hardcore"],
+.lockin-setup-card[data-mode="hardcore"] {
+    --lockin-accent: #f59e0b;
+    --lockin-accent-rgb: 245, 158, 11;
+    --lockin-accent-glow: rgba(245, 158, 11, 0.26);
+    --lockin-accent-border: rgba(245, 158, 11, 0.38);
+    --lockin-accent-surface: rgba(245, 158, 11, 0.08);
+    --lockin-danger: #ef4444;
+}
+
+/* Obsidian Card */
+.lockin-setup-card,
+#lockin-setup-modal .lockin-card {
+    width: min(500px, 95vw);
+    border-radius: 22px;
+    padding: 26px 28px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(165deg, rgba(20, 24, 34, 0.97) 0%, rgba(11, 14, 21, 0.99) 100%) !important;
+    border: 1px solid var(--lockin-accent-border, rgba(255, 255, 255, 0.12)) !important;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.72), 0 0 40px var(--lockin-accent-glow, rgba(0, 0, 0, 0)), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    color: #f1f5f9;
+}
+
+/* Header & Meta */
+.lockin-setup-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.lockin-mode-badge,
+#lockin-setup-modal .lockin-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--lockin-accent, #10b981);
+    background: var(--lockin-accent-surface, rgba(16, 185, 129, 0.1));
+    border: 1px solid var(--lockin-accent-border, rgba(16, 185, 129, 0.25));
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin: 0 0 10px 0;
+    box-shadow: 0 0 12px var(--lockin-accent-glow, rgba(16, 185, 129, 0.15));
+}
+.lockin-mode-icon {
+    font-size: 0.85rem;
+}
+.lockin-mode-label {
+    letter-spacing: 0.06em;
+}
+.lockin-setup-close,
+#lockin-setup-modal .close-btn {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.18s ease;
+    line-height: 1;
+    padding: 0;
+    z-index: 2;
+}
+.lockin-setup-close:hover,
+#lockin-setup-modal .close-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #f8fafc;
+    transform: scale(1.06);
+}
+.lockin-setup-title,
+#lockin-setup-modal .lockin-title {
+    font-size: 1.45rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #f8fafc;
+    margin: 0 0 6px 0;
+    line-height: 1.2;
+}
+.lockin-setup-scope {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    margin: 0 0 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.lockin-setup-sub,
+#lockin-setup-modal .lockin-sub {
+    font-size: 0.84rem;
+    color: #94a3b8;
+    margin: 0 0 20px 0;
+    line-height: 1.45;
+}
+
+/* Duration Presets (3-column grid) */
+.lockin-presets {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.lockin-preset,
+.lockin-preset-pill {
+    position: relative;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    color: #cbd5e1;
+    outline: none;
+    overflow: hidden;
+}
+.lockin-preset:hover,
+.lockin-preset-pill:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.16);
+    transform: translateY(-1px);
+}
+.lockin-preset.active,
+.lockin-preset-pill.active {
+    background: radial-gradient(circle at 50% 0%, var(--lockin-accent-glow, rgba(16, 185, 129, 0.22)) 0%, rgba(20, 24, 34, 0.85) 100%);
+    border-color: var(--lockin-accent, #10b981);
+    box-shadow: 0 0 16px var(--lockin-accent-glow, rgba(16, 185, 129, 0.22)), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    color: #f8fafc;
+}
+.lockin-preset .lp-top,
+.lockin-preset .lp-main,
+.lockin-preset-pill .lp-main {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #f8fafc;
+    margin-bottom: 2px;
+}
+.lockin-preset.active .lp-top,
+.lockin-preset.active .lp-main,
+.lockin-preset-pill.active .lp-main {
+    color: var(--lockin-accent, #10b981);
+    text-shadow: 0 0 10px var(--lockin-accent-glow, rgba(16, 185, 129, 0.3));
+}
+.lockin-preset .lp-name,
+.lockin-preset .lp-tag,
+.lockin-preset-pill .lp-tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    margin-bottom: 2px;
+}
+.lockin-preset.active .lp-name,
+.lockin-preset.active .lp-tag,
+.lockin-preset-pill.active .lp-tag {
+    color: #e2e8f0;
+}
+.lockin-preset .lp-sub,
+.lockin-preset-pill .lp-sub {
+    font-size: 0.65rem;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+/* Custom Row & Steppers */
+.lockin-custom-row,
+#lockin-setup-modal .lockin-steppers {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.lockin-field,
+#lockin-setup-modal .ls-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.lockin-field-label,
+#lockin-setup-modal .ls-field label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    text-align: center;
+}
+.lockin-stepper,
+#lockin-setup-modal .ls-row {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    height: 38px;
+    transition: border-color 0.18s ease;
+}
+.lockin-stepper:focus-within,
+#lockin-setup-modal .ls-row:focus-within {
+    border-color: var(--lockin-accent, #10b981);
+    box-shadow: 0 0 10px var(--lockin-accent-glow, rgba(16, 185, 129, 0.2));
+}
+.lockin-step-btn,
+#lockin-setup-modal .ls-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    width: 32px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    user-select: none;
+    padding: 0;
+    line-height: 1;
+}
+.lockin-step-btn:hover,
+#lockin-setup-modal .ls-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #f8fafc;
+}
+.lockin-step-btn:active,
+#lockin-setup-modal .ls-btn:active {
+    background: rgba(255, 255, 255, 0.14);
+}
+.lockin-num-input,
+#lockin-setup-modal .ls-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    color: #f8fafc;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 0;
+    outline: none;
+    -moz-appearance: textfield;
+}
+.lockin-num-input::-webkit-outer-spin-button,
+.lockin-num-input::-webkit-inner-spin-button,
+#lockin-setup-modal .ls-input::-webkit-outer-spin-button,
+#lockin-setup-modal .ls-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Proportional Timeline */
+.lockin-timeline-wrap,
+#lockin-setup-modal .lockin-timeline {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+}
+.lockin-timeline-bar,
+#lockin-setup-modal .lt-track {
+    display: flex;
+    height: 24px;
+    border-radius: 8px;
+    overflow: hidden;
+    gap: 3px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 2px;
+}
+.lockin-tl-seg.grind,
+#lockin-setup-modal .lt-block.lt-grind {
+    background: linear-gradient(90deg, var(--lockin-accent, #10b981) 0%, rgba(var(--lockin-accent-rgb, 16, 185, 129), 0.82) 100%);
+    color: #06090e;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    text-transform: uppercase;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding: 0 4px;
+    box-shadow: 0 0 10px var(--lockin-accent-glow, rgba(16, 185, 129, 0.25));
+}
+.lockin-tl-seg.rest,
+#lockin-setup-modal .lt-block.lt-rest {
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(16, 185, 129, 0.16),
+        rgba(16, 185, 129, 0.16) 6px,
+        rgba(6, 182, 212, 0.22) 6px,
+        rgba(6, 182, 212, 0.22) 12px
+    );
+    border: 1px dashed rgba(16, 185, 129, 0.35);
+    color: #a7f3d0;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    text-transform: uppercase;
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 0 4px;
+}
+.lockin-timeline-meta,
+#lockin-setup-modal .lt-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+#lockin-setup-modal .lt-finish {
+    color: #e2e8f0;
+    font-weight: 600;
+}
+#lockin-setup-modal .lt-total {
+    color: #64748b;
+}
+
+/* Chain Status & Escrow Stakes */
+#lockin-setup-modal .lockin-stakes {
+    margin-bottom: 20px;
+}
+.lockin-chain-status,
+#lockin-setup-modal .lks-chain {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: #94a3b8;
+    margin-bottom: 8px;
+}
+#lockin-setup-modal .lks-label {
+    font-weight: 600;
+}
+.lockin-chain-pips,
+#lockin-setup-modal .chain-pips {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+}
+#lockin-setup-modal .chain-pip {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    transition: all 0.2s ease;
+}
+.lockin-chain-pip.done,
+#lockin-setup-modal .chain-pip.lit {
+    background: var(--lockin-accent, #10b981);
+    border-color: var(--lockin-accent, #10b981);
+    box-shadow: 0 0 8px var(--lockin-accent-glow, rgba(16, 185, 129, 0.45));
+}
+#lockin-setup-modal .chain-pip.tip {
+    animation: pipPulse 1.5s ease-in-out infinite;
+}
+#lockin-setup-modal .lks-chain-n {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-weight: 700;
+    color: #f8fafc;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+}
+#lockin-setup-modal .lks-rule {
+    font-size: 0.74rem;
+    color: #94a3b8;
+    margin: 0;
+    line-height: 1.4;
+    background: rgba(255, 255, 255, 0.02);
+    border-left: 2px solid var(--lockin-accent, #10b981);
+    padding: 6px 10px;
+    border-radius: 0 8px 8px 0;
+}
+#lockin-setup-modal .lks-rule b {
+    color: #f1f5f9;
+}
+
+/* Setup Actions & Primary CTA */
+.lockin-setup-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.lockin-cancel-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #94a3b8;
+    border-radius: 14px;
+    padding: 12px 20px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+.lockin-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #f8fafc;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+.lockin-engage-btn,
+#lockin-setup-modal .lockin-launch {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: linear-gradient(135deg, var(--lockin-accent, #10b981) 0%, rgba(var(--lockin-accent-rgb, 16, 185, 129), 0.85) 100%) !important;
+    border: none !important;
+    border-radius: 14px;
+    padding: 14px 24px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #06090e !important;
+    cursor: pointer;
+    box-shadow: 0 10px 28px var(--lockin-accent-glow, rgba(16, 185, 129, 0.35)), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+    position: relative;
+    overflow: hidden;
+}
+.lockin-engage-btn::after,
+#lockin-setup-modal .lockin-launch::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+    transform: skewX(-20deg);
+}
+.lockin-engage-btn:hover,
+#lockin-setup-modal .lockin-launch:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 36px var(--lockin-accent-glow, rgba(16, 185, 129, 0.45)), inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+    filter: brightness(1.04);
+}
+.lockin-engage-btn:hover::after,
+#lockin-setup-modal .lockin-launch:hover::after {
+    left: 140%;
+    transition: left 0.75s ease-in-out;
+}
+.lockin-engage-btn:active,
+#lockin-setup-modal .lockin-launch:active {
+    transform: translateY(0);
+}
+
+/* ── 2. Floating Museum Break HUD (above GalleryBreak) ── */
+#lockin-break-hud,
+.lockin-break-hud {
+    position: fixed !important;
+    left: 50% !important;
+    bottom: 28px !important;
+    transform: translateX(-50%) translateY(20px) !important;
+    z-index: 10020 !important;
+    width: min(680px, 94vw) !important;
+    border-radius: 20px !important;
+    background: rgba(10, 14, 22, 0.84) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(16, 185, 129, 0.28) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65), 0 0 40px rgba(16, 185, 129, 0.12) !important;
+    padding: 16px 20px !important;
+    color: #f8fafc !important;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+#lockin-break-hud.active,
+.lockin-break-hud.active {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateX(-50%) translateY(0) !important;
+}
+#lockin-break-hud.hidden,
+.lockin-break-hud.hidden {
+    display: none !important;
+}
+
+#lockin-break-hud .lbh-badge {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #34d399;
+    text-transform: uppercase;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    border-radius: 999px;
+    padding: 3px 10px;
+    align-self: flex-start;
+}
+.lockin-break-hud-inner,
+#lockin-break-hud .lbh-main {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.lockin-break-ring-wrap,
+#lockin-break-hud .lbh-ring {
+    position: relative;
+    width: 68px;
+    height: 68px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.lockin-break-ring,
+#lockin-break-hud .lbh-ring svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+.lockin-break-ring-bg,
+#lockin-break-hud .lbh-ring-track {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.08);
+    stroke-width: 3.5;
+}
+.lockin-break-ring-fg,
+#lockin-break-hud .lbh-ring-arc {
+    fill: none;
+    stroke: #10b981;
+    stroke-width: 3.5;
+    stroke-linecap: round;
+    stroke-dasharray: 119.38;
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 0.4s ease;
+    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.5));
+}
+.lockin-break-time,
+#lockin-break-hud .lbh-time {
+    position: absolute;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.02em;
+}
+.lockin-break-info,
+#lockin-break-hud .lbh-copy {
+    flex: 1;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.lockin-break-kicker,
+#lockin-break-hud .lbh-kicker {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #a7f3d0;
+}
+.lockin-break-title,
+#lockin-break-hud .lbh-next {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+.lockin-break-sub {
+    font-size: 0.76rem;
+    color: #94a3b8;
+}
+
+.lockin-break-actions,
+#lockin-break-hud .lbh-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.lockin-break-btn,
+#lockin-break-hud .lbh-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #e2e8f0;
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+}
+.lockin-break-btn:hover,
+#lockin-break-hud .lbh-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+.lockin-break-btn.primary,
+#lockin-break-hud .lbh-btn:nth-child(2) {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.45);
+    color: #34d399;
+    font-weight: 700;
+}
+.lockin-break-btn.primary:hover,
+#lockin-break-hud .lbh-btn:nth-child(2):hover {
+    background: rgba(16, 185, 129, 0.32);
+    border-color: rgba(16, 185, 129, 0.65);
+    color: #6ee7b7;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+}
+.lockin-break-btn.danger,
+#lockin-break-hud .lbh-btn.lbh-end {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.28);
+    color: #f87171;
+    margin-left: auto;
+}
+.lockin-break-btn.danger:hover,
+#lockin-break-hud .lbh-btn.lbh-end:hover {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.2);
+}
+
+/* ── 3. Timer Notification Phase Variants (Victory / Breach / Complete) ── */
+#timer-notify-modal[data-notify-variant="victory"] .timer-notify-card {
+    border-color: rgba(245, 158, 11, 0.45) !important;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.75), 0 0 50px rgba(245, 158, 11, 0.18) !important;
+    background: linear-gradient(165deg, rgba(26, 22, 16, 0.98) 0%, rgba(14, 12, 10, 0.99) 100%) !important;
+}
+#timer-notify-modal[data-notify-variant="victory"] #notify-primary {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+    border: none !important;
+    color: #0c0a06 !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 20px rgba(245, 158, 11, 0.35) !important;
+}
+
+#timer-notify-modal[data-notify-variant="breach"] .timer-notify-card {
+    border-color: rgba(239, 68, 68, 0.5) !important;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.78), 0 0 50px rgba(239, 68, 68, 0.2) !important;
+    background: linear-gradient(165deg, rgba(28, 14, 16, 0.98) 0%, rgba(14, 8, 10, 0.99) 100%) !important;
+}
+#timer-notify-modal[data-notify-variant="complete"] .timer-notify-card {
+    border-color: rgba(16, 185, 129, 0.45) !important;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.75), 0 0 50px rgba(16, 185, 129, 0.18) !important;
+    background: linear-gradient(165deg, rgba(16, 26, 20, 0.98) 0%, rgba(10, 14, 12, 0.99) 100%) !important;
+}
+
+/* Actions in Timer Notify Modal */
+#timer-notify-modal .notify-actions {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 10px;
+    margin-top: 16px;
+    width: 100%;
+}
+#timer-notify-modal .notify-actions button {
+    margin-top: 0 !important;
+    width: 100% !important;
+}
+
+#timer-notify-modal[data-notify-variant="breach"] #notify-secondary {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border: 1px solid rgba(239, 68, 68, 0.45) !important;
+    color: #fca5a5 !important;
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.18) !important;
+    transition: all 0.18s ease;
+}
+#timer-notify-modal[data-notify-variant="breach"] #notify-secondary:hover {
+    background: rgba(239, 68, 68, 0.22) !important;
+    border-color: rgba(239, 68, 68, 0.75) !important;
+    color: #ffffff !important;
+}
+#timer-notify-modal[data-notify-variant="breach"] #notify-primary {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    border: none !important;
+    color: #06090e !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.35) !important;
+    transition: all 0.18s ease;
+}
+#timer-notify-modal[data-notify-variant="breach"] #notify-primary:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+}
+
+/* Receipt Details */
+#notify-receipt {
+    margin-top: 14px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+}
+.notify-receipt-row,
+#notify-receipt .receipt-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    padding: 6px 0;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+    font-size: 12px;
+}
+.notify-receipt-row:last-child,
+#notify-receipt .receipt-row:last-child {
+    border-bottom: none;
+}
+.notify-receipt-row .nrr-key,
+#notify-receipt .receipt-row > span {
+    font-size: 11px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.notify-receipt-row .nrr-val,
+#notify-receipt .receipt-row > b {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #f8fafc;
+}
+

@@ -74,70 +74,6 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <div class="ambient-glow glow-secondary"></div>
 <div class="bg-grid-overlay"></div>
 
-<!-- ═══════════════ AMBIENT SPRINT WIDGET (floats over everything) ═══════════════
-     The focus engine's ONLY surface. Three states via [data-state]:
-       idle      → one-tap pill: ▶ starts a sprint at the suggested length;
-                   ⚙ opens the config popover (subject / minutes / rounds)
-       study     → ring + countdown + live ×1.5 ELO badge + pause/end
-       break     → auto chill countdown, skippable inline
-     pomodoro.js writes: #mini-status / #mini-subject / #mini-time every tick,
-     #mini-ring-arc dashoffset, #mini-end, #mini-x2, #mini-tally, #mini-reason. -->
-<div id="pomo-mini-widget" class="pomo-mini-widget" data-state="idle">
-    <button class="mini-collapse-btn" onclick="event.stopPropagation(); toggleMiniWidget()" aria-label="Collapse widget">❯</button>
-
-    <svg class="mini-ring" viewBox="0 0 36 36" aria-hidden="true">
-        <circle class="mini-ring-track" cx="18" cy="18" r="15.5"></circle>
-        <circle class="mini-ring-arc" id="mini-ring-arc" cx="18" cy="18" r="15.5"></circle>
-    </svg>
-
-    <button class="mini-go" id="mini-go" onclick="event.stopPropagation(); startSprintFromWidget()" aria-label="Start sprint">▶</button>
-
-    <div class="mini-content" onclick="event.stopPropagation(); openPomoPop()">
-        <span class="mini-topline">
-            <span class="mini-status" id="mini-status">SPRINT</span>
-            <span class="mini-x2" id="mini-x2" title="Deep Work bonus live — solves earn 1.5× ELO right now">×1.5</span>
-        </span>
-        <span class="mini-subject" id="mini-subject"></span>
-        <span class="mini-time" id="mini-time">25:00</span>
-        <span class="mini-end" id="mini-end"></span>
-        <span class="mini-tally" id="mini-tally"></span>
-        <span class="mini-reason" id="mini-reason"></span>
-    </div>
-
-    <div class="mini-controls">
-        <button class="mini-ctl" id="mini-pause" onclick="event.stopPropagation(); widgetPauseToggle()" aria-label="Pause or resume sprint">▮▮</button>
-        <button class="mini-ctl mini-skip" id="mini-skip" onclick="event.stopPropagation(); skipBreak()" aria-label="Skip break">⏭</button>
-        <button class="mini-ctl mini-stop" id="mini-stop" onclick="event.stopPropagation(); quitTimer()" aria-label="End sprint">✕</button>
-    </div>
-
-    <!-- Config popover: replaces the old Focus Mode form. One tap anywhere
-         else starts instantly; this is the explicit-setup escape hatch. -->
-    <div class="pomo-pop" id="pomo-pop" role="dialog" aria-label="Sprint setup">
-        <div class="pop-row">
-            <span class="pop-lbl">Subject</span>
-            <div class="pop-seg" id="pop-subjects">
-                <button type="button" class="pop-sub" data-subject="physics" onclick="popSetSubject('physics')">P</button>
-                <button type="button" class="pop-sub" data-subject="chemistry" onclick="popSetSubject('chemistry')">C</button>
-                <button type="button" class="pop-sub" data-subject="maths" onclick="popSetSubject('maths')">M</button>
-            </div>
-            <button type="button" class="pop-dyn" id="pop-dynamic" onclick="toggleDynamicSubject()" title="Dynamic mode: switch subject mid-sprint — time tracked per subject" aria-label="Toggle dynamic subject mode">⚡</button>
-        </div>
-        <div class="pop-row">
-            <span class="pop-lbl">Minutes</span>
-            <button type="button" class="pop-step" onclick="popAdjustMinutes(-5)" aria-label="Decrease minutes by 5">−</button>
-            <span class="pop-val" id="pop-minutes">25</span>
-            <button type="button" class="pop-step" onclick="popAdjustMinutes(5)" aria-label="Increase minutes by 5">+</button>
-            <span class="pop-reason" id="pop-reason"></span>
-        </div>
-        <div class="pop-row">
-            <span class="pop-lbl">Rounds</span>
-            <button type="button" class="pop-step" onclick="popAdjustRounds(-1)" aria-label="Decrease rounds">−</button>
-            <span class="pop-val" id="pop-rounds">1</span>
-            <button type="button" class="pop-step" onclick="popAdjustRounds(1)" aria-label="Increase rounds">+</button>
-        </div>
-        <button type="button" class="pop-start" onclick="popStart()">Start Sprint ▶</button>
-    </div>
-</div>
 
 <div class="app-container">
 
@@ -157,9 +93,6 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <li><a class="nav-item active" data-tab="dashboard" href="#dashboard" title="Grind Hub (Alt+1)" onclick="switchTab('dashboard', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.75" y="3.75" width="7" height="7" rx="1.8"/><rect x="13.25" y="3.75" width="7" height="7" rx="1.8"/><rect x="3.75" y="13.25" width="7" height="7" rx="1.8"/><rect x="13.25" y="13.25" width="7" height="7" rx="1.8"/></svg></span>
                 <span class="text-label">Grind Hub</span></a></li>
-            <li><a class="nav-item" data-tab="pomodoro" href="#focus" title="Focus Mode (Alt+2)" onclick="switchTab('pomodoro', this);return false;">
-                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 4.5 13.5H11L10 21.5 19.5 10.5H12.5Z"/></svg></span>
-                <span class="text-label">Focus Mode</span></a></li>
             <li><a class="nav-item" data-tab="errors" href="#vault" title="The Vault (Alt+3)" onclick="switchTab('errors', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 19 5.8V11c0 4.6-2.9 8.1-7 10-4.1-1.9-7-5.4-7-10V5.8Z"/></svg></span>
                 <span class="text-label">The Vault</span></a></li>
@@ -240,10 +173,6 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <button type="button" class="dash-quick-btn" id="dq-vault-btn">
                     <span class="dq-icon">🛡️</span>
                     <span class="dq-label" id="dq-vault-label">Open Error Vault →</span>
-                </button>
-                <button type="button" class="dash-quick-btn" id="dq-focus-btn">
-                    <span class="dq-icon">⚡</span>
-                    <span class="dq-label" id="dq-focus-label">Lock In 50m →</span>
                 </button>
             </div>
 
@@ -358,154 +287,6 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             </div>
         </section>
 
-        <!-- ═══════════════════════════════════════════
-             VIEW · POMODORO (LOCK-IN MODE)
-             All IDs verified against pomodoro.js:
-             #pomo-study / #pomo-break / #pomo-sessions / #pomo-subject,
-             #btn-start / #btn-pause (doubles as Resume) / #btn-quit,
-             #pomo-progress (inside #vis-bar), #pomo-beaker-fill (inside #vis-beaker).
-        ════════════════════════════════════════════ -->
-        <section id="view-pomodoro" class="view-section">
-            <div class="glow-wrapper">
-                <div class="glow-box-inner">
-                    <div class="pomo-header">
-                        <h2 class="box-title">Lock-In</h2>
-                        <button class="pomo-settings-btn" onclick="openModal('visualizer-modal')" aria-label="Timer display settings">⚙</button>
-                    </div>
-
-                    <div class="timer-container">
-                        <div class="beaker-container" id="vis-beaker">
-                            <div class="beaker-liquid" id="pomo-beaker-fill"></div>
-                        </div>
-                        <div id="timer-display" class="timer-display">50:00</div>
-                        <div id="timer-status" class="timer-status">Ready to Lock In</div>
-                        <div class="progress-bar-container" id="vis-bar">
-                            <div class="progress-bar-fill" id="pomo-progress"></div>
-                        </div>
-                        <div class="timer-actions">
-                            <button id="btn-start" class="btn btn-start" onclick="startTimer()">Lock In</button>
-                            <button id="btn-pause" class="btn btn-pause" onclick="pauseTimer()" style="display:none">Hold Up</button>
-                            <button id="btn-quit" class="btn btn-quit" onclick="quitTimer()" style="display:none">Rage Quit</button>
-                        </div>
-                        <div class="break-actions" id="break-actions">
-                            <button class="btn-break-opt" onclick="skipBreak()">Skip Chill ⏭</button>
-                            <button class="btn-break-opt" onclick="addBreakTime(1)">+1 Min</button>
-                            <button class="btn-break-opt" onclick="addBreakTime(5)">+5 Min</button>
-                        </div>
-                    </div>
-
-                    <!-- 1-Click Duration Presets -->
-                    <div class="pomo-presets-bar" id="pomo-presets-bar" role="group" aria-label="Duration presets">
-                        <button type="button" class="pomo-preset-btn" data-grind="25" data-chill="5" onclick="window.setPomoPreset && window.setPomoPreset(25, 5)">
-                            <span class="pomo-preset-title">25 / 5</span>
-                            <span class="pomo-preset-sub">25m grind · 5m chill</span>
-                        </button>
-                        <button type="button" class="pomo-preset-btn active" data-grind="50" data-chill="10" onclick="window.setPomoPreset && window.setPomoPreset(50, 10)">
-                            <span class="pomo-preset-title">50 / 10</span>
-                            <span class="pomo-preset-sub">50m grind · 10m chill</span>
-                        </button>
-                        <button type="button" class="pomo-preset-btn" data-grind="90" data-chill="15" onclick="window.setPomoPreset && window.setPomoPreset(90, 15)">
-                            <span class="pomo-preset-title">90 / 15</span>
-                            <span class="pomo-preset-sub">90m grind · 15m chill</span>
-                        </button>
-                    </div>
-
-                    <!-- Setup strip — one quiet row under the timer.
-                         Dims while a session runs (inputs are disabled anyway). -->
-                    <div class="pomodoro-controls">
-                        <div class="input-group subject-group">
-                            <label for="pomo-subject">Subject</label>
-                            <div class="subject-row">
-                                <select id="pomo-subject" class="pomo-select" onchange="changeStudySubject()">
-                                    <option value="physics">Physics</option>
-                                    <option value="chemistry">Chemistry</option>
-                                    <option value="maths">Maths</option>
-                                </select>
-                                <button id="dynamic-subject-btn" class="pomo-dynamic-btn" onclick="toggleDynamicSubject(this)" title="Dynamic mode: switch subject mid-session — time is tracked per subject">⚡</button>
-                            </div>
-                        </div>
-                        <span class="setup-divider" aria-hidden="true"></span>
-                        <div class="input-group">
-                            <label for="pomo-study">Grind</label>
-                            <input id="pomo-study" class="pomo-input" type="number" value="50" min="1">
-                        </div>
-                        <div class="input-group">
-                            <label for="pomo-break">Chill</label>
-                            <input id="pomo-break" class="pomo-input" type="number" value="10" min="1">
-                        </div>
-                        <div class="input-group">
-                            <label for="pomo-sessions">Rounds</label>
-                            <input id="pomo-sessions" class="pomo-input" type="number" value="1" min="1">
-                        </div>
-                    </div>
-
-                    <!-- The contract, stated in plain numbers before you commit
-                         (written live by pomodoro.js updateProjection()). -->
-                    <p class="pomo-projection" id="pomo-projection"></p>
-
-                    <!-- TODAY'S BURN — one quiet line (pomodoro.js hydrateFocusStats()).
-                         Completing a block grows the chain; quitting mid-block
-                         resets it to zero. This is the weight. -->
-                    <div class="focus-ledger" id="focus-ledger">
-                        <span class="fl-tag">Today</span>
-                        <span class="fl-item"><b id="fs-done">0</b> blocks</span>
-                        <span class="fl-item"><b id="fs-deep">0m</b> deep</span>
-                        <span class="fl-item fl-chain-item"><b id="fs-chain">0</b> chain <span class="chain-pips" id="chain-pips" aria-label="Deep work chain"></span></span>
-                        <span class="fl-item fl-sub">best <b id="fs-best">0</b></span>
-                        <span class="fl-item fl-sub">forfeits <b id="fs-forfeit">0</b></span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- All-time grind totals — one line (pomodoro.js updateStudyTimeHeader()). -->
-            <div class="focus-stats-row" id="focus-stats-row">
-                <span class="fl-tag">All-Time</span>
-                <span class="fsr-item"><i class="fsr-dot" data-subject="physics"></i>Physics <b id="stat-hrs-physics">0m</b></span>
-                <span class="fsr-item"><i class="fsr-dot" data-subject="chemistry"></i>Chemistry <b id="stat-hrs-chemistry">0m</b></span>
-                <span class="fsr-item"><i class="fsr-dot" data-subject="maths"></i>Maths <b id="stat-hrs-maths">0m</b></span>
-            </div>
-
-            <!-- Focus Soundscape — procedural ambient engine (focus-sound.js)
-                 presets are rendered by focus-sound.js into #sc-presets;
-                 sliders (#sc-volume / #sc-depth / #sc-brightness / #sc-density)
-                 are wired by focus-sound.js at boot. Power toggles via FocusSound. -->
-            <div class="soundscape-panel" id="focus-sound-panel">
-                <div class="sc-head">
-                    <div class="sc-title-wrap">
-                        <h2 class="box-title">Ambient Sound</h2>
-                        <label class="sc-auto-toggle" for="sc-auto" title="Starts your sound bed automatically when a focus block begins">
-                            <input type="checkbox" id="sc-auto" onchange="FocusSound.setAuto(this.checked)">
-                            <span>Auto-play on lock-in</span>
-                        </label>
-                    </div>
-                    <button type="button" class="sc-power-btn" id="sc-power" onclick="FocusSound.toggle()" aria-label="Play soundscape">▶</button>
-                </div>
-                <div class="sc-presets" id="sc-presets"></div>
-                <div class="sc-sliders">
-                    <div class="sc-slider-row">
-                        <span class="sc-slider-label" title="Master loudness of the sound bed">Volume</span>
-                        <input type="range" id="sc-volume" class="sc-range" min="0" max="100" value="60" title="Master loudness of the sound bed" aria-label="Soundscape volume">
-                        <span class="sc-slider-val" id="sc-volume-val">60%</span>
-                    </div>
-                    <div class="sc-slider-row">
-                        <span class="sc-slider-label" title="Low-end body — how deep and grounded it feels">Depth</span>
-                        <input type="range" id="sc-depth" class="sc-range" min="0" max="100" value="50" title="Low-end body — how deep and grounded it feels" aria-label="Soundscape depth">
-                        <span class="sc-slider-val" id="sc-depth-val">50%</span>
-                    </div>
-                    <div class="sc-slider-row">
-                        <span class="sc-slider-label" title="High-frequency air and sparkle">Brightness</span>
-                        <input type="range" id="sc-brightness" class="sc-range" min="0" max="100" value="50" title="High-frequency air and sparkle" aria-label="Soundscape brightness">
-                        <span class="sc-slider-val" id="sc-brightness-val">50%</span>
-                    </div>
-                    <div class="sc-slider-row">
-                        <span class="sc-slider-label" title="Tone — dark &amp; muffled ⇢ fully open by 85%. On Rain: calm roof rain ⇢ heavy rain">Tone</span>
-                        <input type="range" id="sc-density" class="sc-range" min="0" max="100" value="100" title="Tone — dark &amp; muffled ⇢ fully open by 85%. On Rain: calm roof rain ⇢ heavy rain" aria-label="Soundscape tone">
-                        <span class="sc-slider-val" id="sc-density-val">100%</span>
-                    </div>
-                </div>
-                <div class="sc-status" id="sc-status"></div>
-            </div>
-        </section>
 
         <!-- ═══════════════════════════════════════════
              VIEW · THE VAULT (ERROR MATRIX)
@@ -839,18 +620,118 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     </style>
 </div>
 
+<!-- ═══════════════ LOCK-IN RITUAL CHAMBER (pomodoro.js) ═══════════════
+     Mode-reactive setup for Flow / Hardcore. [data-lockin-mode="flow"|"hardcore"]
+     drives the entire skin. pomodoro.js hydrates the presets, custom steppers,
+     live proportional session timeline, wall-clock finish time, today's chain
+     pips and the escrow contract on every open. -->
+<div id="lockin-setup-modal" class="modal-overlay lockin-modal" data-lockin-mode="flow">
+    <div class="lockin-card" role="dialog" aria-modal="true" aria-labelledby="lockin-title">
+        <button class="close-btn" type="button" onclick="lockinClose()" aria-label="Close">✕</button>
+        <p class="lockin-kicker" id="lockin-kicker">// FLOW STATE LOCK-IN · P(WIN) 75–85% · ×1.5 ELO</p>
+        <h2 class="lockin-title" id="lockin-title">Sign the Pact</h2>
+        <p class="lockin-sub">Time is held in escrow until the block completes. Quitting early voids the block.</p>
+
+        <div class="lockin-presets" id="lockin-presets" role="group" aria-label="Duration presets">
+            <button type="button" class="lockin-preset" data-grind="25" data-chill="5" onclick="lockinPreset(25,5)">
+                <span class="lp-top">25 / 5</span><span class="lp-name">Quick Strike</span><span class="lp-sub">High-velocity sprint</span>
+            </button>
+            <button type="button" class="lockin-preset active" data-grind="50" data-chill="10" onclick="lockinPreset(50,10)">
+                <span class="lp-top">50 / 10</span><span class="lp-name">Deep Zone</span><span class="lp-sub">Optimal cognitive block</span>
+            </button>
+            <button type="button" class="lockin-preset" data-grind="90" data-chill="15" onclick="lockinPreset(90,15)">
+                <span class="lp-top">90 / 15</span><span class="lp-name">Monk Mode</span><span class="lp-sub">Endurance immersion</span>
+            </button>
+        </div>
+
+        <div class="lockin-steppers">
+            <div class="ls-field">
+                <label for="lockin-grind">Grind (min)</label>
+                <div class="ls-row">
+                    <button type="button" class="ls-btn" onclick="lockinStep('grind',-5)" aria-label="Decrease grind">−</button>
+                    <input id="lockin-grind" class="ls-input" type="number" min="5" max="180" value="50" oninput="lockinRefresh()">
+                    <button type="button" class="ls-btn" onclick="lockinStep('grind',5)" aria-label="Increase grind">+</button>
+                </div>
+            </div>
+            <div class="ls-field">
+                <label for="lockin-chill">Rest (min)</label>
+                <div class="ls-row">
+                    <button type="button" class="ls-btn" onclick="lockinStep('chill',-1)" aria-label="Decrease rest">−</button>
+                    <input id="lockin-chill" class="ls-input" type="number" min="1" max="60" value="10" oninput="lockinRefresh()">
+                    <button type="button" class="ls-btn" onclick="lockinStep('chill',1)" aria-label="Increase rest">+</button>
+                </div>
+            </div>
+            <div class="ls-field">
+                <label for="lockin-rounds">Rounds</label>
+                <div class="ls-row">
+                    <button type="button" class="ls-btn" onclick="lockinStep('rounds',-1)" aria-label="Decrease rounds">−</button>
+                    <input id="lockin-rounds" class="ls-input" type="number" min="1" max="8" value="2" oninput="lockinRefresh()">
+                    <button type="button" class="ls-btn" onclick="lockinStep('rounds',1)" aria-label="Increase rounds">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="lockin-timeline">
+            <div class="lt-track" id="lockin-timeline-track"></div>
+            <div class="lt-meta">
+                <span class="lt-finish" id="lockin-finish-time">Finishes at --:--</span>
+                <span class="lt-total" id="lockin-total-time"></span>
+            </div>
+        </div>
+
+        <div class="lockin-stakes">
+            <div class="lks-chain">
+                <span class="lks-label">Today's chain</span>
+                <span class="chain-pips" id="lockin-chain-pips" aria-hidden="true"></span>
+                <span class="lks-chain-n" id="lockin-chain-n">0</span>
+            </div>
+            <p class="lks-rule">⏳ <b>Escrow:</b> time is banked only when the block completes. Quitting early voids this block.</p>
+        </div>
+
+        <button type="button" class="lockin-launch" id="lockin-launch" onclick="lockinConfirm()">Lock In &amp; Enter Arena →</button>
+    </div>
+</div>
+
+<!-- ═══════════════ EARNED REST — Floating Museum Glass HUD (pomodoro.js) ═══════════════
+     Blooms over the GalleryBreak painting between blocks. Auto-ignites back into
+     practice when the rest reaches 00:00 (or Skip Rest). -->
+<div id="lockin-break-hud" class="lockin-break-hud" aria-live="polite">
+    <div class="lbh-badge" id="lbh-badge">✦ BLOCK 1/2 SEALED · +50m BANKED</div>
+    <div class="lbh-main">
+        <div class="lbh-ring">
+            <svg viewBox="0 0 44 44" aria-hidden="true">
+                <circle class="lbh-ring-track" cx="22" cy="22" r="19"></circle>
+                <circle class="lbh-ring-arc" id="lbh-ring-arc" cx="22" cy="22" r="19"></circle>
+            </svg>
+            <span class="lbh-time" id="lbh-time">10:00</span>
+        </div>
+        <div class="lbh-copy">
+            <span class="lbh-kicker">ART REST · EARNED</span>
+            <span class="lbh-next" id="lbh-next">Next: Round 1/1 · 🎯 Flow State</span>
+        </div>
+    </div>
+    <div class="lbh-actions">
+        <button type="button" class="lbh-btn" onclick="addLockinRest(2)">+2m Rest</button>
+        <button type="button" class="lbh-btn" onclick="skipLockinRest()">Skip Rest ⏭</button>
+        <button type="button" class="lbh-btn lbh-end" onclick="endLockinSession()">End Session</button>
+    </div>
+</div>
+
 <!-- Timer Notification (pomodoro.js phase transitions)
      Class-controlled ONLY — pomodoro.js toggles .active, never inline display.
      #notify-receipt carries the session receipt (block / chain / ELO payout);
-     #notify-secondary is the "Keep Going" escape hatch on the quit-confirm. -->
+     #notify-secondary is the secondary action ("Keep Going" / "Stay Locked In").
+     [data-notify-variant] = "" | victory | breach | complete themes the card. -->
 <div id="timer-notify-modal" class="modal-overlay">
     <div class="modal-content timer-notify-card">
         <div class="notify-icon" id="notify-icon">🍅</div>
         <h2 id="notify-title">Focus Session Done!</h2>
         <p class="box-desc" id="notify-message">Take a break. You earned it.</p>
         <div class="notify-receipt" id="notify-receipt" hidden></div>
-        <button id="notify-secondary" class="btn btn-quit" style="display:none;width:100%;margin-top:10px" onclick="notifyKeepGoing()">Keep Going</button>
-        <button class="btn btn-primary" style="width:100%;margin-top:16px" onclick="confirmTimerNotification()">Let's Go</button>
+        <div class="notify-actions">
+            <button id="notify-secondary" class="btn btn-quit" style="display:none;width:100%;margin-top:10px" onclick="notifyKeepGoing()">Keep Going</button>
+            <button id="notify-primary" class="btn btn-primary" style="width:100%;margin-top:16px" onclick="confirmTimerNotification()">Let's Go</button>
+        </div>
     </div>
 </div>
 
@@ -1302,7 +1183,6 @@ window.clearMatrixFilters = function () {
 <script type="module" src="./boot-sequence.js"></script>
 <script src="theme.js" defer></script>
 <script src="dashboard-clean.js" defer></script>
-<script src="focus-sound.js" defer></script>
 <!-- Practice Metronome — self-mounting floating widget (FAB bottom-right +
      popover; global API on window.Metro, prefs in jeemax_metronome_prefs) -->
 <script src="metronome.js" defer></script>
@@ -1713,7 +1593,6 @@ window.clearMatrixFilters = function () {
 (function () {
     var TITLES = {
         dashboard: 'Grind Hub',
-        pomodoro:  'Focus Mode',
         errors:    'The Vault',
         practice:  'Grind Station',
         mocks:     'Mocks',

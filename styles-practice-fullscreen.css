@@ -1649,3 +1649,37 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
   justify-content: space-between;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   LOCK-IN EXPIRY WHISPER — Ambient completion glow
+   Provides an unobtrusive peripheral indicator that the lock-in block
+   has completed without interrupting the active solve.
+   ════════════════════════════════════════════════════════════════════ */
+
+@keyframes pqLockinReadyPulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.22), inset 0 0 6px rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.45) !important;
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(16, 185, 129, 0.45), 0 0 35px rgba(245, 158, 11, 0.20), inset 0 0 12px rgba(16, 185, 129, 0.22);
+    border-color: rgba(16, 185, 129, 0.85) !important;
+  }
+}
+
+.pq-pace.pq-lockin-complete-glow,
+#practice-modal.pq-lockin-complete-glow,
+#practice-modal.pq-lockin-complete-glow .pq-pace,
+#sr-practice-overlay.pq-lockin-complete-glow,
+#sr-practice-overlay.pq-lockin-complete-glow .pq-pace {
+  border-color: rgba(16, 185, 129, 0.65) !important;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.28);
+  animation: pqLockinReadyPulse 2.2s ease-in-out infinite;
+}
+
+#practice-modal.pq-lockin-complete-glow .pq-pace,
+#sr-practice-overlay.pq-lockin-complete-glow .pq-pace {
+  opacity: 1 !important;
+  background: linear-gradient(90deg, #10b981 0%, #34d399 50%, #f59e0b 100%) !important;
+}
+
+
