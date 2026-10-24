@@ -613,7 +613,7 @@ async function renderDoor() {
     el.className = 'tuckin-door-banner';
     el.innerHTML = `
         <div class="tuckin-door-content">
-            <span class="tuckin-door-icon">🌙</span>
+            <span class="tuckin-door-icon">☾</span>
             <span class="tuckin-door-text"><b>Tuck in the day</b> · Seal tomorrow's first move & dawn capsule</span>
         </div>
         <button class="btn btn-primary btn-sm tuckin-door-btn" onclick="window.TuckIn.open({source:'door1'})">Seal day →</button>

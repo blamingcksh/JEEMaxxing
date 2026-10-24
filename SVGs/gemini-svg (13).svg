@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+  <defs>
+    <radialGradient id="iris-depth" cx="50%" cy="50%" r="50%">
+      <stop offset="25%" stop-color="#1E1D1A" stop-opacity="0.9" />
+      <stop offset="32%" stop-color="#D96B43" stop-opacity="0.35" />
+      <stop offset="75%" stop-color="#E6DEC8" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#1E1D1A" stop-opacity="0.25" />
+    </radialGradient>
+  </defs>
+
+  <!-- Background &amp; Outer Frame -->
+  <rect width="600" height="600" fill="#F4EFE6" />
+  <rect x="24" y="24" width="552" height="552" fill="none" stroke="#1E1D1A" stroke-width="1.5" />
+  <rect x="32" y="32" width="536" height="536" fill="none" stroke="#1E1D1A" stroke-width="0.6" />
+
+  <!-- High-Magnification Biometric Iris Study (Centered at 300, 255) -->
+  <g transform="translate(300, 255)">
+    <!-- Outer Ophthalmic Protractor Ring -->
+    <circle cx="0" cy="0" r="198" fill="none" stroke="#1E1D1A" stroke-width="1" />
+    <circle cx="0" cy="0" r="190" fill="none" stroke="#1E1D1A" stroke-width="5" stroke-dasharray="1.2 5" />
+
+    <!-- Corneal Limbus &amp; Stroma Base -->
+    <circle cx="0" cy="0" r="172" fill="url(#iris-depth)" stroke="#1E1D1A" stroke-width="2.2" />
+    <circle cx="0" cy="0" r="162" fill="none" stroke="#1E1D1A" stroke-width="0.8" stroke-dasharray="3 3" />
+
+    <!-- Contraction Furrows (Concentric Interrupted Arcs) -->
+    <circle cx="0" cy="0" r="145" fill="none" stroke="#C59B5F" stroke-width="1.2" stroke-dasharray="28 12 18 8" />
+    <circle cx="0" cy="0" r="132" fill="none" stroke="#1E1D1A" stroke-width="0.9" stroke-dasharray="40 15 12 10" />
+    <circle cx="0" cy="0" r="118" fill="none" stroke="#D96B43" stroke-width="1" stroke-dasharray="22 14 35 12" />
+
+    <!-- Radial Trabecular Stroma Fibers -->
+    <circle cx="0" cy="0" r="115" fill="none" stroke="#1E1D1A" stroke-width="85" stroke-dasharray="1.1 4.9" stroke-opacity="0.65" />
+    <circle cx="0" cy="0" r="115" fill="none" stroke="#D96B43" stroke-width="85" stroke-dasharray="0.7 11.3" stroke-opacity="0.55" />
+
+    <!-- Autonomic Collarette Wreath (Zig-Zag Polygon Ring at R ~ 82-98) -->
+    <polygon points="
+      0,-98 16,-80 34,-92 46,-72 68,-78 72,-54 92,-48 82,-24 98,-8 84,14
+      95,34 75,46 80,68 56,70 50,92 28,80 12,96 -10,82 -30,94 -44,74
+      -66,80 -70,56 -90,50 -80,26 -96,10 -82,-12 -94,-32 -74,-44 -78,-66 -54,-68
+      -48,-90 -26,-78 -12,-94" fill="#D96B43" fill-opacity="0.18" stroke="#1E1D1A" stroke-width="1.6" />
+
+    <!-- Crypts of Fuchs (Geometric Diamond Lacunae) -->
+    <g fill="#1E1D1A" fill-opacity="0.75" stroke="#C59B5F" stroke-width="0.8">
+      <polygon points="0,-102 6,-118 0,-134 -6,-118" />
+      <polygon points="88,-52 104,-56 114,-44 98,-40" />
+      <polygon points="75,75 92,84 84,96 68,86" />
+      <polygon points="-85,62 -102,70 -94,82 -78,72" />
+      <polygon points="-92,-45 -112,-52 -104,-64 -86,-55" />
+    </g>
+
+    <!-- Pupillary Sphincter Zone &amp; Aperture -->
+    <circle cx="0" cy="0" r="64" fill="none" stroke="#D96B43" stroke-width="1.5" stroke-dasharray="3 2" />
+    <circle cx="0" cy="0" r="56" fill="#1E1D1A" stroke="#C59B5F" stroke-width="2" />
+
+    <!-- Purkinje Corneal Caustic Reflections &amp; Sighting Target -->
+    <circle cx="-18" cy="-18" r="14" fill="#F4EFE6" fill-opacity="0.9" stroke="#1E1D1A" stroke-width="1" />
+    <circle cx="22" cy="18" r="5" fill="#D96B43" />
+    <line x1="-220" y1="0" x2="220" y2="0" stroke="#D96B43" stroke-width="0.8" stroke-dasharray="4 4" />
+    <line x1="0" y1="-210" x2="0" y2="210" stroke="#D96B43" stroke-width="0.8" stroke-dasharray="4 4" />
+  </g>
+
+  <!-- Bottom Optical Corneal &amp; Crystalline Lens Ray-Trace Diagram -->
+  <g transform="translate(55, 475)" fill="none" stroke="#1E1D1A">
+    <rect x="0" y="0" width="490" height="72" fill="#F4EFE6" stroke-width="1.2" />
+    <!-- Optical Axis -->
+    <line x1="10" y1="36" x2="480" y2="36" stroke-width="0.6" stroke-dasharray="3 3" />
+    <!-- Cornea Dome -->
+    <path d="M 95 8 A 38 38 0 0 1 95 64" stroke-width="2" />
+    <!-- Iris Diaphragm Stops -->
+    <line x1="125" y1="6" x2="125" y2="24" stroke="#1E1D1A" stroke-width="3.5" />
+    <line x1="125" y1="48" x2="125" y2="66" stroke="#1E1D1A" stroke-width="3.5" />
+    <!-- Biconvex Crystalline Lens -->
+    <path d="M 155 12 Q 178 36 155 60 Q 138 36 155 12 Z" fill="#E6DEC8" stroke-width="1.5" />
+    <!-- Retinal Fovea Curve -->
+    <path d="M 435 8 A 45 45 0 0 1 435 64" stroke-width="2" />
+    <!-- Refracted Light Rays to Fovea (452, 36) -->
+    <g stroke="#D96B43" stroke-width="1.1">
+      <polyline points="15,18 106,18 155,22 452,36" />
+      <polyline points="15,28 110,28 155,30 452,36" />
+      <polyline points="15,44 110,44 155,42 452,36" />
+      <polyline points="15,54 106,54 155,50 452,36" />
+    </g>
+    <circle cx="452" cy="36" r="3.5" fill="#D96B43" />
+  </g>
+
+  <!-- Technical Annotations -->
+  <g font-family="monospace" font-size="10" fill="#1E1D1A" letter-spacing="1.5">
+    <text x="44" y="52">OBS. 08 // OCULAR IRIS &amp; DIOPTRIC CAUSTICS</text>
+    <text x="44" y="68" fill="#D96B43">PUPILLARY APERTURE Ø 3.8 mm • POWER +58.6 D</text>
+  </g>
+</svg>

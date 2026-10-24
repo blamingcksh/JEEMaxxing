@@ -1,9 +1,15 @@
 /* ============================================================================
-   theme.js — JEEMaxxing Theme Engine v2
-   Accent themes (data-theme) × appearance mode (data-mode: midnight | dusk).
-   Dusk is the default mode; stored 'midnight' migrates to dusk once.
-   Pill button docks next to the logo; dropdown re-skins the whole app live.
-   Persists: localStorage 'jeemax_theme' + 'jeemax_mode'.
+   theme.js — JEEMaxxing Theme Engine v3 · OBSERVATORY
+   One theme, two moods, three inks:
+     data-theme="observatory"  (always — the old 8-accent system is retired)
+     data-ink="brass|starlight|ember"
+     data-mode="night|dusk"
+   Pill button docks next to the logo; the popover is a small quiet panel:
+   three ink dots + a Night/Dusk segmented control.
+   Persists: localStorage 'jeemax_theme' (ink id) + 'jeemax_mode'.
+   One-time migration from the v2 accent ids:
+     glacier/synthwave/stealth → starlight · bloodmoon/sakura → ember
+     everything else → brass · 'midnight' → night.
    ============================================================================ */
 (function () {
   'use strict';
@@ -12,79 +18,70 @@
 
   var LS_THEME = 'jeemax_theme';
   var LS_MODE  = 'jeemax_mode';
-  var LS_MODE_MIG = 'jeemax_mode_dusk_mig';  // one-time midnight → dusk migration flag
 
-  var THEMES = [
-    { id: 'furnace',    name: 'Furnace',    desc: 'Amber heat · stock build', dots: ['#ffb224', '#ff7a1a', '#3ddcff'] },
-    { id: 'synthwave',  name: 'Synthwave',  desc: 'Violet neon haze',         dots: ['#c084fc', '#e879f9', '#818cf8'] },
-    { id: 'glacier',    name: 'Glacier',    desc: 'Ice-blue deep focus',      dots: ['#38bdf8', '#0ea5e9', '#22d3ee'] },
-    { id: 'overgrowth', name: 'Overgrowth', desc: 'Bioluminescent green',     dots: ['#34d399', '#10b981', '#a3e635'] },
-    { id: 'bloodmoon',  name: 'Blood Moon', desc: 'Crimson aggression',       dots: ['#ef4444', '#f97316', '#fbbf24'] },
-    { id: 'sakura',     name: 'Sakura',     desc: 'Rose quartz calm',         dots: ['#f472b6', '#fb7185', '#c4b5fd'] },
-    { id: 'stealth',    name: 'Stealth',    desc: 'Monochrome ops',           dots: ['#e5e7eb', '#9ca3af', '#4b5563'] },
-    { id: 'sepia',      name: 'Sepia',      desc: 'Aged paper · warm ink',     dots: ['#b5651d', '#8b5a2b', '#d4a017'] }
+  var INKS = [
+    { id: 'brass',     name: 'Brass',     dot: '#E5C07B', desc: 'engraved gold · stock build' },
+    { id: 'starlight', name: 'Starlight', dot: '#9CD3F0', desc: 'cold blue·white stars' },
+    { id: 'ember',     name: 'Ember',     dot: '#E07A52', desc: 'dying-star warmth' }
   ];
-
   var MODES = [
-    { id: 'midnight', name: 'Midnight', icon: '🌙', desc: 'Deep-night terminal' },
-    { id: 'dusk',     name: 'Dusk',     icon: '🌆', desc: 'Evening glass · ~65% dark' }
+    { id: 'night', name: 'Night', desc: 'deep void · plates at 12%' },
+    { id: 'dusk',  name: 'Dusk',  desc: 'lighter sky · plates at 18%' }
   ];
+
+  /* v2 accent id → v3 ink id (one-time migration map) */
+  var LEGACY_INK = {
+    glacier: 'starlight', synthwave: 'starlight', stealth: 'starlight',
+    bloodmoon: 'ember', sakura: 'ember'
+  };
 
   var btn = null, panel = null;
 
-  function current() { try { return localStorage.getItem(LS_THEME) || 'furnace'; } catch (e) { return 'furnace'; } }
+  function migrateInk(raw) {
+    if (!raw) return 'brass';
+    if (LEGACY_INK[raw]) return LEGACY_INK[raw];
+    for (var i = 0; i < INKS.length; i++) if (INKS[i].id === raw) return raw;
+    return 'brass';
+  }
+  function current() {
+    try { return migrateInk(localStorage.getItem(LS_THEME)); } catch (e) { return 'brass'; }
+  }
   function currentMode() {
     try {
       var m = localStorage.getItem(LS_MODE);
-      // Dusk is the default (Sep 2026). Stored 'midnight' migrates to dusk
-      // once; users can still pick Midnight afterwards — the flag stops us
-      // from re-forcing it on every load.
-      if (m === 'midnight' && !localStorage.getItem(LS_MODE_MIG)) {
-        try { localStorage.setItem(LS_MODE, 'dusk'); localStorage.setItem(LS_MODE_MIG, '1'); } catch (e) {}
-        return 'dusk';
-      }
-      return m || 'dusk';
-    } catch (e) { return 'dusk'; }
+      if (m === 'midnight') m = 'night';   // v2 'midnight' maps onto v3 'night'
+      return m === 'dusk' ? 'dusk' : 'night';
+    } catch (e) { return 'night'; }
   }
   function byId(id) {
-    for (var i = 0; i < THEMES.length; i++) { if (THEMES[i].id === id) return THEMES[i]; }
-    return THEMES[0];
-  }
-  function dotBg(t) {
-    return 'conic-gradient(from 210deg,' + t.dots[0] + ',' + t.dots[1] + ',' + t.dots[2] + ',' + t.dots[0] + ')';
+    for (var i = 0; i < INKS.length; i++) { if (INKS[i].id === id) return INKS[i]; }
+    return INKS[0];
   }
 
-  function apply(id, persist) {
+  function applyInk(id, persist) {
     var t = byId(id);
-    document.documentElement.setAttribute('data-theme', t.id);
+    var root = document.documentElement;
+    root.setAttribute('data-theme', 'observatory');
+    root.setAttribute('data-ink', t.id);
     if (persist !== false) { try { localStorage.setItem(LS_THEME, t.id); } catch (e) {} }
-    if (btn) {
-      var d = btn.querySelector('.theme-btn-dot');
-      if (d) d.style.background = dotBg(t);
-      btn.title = 'Theme: ' + t.name;
-    }
+    if (btn) btn.title = 'Ink: ' + t.name;
     if (panel) {
-      var opts = panel.querySelectorAll('.theme-opt');
-      for (var i = 0; i < opts.length; i++) {
-        var on = opts[i].getAttribute('data-theme-id') === t.id;
-        opts[i].classList.toggle('active', on);
-        opts[i].setAttribute('aria-selected', on ? 'true' : 'false');
+      var dots = panel.querySelectorAll('.theme-ink');
+      for (var i = 0; i < dots.length; i++) {
+        dots[i].setAttribute('aria-pressed', dots[i].getAttribute('data-ink') === t.id ? 'true' : 'false');
       }
     }
-    try { document.dispatchEvent(new CustomEvent('jeemax:themechange', { detail: { theme: t.id } })); } catch (e) {}
+    try { document.dispatchEvent(new CustomEvent('jeemax:themechange', { detail: { theme: 'observatory', ink: t.id } })); } catch (e) {}
   }
 
   function applyMode(id, persist) {
-    var valid = 'dusk';
-    for (var i = 0; i < MODES.length; i++) { if (MODES[i].id === id) valid = id; }
+    var valid = id === 'dusk' ? 'dusk' : 'night';
     document.documentElement.setAttribute('data-mode', valid);
     if (persist !== false) { try { localStorage.setItem(LS_MODE, valid); } catch (e) {} }
     if (panel) {
-      var mbs = panel.querySelectorAll('.theme-mode-btn');
+      var mbs = panel.querySelectorAll('.theme-mode-seg button');
       for (var j = 0; j < mbs.length; j++) {
-        var on = mbs[j].getAttribute('data-mode-id') === valid;
-        mbs[j].classList.toggle('active', on);
-        mbs[j].setAttribute('aria-pressed', on ? 'true' : 'false');
+        mbs[j].setAttribute('aria-pressed', mbs[j].getAttribute('data-mode-id') === valid ? 'true' : 'false');
       }
     }
     try { document.dispatchEvent(new CustomEvent('jeemax:modechange', { detail: { mode: valid } })); } catch (e) {}
@@ -94,7 +91,7 @@
   function position() {
     if (!btn || !panel) return;
     var r = btn.getBoundingClientRect();
-    var pw = panel.offsetWidth || 264, ph = panel.offsetHeight || 440;
+    var pw = panel.offsetWidth || 232, ph = panel.offsetHeight || 150;
     var left = Math.max(12, Math.min(r.left, window.innerWidth - pw - 12));
     var top = r.bottom + 10;
     if (top + ph > window.innerHeight - 12) top = Math.max(12, r.top - ph - 10);
@@ -113,11 +110,11 @@
     btn.id = 'theme-btn';
     btn.className = 'theme-btn';
     btn.type = 'button';
-    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.setAttribute('aria-haspopup', 'dialog');
     btn.setAttribute('aria-expanded', 'false');
     btn.innerHTML =
       '<span class="theme-btn-dot"></span>' +
-      '<span class="theme-btn-label">Theme</span>' +
+      '<span class="theme-btn-label">Ink</span>' +
       '<span class="theme-btn-chev">▾</span>';
     var logo = sb.querySelector('.logo-container');
     if (logo && logo.parentNode === sb) sb.insertBefore(btn, logo.nextSibling);
@@ -125,43 +122,34 @@
 
     panel = document.createElement('div');
     panel.id = 'theme-panel';
-    panel.className = 'theme-panel';
-    panel.setAttribute('role', 'listbox');
-    panel.setAttribute('aria-label', 'App theme');
+    panel.className = 'theme-pop';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Observatory inks and mood');
 
-    var html = ['<div class="theme-panel-modes" role="group" aria-label="Appearance mode">'];
+    var html = ['<p class="theme-pop-title">INK</p><div class="theme-ink-row" role="group" aria-label="Ink">'];
+    for (var i = 0; i < INKS.length; i++) {
+      var ink = INKS[i];
+      html.push(
+        '<button type="button" class="theme-ink" data-ink="' + ink.id + '" aria-pressed="false" title="' +
+          ink.name + ' — ' + ink.desc + '" style="--ink-dot:' + ink.dot + '"></button>'
+      );
+    }
+    html.push('</div><p class="theme-pop-title">MOOD</p><div class="theme-mode-seg" role="group" aria-label="Mood">');
     for (var m = 0; m < MODES.length; m++) {
       var mo = MODES[m];
-      html.push(
-        '<button type="button" class="theme-mode-btn" data-mode-id="' + mo.id + '" aria-pressed="false" title="' + mo.desc + '">' +
-          '<span class="theme-mode-ic">' + mo.icon + '</span>' + mo.name +
-        '</button>'
-      );
+      html.push('<button type="button" data-mode-id="' + mo.id + '" aria-pressed="false" title="' + mo.desc + '">' + mo.name + '</button>');
     }
-    html.push('</div><div class="theme-panel-head">THEME ENGINE</div>');
-    for (var i = 0; i < THEMES.length; i++) {
-      var t = THEMES[i];
-      html.push(
-        '<button type="button" class="theme-opt" role="option" aria-selected="false" data-theme-id="' + t.id + '">' +
-          '<span class="theme-opt-dot" style="background:' + dotBg(t) + '"></span>' +
-          '<span class="theme-opt-txt">' +
-            '<span class="theme-opt-name">' + t.name + '</span>' +
-            '<span class="theme-opt-desc">' + t.desc + '</span>' +
-          '</span>' +
-          '<span class="theme-opt-check">✓</span>' +
-        '</button>'
-      );
-    }
+    html.push('</div>');
     panel.innerHTML = html.join('');
     document.body.appendChild(panel);
 
     btn.addEventListener('click', function (e) { e.stopPropagation(); if (isOpen()) close(); else open(); });
 
-    var opts = panel.querySelectorAll('.theme-opt');
-    for (var j = 0; j < opts.length; j++) {
-      opts[j].addEventListener('click', function () { apply(this.getAttribute('data-theme-id')); });
+    var dots = panel.querySelectorAll('.theme-ink');
+    for (var d = 0; d < dots.length; d++) {
+      dots[d].addEventListener('click', function () { applyInk(this.getAttribute('data-ink')); });
     }
-    var mbs = panel.querySelectorAll('.theme-mode-btn');
+    var mbs = panel.querySelectorAll('.theme-mode-seg button');
     for (var n = 0; n < mbs.length; n++) {
       mbs[n].addEventListener('click', function () { applyMode(this.getAttribute('data-mode-id')); });
     }
@@ -175,7 +163,7 @@
     window.addEventListener('resize', function () { if (isOpen()) position(); });
     window.addEventListener('scroll', function () { if (isOpen()) position(); }, true);
 
-    apply(current(), false);
+    applyInk(current(), false);
     applyMode(currentMode(), false);
   }
 
@@ -183,11 +171,11 @@
   else mount();
 
   window.JEEMaxTheme = {
-    set: function (id) { apply(id, true); },
+    set: function (id) { applyInk(id, true); },
     get: current,
     setMode: function (id) { applyMode(id, true); },
     getMode: currentMode,
-    themes: THEMES,
+    inks: INKS,
     modes: MODES
   };
 })();

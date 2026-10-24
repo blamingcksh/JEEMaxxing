@@ -2,16 +2,19 @@
 <html lang="en">
 <head>
     <script>try{var _fx=JSON.parse(localStorage.getItem('jeemax_fx_prefs')||'null');if(_fx&&_fx.effects===false)document.documentElement.classList.add('fx-effects-off');}catch(e){}</script>
-    <script>/* Theme pre-boot: apply saved theme/mode BEFORE first paint so styles.css
-       resolves with the right data-theme/data-mode (no default-theme FOUC).
-       Invalid/unknown stored ids silently fall back to the defaults. */
+    <script>/* Theme pre-boot (observatory v3): apply the saved ink + mood BEFORE
+   first paint so observatory.css resolves with no flash of the old themes.
+   data-theme is ALWAYS "observatory"; only the ink (brass/starlight/ember)
+   and the mood (night/dusk) vary. Legacy v2 ids migrate once here too. */
 try{var _t=localStorage.getItem('jeemax_theme'),_m=localStorage.getItem('jeemax_mode');
-var _ths=['furnace','synthwave','glacier','overgrowth','bloodmoon','sakura','stealth','sepia'];
-var _mds=['midnight','dusk'];
-if(_m==='midnight'&&!localStorage.getItem('jeemax_mode_dusk_mig')){_m='dusk';try{localStorage.setItem('jeemax_mode','dusk');localStorage.setItem('jeemax_mode_dusk_mig','1');}catch(_){}}
+var _map={glacier:'starlight',synthwave:'starlight',stealth:'starlight',bloodmoon:'ember',sakura:'ember'};
+var _ink=_map[_t]||(_t==='brass'||_t==='starlight'||_t==='ember'?_t:'brass');
+if(_m==='midnight')_m='night';
+if(_m!=='dusk'&&_m!=='night')_m='night';
 var _rt=document.documentElement;
-_rt.setAttribute('data-theme',_ths.indexOf(_t)>=0?_t:'furnace');
-_rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'dusk');}catch(e){}</script>
+_rt.setAttribute('data-theme','observatory');
+_rt.setAttribute('data-ink',_ink);
+_rt.setAttribute('data-mode',_m);}catch(e){document.documentElement.setAttribute('data-theme','observatory');document.documentElement.setAttribute('data-ink','brass');document.documentElement.setAttribute('data-mode','night');}</script>
 <script>/* Standalone pre-boot: flag Home-Screen launches BEFORE first paint so
    styles-ipad.css resolves --sat (status-bar inset) with no flash of
    under-the-blur content. iOS Safari exposes navigator.standalone; modern
@@ -19,7 +22,7 @@ _rt.setAttribute('data-mode',_mds.indexOf(_m)>=0?_m:'dusk');}catch(e){}</script>
 try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);try{_s=_s||(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);}catch(_){}if(_s)document.documentElement.classList.add('jmax-standalone');})();}catch(e){}</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#050508">
+<meta name="theme-color" content="#06070A">
 <meta name="description" content="JEE grind hub — focus timer, error vault, spaced repetition and live forest.">
 <!-- ── PWA / add-to-home-screen (iPad/iPhone standalone app mode) ── -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -34,17 +37,17 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 
-<!-- ── Type system: Chakra Petch (display) · IBM Plex Sans (body) · Space Grotesk (numerics / chart SVG).
-        Loaded async (media=print/onload swap) so they never block first paint;
-        fontsource ships font-display:swap so text shows instantly in fallback. ── -->
-<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
-<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-600.css" rel="stylesheet" media="print" onload="this.media='all'">
-<link href="https://cdn.jsdelivr.net/fontsource/css/chakra-petch@latest/latin-700.css" rel="stylesheet" media="print" onload="this.media='all'">
+<!-- ── Type system (observatory): Cormorant Garamond (display serif) ·
+        IBM Plex Sans (body) · IBM Plex Mono (measurement / labels).
+        Loaded async (media=print/onload swap) so they never block first
+        paint; fontsource ships font-display:swap. ── -->
+<link href="https://cdn.jsdelivr.net/fontsource/css/cormorant-garamond@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/cormorant-garamond@latest/latin-400-italic.css" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-400.css" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-600.css" rel="stylesheet" media="print" onload="this.media='all'">
-<link href="https://cdn.jsdelivr.net/fontsource/css/space-grotesk@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
-<link href="https://cdn.jsdelivr.net/fontsource/css/space-grotesk@latest/latin-700.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-mono@latest/latin-400.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-mono@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
 
 <!-- KaTeX — window.katex is consumed by app.js's global math engine.
      Vendored locally (vendor/katex) so math renders offline and never depends
@@ -65,14 +68,17 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <link rel="stylesheet" href="styles-dashboard.css">
 <link rel="stylesheet" href="styles-practice-fullscreen.css?v=8">
 <link rel="stylesheet" href="styles-ipad.css">
+<!-- ── OBSERVATORY reskin — loaded LAST; overrides every visible surface
+     while the legacy sheets keep working underneath (see observatory.css) ── -->
+<link rel="stylesheet" href="observatory.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
 <body>
 
-<!-- ═══════════════ AMBIENT BACKGROUND LAYERS ═══════════════ -->
-<div class="ambient-glow"></div>
-<div class="ambient-glow glow-secondary"></div>
-<div class="bg-grid-overlay"></div>
+<!-- ═══════════════ ATMOSPHERE ═══════════════
+     The observatory sky (starfield, one plate per screen, grain) is mounted
+     by atmosphere.js as #obs-atmos directly above <body>'s first child.
+     The legacy ambient-glow / bg-grid layers were retired with the reskin. -->
 
 
 <div class="app-container">
@@ -167,11 +173,11 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <!-- ── Quick Action bar (low-friction 1-click stateful launchers) ── -->
             <div id="dash-quick-bar" class="dash-quick-bar">
                 <button type="button" class="dash-quick-btn" id="dq-attack-btn">
-                    <span class="dq-icon">🎯</span>
+                    <span class="dq-icon"><svg class="g"><use href="#g-target"></use></svg></span>
                     <span class="dq-label" id="dq-attack-label">Attack Weakest Chapter →</span>
                 </button>
                 <button type="button" class="dash-quick-btn" id="dq-vault-btn">
-                    <span class="dq-icon">🛡️</span>
+                    <span class="dq-icon"><svg class="g"><use href="#g-shield"></use></svg></span>
                     <span class="dq-label" id="dq-vault-label">Open Error Vault →</span>
                 </button>
             </div>
@@ -311,33 +317,33 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                             <span class="rail-today-cap">squashed</span>
                             <span class="vt-today-sep" aria-hidden="true"></span>
                             <span class="rail-today-split">
-                                <span class="rail-today-subj" data-subject="physics" title="Physics squashed today"><i>⚛️</i><b id="rail-today-physics">0</b></span>
-                                <span class="rail-today-subj" data-subject="chemistry" title="Chemistry squashed today"><i>🧪</i><b id="rail-today-chemistry">0</b></span>
-                                <span class="rail-today-subj" data-subject="maths" title="Maths squashed today"><i>📐</i><b id="rail-today-maths">0</b></span>
+                                <span class="rail-today-subj" data-subject="physics" title="Physics squashed today"><i><svg class="g"><use href="#g-physics"></use></svg></i><b id="rail-today-physics">0</b></span>
+                                <span class="rail-today-subj" data-subject="chemistry" title="Chemistry squashed today"><i><svg class="g"><use href="#g-chemistry"></use></svg></i><b id="rail-today-chemistry">0</b></span>
+                                <span class="rail-today-subj" data-subject="maths" title="Maths squashed today"><i><svg class="g"><use href="#g-maths"></use></svg></i><b id="rail-today-maths">0</b></span>
                             </span>
                         </div>
                         <div class="rail-actions vt-actions">
-                            <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()">⚡ Fix Queue</button>
-                            <button class="daily-queue-master-btn" id="bounty-rail-btn" onclick="openDailyBounty()" style="display:none">⚔️ Bounty</button>
+                            <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()"><svg class="g"><use href="#g-spark"></use></svg> Fix Queue</button>
+                            <button class="daily-queue-master-btn" id="bounty-rail-btn" onclick="openDailyBounty()" style="display:none"><svg class="g"><use href="#g-trophy"></use></svg> Bounty</button>
                             <button class="btn btn-primary rail-btn" onclick="openModal('add-error-modal')">+ Log</button>
-                            <button class="btn btn-dump rail-btn" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')">🧠 Dump</button>
+                            <button class="btn btn-dump rail-btn" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')"><svg class="g"><use href="#g-eye"></use></svg> Dump</button>
                         </div>
                     </div>
 
                     <div class="vt-row vt-row-sub">
                         <nav class="vault-subjects" aria-label="Error subjects">
                             <div class="subject-folder active" data-subject="physics" onclick="openErrorMatrix('physics', this)">
-                                <span class="folder-icon">🌌</span>
+                                <span class="folder-icon"><svg class="g"><use href="#g-physics"></use></svg></span>
                                 <span class="folder-name">Physics</span>
                                 <span class="folder-count" id="folder-count-physics" title="Mistakes tracked in this subject">0</span>
                             </div>
                             <div class="subject-folder" data-subject="chemistry" onclick="openErrorMatrix('chemistry', this)">
-                                <span class="folder-icon">🧪</span>
+                                <span class="folder-icon"><svg class="g"><use href="#g-chemistry"></use></svg></span>
                                 <span class="folder-name">Chemistry</span>
                                 <span class="folder-count" id="folder-count-chemistry" title="Mistakes tracked in this subject">0</span>
                             </div>
                             <div class="subject-folder" data-subject="maths" onclick="openErrorMatrix('maths', this)">
-                                <span class="folder-icon">📐</span>
+                                <span class="folder-icon"><svg class="g"><use href="#g-maths"></use></svg></span>
                                 <span class="folder-name">Maths</span>
                                 <span class="folder-count" id="folder-count-maths" title="Mistakes tracked in this subject">0</span>
                             </div>
@@ -367,10 +373,10 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         <span class="emf-sep" aria-hidden="true"></span>
                         <div class="emf-pill-group" data-emf-filter="status" role="group" aria-label="Filter by status">
                             <button class="matrix-pill active" data-emf-value="all" onclick="setMatrixFilter('status','all',this)">All</button>
-                            <button class="matrix-pill" data-emf-value="ready" onclick="setMatrixFilter('status','ready',this)">🟢 Due</button>
-                            <button class="matrix-pill" data-emf-value="due_soon" onclick="setMatrixFilter('status','due_soon',this)">⏳ Soon</button>
-                            <button class="matrix-pill" data-emf-value="scheduled" onclick="setMatrixFilter('status','scheduled',this)">🗓️ Later</button>
-                            <button class="matrix-pill" data-emf-value="mastered" onclick="setMatrixFilter('status','mastered',this)">💤 Done</button>
+                            <button class="matrix-pill" data-emf-value="ready" onclick="setMatrixFilter('status','ready',this)"><i class="sdot sdot-ready"></i>Due</button>
+                            <button class="matrix-pill" data-emf-value="due_soon" onclick="setMatrixFilter('status','due_soon',this)"><i class="sdot sdot-soon"></i>Soon</button>
+                            <button class="matrix-pill" data-emf-value="scheduled" onclick="setMatrixFilter('status','scheduled',this)"><i class="sdot sdot-later"></i>Later</button>
+                            <button class="matrix-pill" data-emf-value="mastered" onclick="setMatrixFilter('status','mastered',this)"><i class="sdot sdot-done"></i>Done</button>
                         </div>
                         <span class="emf-sep" aria-hidden="true"></span>
                         <div class="emf-pill-group" data-emf-filter="type" role="group" aria-label="Filter by mistake type">
@@ -402,17 +408,17 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <h2 class="box-title center-head">Pick Your Arena</h2>
                 <div class="subject-cards">
                     <div class="subject-card" onclick="selectSubject('physics')">
-                        <div class="subject-icon">⚛️</div>
+                        <div class="subject-icon"><svg class="g"><use href="#g-physics"></use></svg></div>
                         <h3>Physics</h3>
                         <div class="subject-card-meta" id="subj-meta-physics">Loading…</div>
                     </div>
                     <div class="subject-card" onclick="selectSubject('chemistry')">
-                        <div class="subject-icon">🧪</div>
+                        <div class="subject-icon"><svg class="g"><use href="#g-chemistry"></use></svg></div>
                         <h3>Chemistry</h3>
                         <div class="subject-card-meta" id="subj-meta-chemistry">Loading…</div>
                     </div>
                     <div class="subject-card" onclick="selectSubject('maths')">
-                        <div class="subject-icon">📐</div>
+                        <div class="subject-icon"><svg class="g"><use href="#g-maths"></use></svg></div>
                         <h3>Maths</h3>
                         <div class="subject-card-meta" id="subj-meta-maths">Loading…</div>
                     </div>
@@ -426,8 +432,8 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     <h2 id="chapters-subject-title">Chapters</h2>
                     <div class="chapter-actions" role="group" aria-label="Chapter actions">
                         <button class="btn btn-primary" onclick="openModal('add-chapter-modal')">+ New Chapter</button>
-                        <button class="btn btn-mode-flow" onclick="openMultiChapterMode('flow')" title="Flow State across selected chapters">🎯 Flow</button>
-                        <button class="btn btn-mode-hardcore" onclick="openMultiChapterMode('hardcore')" title="Hardcore across selected chapters">⚡ Hardcore</button>
+                        <button class="btn btn-mode-flow" onclick="openMultiChapterMode('flow')" title="Flow State across selected chapters"><svg class="g"><use href="#g-flow"></use></svg> Flow</button>
+                        <button class="btn btn-mode-hardcore" onclick="openMultiChapterMode('hardcore')" title="Hardcore across selected chapters"><svg class="g"><use href="#g-hardcore"></use></svg> Hardcore</button>
                     </div>
                 </div>
                 <div class="chapter-list" id="chapters-list-container"></div>
@@ -482,7 +488,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
                 <!-- Cloud Storage -->
                 <div class="settings-card">
-                    <h3>☁ Cloud Storage</h3>
+                    <h3><svg class="g"><use href="#g-cloud"></use></svg>Cloud Storage</h3>
                     <p class="box-desc">Link Google Drive to go unlimited. Data syncs to 'JEEMaxxing_Cloud'. No more storage caps.</p>
                     <button id="btn-drive-auth" class="btn btn-primary" onclick="handleDriveAuth()">Link Google Drive</button>
                     <div id="drive-status" class="drive-ok" style="display:none">✔ Cloud Sync Locked In</div>
@@ -491,7 +497,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
                 <!-- Data Vault — full backup / restore [AUDIT P1-1] -->
                 <div class="settings-card">
-                    <h3>🗄 Data Vault</h3>
+                    <h3><svg class="g"><use href="#g-archive"></use></svg>Data Vault</h3>
                     <p class="box-desc">One-file backup of EVERYTHING — question bank, images, ELO, mocks, solve history, checkpoint lockdown and settings. Every section is fingerprinted, and restore verifies each one. Do this regularly; cloud sync is not a backup.</p>
                     <button id="backup-download-btn" class="btn btn-primary" onclick="exportFullBackup()">⬇ Download Full Backup</button>
                     <div class="file-upload-wrapper" style="margin-top:10px">
@@ -505,7 +511,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
                 <!-- Profile -->
                 <div class="settings-card">
-                    <h3>🦊 Your Build</h3>
+                    <h3><svg class="g"><use href="#g-key"></use></svg>Your Build</h3>
                     <div class="input-group">
                         <label for="set-username">Gamer Tag</label>
                         <input id="set-username" class="pomo-input" type="text" placeholder="Grindset" maxlength="20">
@@ -528,14 +534,14 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                      "Daily Grind Quota" + "Daily Fix Quota" cards. Contracts
                      are computed, not set; no 24h lock. ── -->
                 <div class="settings-card">
-                    <h3>⚡ Daily Directive</h3>
+                    <h3><svg class="g"><use href="#g-target"></use></svg>Daily Directive</h3>
                     <div id="directive-settings-body"></div>
                     <button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="window.scheduleDeloadFromUi()">🌿 Schedule Earned Rest</button>
                 </div>
 
                 <!-- Gemini API -->
                 <div class="settings-card">
-                    <h3>🤖 Gemini API Setup</h3>
+                    <h3><svg class="g"><use href="#g-spark"></use></svg>Gemini API Setup</h3>
                     <div class="input-group">
                         <label for="gemini-key">API Key</label>
                         <input id="gemini-key" class="pomo-input" type="password" placeholder="AIza…" autocomplete="off">
@@ -545,7 +551,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 </div>
                 <!-- Audio & Visual FX -->
 <div class="settings-card" id="fx-settings-card">
-    <h3>🎛️ Audio &amp; Visual FX</h3>
+    <h3><svg class="g"><use href="#g-gauge"></use></svg>Audio &amp; Visual FX</h3>
     <p class="box-desc">Tune the dopamine. Sound, motion and haptics are fully modular. Turning off <b>Visual FX</b> also calms the UI for photosensitivity / low‑power (it mirrors your OS reduced‑motion setting on first load).</p>
     <div class="fx-row"><span class="fx-row-label">🔊 Sound Effects</span><label class="fx-switch"><input type="checkbox" id="fx-sound"><span class="fx-slider"></span></label></div>
     <div class="fx-row"><span class="fx-row-label">🎚️ UI Volume</span><input type="range" id="fx-volume" class="fx-range" min="0" max="100" value="70"></div>
@@ -560,7 +566,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
                 <!-- Anti-Slump Checkpoints — launcher only; checkpoint.js owns the UI -->
                 <div class="settings-card">
-                    <h3>🔒 Anti-Slump Checkpoints</h3>
+                    <h3><svg class="g"><use href="#g-lock"></use></svg>Anti-Slump Checkpoints</h3>
                     <p class="box-desc">4-pillar accountability engine: scheduled checkpoints, goof-off detection, grace-period ignition, and Protocol Zero graph scarring. The whole system lives in the floating 🔒 Sentry Hub at the bottom-left corner — arm it, set times, and test-fire from there.</p>
                     <button class="btn btn-secondary" onclick="var h=document.getElementById('cp-hub'); if(h){h.click()}else{alert('Sentry hub still booting — give it a sec.')}">Open Sentry Control Center</button>
                 </div>
@@ -592,7 +598,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <!-- Post-23:00 Night Guard Modal (Tier 3: uninterruptible, long-press 3s override) -->
 <div id="nightguard-modal" class="modal-overlay">
     <div class="modal-content nightguard-card">
-        <div class="nightguard-icon">🛌</div>
+        <div class="nightguard-icon">☾</div>
         <h2 id="nightguard-title">Begin Recovery?</h2>
         <p id="nightguard-message">You are not learning. You are reinforcing noise. Save your hours.</p>
         <div class="nightguard-actions">
@@ -1182,6 +1188,9 @@ window.clearMatrixFilters = function () {
 <!-- Daily Mood Check — soft pastel popup (self-wiring; shows once per day after the daily reset) -->
 <script type="module" src="./boot-sequence.js"></script>
 <script src="theme.js" defer></script>
+<!-- Observatory glyph sprite (emoji → line glyphs) + atmosphere runtime (sky, plates) -->
+<script src="glyphs.js" defer></script>
+<script src="atmosphere.js" defer></script>
 <script src="dashboard-clean.js" defer></script>
 <!-- Practice Metronome — self-mounting floating widget (FAB bottom-right +
      popover; global API on window.Metro, prefs in jeemax_metronome_prefs) -->

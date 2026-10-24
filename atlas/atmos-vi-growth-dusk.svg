@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+<defs>
+<linearGradient id="leaf-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="#0B1F17" />
+<stop offset="50%" stop-color="#122B21" />
+<stop offset="100%" stop-color="#081611" />
+</linearGradient>
+<linearGradient id="leaf-blade" x1="20%" y1="0%" x2="80%" y2="100%">
+<stop offset="0%" stop-color="#43A047" />
+<stop offset="45%" stop-color="#1B5E20" />
+<stop offset="85%" stop-color="#0D3B2E" />
+<stop offset="100%" stop-color="#07261E" />
+</linearGradient>
+<radialGradient id="guard-cell-grad" cx="50%" cy="50%" r="50%">
+<stop offset="0%" stop-color="#C6FF00" stop-opacity="0.85" />
+<stop offset="55%" stop-color="#43A047" stop-opacity="0.85" />
+<stop offset="100%" stop-color="#1B5E20" stop-opacity="0.95" />
+</radialGradient>
+<clipPath id="leaf-body-clip">
+<path d="M 225 78 C 342 155, 372 322, 225 478 C 78 322, 108 155, 225 78 Z" />
+</clipPath>
+<clipPath id="leaf-loupe-clip">
+<circle cx="418" cy="235" r="106" />
+</clipPath>
+</defs>
+<!-- Botanical Herbarium Dark Background &amp; Gold Frame -->
+<rect width="600" height="600" fill="url(#leaf-bg)" />
+<!-- Geometric Phyllotaxis Construction Circles -->
+<g stroke="#D4AF37" stroke-width="0.6" stroke-opacity="0.4" fill="none">
+<circle cx="225" cy="280" r="205" stroke-dasharray="4 4" />
+<circle cx="225" cy="280" r="145" />
+<line x1="225" y1="42" x2="225" y2="548" stroke="#FF6E40" stroke-width="0.9" stroke-opacity="0.7" stroke-dasharray="5 3" />
+<line x1="42" y1="280" x2="558" y2="280" stroke-dasharray="3 3" />
+</g>
+<!-- Macro Chlorophyll Leaf Specimen -->
+<g>
+<path d="M 225 78 C 342 155, 372 322, 225 478 C 78 322, 108 155, 225 78 Z" fill="url(#leaf-blade)" stroke="#C6FF00" stroke-width="1.8" />
+<path d="M 221 478 L 229 478 L 233 532 L 217 532 Z" fill="#C6FF00" />
+<!-- Luminous Vascular Xylem/Phloem Network -->
+<g clip-path="url(#leaf-body-clip)" fill="none">
+<!-- Primary Midrib -->
+<line x1="225" y1="78" x2="225" y2="478" stroke="#C6FF00" stroke-width="3.2" />
+<!-- Secondary Pinnate Veins -->
+<g stroke="#B2FF59" stroke-width="1.6" stroke-opacity="0.9">
+<path d="M 225 420 Q 165 390 118 340" />
+<path d="M 225 360 Q 150 325 102 265" />
+<path d="M 225 300 Q 145 260 108 195" />
+<path d="M 225 240 Q 160 200 132 140" />
+<path d="M 225 180 Q 180 150 165 105" />
+<path d="M 225 420 Q 285 390 332 340" />
+<path d="M 225 360 Q 300 325 348 265" />
+<path d="M 225 300 Q 305 260 342 195" />
+<path d="M 225 240 Q 290 200 318 140" />
+<path d="M 225 180 Q 270 150 285 105" />
+</g>
+<!-- Tertiary Reticulate Mesh -->
+<g stroke="#64FFDA" stroke-width="0.75" stroke-opacity="0.6">
+<polyline points="165,375 180,340 225,330 270,340 285,375" />
+<polyline points="145,305 175,275 225,270 275,275 305,305" />
+<polyline points="150,235 185,210 225,210 265,210 300,235" />
+<polyline points="170,175 195,155 225,150 255,155 280,175" />
+<line x1="180" y1="340" x2="175" y2="275" />
+<line x1="175" y1="275" x2="185" y2="210" />
+<line x1="270" y1="340" x2="275" y2="275" />
+<line x1="275" y1="275" x2="265" y2="210" />
+</g>
+</g>
+<!-- Target Sampling Reticle on Leaf Surface -->
+<circle cx="275" cy="275" r="16" fill="#FF6E40" fill-opacity="0.3" stroke="#FF6E40" stroke-width="1.6" />
+<circle cx="275" cy="275" r="3.5" fill="#FF6E40" />
+<line x1="288" y1="265" x2="318" y2="248" stroke="#FF6E40" stroke-width="1.3" stroke-dasharray="3 2" />
+</g>
+<!-- High-Magnification Stomatal Complex Loupe (400X) -->
+<g>
+<circle cx="418" cy="235" r="114" fill="#0B1F17" stroke="#D4AF37" stroke-width="1.5" />
+<circle cx="418" cy="235" r="106" fill="#133829" stroke="#C6FF00" stroke-width="2" />
+<g clip-path="url(#leaf-loupe-clip)">
+<!-- Epidermal Pavement Cell Honeycomb -->
+<g stroke="#64FFDA" stroke-width="1.1" stroke-opacity="0.7" fill="#1B4D38">
+<polygon points="418,170 468,195 468,275 418,300 368,275 368,195" fill="#225E44" />
+<polygon points="368,195 418,170 418,110 368,85 318,110 318,170" />
+<polygon points="468,195 518,170 518,110 468,85 418,110 418,170" />
+<polygon points="468,275 518,300 518,360 468,385 418,360 418,300" />
+<polygon points="368,275 418,300 418,360 368,385 318,360 318,300" />
+<polygon points="318,170 368,195 368,275 318,300 268,275 268,195" />
+<polygon points="468,195 518,170 568,195 568,275 518,300 468,275" />
+</g>
+<!-- Central Turgid Stoma Complex (Guard Cells, Vacuoles &amp; Chloroplasts) -->
+<g transform="translate(418, 235)">
+<path d="M 0 -48 C -45 -48, -45 48, 0 48 C -14 28, -14 -28, 0 -48 Z" fill="url(#guard-cell-grad)" stroke="#C6FF00" stroke-width="1.8" />
+<path d="M 0 -48 C 45 -48, 45 48, 0 48 C 14 28, 14 -28, 0 -48 Z" fill="url(#guard-cell-grad)" stroke="#C6FF00" stroke-width="1.8" />
+<!-- Turgor Vacuoles (Cyan) -->
+<path d="M -16 -32 C -28 -20, -28 20, -16 32" fill="none" stroke="#64FFDA" stroke-width="3" stroke-linecap="round" stroke-opacity="0.7" />
+<path d="M 16 -32 C 28 -20, 28 20, 16 32" fill="none" stroke="#64FFDA" stroke-width="3" stroke-linecap="round" stroke-opacity="0.7" />
+<!-- Ostiole Pore Aperture -->
+<ellipse cx="0" cy="0" rx="9" ry="28" fill="#07140F" stroke="#FF6E40" stroke-width="1.2" />
+<!-- Glowing Chloroplast Organelles -->
+<g fill="#FF6E40" stroke="#FFFDF7" stroke-width="0.6">
+<circle cx="-18" cy="-22" r="3.5" />
+<circle cx="-24" cy="0" r="4" />
+<circle cx="-18" cy="22" r="3.5" />
+<circle cx="18" cy="-22" r="3.5" />
+<circle cx="24" cy="0" r="4" />
+<circle cx="18" cy="22" r="3.5" />
+</g>
+</g>
+<!-- Secondary Stomata -->
+<g transform="translate(342, 150) scale(0.52)">
+<path d="M 0 -42 C -38 -42, -38 42, 0 42 Z" fill="url(#guard-cell-grad)" stroke="#64FFDA" stroke-width="2" />
+<path d="M 0 -42 C 38 -42, 38 42, 0 42 Z" fill="url(#guard-cell-grad)" stroke="#64FFDA" stroke-width="2" />
+<ellipse cx="0" cy="0" rx="6" ry="22" fill="#07140F" />
+</g>
+<g transform="translate(492, 320) scale(0.52)">
+<path d="M 0 -42 C -38 -42, -38 42, 0 42 Z" fill="url(#guard-cell-grad)" stroke="#64FFDA" stroke-width="2" />
+<path d="M 0 -42 C 38 -42, 38 42, 0 42 Z" fill="url(#guard-cell-grad)" stroke="#64FFDA" stroke-width="2" />
+<ellipse cx="0" cy="0" rx="6" ry="22" fill="#07140F" />
+</g>
+<!-- Micrometer Ocular Crosshair -->
+<line x1="312" y1="235" x2="524" y2="235" stroke="#FF6E40" stroke-width="0.9" stroke-dasharray="4 3" />
+<line x1="418" y1="129" x2="418" y2="341" stroke="#FF6E40" stroke-width="0.9" stroke-dasharray="4 3" />
+</g>
+<circle cx="418" cy="235" r="100" fill="none" stroke="#D4AF37" stroke-width="4" stroke-dasharray="1 5.2" />
+</g>
+<!-- Lower Right Palisade Mesophyll Histological Cross-Section -->
+<g transform="translate(325, 412)" stroke="#C6FF00" stroke-width="1">
+<rect x="0" y="0" width="220" height="98" fill="#0D261D" stroke="#D4AF37" stroke-width="1.2" />
+<!-- Waxy Cuticle &amp; Upper Epidermis -->
+<rect x="0" y="0" width="220" height="14" fill="#F5B841" fill-opacity="0.5" />
+<!-- Palisade Parenchyma Cells -->
+<g fill="#2E7D32" stroke="#B2FF59">
+<rect x="10" y="18" width="19" height="44" rx="6" />
+<rect x="35" y="18" width="19" height="44" rx="6" />
+<rect x="60" y="18" width="19" height="44" rx="6" />
+<rect x="85" y="18" width="19" height="44" rx="6" />
+<rect x="110" y="18" width="19" height="44" rx="6" fill="#FF6E40" fill-opacity="0.55" stroke="#FF6E40" />
+<rect x="135" y="18" width="19" height="44" rx="6" />
+<rect x="160" y="18" width="19" height="44" rx="6" />
+<rect x="185" y="18" width="19" height="44" rx="6" />
+</g>
+<!-- Lower Epidermis &amp; Open Stomatal Pore -->
+<rect x="0" y="84" width="94" height="14" fill="#F5B841" fill-opacity="0.5" />
+<rect x="126" y="84" width="94" height="14" fill="#F5B841" fill-opacity="0.5" />
+<circle cx="101" cy="91" r="6" fill="#FF6E40" />
+<circle cx="119" cy="91" r="6" fill="#FF6E40" />
+<!-- CO2 / H2O Gas Exchange Vector -->
+<path d="M 110 108 L 110 68" fill="none" stroke="#64FFDA" stroke-width="1.5" stroke-dasharray="2 2" />
+</g>
+<!-- Telemetry Labels -->
+<g font-family="monospace" font-size="10" fill="#E8F5E9" letter-spacing="1.5">
+</g>
+</svg>
