@@ -79,6 +79,10 @@ function _listenTabSync() {
             // updates we don't have. _doSaveAll adopts them before its own
             // full-bank rewrite so an idle tab can never clobber a sibling.
             _foreignCommitPending = true;
+            // Tell app.js's switchTab a remote commit landed: its reload-on-
+            // tab-switch is gated on this counter (no sibling save → the
+            // in-memory state is already authoritative, skip the full IDB read).
+            try { window.__jmaxRemoteSavedSeq = (window.__jmaxRemoteSavedSeq || 0) + 1; } catch (_) {}
             try {
                 // Daily counters are monotonic within a day — merge upward.
                 let changed = false;
@@ -888,6 +892,22 @@ function _stripBankImages(q) {
  * unchanged (signature compare — no base64 serialization).
  */
 export async function persistImageCacheIfChanged() {
+    // Fast no-image path: when the persisted cache is already empty, a bank
+    // with no vault-sized image payloads can only collect {} (sig '0|') — skip
+    // the full-bank scan + signature build entirely in that case. Semantics
+    // mirror _collectImageCacheFromBank's >100-char filtering exactly.
+    if (_imageCachePersistedSig === '0|') {
+        let hasAny = false;
+        for (const q of AppState.questionBank) {
+            if (q && (
+                (typeof q.imageDataUrl === 'string' && q.imageDataUrl.length > 100) ||
+                (typeof q.diagramImageUrl === 'string' && q.diagramImageUrl.length > 100) ||
+                (typeof q.solutionImageUrl === 'string' && q.solutionImageUrl.length > 100) ||
+                (q.optionImageUrls && typeof q.optionImageUrls === 'object')
+            )) { hasAny = true; break; }
+        }
+        if (!hasAny) return;
+    }
     const cache = _collectImageCacheFromBank();
     const sig = _imageCacheSignature(cache);
     if (sig === _imageCachePersistedSig) return;
@@ -2056,11 +2076,12 @@ async function _doSaveAll() {
         await _adoptForeignBankUpdates();
     }
 
-    const lightweightBank = AppState.questionBank.map(q => ({
-        ...q,
-        imageDataUrl: null,
-        diagramImageUrl: null
-    }));
+    // Clone ONLY questions that still carry inline images — the vault keeps
+    // images out of the bank, so the steady-state save spreads nothing at all
+    // (IDB structured-clones at put() time, so sharing refs here is safe).
+    const lightweightBank = AppState.questionBank.map(q =>
+        ((q && q.imageDataUrl == null && q.diagramImageUrl == null) ? q
+            : { ...q, imageDataUrl: null, diagramImageUrl: null }));
 
     // ── Single-transaction commit: ~15 sequential IDB transactions used to
     //    fire per save; now one commit. The image vault is signature-gated
@@ -2998,6 +3019,7 @@ export async function loadStateFromCloud(isBackground = false) {
                 try { await idbSet(DAILY_SOLVED_LEDGER, ledger); } catch (e) {}
                 const mergedArr = Object.keys(ledger).map(d => ({ date: d, ...(ledger[d] || {}) })).sort((a, b) => a.date.localeCompare(b.date));
                 try { await idbSet('jeemax_daily_history', mergedArr); } catch (e) {}
+                _historyLastWritten = mergedArr; // keep the write-elision marker truthful
             }
             // ══════════════════════════════════════════════════════════════════════
             // ✅ FIX: SAFE ROLLOVER — preserve local progress on date mismatch
@@ -3051,6 +3073,33 @@ export async function loadStateFromCloud(isBackground = false) {
 // written back. Old days are never shifted out.
 const DAILY_SOLVED_LEDGER = 'jeemax_solved_by_date_v1';
 
+// Snapshot a ledger for the unchanged-write check below (entries are mutated
+// in place by the merge + normalization loops).
+function _snapshotLedger(ledger) {
+    const snap = {};
+    for (const d in ledger) {
+        const e = ledger[d];
+        if (!e || typeof e !== 'object') { snap[d] = null; continue; }
+        snap[d] = { date: e.date, physics: e.physics, chemistry: e.chemistry, maths: e.maths, count: e.count };
+    }
+    return snap;
+}
+function _ledgerEquals(ledger, snap) {
+    const keys = Object.keys(ledger);
+    if (keys.length !== Object.keys(snap).length) return false;
+    for (const d of keys) {
+        const e = ledger[d], s = snap[d];
+        if (!e || typeof e !== 'object') { if (s !== null) return false; continue; }
+        if (!s) return false;
+        if ((e.date || undefined) !== (s.date || undefined)) return false;
+        if ((Number(e.physics) || 0) !== (Number(s.physics) || 0)) return false;
+        if ((Number(e.chemistry) || 0) !== (Number(s.chemistry) || 0)) return false;
+        if ((Number(e.maths) || 0) !== (Number(s.maths) || 0)) return false;
+        if ((Number(e.count) || 0) !== (Number(s.count) || 0)) return false;
+    }
+    return true;
+}
+
 export async function persistSolvedByDate() {
     // 1) Rebuild every date from the question bank's solve timestamps.
     const byDate = {};
@@ -3072,6 +3121,9 @@ export async function persistSolvedByDate() {
     // 3) Merge into the permanent ledger — max per subject, union of all dates.
     let ledger = {};
     try { ledger = (await idbGet(DAILY_SOLVED_LEDGER)) || {}; } catch (e) { ledger = {}; }
+    // This call just read the freshest stored ledger, so a skipped write below
+    // only ever elides a write of byte-identical content (multi-tab safe).
+    const asRead = _snapshotLedger(ledger);
     for (const d in byDate) {
         const cur = ledger[d];
         const b = byDate[d];
@@ -3090,6 +3142,7 @@ export async function persistSolvedByDate() {
             e.count = (Number(e.physics) || 0) + (Number(e.chemistry) || 0) + (Number(e.maths) || 0);
         }
     }
+    if (_ledgerEquals(ledger, asRead)) return ledger;
     try { await idbSet(DAILY_SOLVED_LEDGER, ledger); } catch (e) {}
     return ledger;
 }
@@ -3117,12 +3170,33 @@ export async function settleDayCounters(dateKey) {
     } catch (e) { /* ledger is best-effort; the bank rebuild covers most cases */ }
 }
 
+let _historyLastWritten = null; // exact arr object last written to 'jeemax_daily_history'
+function _historyEquals(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        const x = a[i], y = b[i];
+        if (x === y) continue;
+        if (!x || !y) return false;
+        if (x.date !== y.date) return false;
+        if ((Number(x.physics) || 0) !== (Number(y.physics) || 0)) return false;
+        if ((Number(x.chemistry) || 0) !== (Number(y.chemistry) || 0)) return false;
+        if ((Number(x.maths) || 0) !== (Number(y.maths) || 0)) return false;
+        if ((Number(x.count) || 0) !== (Number(y.count) || 0)) return false;
+    }
+    return true;
+}
+
 export async function getDailyHistory() {
     const ledger = await persistSolvedByDate();
     const arr = Object.keys(ledger)
         .map(d => ({ date: d, ...(ledger[d] || {}) }))
         .sort((a, b) => a.date.localeCompare(b.date));
-    try { await idbSet('jeemax_daily_history', arr); } catch (e) {}
+    // Elide the IDB mirror write when the content matches what's already
+    // stored — this runs on every save / render / streak refresh, and the
+    // array is identical almost every time.
+    if (!_historyEquals(arr, _historyLastWritten)) {
+        try { await idbSet('jeemax_daily_history', arr); _historyLastWritten = arr; } catch (e) {}
+    }
     try { window._dailyHistoryCache = arr; } catch (_) {}
     return arr;
 }

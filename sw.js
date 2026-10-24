@@ -137,7 +137,24 @@
 //        victory banner and a Contract Breach guard. index.html, pomodoro.js,
 //        app.js, styles.css and styles-practice-fullscreen.css changed;
 //        focus-sound.js removed from the shell.
-const VERSION = 'jeemax-v65';
+// v66 — COMMAND DECK PASS: dashboard action deck compacted (bridge/tuck-in
+//        banners + quick-action pills), hero progress digit set to mono,
+//        horizon-plate white measurement lines dimmed 60%, WARM START bolt +
+//        ELO tier glyphs replace emojis, Consistency streak chip, exam
+//        countdown "Nd to exam" un-clip, Stoichiometry display fix.
+//        app.js, bridge.js, glyphs.js, matrix.js, index.html,
+//        observatory.css, atlas/atmos-i-horizon-{night,dusk}.svg changed.
+// v67 — PERF PASS (behavior-identical): storage.js commit-path elisions
+//        (clone-only-image-questions, no-image vault fast path, daily-ledger
+//        write elision), app.js O(n²)→Map rewrites (yield index, quick launch,
+//        chapters list) + switchTab drops its unconditional IDB reload,
+//        matrix.js single-pass filter tallies + lazy history rows + id Map,
+//        mock picker debounce + pool cache, sprout-isle hidden-panel/poll gates
+//        + loop allocation hoisting + pause under the break overlay,
+//        atmosphere observer narrowed + rAF coalescing, fx AudioContext lazy
+//        for sound-off users, tracker conic ring → composited rotation, hidden
+//        HUDs release their backdrop blurs via visibility.
+const VERSION = 'jeemax-v69';
 const SHELL = [
   './',
   './index.html',
@@ -161,6 +178,9 @@ const SHELL = [
   './report.js',
   './checkpoint.js',
   './fx.js',
+  './observatory.css',
+  './atmosphere.js',
+  './glyphs.js',
   './matrix.js',
   './pomodoro.js',
   './metronome.js',
@@ -321,7 +341,7 @@ self.addEventListener('fetch', (event) => {
   // for local files — index.html is served with ?v= hashing in some setups).
   // .html included so the manifest start_url (./index.html) is served from
   // cache offline; .woff2 for the vendored KaTeX fonts.
-  if (isLocal && url.pathname.includes('.') && !/(\.js|\.css|\.png|\.webmanifest|\.ico|\.woff2?|\.html|\.mp3|\.wav)$/.test(url.pathname)) {
+  if (isLocal && url.pathname.includes('.') && !/(\.js|\.css|\.png|\.webmanifest|\.ico|\.woff2?|\.html|\.mp3|\.wav|\.svg)$/.test(url.pathname)) {
     return;
   }
 

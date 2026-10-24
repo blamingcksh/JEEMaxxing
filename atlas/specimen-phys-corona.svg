@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="36 36 528 528" width="100%" height="100%">
+  <defs>
+    <radialGradient id="corona-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="25%" stop-color="#E07A52" stop-opacity="0.4" />
+      <stop offset="55%" stop-color="#E5C07B" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#090C14" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <!-- Background &amp; Frame -->
+  <!-- Heliocentric Coordinate Grid &amp; Parker Spiral Arms -->
+  <g transform="translate(300, 275)" fill="none">
+    <circle cx="0" cy="0" r="225" stroke="#F2EDE3" stroke-width="1.2" />
+    <circle cx="0" cy="0" r="218" stroke="#F2EDE3" stroke-width="5" stroke-dasharray="1 5" />
+    <circle cx="0" cy="0" r="190" fill="url(#corona-halo)" />
+    <!-- Parker Spiral Heliospheric Current Trajectories -->
+    <g stroke="#F2EDE3" stroke-width="0.6" stroke-dasharray="3 4" stroke-opacity="0.5">
+      <path d="M 0 -95 Q 110 -120 215 -45" />
+      <path d="M 95 0 Q 120 110 45 215" />
+      <path d="M 0 95 Q -110 120 -215 45" />
+      <path d="M -95 0 Q -120 -110 -45 -215" />
+    </g>
+    <!-- Polar Magnetic Plumes (North &amp; South) -->
+    <g stroke="#F2EDE3" stroke-width="0.8">
+      <path d="M -15 -92 Q -35 -165 -65 -215" />
+      <path d="M -6 -94 Q -15 -165 -25 -220" />
+      <path d="M 0 -95 L 0 -225" stroke="#E07A52" stroke-width="1.2" stroke-dasharray="4 3" />
+      <path d="M 6 -94 Q 15 -165 25 -220" />
+      <path d="M 15 -92 Q 35 -165 65 -215" />
+      <path d="M -15 92 Q -35 165 -65 215" />
+      <path d="M -6 94 Q -15 165 -25 220" />
+      <path d="M 0 95 L 0 225" stroke="#E07A52" stroke-width="1.2" stroke-dasharray="4 3" />
+      <path d="M 6 94 Q 15 165 25 220" />
+      <path d="M 15 92 Q 35 165 65 215" />
+    </g>
+    <!-- Coronal Helmet Streamers &amp; Dipole Magnetic Loops -->
+    <!-- East Limb Streamer -->
+    <path d="M 55 -78 C 195 -135, 225 0, 220 0 C 225 0, 195 135, 55 78" fill="#121724" fill-opacity="0.45" stroke="#F2EDE3" stroke-width="1.4" />
+    <path d="M 72 -62 C 175 -95, 175 95, 72 62" stroke="#E07A52" stroke-width="1.2" />
+    <path d="M 84 -44 C 145 -65, 145 65, 84 44" stroke="#E5C07B" stroke-width="1.2" />
+    <path d="M 92 -24 C 122 -35, 122 35, 92 24" stroke="#F2EDE3" stroke-width="1" />
+    <!-- West Limb Streamer -->
+    <path d="M -55 -78 C -195 -135, -225 0, -220 0 C -225 0, -195 135, -55 78" fill="#121724" fill-opacity="0.45" stroke="#F2EDE3" stroke-width="1.4" />
+    <path d="M -72 -62 C -175 -95, -175 95, -72 62" stroke="#E07A52" stroke-width="1.2" />
+    <path d="M -84 -44 C -145 -65, -145 65, -84 44" stroke="#E5C07B" stroke-width="1.2" />
+    <path d="M -92 -24 C -122 -35, -122 35, -92 24" stroke="#F2EDE3" stroke-width="1" />
+    <!-- Solar Prominence Eruptions (Terracotta) -->
+    <path d="M -78 -54 C -128 -115, -62 -145, -45 -84" stroke="#E07A52" stroke-width="2.5" />
+    <path d="M 65 68 C 115 125, 138 65, 88 38" stroke="#E07A52" stroke-width="2.2" />
+    <!-- Occulted Solar Disk &amp; Active Sunspot Magnetogram -->
+    <circle cx="0" cy="0" r="95" fill="#05070C" stroke="#E07A52" stroke-width="2" />
+    <circle cx="0" cy="0" r="88" stroke="#E5C07B" stroke-width="3" stroke-dasharray="1.5 4.5" />
+    <!-- Internal Heliographic Grid &amp; Barycenter -->
+    <g stroke="#F2EDE3" stroke-width="0.4" stroke-opacity="0.35">
+      <ellipse cx="0" cy="0" rx="95" ry="30" />
+      <ellipse cx="0" cy="0" rx="95" ry="65" />
+      <ellipse cx="0" cy="0" rx="30" ry="95" />
+      <ellipse cx="0" cy="0" rx="65" ry="95" />
+    </g>
+    <!-- Active Sunspot Bipolar Region AR-3842 -->
+    <circle cx="-32" cy="-18" r="14" fill="none" stroke="#E07A52" stroke-width="1" stroke-dasharray="2 2" />
+    <circle cx="-32" cy="-18" r="5" fill="#E07A52" />
+    <circle cx="28" cy="22" r="10" fill="none" stroke="#E5C07B" stroke-width="1" />
+    <circle cx="28" cy="22" r="3.5" fill="#E5C07B" />
+    <path d="M -32 -18 Q 5 -25 28 22" stroke="#E07A52" stroke-width="0.9" stroke-dasharray="2 2" />
+  </g>
+  <!-- Fraunhofer Absorption Spectrum Bar (Bottom) -->
+  <g transform="translate(55, 515)">
+    <rect x="0" y="0" width="490" height="24" fill="#121724" stroke="#F2EDE3" stroke-width="1.5" />
+    <!-- Spectral Absorption Lines (H-alpha, Sodium D, Calcium H/K) -->
+    <line x1="45" y1="0" x2="45" y2="24" stroke="#F2EDE3" stroke-width="2" />
+    <line x1="68" y1="0" x2="68" y2="24" stroke="#F2EDE3" stroke-width="1" />
+    <line x1="125" y1="0" x2="125" y2="24" stroke="#E07A52" stroke-width="3" />
+    <line x1="185" y1="0" x2="185" y2="24" stroke="#F2EDE3" stroke-width="1.5" />
+    <line x1="240" y1="0" x2="240" y2="24" stroke="#F2EDE3" stroke-width="2.5" />
+    <line x1="246" y1="0" x2="246" y2="24" stroke="#F2EDE3" stroke-width="2" />
+    <line x1="330" y1="0" x2="330" y2="24" stroke="#E5C07B" stroke-width="2.5" />
+    <line x1="395" y1="0" x2="395" y2="24" stroke="#F2EDE3" stroke-width="3" />
+    <line x1="432" y1="0" x2="432" y2="24" stroke="#F2EDE3" stroke-width="2" />
+  </g>
+  <!-- Technical Annotations -->
+</svg>

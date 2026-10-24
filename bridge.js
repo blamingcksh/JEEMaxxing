@@ -535,10 +535,11 @@ async function renderBanner() {
     if (eligible || b.morningWarmStart) {
         // Cross-eligible morning banner or warm start
         el.className = 'bridge-banner bridge-banner-ready';
-        const badge = eligible ? '🌉 BRIDGE READY' : '🌉 WARM START';
+        const badge = eligible ? 'BRIDGE READY' : 'WARM START';
+        const badgeIcon = (typeof window.__glyph === 'function') ? window.__glyph('bolt') : '';
         el.innerHTML = `
             <div class="bridge-banner-content">
-                <span class="bridge-banner-badge">${badge}</span>
+                <span class="bridge-banner-badge">${badgeIcon}<span>${badge}</span></span>
                 <span class="bridge-banner-text"><b>${b.subject.toUpperCase()}</b> · ${b.chapter} · ${b.firstMove ? `"${b.firstMove}"` : '~3 min'}</span>
             </div>
             <button class="btn btn-primary btn-sm bridge-banner-btn" onclick="window.Bridge.pickUp()">Pick up →</button>

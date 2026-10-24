@@ -1555,7 +1555,13 @@ panel.addEventListener('click',e=>{
 });
 const MOODS={sleep:'napping',idle:'daydreaming',study:'studying',water:'watering',hop:'happy',tilt:'checking on you',flip:'celebrating',wilt:'a bit wilted',pet:'being petted 💛',stretch:'stretching',wave:'saying hi'};
 setInterval(()=>{
+  // Demo-panel status readout: skip entirely while the panel is hidden (the
+  // app build keeps it off — offsetParent is null) or the tab is backgrounded.
+  // The debug() walk + textContent write fed the global MutationObservers
+  // 1.6×/s for nothing; a later setPanelVisible(true) resumes next tick.
+  if (document.hidden) return;
   const el=$id('isleStatus'); if(!el) return;
+  if (el.offsetParent===null) return;
   const d=window.Isle.debug(); const st=d.state||{};
   const solved=solvedTotal(st.solvedToday);
   const streak=(st.streakAlive&&st.streakDays>0)?('🔥'+st.streakDays+'d'):'no streak';
@@ -1650,10 +1656,35 @@ watchRO();
 fit();
 
 /* ---------- day / night ---------- */
-function hourNow(){ const c=W.appClock||Date.now(); const d=new Date(c); return d.getHours()+d.getMinutes()/60; }
+// epoch-minute cache for hourNow(): local wall-clock hour only changes when
+// the epoch minute does (a minute boundary always advances by 60000 ms), so a
+// per-frame Date allocation is wasted except once per minute. Timelapse
+// (W.appClock) stays live.
+let _hourCache=-1,_hourEpochMin=-1;
+function hourNow(){
+  const c=W.appClock||Date.now();
+  if(W.appClock){ const d=new Date(c); return d.getHours()+d.getMinutes()/60; }
+  const m=Math.floor(c/60000);
+  if(m!==_hourEpochMin){ _hourEpochMin=m; const d=new Date(c); _hourCache=d.getHours()+d.getMinutes()/60; }
+  return _hourCache;
+}
+// weekFocus feeds only the pond-level TARGET, which is damped at λ=0.8/s — a
+// 1 Hz refresh of the underlying 7×Date() computation is invisible.
+let _wfCache=0,_wfAt=-1e9;
+function weekFocusCached(now){
+  if(now-_wfAt>1000){ _wfAt=now; _wfCache=weekFocus(); }
+  return _wfCache;
+}
 function dayFactor(h){ return Math.min(smooth(5.5,7.5,h),1-smooth(17.5,20,h)); }
 
 /* ---------- main loop ---------- */
+// Scratch colors: the update loop used to allocate ~10 THREE.Color objects
+// per frame (fog, key light, pond shore, clouds) — pure GC churn at 60fps.
+const _cFogA=new THREE.Color(0xF7E8D8),_cFogB=new THREE.Color(0x4E4A6E),_cFogC=new THREE.Color(0xFFD9B3);
+const _cKeyA=new THREE.Color(0xFFE2B8),_cKeyB=new THREE.Color(0xAAB6E8),_cKeyC=new THREE.Color(0xFFAF72);
+const _cWilt=new THREE.Color(0xB5AC96),_cMoundA=new THREE.Color(0xFFFFFF),_cMoundB=new THREE.Color(0xC9BC9C);
+const _cShoreA=new THREE.Color(COL.mint),_cShoreB=new THREE.Color(0xC9A48A);
+const _cCloudA=new THREE.Color(0xFFFDF6),_cCloudB=new THREE.Color(0xC9D8E8),_cCloudC=new THREE.Color(0x9FB4C8);
 let tSec=0, last=performance.now(), raf=0, running=false, fpsAvg=60, rolloverTimer=0, frame=0;
 function update(dt,now){
   tSec+=dt; frame++;
@@ -1667,11 +1698,11 @@ function update(dt,now){
   const gold=smooth(5,6.8,h)*(1-smooth(7.5,9.5,h))+smooth(15.5,17.5,h)*(1-smooth(19,20.5,h));
   W.goldF=damp(W.goldF,gold,1.2,dt);
   if(Math.abs(W.dayF-lastSkyF)>0.015||Math.abs(W.goldF-lastGoldF)>0.03){ lastSkyF=W.dayF; lastGoldF=W.goldF; paintSky(W.dayF,W.goldF); }
-  scene.fog.color.set(new THREE.Color(0xF7E8D8).lerp(new THREE.Color(0x4E4A6E),W.nightF).lerp(new THREE.Color(0xFFD9B3),W.goldF*0.45));
+  scene.fog.color.copy(_cFogA).lerp(_cFogB,W.nightF).lerp(_cFogC,W.goldF*0.45);
   hemi.intensity=0.3+0.7*W.dayF;
   amb.intensity=0.12+0.2*W.dayF;
   keyLight.intensity=0.25+1.15*W.dayF;
-  keyLight.color.set(new THREE.Color(0xFFE2B8).lerp(new THREE.Color(0xAAB6E8),W.nightF).lerp(new THREE.Color(0xFFAF72),W.goldF*0.8));
+  keyLight.color.copy(_cKeyA).lerp(_cKeyB,W.nightF).lerp(_cKeyC,W.goldF*0.8);
   keyLight.position.set(26,40-14*W.goldF,16);
   starMat.opacity=W.nightF*0.9;
   const ha=((h-6)/12)*Math.PI;
@@ -1688,24 +1719,24 @@ function update(dt,now){
   const dTarget=st.streakAlive?0:(W.missedActive?1:0.7);
   const dPrev=W.drought; W.drought=damp(W.drought,dTarget,0.6,dt);
   if(Math.abs(W.drought-dPrev)>0.001){
-    W.moundMat.color.set(new THREE.Color(0xFFFFFF).lerp(new THREE.Color(0xC9BC9C),W.drought*0.5));
-    for(const m of wiltMats) m.color.copy(m.userData.base).lerp(new THREE.Color(0xB5AC96),W.drought*0.45);
+    W.moundMat.color.copy(_cMoundA).lerp(_cMoundB,W.drought*0.5);
+    for(const m of wiltMats) m.color.copy(m.userData.base).lerp(_cWilt,W.drought*0.45);
   }
   /* pond */
-  pondLevelTarget=clamp01(weekFocus()/WEEK_GOAL)*0.85+0.15+W.pondBoost;
+  pondLevelTarget=clamp01(weekFocusCached(now)/WEEK_GOAL)*0.85+0.15+W.pondBoost;
   W.pondBoost=Math.max(0,W.pondBoost-dt*0.002);
   pondLevel=damp(pondLevel,clamp01(pondLevelTarget),0.8,dt);
   pondMesh.scale.setScalar(0.55+0.45*pondLevel);
-  shoreMat.color.set(new THREE.Color(COL.mint).lerp(new THREE.Color(0xC9A48A),1-pondLevel));
+  shoreMat.color.copy(_cShoreA).lerp(_cShoreB,1-pondLevel);
   pondGlint.material.rotation+=dt*0.15;
   W.rippleT-=dt;
   if(W.rippleT<=0){ W.rippleT=rand(2.2,4.2); ripple(POS.pond[0]+rand(-1.6,1.6),POS.pond[1]+rand(-1.6,1.6),pondY+0.09); }
   /* cloud */
   cloudFill=((st.focusSecondsToday||0)%BLOCK)/BLOCK;
   const raining=now<W.rainUntil||!!W.cloudRainTarget;
-  cloudMats.forEach((m,i)=>{ m.color.set(new THREE.Color(0xFFFDF6)
-    .lerp(new THREE.Color(0xC9D8E8),cloudFill*0.7)
-    .lerp(new THREE.Color(0x9FB4C8),raining?0.5:0)); });
+  cloudMats.forEach((m,i)=>{ m.color.copy(_cCloudA)
+    .lerp(_cCloudB,cloudFill*0.7)
+    .lerp(_cCloudC,raining?0.5:0); });
   cloudG.position.y=17.5+Math.sin(tSec*0.5)*0.4-(raining?0.8:0)-cloudFill*0.6;
   cloudG.rotation.y+=dt*0.03;
   cloudG.scale.setScalar(1+cloudFill*0.15);
@@ -2026,6 +2057,9 @@ function startBridge() {
   function isleOnScreen() {
     var h = document.getElementById('isle-root');
     if (!h) return false;
+    // The full-screen gallery-break overlay fully covers the isle — keep the
+    // WebGL loop parked while it is up (its removal re-reconciles below).
+    if (document.getElementById('gallery-break-overlay')) return false;
     var r = h.getBoundingClientRect();
     return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < (window.innerHeight || 1) &&
            r.right > 0 && r.left < (window.innerWidth || 1);
@@ -2045,6 +2079,17 @@ function startBridge() {
       io.observe(host);
     }
   } catch (e) {}
+  /* Overlay mount/unmount at body level must also re-reconcile (the IO can't
+     see it — the isle's own box never changes while covered/uncovered). */
+  try {
+    if ('MutationObserver' in window) {
+      var _gbSeen = !!document.getElementById('gallery-break-overlay');
+      new MutationObserver(function () {
+        var has = !!document.getElementById('gallery-break-overlay');
+        if (has !== _gbSeen) { _gbSeen = has; reconcileLoop(); }
+      }).observe(document.body, { childList: true });
+    }
+  } catch (e) {}
 
   /* ── boot + cadence ── */
   pushState(true);
@@ -2055,8 +2100,14 @@ function startBridge() {
   window.addEventListener('jmax:directive-updated', function () {
     setTimeout(function () { refreshDirective().then(function () { pushState(); }); }, 600);
   });
-  setInterval(function () { flushSolves(); refreshDirective().then(function () { pushState(); }); }, 15000);
-  setInterval(function () { flushSolves(); pushState(); reconcileLoop(); }, 3000);
+  setInterval(function () {
+    if (document.hidden) return; // backgrounded: nothing to flush or paint; the engine freezes itself
+    flushSolves(); refreshDirective().then(function () { pushState(); });
+  }, 15000);
+  setInterval(function () {
+    if (document.hidden) return;
+    flushSolves(); pushState(); reconcileLoop();
+  }, 3000);
 
   window.__sproutIsleBridge = { push: pushState, refreshDirective: refreshDirective, flushSolves: flushSolves };
 }

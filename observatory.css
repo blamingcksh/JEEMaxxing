@@ -34,13 +34,14 @@ html[data-theme="observatory"] {
   --obs-bone-2:  rgba(242, 237, 227, .62);
   --obs-bone-3:  rgba(242, 237, 227, .38);
   --obs-ink:     #E5C07B;                       /* brass default */
+  --obs-ink-soft: color-mix(in srgb, var(--obs-ink) 12%, transparent);
   --obs-ok:      #A9C9A4;
   --obs-warn:    #D9B36A;
   --obs-crit:    #D9785F;
   --obs-subj-phys:  #8FBFE0;
   --obs-subj-chem:  #A9C9A4;
   --obs-subj-math:  #E5C07B;
-  --obs-plate-op:  .085;
+  --obs-plate-op:  .16;
   --obs-grain-op:  .04;
 
   /* legacy foundation remap — anything already on tokens converts itself */
@@ -97,13 +98,21 @@ html[data-theme="observatory"] {
 /* inks — declared after the theme block so they win the tie */
 html[data-ink="starlight"] { --obs-ink: #9CD3F0; --obs-subj-math: #9CD3F0; }
 html[data-ink="ember"]     { --obs-ink: #E07A52; --obs-subj-math: #E07A52; }
+/* Ink-harmonizing plate filters */
+html[data-theme="observatory"][data-ink="starlight"][data-mode="night"] .obs-plate {
+  filter: hue-rotate(170deg) saturate(0.7) brightness(1.08);
+}
+html[data-theme="observatory"][data-ink="ember"][data-mode="night"] .obs-plate {
+  filter: hue-rotate(-22deg) saturate(1.2) brightness(0.98);
+}
+
 
 /* dusk mood — a warmer, lighter night */
 html[data-theme="observatory"][data-mode="dusk"] {
   --obs-void:   #12141C;
   --obs-void-2: #181B25;
   --obs-panel:  rgba(24, 27, 37, .72);
-  --obs-plate-op: .18;
+  --obs-plate-op: .26;
   --obs-grain-op: .028;
 }
 
@@ -221,6 +230,8 @@ html[data-obs-screen="practice"][data-mode="night"]  .obs-plate[data-screen="pra
 html[data-obs-screen="practice"][data-mode="dusk"]   .obs-plate[data-screen="practice"][data-variant="dusk"],
 html[data-obs-screen="mocks"][data-mode="night"]     .obs-plate[data-screen="mocks"][data-variant="night"],
 html[data-obs-screen="mocks"][data-mode="dusk"]      .obs-plate[data-screen="mocks"][data-variant="dusk"],
+html[data-obs-screen="settings"][data-mode="night"]  .obs-plate[data-screen="settings"][data-variant="night"],
+html[data-obs-screen="settings"][data-mode="dusk"]   .obs-plate[data-screen="settings"][data-variant="dusk"],
 html[data-obs-screen="lunar"][data-mode="night"]     .obs-plate[data-screen="lunar"][data-variant="night"],
 html[data-obs-screen="lunar"][data-mode="dusk"]      .obs-plate[data-screen="lunar"][data-variant="dusk"] {
   opacity: calc(var(--obs-plate-op) + .03);
@@ -241,8 +252,9 @@ html[data-obs-screen="boot"]      .obs-plate[data-screen="boot"]   {
   will-change: transform, opacity;
 }
 
-/* focus means darkness — solving dims the sky to a whisper */
-html[data-theme="observatory"][data-obs-focus] .obs-plate { opacity: .04 !important; }
+/* focus means darkness — solving dims the active sky plate to .045 */
+html[data-theme="observatory"][data-obs-focus] { --obs-plate-op: .015; }
+html[data-theme="observatory"][data-obs-focus] .obs-plate:not([data-screen]) { opacity: 0 !important; }
 
 .obs-grain {
   position: absolute; inset: -60px;
@@ -377,13 +389,19 @@ html[data-theme="observatory"] .sidebar::after { display: none !important; }
 /* wordmark — letterspaced caps; the bolt becomes a thin brass ring */
 html[data-theme="observatory"] #sidebar .logo-container { margin-bottom: 0 !important; }
 html[data-theme="observatory"] #sidebar .logo-mark {
-  width: 20px !important; height: 20px !important;
+  width: 26px !important; height: 26px !important;
+  display: flex !important; align-items: center !important; justify-content: center !important;
   border-radius: 50% !important;
-  background: transparent !important;
-  border: 1px solid var(--obs-edge);
+  background: rgba(229, 192, 123, 0.06) !important;
+  border: 1px solid var(--obs-edge) !important;
   box-shadow: none !important;
+  padding: 0 !important;
 }
-html[data-theme="observatory"] #sidebar .logo-mark svg { display: none; }
+html[data-theme="observatory"] #sidebar .logo-mark svg {
+  display: block !important;
+  width: 16px !important; height: 16px !important;
+  color: var(--obs-ink) !important;
+}
 html[data-theme="observatory"] #sidebar .logo-text {
   background: none !important;
   -webkit-background-clip: initial !important;
@@ -641,32 +659,58 @@ html[data-theme="observatory"] #sync-sub-text {
   color: var(--obs-bone-3);
 }
 
+/* exam countdown chip (injected into .user-profile by app.js) — one line,
+   never clipped by the bar edge; inline colors keep their urgent/red state.
+   (The bar's own padding is !important upstream; the chip text itself was
+   shortened to "Nd to exam" in app.js, so it always fits.) */
+html[data-theme="observatory"] #exam-countdown-chip {
+  font-family: var(--font-num) !important;
+  letter-spacing: .06em !important;
+  white-space: nowrap !important;
+  flex: 0 0 auto;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
    §6 · GRIND HUB — quick bar, folios, star map, tracker, ledgers
    ───────────────────────────────────────────────────────────────────────── */
 
-/* quick actions — two text actions with glyphs */
+/* ── Command Deck spacing — #view-dashboard and .main-content are flex
+      columns with a 22px gap that stacks ON TOP of the banners'/bar's own
+      margins (bridge.css's #bridge-banner margin is ID-level and used to win).
+      Zero the flow gap and let the deck own its 12-18px rhythm. ── */
+html[data-theme="observatory"] #view-dashboard { gap: 0; }
+html[data-theme="observatory"] #bridge-banner,
+html[data-theme="observatory"] #tuckin-door-banner { margin: 0 0 12px; }
+html[data-theme="observatory"] #dash-quick-bar { margin: 0 0 14px; }
+html[data-theme="observatory"] .main-content { gap: 14px; }
+
+/* quick actions / deck layout bar — layout FAB tucked cleanly above the bento grid */
 html[data-theme="observatory"] .dash-quick-bar {
-  display: flex; align-items: center; gap: 34px;
-  padding: 8px 2px 0;
-  margin: 2px 0 30px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 0;
+  margin: 0 0 14px;
 }
 html[data-theme="observatory"] .dash-quick-btn {
   background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
   box-shadow: none !important;
-  padding: 6px 0 !important;
+  padding: 7px 13px !important;
   display: inline-flex; align-items: center; gap: 9px;
   font-family: var(--font-num);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
-  letter-spacing: .16em;
+  letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--obs-bone-2) !important;
-  transition: color .18s ease;
+  white-space: nowrap;
+  transition: color .18s ease, border-color .18s ease, background .18s ease;
 }
-html[data-theme="observatory"] .dash-quick-btn:hover { color: var(--obs-bone) !important; }
+html[data-theme="observatory"] .dash-quick-btn:hover {
+  color: var(--obs-bone) !important;
+  border-color: var(--obs-edge) !important;
+  background: rgba(255, 255, 255, .03) !important;
+}
 html[data-theme="observatory"] .dq-icon { display: inline-flex; color: var(--obs-ink); }
 html[data-theme="observatory"] .dq-icon .g { width: 15px; height: 15px; }
 
@@ -704,6 +748,20 @@ html[data-theme="observatory"] #view-dashboard .dash-grid > .dash-card:hover {
   transform: none !important;
 }
 html[data-theme="observatory"] .dv-head { margin: 0 0 15px; }
+html[data-theme="observatory"] .dv-head-left {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+}
+html[data-theme="observatory"] .dv-streak {
+  font-family: var(--font-num);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  color: var(--obs-ink);
+  border: 1px solid color-mix(in srgb, var(--obs-ink) 30%, transparent);
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
 html[data-theme="observatory"] .dv-title {
   font-family: var(--font-num) !important;
   font-size: 10.5px !important;
@@ -819,13 +877,14 @@ html[data-theme="observatory"] #view-dashboard .tp-figure {
   gap: 10px !important;
   margin: 0 !important;
 }
+/* the hero digit reads as measurement, not prose — mono, matching 0.138 / 72% */
 html[data-theme="observatory"] .tp-num-big {
-  font-family: var(--font-display) !important;
-  font-weight: 500 !important;
+  font-family: var(--font-num) !important;
+  font-weight: 600 !important;
   font-style: normal !important;
   font-size: clamp(54px, 5.6vw, 74px) !important;
   line-height: .95 !important;
-  letter-spacing: 0 !important;
+  letter-spacing: -0.02em !important;
   color: var(--obs-bone) !important;
   text-shadow: none !important;
 }
@@ -1191,27 +1250,25 @@ html[data-theme="observatory"] .skip-undo-toast {
   padding: 9px 16px !important;
 }
 
-/* ── bridge / tuck-in banners — observation notes, not slabs ── */
+/* ── bridge / tuck-in banners — the Command Deck band: one faint filled
+      strip under the header, warm-start/action pills tucked right below ── */
 html[data-theme="observatory"] .bridge-banner,
 html[data-theme="observatory"] .tuckin-door-banner,
 html[data-theme="observatory"] .tuckin-door-banner * {
-  background: transparent !important;
   border: 0 !important;
-  border-top: 1px solid var(--obs-hair) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
-html[data-theme="observatory"] .bridge-banner {
-  display: flex; align-items: center; gap: 14px;
-  padding: 12px 2px 0;
-  margin: 0 0 26px;
-}
+html[data-theme="observatory"] .bridge-banner,
 html[data-theme="observatory"] .tuckin-door-banner {
   display: flex; align-items: center; gap: 14px;
-  padding: 12px 2px 0;
-  margin: 0 0 26px;
+  background: rgba(255, 255, 255, .03) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  padding: 10px 14px;
+  margin: 0 0 12px;
 }
 html[data-theme="observatory"] .bridge-banner-content,
 html[data-theme="observatory"] .tuckin-door-content {
@@ -1221,16 +1278,20 @@ html[data-theme="observatory"] .tuckin-door-content {
 }
 html[data-theme="observatory"] .bridge-banner-badge,
 html[data-theme="observatory"] .tuckin-door-icon {
-  font-size: 13px; color: var(--obs-ink);
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--obs-ink);
   background: transparent !important;
   border: 0 !important; padding: 0 !important;
+  white-space: nowrap;
 }
+html[data-theme="observatory"] .bridge-banner-badge .g { width: 13px; height: 13px; }
 html[data-theme="observatory"] .bridge-banner-text b,
 html[data-theme="observatory"] .tuckin-door-text b {
   color: var(--obs-bone); font-weight: 500;
 }
 html[data-theme="observatory"] .bridge-banner-btn,
-html[data-theme="observatory"] .tuckin-door-btn { margin-left: auto; }
+html[data-theme="observatory"] .tuckin-door-btn { margin-left: auto; flex: none; }
 
 /* ── elo monitor chip — a whisper, not a badge ── */
 html[data-theme="observatory"] .elo-monitor,
@@ -1245,6 +1306,11 @@ html[data-theme="observatory"] .elo-monitor-tier {
   color: var(--obs-bone-3) !important;
   padding: 0 !important;
 }
+/* tier glyphs ride the sprite — pin readable sizes next to their numerals */
+html[data-theme="observatory"] .elo-monitor-rating .g { width: 11px; height: 11px; }
+html[data-theme="observatory"] .mmr-tier-badge .g,
+html[data-theme="observatory"] .air-pop-tier .g { width: 12px; height: 12px; }
+html[data-theme="observatory"] .nav-ck-rung-ic .g { width: 11px; height: 11px; }
 html[data-theme="observatory"] .mmr-tier-badge {
   background: transparent !important;
   border: 0 !important;
@@ -1455,10 +1521,736 @@ html[data-theme="observatory"] .pomo-mini-widget {
   html[data-theme="observatory"] #sidebar .nav-item { padding: 0 11px !important; }
 }
 @media (max-width: 768px) {
-  html[data-theme="observatory"] .dash-quick-bar { gap: 20px; flex-wrap: wrap; }
+  html[data-theme="observatory"] .dash-quick-bar { gap: 10px; flex-wrap: wrap; }
   html[data-theme="observatory"] #view-dashboard .dash-grid { gap: 24px 16px; }
   .obs-plate { height: 108vh; }
 }
 @media (max-width: 480px) {
   html[data-theme="observatory"] .dash-quick-bar { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   OBSERVATORY COHESION EXPANSION (PHASES 2–4 FULL-APP SWEEP)
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── §E1 · Editorial Serif Section Display Headings ── */
+html[data-theme="observatory"] .center-head,
+html[data-theme="observatory"] #error-matrix-title,
+html[data-theme="observatory"] #chapters-subject-title,
+html[data-theme="observatory"] #question-list-title,
+html[data-theme="observatory"] .mk-head .box-title,
+html[data-theme="observatory"] #view-settings > .glass-box > .box-title,
+html[data-theme="observatory"] #view-settings > .box-title,
+html[data-theme="observatory"] #view-settings h2.box-title {
+  font-family: var(--font-display) !important;
+  font-style: italic !important;
+  font-weight: 500 !important;
+  color: var(--obs-bone) !important;
+  letter-spacing: .02em !important;
+}
+
+/* ── §E2 · Dashboard Tracker & Compact Cards ── */
+html[data-theme="observatory"] .dash-card-tracker {
+  background: transparent !important;
+  border: 0 !important;
+  border-top: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 13px 2px 0 !important;
+}
+html[data-theme="observatory"] .dash-card-tracker > .tracker-ring,
+html[data-theme="observatory"] .dash-card-tracker > .tracker-hole {
+  display: none !important;
+}
+html[data-theme="observatory"] .compact-subject-card {
+  max-height: 120px !important;
+}
+
+/* ── §E3 · Exam Countdown Chip ── */
+html[data-theme="observatory"] #exam-countdown-chip,
+html[data-theme="observatory"] .exam-countdown-chip {
+  margin-top: 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  font-family: var(--font-num) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: .08em !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  white-space: nowrap !important;
+  color: var(--obs-bone) !important;
+  background: rgba(229,192,123,0.08) !important;
+  border: 1px solid var(--obs-edge) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] #exam-countdown-chip svg,
+html[data-theme="observatory"] .exam-countdown-chip svg {
+  color: var(--obs-ink) !important;
+  width: 11px !important; height: 11px !important;
+}
+html[data-theme="observatory"] #exam-countdown-chip.is-urgent,
+html[data-theme="observatory"] .exam-countdown-chip.is-urgent {
+  color: #f87171 !important;
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+}
+html[data-theme="observatory"] #exam-countdown-chip.is-urgent svg,
+html[data-theme="observatory"] .exam-countdown-chip.is-urgent svg {
+  color: #f87171 !important;
+}
+
+/* ── §E4 · The Vault Surfaces & Medallions ── */
+html[data-theme="observatory"] .vault-topbar {
+  background: transparent !important;
+  border-bottom: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding-bottom: 14px !important;
+}
+html[data-theme="observatory"] .vault-subjects .subject-folder {
+  position: relative !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-top: 2px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 14px 16px !important;
+  transition: all .25s ease !important;
+}
+html[data-theme="observatory"] .vault-subjects .subject-folder:hover,
+html[data-theme="observatory"] .vault-subjects .subject-folder.active {
+  border-top-color: var(--obs-ink) !important;
+  background: rgba(229, 192, 123, 0.04) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .vault-subjects .subject-folder[data-subject="physics"].active {
+  border-top-color: var(--obs-subj-phys) !important;
+}
+html[data-theme="observatory"] .vault-subjects .subject-folder[data-subject="chemistry"].active {
+  border-top-color: var(--obs-subj-chem) !important;
+}
+html[data-theme="observatory"] .vault-subjects .subject-folder[data-subject="maths"].active {
+  border-top-color: var(--obs-subj-math) !important;
+}
+html[data-theme="observatory"] .vault-folder-watermark {
+  position: absolute;
+  right: -10px;
+  top: -10px;
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  opacity: 0.18;
+  pointer-events: none;
+  mask-image: radial-gradient(circle at 60% 50%, black 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(circle at 60% 50%, black 20%, transparent 75%);
+  transition: opacity .3s ease;
+}
+html[data-theme="observatory"] .vault-subjects .subject-folder:hover .vault-folder-watermark,
+html[data-theme="observatory"] .vault-subjects .subject-folder.active .vault-folder-watermark {
+  opacity: 0.34;
+}
+
+/* Vault Filters & Search — eliminate puffy neon cyan */
+html[data-theme="observatory"] .error-filters,
+html[data-theme="observatory"] .emf-single {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 8px 0 14px !important;
+}
+html[data-theme="observatory"] .emf-search-wrap {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .emf-search-wrap:focus-within {
+  border-color: var(--obs-ink) !important;
+  box-shadow: 0 0 12px -4px var(--obs-glow) !important;
+}
+html[data-theme="observatory"] .matrix-search {
+  color: var(--obs-bone) !important;
+  font-family: var(--font-body) !important;
+  font-size: 12px !important;
+  background: transparent !important;
+}
+html[data-theme="observatory"] .matrix-pill {
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: .08em !important;
+  background: transparent !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  color: var(--obs-bone-2) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+html[data-theme="observatory"] .matrix-pill:hover {
+  border-color: var(--obs-edge) !important;
+  color: var(--obs-bone) !important;
+  background: var(--obs-void-3) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .matrix-pill.active,
+html[data-theme="observatory"] .matrix-pill.active[data-emf-value] {
+  color: var(--obs-bone) !important;
+  background: var(--obs-ink-soft) !important;
+  border-color: var(--obs-ink) !important;
+  box-shadow: 0 0 12px -4px var(--obs-glow) !important;
+  text-shadow: none !important;
+}
+html[data-theme="observatory"] .matrix-pill::before,
+html[data-theme="observatory"] .matrix-pill.active::before {
+  display: none !important;
+}
+html[data-theme="observatory"] .error-block {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  transition: border-color .2s ease, transform .2s ease !important;
+}
+html[data-theme="observatory"] .error-block:hover {
+  border-color: var(--obs-edge) !important;
+  transform: translateY(-2px) !important;
+}
+html[data-theme="observatory"] .sr-due-badge {
+  font-family: var(--font-num) !important;
+  font-size: 10px !important;
+  letter-spacing: .06em !important;
+  background: var(--obs-void-3) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 3px !important;
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] .daily-queue-subject-divider {
+  font-family: var(--font-num) !important;
+  font-size: 9.5px !important;
+  letter-spacing: .2em !important;
+  text-transform: uppercase !important;
+  color: var(--obs-bone-3) !important;
+  border-bottom: 1px solid var(--obs-hair) !important;
+}
+
+/* Vault and Mocks Empty Medallion Plates */
+.em-empty-plate,
+html[data-theme="observatory"] .em-empty-plate {
+  width: 132px;
+  height: 132px;
+  margin: 0 auto 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--obs-hair);
+  background: radial-gradient(circle, rgba(229,192,123,0.10) 0%, transparent 70%);
+}
+.em-empty-plate img,
+html[data-theme="observatory"] .em-empty-plate img {
+  width: 104px;
+  height: 104px;
+  object-fit: contain;
+  opacity: 0.78;
+}
+
+.mk-empty-plate,
+html[data-theme="observatory"] .mk-empty-plate {
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 18px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--obs-hair);
+  background: radial-gradient(circle, rgba(229,192,123,0.12) 0%, transparent 70%);
+}
+.mk-empty-plate img,
+html[data-theme="observatory"] .mk-empty-plate img {
+  width: 110px;
+  height: 110px;
+  object-fit: contain;
+  opacity: 0.82;
+}
+
+/* ── §E5 · Grind Station Museum-Grade Subject Folios ── */
+html[data-theme="observatory"] #practice-subject-view {
+  max-width: 1040px;
+  margin: 28px auto 0;
+  padding: 0 12px;
+}
+html[data-theme="observatory"] #practice-subject-view > .kicker {
+  display: block !important;
+  text-align: center !important;
+  font-family: var(--font-num) !important;
+  font-size: 10px !important;
+  letter-spacing: .22em !important;
+  color: var(--obs-ink) !important;
+  margin: 0 0 8px !important;
+}
+html[data-theme="observatory"] #practice-subject-view .center-head {
+  text-align: center !important;
+  font-size: clamp(30px, 3.2vw, 42px) !important;
+  line-height: 1.08 !important;
+  margin: 0 0 32px !important;
+}
+html[data-theme="observatory"] .subject-cards {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 24px !important;
+  width: 100% !important;
+  max-width: 1040px !important;
+  margin: 0 auto !important;
+  justify-items: stretch !important;
+  align-items: stretch !important;
+}
+html[data-theme="observatory"] .subject-card {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  padding: 28px 24px !important;
+  position: relative;
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-top-width: 2px !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: transform .28s cubic-bezier(0.23, 1, 0.32, 1), border-color .28s cubic-bezier(0.23, 1, 0.32, 1), box-shadow .28s cubic-bezier(0.23, 1, 0.32, 1) !important;
+}
+html[data-theme="observatory"] .subject-card.subject-card--phys,
+html[data-theme="observatory"] .subject-card:nth-child(1) {
+  border-top-color: var(--obs-subj-phys) !important;
+}
+html[data-theme="observatory"] .subject-card.subject-card--chem,
+html[data-theme="observatory"] .subject-card:nth-child(2) {
+  border-top-color: var(--obs-subj-chem) !important;
+}
+html[data-theme="observatory"] .subject-card.subject-card--math,
+html[data-theme="observatory"] .subject-card:nth-child(3) {
+  border-top-color: var(--obs-subj-math) !important;
+}
+html[data-theme="observatory"] .subject-card:hover {
+  transform: translateY(-4px) !important;
+  border-color: var(--obs-edge) !important;
+  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, .8), 0 0 24px -6px var(--obs-glow) !important;
+}
+html[data-theme="observatory"] .obs-specimen-frame {
+  width: 100%;
+  height: 205px !important;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  border: 0 !important;
+  border-bottom: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  background: radial-gradient(circle at 50% 50%, rgba(229,192,123,0.08) 0%, transparent 72%);
+}
+html[data-theme="observatory"] .obs-specimen-plate-tag {
+  position: static !important;
+  display: block !important;
+  font-family: var(--font-num) !important;
+  font-size: 9px !important;
+  font-weight: 500 !important;
+  letter-spacing: .14em !important;
+  color: var(--obs-bone-3) !important;
+  text-transform: uppercase !important;
+  margin-bottom: 10px !important;
+  text-align: center !important;
+  width: 100% !important;
+  white-space: nowrap !important;
+}
+html[data-theme="observatory"] .obs-specimen-frame img {
+  width: 168px !important;
+  height: 168px !important;
+  object-fit: contain;
+  opacity: 0.85;
+  transition: opacity .25s ease, transform .25s ease;
+}
+html[data-theme="observatory"] .subject-card:hover .obs-specimen-frame img {
+  opacity: 0.98;
+  transform: scale(1.04);
+}
+html[data-theme="observatory"] .subject-card h3 {
+  font-family: var(--font-display) !important;
+  font-style: italic !important;
+  font-size: 26px !important;
+  font-weight: 500 !important;
+  color: var(--obs-bone) !important;
+  margin: 8px 0 4px !important;
+  letter-spacing: .02em !important;
+}
+html[data-theme="observatory"] .subject-card-meta {
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  color: var(--obs-bone-3) !important;
+  letter-spacing: .06em !important;
+}
+.obs-specimen-plate-tag { display: none; }
+html[data-theme="observatory"] .obs-specimen-plate-tag { display: block; }
+.obs-specimen-frame img { max-width: 100%; height: auto; }
+
+/* Practice header & buttons */
+html[data-theme="observatory"] .practice-header {
+  border-bottom: 1px solid var(--obs-hair) !important;
+  padding-bottom: 14px !important;
+}
+html[data-theme="observatory"] .chapter-card {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 6px !important;
+}
+html[data-theme="observatory"] .btn-mode-flow {
+  background: rgba(229,192,123,0.12) !important;
+  border: 1px solid var(--obs-ink) !important;
+  color: var(--obs-bone) !important;
+}
+html[data-theme="observatory"] .btn-mode-hardcore {
+  background: rgba(224,122,82,0.12) !important;
+  border: 1px solid #E07A52 !important;
+  color: var(--obs-bone) !important;
+}
+
+/* ── §E6 · Mocks Studio & Weak-Points Autopsy ── */
+html[data-theme="observatory"] .mk-head {
+  border-bottom: 1px solid var(--obs-hair) !important;
+  padding-bottom: 14px !important;
+}
+html[data-theme="observatory"] .mk-autopsy-plate {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  opacity: 0.88;
+  filter: drop-shadow(0 0 10px rgba(229,192,123,0.15));
+}
+html[data-theme="observatory"] .mk-head-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+html[data-theme="observatory"] .mk-card {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  padding: 16px 20px !important;
+}
+html[data-theme="observatory"] .mk-card:hover {
+  border-color: var(--obs-edge) !important;
+}
+html[data-theme="observatory"] .mk-status {
+  font-family: var(--font-num) !important;
+  font-size: 10px !important;
+  letter-spacing: .06em !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 3px !important;
+  padding: 2px 7px !important;
+}
+html[data-theme="observatory"] .mk-status.ready {
+  color: var(--obs-ok) !important;
+  border-color: rgba(169, 201, 164, 0.4) !important;
+  background: rgba(169, 201, 164, 0.08) !important;
+}
+html[data-theme="observatory"] .mk-status.in-progress {
+  color: var(--obs-warn) !important;
+  border-color: rgba(217, 179, 106, 0.4) !important;
+  background: rgba(217, 179, 106, 0.08) !important;
+}
+html[data-theme="observatory"] .mk-status.done {
+  color: var(--obs-ink) !important;
+  border-color: rgba(229, 192, 123, 0.4) !important;
+  background: rgba(229, 192, 123, 0.08) !important;
+}
+html[data-theme="observatory"] .mk-lossrow {
+  border-bottom: 1px solid var(--obs-hair) !important;
+  font-family: var(--font-num) !important;
+}
+html[data-theme="observatory"] .mk-loss-bar i {
+  background: var(--obs-crit) !important;
+}
+
+/* ── §E7 · Settings, Modals & Uploads ── */
+html[data-theme="observatory"] .settings-card {
+  position: relative !important;
+  overflow: hidden !important;
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .settings-card-watermark {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  bottom: auto;
+  width: 130px;
+  height: 130px;
+  object-fit: contain;
+  opacity: 0.14;
+  pointer-events: none;
+  mask-image: radial-gradient(circle at 60% 60%, black 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(circle at 60% 60%, black 20%, transparent 75%);
+}
+html[data-theme="observatory"] .file-upload-label {
+  background: var(--obs-void-3) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  color: var(--obs-bone-2) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .file-upload-label:hover {
+  border-color: var(--obs-ink) !important;
+  color: var(--obs-bone) !important;
+}
+html[data-theme="observatory"] #file-name-lbl {
+  color: var(--obs-ink) !important;
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+}
+html[data-theme="observatory"] .fx-range {
+  accent-color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] .obs-modal-emblem {
+  filter: drop-shadow(0 0 12px rgba(229,192,123,0.2));
+}
+
+
+/* Vault High-Specificity Pill & Empty State Overrides */
+html[data-theme="observatory"] #view-errors .emf-pill-group .matrix-pill {
+  color: var(--obs-bone-2) !important;
+  border-color: var(--obs-hair) !important;
+  background: var(--obs-void-2) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] #view-errors .emf-pill-group .matrix-pill.active,
+html[data-theme="observatory"] #view-errors .emf-pill-group .matrix-pill.active[data-emf-value] {
+  color: var(--obs-bone) !important;
+  background: var(--obs-ink-soft) !important;
+  border-color: var(--obs-ink) !important;
+  box-shadow: 0 0 12px -4px var(--obs-glow) !important;
+  text-shadow: none !important;
+}
+html[data-theme="observatory"] #view-errors .em-empty {
+  border: 0 !important;
+  border-top: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+html[data-theme="observatory"] .em-empty-primary {
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, var(--obs-ink) 55%, transparent) !important;
+  color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] .em-empty-primary:hover {
+  background: color-mix(in srgb, var(--obs-ink) 14%, transparent) !important;
+  border-color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] .em-empty-secondary {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] .em-empty-secondary:hover {
+  border-color: var(--obs-edge) !important;
+  color: var(--obs-bone) !important;
+}
+
+
+/* Mocks Studio Box Polish */
+html[data-theme="observatory"] .mk-empty,
+html[data-theme="observatory"] .mk-auto,
+html[data-theme="observatory"] .mk-wp-section {
+  border: 1px solid var(--obs-hair) !important;
+  border-style: solid !important;
+  border-radius: 6px !important;
+}
+html[data-theme="observatory"] .mk-empty-plate {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: radial-gradient(circle, rgba(229,192,123,0.12) 0%, transparent 70%) !important;
+}
+html[data-theme="observatory"] .mk-note {
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] #view-mocks input[type="number"] {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  color: var(--obs-bone) !important;
+  font-family: var(--font-num) !important;
+}
+
+
+/* Modal Headings in Garamond Italic */
+html[data-theme="observatory"] .modal-content h2 {
+  font-family: var(--font-display) !important;
+  font-style: italic !important;
+  font-size: 26px !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: .01em !important;
+  color: var(--obs-bone) !important;
+}
+
+/* Settings Primary Buttons Polish */
+html[data-theme="observatory"] #view-settings .settings-card .btn-primary {
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, var(--obs-ink) 55%, transparent) !important;
+  color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] #view-settings .settings-card .btn-primary:hover {
+  background: color-mix(in srgb, var(--obs-ink) 14%, transparent) !important;
+  border-color: var(--obs-ink) !important;
+}
+
+/* Hide big stick icon on subject cards */
+html[data-theme="observatory"] .subject-card .subject-icon {
+  display: none !important;
+}
+
+/* Responsive grid for subject cards */
+@media (max-width: 900px) {
+  html[data-theme="observatory"] .subject-cards {
+    grid-template-columns: 1fr !important;
+    max-width: 440px !important;
+    margin-inline: auto !important;
+    gap: 16px !important;
+  }
+  html[data-theme="observatory"] .subject-card {
+    width: 100% !important;
+    max-width: 440px !important;
+  }
+}
+
+
+/* Spaced Repetition Practice Button Polish */
+html[data-theme="observatory"] .sr-practice-btn {
+  border-radius: 4px !important;
+  background: var(--obs-ink-soft) !important;
+  border: 1px solid color-mix(in srgb, var(--obs-ink) 50%, transparent) !important;
+  color: var(--obs-ink) !important;
+  font-family: var(--font-num) !important;
+  font-size: 10.5px !important;
+  letter-spacing: .12em !important;
+  text-transform: uppercase !important;
+  padding: 6px 14px !important;
+  transition: all .2s ease !important;
+}
+html[data-theme="observatory"] .sr-practice-btn:hover {
+  background: var(--obs-ink) !important;
+  color: var(--obs-void-2) !important;
+  border-color: var(--obs-ink) !important;
+}
+
+/* Checkbox Accent Color in Observatory */
+html[data-theme="observatory"] input[type="checkbox"] {
+  accent-color: var(--obs-ink) !important;
+}
+
+/* Mocks Auto-Build Labels & Percent Tints */
+html[data-theme="observatory"] #view-mocks label,
+html[data-theme="observatory"] .mk-mix-cell {
+  color: var(--obs-bone-2) !important;
+  font-family: var(--font-num) !important;
+}
+
+/* Modal Kickers Unhidden & Styled */
+html[data-theme="observatory"] .modal-content .kicker {
+  display: block !important;
+  font-family: var(--font-num) !important;
+  font-size: 9.5px !important;
+  letter-spacing: .18em !important;
+  color: var(--obs-ink) !important;
+  margin-bottom: 4px !important;
+}
+
+
+/* Calibration & Confidence Drawer Controls under Observatory */
+html[data-theme="observatory"] .sr-conf-seg {
+  background: var(--obs-void-3) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 6px !important;
+}
+html[data-theme="observatory"] .sr-conf-label {
+  color: var(--obs-ink) !important;
+  font-family: var(--font-num) !important;
+  font-size: 9.5px !important;
+  letter-spacing: .16em !important;
+}
+html[data-theme="observatory"] .sr-conf-btn {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  color: var(--obs-bone-2) !important;
+  border-radius: 4px !important;
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  letter-spacing: .06em !important;
+  transition: all .2s ease !important;
+}
+html[data-theme="observatory"] .sr-conf-btn:hover {
+  background: var(--obs-ink-soft) !important;
+  border-color: color-mix(in srgb, var(--obs-ink) 50%, transparent) !important;
+  color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] .sr-conf-btn.selected {
+  background: var(--obs-ink-soft) !important;
+  border-color: var(--obs-ink) !important;
+  color: var(--obs-ink) !important;
+  box-shadow: 0 0 12px -2px var(--obs-glow) !important;
+}
+
+/* Calibration Strip Header Polish */
+html[data-theme="observatory"] #calibration-report {
+  background: transparent !important;
+  border: 0 !important;
+  border-left: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+}
+html[data-theme="observatory"] #calibration-report .calib-kicker {
+  color: var(--obs-ink) !important;
+  letter-spacing: .16em !important;
+  font-family: var(--font-num) !important;
+  font-weight: 600 !important;
+  margin-right: 8px !important;
+}
+html[data-theme="observatory"] #calibration-report .calib-metric b {
+  font-family: var(--font-num) !important;
+  font-weight: 600 !important;
+}
+html[data-theme="observatory"] #calibration-report .calib-metric b[style*="#c4b5fd"] {
+  color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] #calibration-report .calib-metric i {
+  font-family: var(--font-num) !important;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] #calibration-report .calib-verdict {
+  font-family: var(--font-num) !important;
+  letter-spacing: .08em !important;
+  border-radius: 3px !important;
+}
+html[data-theme="observatory"] #calibration-report .calib-warmup {
+  color: var(--obs-bone-2) !important;
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
 }

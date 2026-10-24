@@ -30,13 +30,14 @@
   var SCREENS = {
     dashboard: { anchor: 'right',  plates: [{ stem: 'i-horizon-night', variant: 'night' },
                                             { stem: 'i-horizon-dusk',  variant: 'dusk'  }] },
-    vault:     { anchor: 'right',  plates: [{ stem: 'iv-microscope',    variant: 'night' },
-                                            { stem: 'iv-specimen-dusk', variant: 'dusk'  }] },
-    practice:  { anchor: 'left',   plates: [{ stem: 'vi-sextant',       variant: 'night' },
-                                            { stem: 'vi-growth-dusk',   variant: 'dusk'  }] },
-    mocks:     { anchor: 'right',  plates: [{ stem: 'vii-synodic',      variant: 'night' },
-                                            { stem: 'vii-pulsar-dusk',  variant: 'dusk'  }] },
-    settings:  { anchor: 'left',   plates: [{ stem: 'ii-instrument' }] },
+    vault:     { anchor: 'right',  plates: [{ stem: 'iv-microscope-night', variant: 'night' },
+                                            { stem: 'iv-microscope-dusk',  variant: 'dusk'  }] },
+    practice:  { anchor: 'left',   plates: [{ stem: 'v-sextant-night',     variant: 'night' },
+                                            { stem: 'v-sextant-dusk',      variant: 'dusk'  }] },
+    mocks:     { anchor: 'right',  plates: [{ stem: 'vi-selenograph-night', variant: 'night' },
+                                            { stem: 'vi-selenograph-dusk',  variant: 'dusk'  }] },
+    settings:  { anchor: 'left',   plates: [{ stem: 'ii-instrument-night', variant: 'night' },
+                                            { stem: 'ii-instrument-dusk',  variant: 'dusk'  }] },
     lunar:     { anchor: 'centre', plates: [{ stem: 'iii-lunar-night',  variant: 'night' },
                                             { stem: 'iii-lunar-dusk',   variant: 'dusk'  }] },
     boot:      { anchor: 'centre', plates: [{ stem: 'v-armillary' }] }
@@ -121,7 +122,7 @@
     if (f !== !!root.dataset.obsFocus) { if (f) root.dataset.obsFocus = ''; else delete root.dataset.obsFocus; }
   }
 
-  /* ── Scroll: nav hairline flag + gentle parallax ────────────────────── */
+  /* ── Scroll: nav hairline flag + gentle parallax ── */
   function wireScroll(wrapper) {
     var raf = 0;
     function apply() {
@@ -129,15 +130,57 @@
       var y = window.scrollY || window.pageYOffset || 0;
       var sc = document.scrollingElement || root;
       var yv = sc ? (sc.scrollTop || 0) : y;
-      if (yv > 8) root.dataset.obsScrolled = '';
-      else delete root.dataset.obsScrolled;
-      if (!reduced && !lowPower) root.style.setProperty('--obs-par', (yv * -0.03).toFixed(2) + 'px');
+      // Write the attribute / custom property only when the value actually
+      // changes — the old code rewrote identical values every scroll frame,
+      // invalidating plate style for nothing.
+      var scrolled = yv > 8;
+      if (scrolled !== root.hasAttribute('data-obs-scrolled')) {
+        if (scrolled) root.dataset.obsScrolled = '';
+        else delete root.dataset.obsScrolled;
+      }
+      if (!reduced && !lowPower) {
+        // 0.1px quantization: sub-tenth shifts are invisible but every one of
+        // them used to dirty the plates' style.
+        var par = (Math.round(yv * -0.3) / 10).toFixed(1) + 'px';
+        if (root.style.getPropertyValue('--obs-par') !== par) root.style.setProperty('--obs-par', par);
+      }
     }
     window.addEventListener('scroll', function () { if (!raf) raf = requestAnimationFrame(apply); }, { passive: true });
     apply();
   }
 
   /* ── Boot ───────────────────────────────────────────────────────────── */
+  /* Selector for every node whose class flips can change sync()'s output.
+     The observer used to re-run the full 5-sweep sync() on EVERY mutation
+     anywhere — every timer textContent tick, every card render. The filter
+     below keeps detection complete: class records count only when the target
+     sits inside (or is) a tracked root, and childList records are skipped
+     only when they are pure text churn (a tracked root is always an element,
+     so text-only mutations can never surface or hide one). */
+  var RELEVANT = '.view-section, .modal-overlay, .bootseq, #tuckin-overlay, #nightguard-modal, .bridge-pickup-overlay';
+  function recordsRelevant(records) {
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      if (r.type === 'childList') {
+        var onlyText = true, ns = r.addedNodes, ms = r.removedNodes, j;
+        for (j = 0; j < ns.length; j++) if (ns[j].nodeType !== 3) { onlyText = false; break; }
+        if (onlyText) for (j = 0; j < ms.length; j++) if (ms[j].nodeType !== 3) { onlyText = false; break; }
+        if (onlyText) continue;
+        return true; // any element mount/unmount — overlays/sections can mount at any depth
+      } else {
+        var t = r.target;
+        if (t && t.nodeType === 1 && t.closest && t.closest(RELEVANT)) return true;
+      }
+    }
+    return false;
+  }
+  var _syncRaf = 0;
+  function scheduleSync(records) {
+    if (!recordsRelevant(records)) return;
+    if (_syncRaf) return;
+    _syncRaf = requestAnimationFrame(function () { _syncRaf = 0; sync(); });
+  }
+
   function mount() {
     if (document.getElementById('obs-atmos')) return;
     var wrapper = document.createElement('div');
@@ -152,7 +195,7 @@
     document.body.insertBefore(wrapper, document.body.firstChild);
 
     if ('MutationObserver' in window) {
-      new MutationObserver(sync).observe(document.body, {
+      new MutationObserver(scheduleSync).observe(document.body, {
         attributes: true, attributeFilter: ['class'],
         childList: true, subtree: true
       });

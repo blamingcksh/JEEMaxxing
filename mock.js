@@ -61,7 +61,7 @@ import { _purgeDeletedQuestion } from './matrix.js';
 const win = (typeof window !== 'undefined') ? window : {};
 
 const SUBJECTS = ['physics', 'chemistry', 'maths'];
-const SUBJECT_GLYPH = { physics: '⚛️ Physics', chemistry: '🧪 Chemistry', maths: '📐 Maths' };
+const SUBJECT_GLYPH = { physics: 'P Physics', chemistry: 'C Chemistry', maths: 'M Maths' };
 
 function _esc(s) { return String(s == null ? '' : s).replace(/[&<>\""']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function _num(v, d) { const n = Number(v); return (typeof n === 'number' && isFinite(n)) ? n : d; }
@@ -505,13 +505,13 @@ const TIER_OF = (qElo) => {
     return e >= 1700 ? 'hard' : (e >= 1300 ? 'medium' : 'easy');
 };
 const TIERS = ['easy', 'medium', 'hard'];
-const TIER_GLYPH = { easy: '🟢 Easy · <1300', medium: '🟡 Medium · 1300–1699', hard: '🔴 Hard · 1700+' };
+const TIER_GLYPH = { easy: '● Easy · <1300', medium: '● Medium · 1300–1699', hard: '● Hard · 1700+' };
 
 const DIFF_MIX_PRESETS = {
-    balanced: { label: '⚖️ Balanced — ⅓ each', easy: 34, medium: 33, hard: 33 },
-    jeemain: { label: '🎯 JEE Main vibe — 35/45/20', easy: 35, medium: 45, hard: 20 },
-    jeeadv: { label: '🔥 Advanced vibe — 15/40/45', easy: 15, medium: 40, hard: 45 },
-    foundation: { label: '🧱 Foundation check — 60/30/10', easy: 60, medium: 30, hard: 10 },
+    balanced: { label: 'Balanced — 34/33/33', easy: 34, medium: 33, hard: 33 },
+    jeemain: { label: 'JEE Main — 35/45/20', easy: 35, medium: 45, hard: 20 },
+    jeeadv: { label: 'JEE Advanced — 15/40/45', easy: 15, medium: 40, hard: 45 },
+    foundation: { label: 'Foundation — 60/30/10', easy: 60, medium: 30, hard: 10 },
 };
 const DIFF_MIX_DEFAULT = 'jeemain';
 
@@ -1009,7 +1009,7 @@ function showResults(m) {
           autopsy.byTag.slice(0, 6).map(t => '<tr><td>' + _esc(t.tag) + '</td><td class="rp-bad">' + t.count + '</td></tr>').join('') +
           '</table><div style="margin-top:8px;">' +
           autopsy.byBand.map(b => '<span class="rp-chip" title="' + _esc(b.label) + '">' + _esc(b.label.split('·')[0].trim()) + ' ×' + b.count + '</span>').join(' ') +
-          '</div><button class="mr-navbtn" style="margin-top:10px;" onclick="window.mockCopyAutopsy()" type="button">📋 Copy autopsy</button></details>'
+          '</div><button class="mr-navbtn" style="margin-top:10px;" onclick="window.mockCopyAutopsy()" type="button"><svg class="g"><use href="#g-copy"/></svg> Copy autopsy</button></details>'
         : '';
 
     const durMs = (m.finishedAt && m.run && m.run.startedAt) ? (m.finishedAt - m.run.startedAt) : 0;
@@ -1149,14 +1149,14 @@ function renderHome(root) {
         '<div class="mk-head"><div><span class="kicker">// EXAM SIMULATION</span><h2 class="box-title">Mock Tests</h2>' +
         '<p class="box-desc">Real papers, real clocks, real marking. No feedback until you submit.</p></div>' +
         '<div class="mk-create"><input id="mk-name" class="pomo-input" placeholder="Paper name (e.g., Allen Major 7)" onkeydown="if(event.key===\'Enter\')window.mockCreate()"><button class="btn btn-primary" onclick="window.mockCreate()" type="button">+ New Mock</button></div></div>' +
-        '<div class="mk-tools"><button class="btn btn-secondary btn-sm" onclick="window.mockAutoBuild()" type="button">⚡ Auto-build from bank</button>' +
-        '<button class="btn btn-secondary btn-sm" onclick="window.mockWeakPoints()" type="button">🔍 Weak points & analysis</button></div>' +
+        '<div class="mk-tools"><button class="btn btn-secondary btn-sm" onclick="window.mockAutoBuild()" type="button"><svg class="g"><use href="#g-wand"/></svg> Auto-build from bank</button>' +
+        '<button class="btn btn-secondary btn-sm" onclick="window.mockWeakPoints()" type="button"><svg class="g"><use href="#g-eye"/></svg> Weak points & analysis</button></div>' +
         '<div class="mk-auto" id="mk-auto" hidden>' +
         '<div class="mk-note" style="margin-top:0;">Sample questions from your bank into a fresh draft — the difficulty mix allots how many land in each qElo tier, borrowing from neighbouring tiers when one runs short. You\'ll land on the answer-key pass to review keys before starting.</div>' +
         '<div class="mk-auto-mix">' +
         '<select id="mk-auto-mix" class="pomo-select" onchange="window.mockAutoMixPreset(this.value)">' +
         Object.entries(DIFF_MIX_PRESETS).map(([k, p]) => '<option value="' + k + '"' + (k === DIFF_MIX_DEFAULT ? ' selected' : '') + '>' + _esc(p.label) + '</option>').join('') +
-        '<option value="custom">✏️ Custom mix</option>' +
+        '<option value="custom">Custom mix</option>' +
         '</select>' +
         TIERS.map(t => '<span class="mk-mix-cell"><label>' + TIER_GLYPH[t].split(' ')[0] + '</label>' +
             '<input id="mk-mix-' + t + '" type="number" min="0" max="100" value="' + DIFF_MIX_PRESETS[DIFF_MIX_DEFAULT][t] + '" onchange="window.mockAutoMixEdit()">% </span>').join('') +
@@ -1165,23 +1165,23 @@ function renderHome(root) {
         SUBJECTS.map(s => {
             const tc = tierCountsOf(eligiblePool(s));
             return '<div class="mk-auto-cell"><label>' + SUBJECT_GLYPH[s] + ' · ' + avail[s] + ' available' +
-                ' <span class="mk-avail">(' + tc.easy + '🟢 ' + tc.medium + '🟡 ' + tc.hard + '🔴)</span></label>' +
+                ' <span class="mk-avail">(E:' + tc.easy + ' · M:' + tc.medium + ' · H:' + tc.hard + ')</span></label>' +
                 '<input id="mk-auto-' + s + '" type="number" min="0" max="' + avail[s] + '" value="' + Math.min(20, avail[s]) + '"></div>';
         }).join('') +
         '</div>' +
-        '<button class="btn btn-primary btn-sm" onclick="window.mockAutoBuildGo()" type="button">🎲 Draft paper</button>' +
+        '<button class="btn btn-primary btn-sm" onclick="window.mockAutoBuildGo()" type="button"><svg class="g"><use href="#g-spark"/></svg> Draft paper</button>' +
         '</div>' +
         '<div id="mk-list"></div>';
     const list = document.getElementById('mk-list');
     if (!drafts.length) {
-        list.innerHTML = '<div class="mk-empty">No papers yet. Auto-build one from your bank, create an empty paper and add questions, or dump fresh ones via AI while a subject panel is active.</div>';
+        list.innerHTML = '<div class="mk-empty"><div class="mk-empty-plate"><img src="atlas/folio-vii-regulator.svg" alt="" aria-hidden="true"></div><div class="mk-empty-title">No papers yet</div><div class="mk-empty-desc">Auto-build one from your bank, create an empty paper and add questions, or dump fresh ones via AI while a subject panel is active.</div></div>';
         return;
     }
     list.innerHTML = drafts.map(m => {
         const counts = SUBJECTS.map(s => SUBJECT_GLYPH[s].split(' ')[0] + ' ' + m.sections[s].questionIds.length).join(' · ');
         const nQ = totalQuestions(m);
         const dur = _num(m.durationMins, 0) > 0 ? m.durationMins + ' min' : suggestDurationMins(allQuestionIds(m)) + ' min (auto)';
-        let stLabel = { building: '🔨 Building', ready: '🟢 Ready', 'in-progress': '⏳ In progress', done: '✅ Done' }[m.status] || m.status;
+        let stLabel = { building: 'Building', ready: 'Ready', 'in-progress': 'In progress', done: 'Submitted' }[m.status] || m.status;
         if (m.status === 'in-progress' && m.run) {
             stLabel += (m.run.endsAt > Date.now()) ? ' · ' + fmtClock(m.run.endsAt - Date.now()) + ' left' : ' · time up';
         }
@@ -1189,18 +1189,18 @@ function renderHome(root) {
         if (m.status === 'building') {
             actions = '<button class="btn btn-primary btn-sm" onclick="window.mockOpenBuilder(\'' + m.id + '\')" type="button">Continue building</button>';
         } else if (m.status === 'ready') {
-            actions = '<button class="btn btn-primary btn-sm" onclick="window.mockStart(\'' + m.id + '\')" type="button">▶ Start paper</button>' +
-                '<button class="btn btn-secondary btn-sm" onclick="window.mockKeysFor(\'' + m.id + '\')" type="button">🔑 Keys</button>';
+            actions = '<button class="btn btn-primary btn-sm" onclick="window.mockStart(\'' + m.id + '\')" type="button">Start paper</button>' +
+                '<button class="btn btn-secondary btn-sm" onclick="window.mockKeysFor(\'' + m.id + '\')" type="button"><svg class="g"><use href="#g-key"/></svg> Keys</button>';
         } else if (m.status === 'in-progress') {
-            actions = '<button class="btn btn-primary btn-sm" onclick="window.mockStart(\'' + m.id + '\')" type="button">⏳ Resume</button>';
+            actions = '<button class="btn btn-primary btn-sm" onclick="window.mockStart(\'' + m.id + '\')" type="button"><svg class="g"><use href="#g-clock"/></svg> Resume</button>';
         } else {
-            actions = '<button class="btn btn-secondary btn-sm" onclick="window.mockStart(\'' + m.id + '\')" type="button">📊 Scorecard</button>' +
+            actions = '<button class="btn btn-secondary btn-sm" onclick="window.mockStart(\'' + m.id + '\')" type="button"><svg class="g"><use href="#g-chart"/></svg> Scorecard</button>' +
                 '<button class="btn btn-secondary btn-sm" onclick="window.mockKeysFor(\'' + m.id + '\')" type="button">🔑 Keys</button>';
         }
-        actions += ' <button class="btn btn-danger btn-sm" onclick="window.mockDelete(\'' + m.id + '\')" type="button" title="Delete paper">🗑</button>';
+        actions += ' <button class="btn btn-danger btn-sm" onclick="window.mockDelete(\'' + m.id + '\')" type="button" title="Delete paper"><svg class="g"><use href="#g-trash"/></svg></button>';
         return '<div class="mk-card"><div class="mk-card-main"><b>' + _esc(m.name) + '</b>' +
             '<span class="mk-status ' + m.status + '">' + stLabel + '</span>' +
-            '<span class="mk-counts">' + nQ + ' Q · ' + counts + ' · ⏱ ' + dur + '</span></div>' +
+            '<span class="mk-counts">' + nQ + ' Q · ' + counts + ' · ' + dur + '</span></div>' +
             '<div class="mk-card-actions">' + actions + '</div></div>';
     }).join('');
 }
@@ -1394,7 +1394,7 @@ function _syncMockLinkBanner() {
     banner.innerHTML = '<div style="flex:1;min-width:200px;">🔗 Dumping into <b>' + _esc(m ? m.name : 'paper') +
         '</b> · <b>' + _esc(String(ctx.subject || '').toUpperCase()) + '</b> — every imported question files under <b>' + _esc(m ? mockChapterName(m.name) : 'Mock') + '</b>.' +
         '<br><span style="font-size:10px;opacity:.8;">Paste a Gem dump below (or upload a .json) and hit Execute.</span></div>' +
-        '<button class="btn btn-secondary btn-sm" onclick="window.copyGemDumpPrompt && window.copyGemDumpPrompt()" type="button">📋 Gem prompt</button>' +
+        '<button class="btn btn-secondary btn-sm" onclick="window.copyGemDumpPrompt && window.copyGemDumpPrompt()" type="button"><svg class="g"><use href="#g-copy"/></svg> Gem prompt</button>' +
         '<button class="btn btn-danger btn-sm" onclick="window.mockToggleIngest(\'' + ctx.mockId + '\',\'' + ctx.subject + '\')" type="button">⏹ Stop</button>';
 }
 
@@ -1412,15 +1412,22 @@ win.mockSetDuration = function (v) {
 
 // ── Bank picker overlay ──
 let _pk = null; // { mockId, subject, sel:Set, chapter:'', q:'' }
+// Base pool (subject-eligible, not already in the paper) is fixed for the
+// lifetime of the picker: the paper's id set only changes on commit, which
+// closes the picker. Caching it turns every keystroke/tier tap from a full
+// bank filter + Set build into pure in-memory filters.
+let _pkBaseCache = null;
 
 function _closePicker() {
     _pk = null;
+    _pkBaseCache = null;
     const ov = document.getElementById('mk-picker');
     if (ov) ov.remove();
 }
 
 win.mockPickOpen = function (mockId, subject) {
     _pk = { mockId, subject, sel: new Set(), chapter: '', q: '', tier: '' };
+    _pkBaseCache = null;
     renderPicker();
 };
 
@@ -1448,16 +1455,22 @@ win.mockPickTier = function (t) {
 
 /** Subject pool before the tier filter — used for the tier chip counts. */
 function pickerPoolBase() {
+    if (_pkBaseCache) return _pkBaseCache;
     const m = getMock(_pk.mockId);
     const inPaper = m ? new Set(allQuestionIds(m)) : new Set();
-    return eligiblePool(_pk.subject).filter(q => !inPaper.has(q.id));
+    _pkBaseCache = eligiblePool(_pk.subject).filter(q => !inPaper.has(q.id));
+    return _pkBaseCache;
 }
 
 win.mockPickSearch = function (v) {
     if (!_pk) return;
     _pk.q = String(v || '').toLowerCase();
-    renderPickerList();
+    // 150ms trailing debounce — mirrors the vault search. Every keystroke
+    // used to re-filter the whole bank AND rebuild 300 list rows inline.
+    clearTimeout(_pkSearchDebounce);
+    _pkSearchDebounce = setTimeout(renderPickerList, 150);
 };
+let _pkSearchDebounce = null;
 
 win.mockPickToggle = function (qid, el) {
     if (!_pk) return;
@@ -1775,13 +1788,13 @@ function renderAnalysis(root) {
         : '<div class="mk-empty" style="padding:18px 14px;">No mock losses recorded yet — submit a paper and every wrong answer lands here by chapter × question type.</div>';
 
     root.innerHTML = '<div class="mk-head"><button class="btn btn-secondary btn-sm" onclick="window.mockBackHome()" type="button">← Papers</button>' +
-        '<h2 class="box-title">🔍 Weak points & analysis</h2></div>' +
-        '<div class="mk-wp-section"><div class="rp-h">📉 What your mocks cost you</div>' +
+        '<div class="mk-head-title-wrap"><img class="mk-autopsy-plate" src="atlas/specimen-heliometer.svg" alt="" aria-hidden="true"><h2 class="box-title">Weak points &amp; analysis</h2></div></div>' +
+        '<div class="mk-wp-section"><div class="rp-h"><svg class="g"><use href="#g-chart"/></svg> What your mocks cost you</div>' +
         '<div class="mk-note" style="margin-top:2px;">Loss mass by chapter × question type, accumulated from every submitted paper.</div>' +
         lossMapHtml + '</div>' +
-        '<div class="mk-wp-section"><div class="rp-h">🧠 Chapter scope & mistake analysis</div>' +
+        '<div class="mk-wp-section"><div class="rp-h"><svg class="g"><use href="#g-target"/></svg> Chapter scope & mistake analysis</div>' +
         '<div id="mk-wp-mount" class="mk-wp-mount"></div>' +
-        '<div style="text-align:center; margin-top:12px;"><button class="btn btn-primary" onclick="window.mockBuildFromWeakPoints()" type="button">🎯 Build targeted paper from selected chapters</button></div></div>';
+        '<div style="text-align:center; margin-top:12px;"><button class="btn btn-primary" onclick="window.mockBuildFromWeakPoints()" type="button"><svg class="g"><use href="#g-target"/></svg> Build targeted paper from selected chapters</button></div></div>';
 
     const mount = document.getElementById('mk-wp-mount');
     if (mount && typeof win.renderWeakPointsPanel === 'function') {

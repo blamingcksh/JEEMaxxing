@@ -1,127 +1,124 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
-<defs>
-<radialGradient id="luna-space" cx="50%" cy="45%" r="60%">
-<stop offset="0%" stop-color="#182538" />
-<stop offset="60%" stop-color="#0E1520" />
-<stop offset="100%" stop-color="#080C12" />
-</radialGradient>
-<radialGradient id="luna-sphere" cx="65%" cy="38%" r="65%">
-<stop offset="0%" stop-color="#FFFDF7" />
-<stop offset="35%" stop-color="#EFE2C2" />
-<stop offset="70%" stop-color="#B89B72" />
-<stop offset="92%" stop-color="#4A3E35" />
-<stop offset="100%" stop-color="#1B191E" />
-</radialGradient>
-<linearGradient id="luna-mare-ti" x1="0%" y1="0%" x2="100%" y2="100%">
-<stop offset="0%" stop-color="#3B6998" stop-opacity="0.65" />
-<stop offset="50%" stop-color="#284366" stop-opacity="0.75" />
-<stop offset="100%" stop-color="#5B3E69" stop-opacity="0.6" />
-</linearGradient>
-<linearGradient id="luna-mare-fe" x1="0%" y1="100%" x2="100%" y2="0%">
-<stop offset="0%" stop-color="#B85D3B" stop-opacity="0.55" />
-<stop offset="100%" stop-color="#D49B4B" stop-opacity="0.45" />
-</linearGradient>
-<linearGradient id="luna-altimetry" x1="0%" y1="0%" x2="100%" y2="0%">
-<stop offset="0%" stop-color="#3B4CC0" />
-<stop offset="25%" stop-color="#2AB0C5" />
-<stop offset="50%" stop-color="#75C865" />
-<stop offset="75%" stop-color="#F5B841" />
-<stop offset="100%" stop-color="#D93829" />
-</linearGradient>
-<pattern id="luna-grid" width="30" height="30" patternUnits="userSpaceOnUse">
-<path d="M 30 0 L 0 0 0 30" fill="none" stroke="#6488EA" stroke-width="0.35" stroke-opacity="0.18" />
-</pattern>
-<clipPath id="luna-clip">
-<circle cx="300" cy="265" r="182" />
-</clipPath>
-</defs>
-<!-- Deep Space Background &amp; Illuminated Frame -->
-<rect width="600" height="600" fill="url(#luna-space)" />
-<!-- Ambient Outer Lunar Glow -->
-<circle cx="300" cy="265" r="215" fill="#F5B841" fill-opacity="0.05" />
-<circle cx="300" cy="265" r="192" fill="#6488EA" fill-opacity="0.08" />
-<!-- Astrometric Vernier Rings -->
-<g transform="translate(300, 265)" fill="none">
-<circle cx="0" cy="0" r="218" stroke="#D4AF37" stroke-width="1" stroke-opacity="0.7" />
-<circle cx="0" cy="0" r="210" stroke="#D4AF37" stroke-width="5" stroke-dasharray="1.2 5.3" stroke-opacity="0.65" />
-<circle cx="0" cy="0" r="198" stroke="#56CCF2" stroke-width="0.8" stroke-dasharray="6 4" stroke-opacity="0.6" />
-<line x1="-248" y1="0" x2="248" y2="0" stroke="#6488EA" stroke-width="0.6" stroke-dasharray="4 4" stroke-opacity="0.5" />
-<line x1="0" y1="-235" x2="0" y2="235" stroke="#6488EA" stroke-width="0.6" stroke-dasharray="4 4" stroke-opacity="0.5" />
-</g>
-<!-- Clipped Polychromatic Lunar Globe -->
-<g clip-path="url(#luna-clip)">
-<circle cx="300" cy="265" r="182" fill="url(#luna-sphere)" />
-<!-- Titanium-Rich &amp; Iron-Rich Basaltic Maria (False-Color Mineralogy) -->
-<path d="M 175 145 Q 245 110 315 165 T 385 240 Q 345 310 260 280 T 175 145 Z" fill="url(#luna-mare-ti)" stroke="#56CCF2" stroke-width="0.7" stroke-dasharray="3 2" />
-<path d="M 335 175 Q 405 165 435 230 T 385 320 Q 335 280 335 175 Z" fill="url(#luna-mare-fe)" stroke="#F5B841" stroke-width="0.7" stroke-dasharray="3 2" />
-<circle cx="205" cy="250" r="48" fill="url(#luna-mare-ti)" stroke="#6488EA" stroke-width="0.8" />
-<ellipse cx="410" cy="175" rx="34" ry="22" transform="rotate(28 410 175)" fill="#284366" fill-opacity="0.7" stroke="#56CCF2" stroke-width="0.7" />
-<!-- Spherical Selenographic Graticule -->
-<g transform="translate(300, 265)" fill="none" stroke="#182538" stroke-width="0.5" stroke-opacity="0.35">
-<ellipse cx="0" cy="0" rx="58" ry="182" />
-<ellipse cx="0" cy="0" rx="118" ry="182" />
-<ellipse cx="0" cy="0" rx="162" ry="182" />
-<ellipse cx="0" cy="-58" rx="172" ry="22" />
-<ellipse cx="0" cy="58" rx="172" ry="22" />
-<ellipse cx="0" cy="-118" rx="138" ry="18" />
-<ellipse cx="0" cy="118" rx="138" ry="18" />
-</g>
-<!-- Tycho Crater &amp; Luminous Ejecta Ray System -->
-<g transform="translate(278, 368)" fill="none">
-<g stroke="#FF7B54" stroke-width="1.1" stroke-dasharray="8 4" stroke-opacity="0.85">
-<line x1="0" y1="0" x2="-165" y2="-195" />
-<line x1="0" y1="0" x2="-88" y2="-245" />
-<line x1="0" y1="0" x2="42" y2="-225" />
-<line x1="0" y1="0" x2="158" y2="-148" />
-<line x1="0" y1="0" x2="185" y2="-38" />
-<line x1="0" y1="0" x2="-148" y2="-48" />
-</g>
-<circle cx="0" cy="0" r="32" fill="#F5B841" fill-opacity="0.25" />
-<circle cx="0" cy="0" r="22" fill="#FFF6E0" stroke="#D93829" stroke-width="1.5" />
-<circle cx="0" cy="0" r="14" stroke="#F5B841" stroke-width="1.2" />
-<circle cx="0" cy="0" r="4.5" fill="#D93829" />
-</g>
-<!-- Copernicus &amp; Aristarchus Glowing Craters -->
-<g transform="translate(232, 218)">
-<circle cx="0" cy="0" r="24" fill="#56CCF2" fill-opacity="0.2" />
-<circle cx="0" cy="0" r="17" fill="#FFFDF7" stroke="#284366" stroke-width="1.4" />
-<circle cx="0" cy="0" r="11" fill="none" stroke="#D93829" stroke-width="0.9" stroke-dasharray="2 2" />
-<circle cx="0" cy="0" r="3.5" fill="#F5B841" />
-</g>
-<g transform="translate(172, 185)">
-<circle cx="0" cy="0" r="14" fill="#70E1F5" fill-opacity="0.45" stroke="#FFFDF7" stroke-width="1.2" />
-<circle cx="0" cy="0" r="3" fill="#FFFDF7" />
-</g>
-<!-- Night-Side Lunar Terminator &amp; Indigo Shadow -->
-<path d="M 300 83 A 85 182 0 0 0 300 447 A 182 182 0 0 1 300 83 Z" fill="#0B111E" fill-opacity="0.82" />
-<path d="M 300 83 A 105 182 0 0 0 300 447" fill="none" stroke="#F5B841" stroke-width="1.5" stroke-dasharray="4 3" />
-<path d="M 300 83 A 85 182 0 0 0 300 447" fill="none" stroke="#56CCF2" stroke-width="1" stroke-dasharray="2 4" />
-</g>
-<!-- Golden Lunar Limb Ring -->
-<circle cx="300" cy="265" r="182" fill="none" stroke="#D4AF37" stroke-width="2" />
-<!-- High-Magnification Crater Hypsometry Loupe (Top Right) -->
-<g transform="translate(485, 112)">
-<circle cx="0" cy="0" r="56" fill="#101926" stroke="#D4AF37" stroke-width="1.8" />
-<circle cx="0" cy="0" r="49" fill="none" stroke="#56CCF2" stroke-width="0.8" stroke-dasharray="2 3" />
-<!-- False-color Elevation Rings inside Loupe -->
-<circle cx="0" cy="0" r="38" fill="#D93829" fill-opacity="0.35" stroke="#D93829" stroke-width="1.2" />
-<circle cx="0" cy="0" r="28" fill="#F5B841" fill-opacity="0.35" stroke="#F5B841" stroke-width="1.2" />
-<circle cx="0" cy="0" r="18" fill="#75C865" fill-opacity="0.35" stroke="#75C865" stroke-width="1.2" />
-<circle cx="0" cy="0" r="9" fill="#3B4CC0" fill-opacity="0.6" stroke="#56CCF2" stroke-width="1.2" />
-<circle cx="0" cy="0" r="3" fill="#FFFDF7" />
-<line x1="-54" y1="0" x2="54" y2="0" stroke="#D4AF37" stroke-width="0.6" stroke-dasharray="2 2" />
-<line x1="0" y1="-54" x2="0" y2="54" stroke="#D4AF37" stroke-width="0.6" stroke-dasharray="2 2" />
-<polyline points="-40,40 -82,82 -207,256" fill="none" stroke="#F5B841" stroke-width="1.2" stroke-dasharray="3 3" />
-</g>
-<!-- Bottom Laser Altimetry Profile &amp; Hypsometric Scale -->
-<g transform="translate(55, 495)">
-<rect x="0" y="0" width="490" height="52" fill="#0E1624" stroke="#D4AF37" stroke-width="1.2" />
-<rect x="12" y="38" width="466" height="6" rx="3" fill="url(#luna-altimetry)" />
-<line x1="12" y1="22" x2="478" y2="22" stroke="#6488EA" stroke-width="0.6" stroke-dasharray="3 3" />
-<path d="M 12 22 L 85 22 L 115 7 L 138 32 L 200 32 L 218 14 L 236 32 L 295 32 L 318 7 L 348 22 L 478 22" fill="none" stroke="#56CCF2" stroke-width="1.5" />
-<path d="M 115 7 L 138 32 L 200 32 L 218 14 L 236 32 L 295 32 L 318 7" fill="#F5B841" fill-opacity="0.2" stroke="#F5B841" stroke-width="1.5" />
-</g>
-<!-- Telemetry Labels -->
-<g font-family="monospace" font-size="10" fill="#EFE2C2" letter-spacing="1.5">
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="36 36 528 528" width="100%" height="100%">
+  <defs>
+    <radialGradient id="luna-space" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#182538" />
+      <stop offset="60%" stop-color="#0E1520" />
+      <stop offset="100%" stop-color="#080C12" />
+    </radialGradient>
+    <radialGradient id="luna-sphere" cx="65%" cy="38%" r="65%">
+      <stop offset="0%" stop-color="#FFFDF7" />
+      <stop offset="35%" stop-color="#EFE2C2" />
+      <stop offset="70%" stop-color="#B89B72" />
+      <stop offset="92%" stop-color="#4A3E35" />
+      <stop offset="100%" stop-color="#1B191E" />
+    </radialGradient>
+    <linearGradient id="luna-mare-ti" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B6998" stop-opacity="0.65" />
+      <stop offset="50%" stop-color="#284366" stop-opacity="0.75" />
+      <stop offset="100%" stop-color="#5B3E69" stop-opacity="0.6" />
+    </linearGradient>
+    <linearGradient id="luna-mare-fe" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#B85D3B" stop-opacity="0.55" />
+      <stop offset="100%" stop-color="#D49B4B" stop-opacity="0.45" />
+    </linearGradient>
+    <linearGradient id="luna-altimetry" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B4CC0" />
+      <stop offset="25%" stop-color="#2AB0C5" />
+      <stop offset="50%" stop-color="#75C865" />
+      <stop offset="75%" stop-color="#F5B841" />
+      <stop offset="100%" stop-color="#D93829" />
+    </linearGradient>
+    <pattern id="luna-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#6488EA" stroke-width="0.35" stroke-opacity="0.18" />
+    </pattern>
+    <clipPath id="luna-clip">
+      <circle cx="300" cy="265" r="182" />
+    </clipPath>
+  </defs>
+  <!-- Deep Space Background &amp; Illuminated Frame -->
+  <!-- Ambient Outer Lunar Glow -->
+  <circle cx="300" cy="265" r="215" fill="#F5B841" fill-opacity="0.05" />
+  <circle cx="300" cy="265" r="192" fill="#6488EA" fill-opacity="0.08" />
+  <!-- Astrometric Vernier Rings -->
+  <g transform="translate(300, 265)" fill="none">
+    <circle cx="0" cy="0" r="218" stroke="#D4AF37" stroke-width="1" stroke-opacity="0.7" />
+    <circle cx="0" cy="0" r="210" stroke="#D4AF37" stroke-width="5" stroke-dasharray="1.2 5.3" stroke-opacity="0.65" />
+    <circle cx="0" cy="0" r="198" stroke="#56CCF2" stroke-width="0.8" stroke-dasharray="6 4" stroke-opacity="0.6" />
+    <line x1="-248" y1="0" x2="248" y2="0" stroke="#6488EA" stroke-width="0.6" stroke-dasharray="4 4" stroke-opacity="0.5" />
+    <line x1="0" y1="-235" x2="0" y2="235" stroke="#6488EA" stroke-width="0.6" stroke-dasharray="4 4" stroke-opacity="0.5" />
+  </g>
+  <!-- Clipped Polychromatic Lunar Globe -->
+  <g clip-path="url(#luna-clip)">
+    <circle cx="300" cy="265" r="182" fill="url(#luna-sphere)" />
+    <!-- Titanium-Rich &amp; Iron-Rich Basaltic Maria (False-Color Mineralogy) -->
+    <path d="M 175 145 Q 245 110 315 165 T 385 240 Q 345 310 260 280 T 175 145 Z" fill="url(#luna-mare-ti)" stroke="#56CCF2" stroke-width="0.7" stroke-dasharray="3 2" />
+    <path d="M 335 175 Q 405 165 435 230 T 385 320 Q 335 280 335 175 Z" fill="url(#luna-mare-fe)" stroke="#F5B841" stroke-width="0.7" stroke-dasharray="3 2" />
+    <circle cx="205" cy="250" r="48" fill="url(#luna-mare-ti)" stroke="#6488EA" stroke-width="0.8" />
+    <ellipse cx="410" cy="175" rx="34" ry="22" transform="rotate(28 410 175)" fill="#284366" fill-opacity="0.7" stroke="#56CCF2" stroke-width="0.7" />
+    <!-- Spherical Selenographic Graticule -->
+    <g transform="translate(300, 265)" fill="none" stroke="#182538" stroke-width="0.5" stroke-opacity="0.35">
+      <ellipse cx="0" cy="0" rx="58" ry="182" />
+      <ellipse cx="0" cy="0" rx="118" ry="182" />
+      <ellipse cx="0" cy="0" rx="162" ry="182" />
+      <ellipse cx="0" cy="-58" rx="172" ry="22" />
+      <ellipse cx="0" cy="58" rx="172" ry="22" />
+      <ellipse cx="0" cy="-118" rx="138" ry="18" />
+      <ellipse cx="0" cy="118" rx="138" ry="18" />
+    </g>
+    <!-- Tycho Crater &amp; Luminous Ejecta Ray System -->
+    <g transform="translate(278, 368)" fill="none">
+      <g stroke="#FF7B54" stroke-width="1.1" stroke-dasharray="8 4" stroke-opacity="0.85">
+        <line x1="0" y1="0" x2="-165" y2="-195" />
+        <line x1="0" y1="0" x2="-88" y2="-245" />
+        <line x1="0" y1="0" x2="42" y2="-225" />
+        <line x1="0" y1="0" x2="158" y2="-148" />
+        <line x1="0" y1="0" x2="185" y2="-38" />
+        <line x1="0" y1="0" x2="-148" y2="-48" />
+      </g>
+      <circle cx="0" cy="0" r="32" fill="#F5B841" fill-opacity="0.25" />
+      <circle cx="0" cy="0" r="22" fill="#FFF6E0" stroke="#D93829" stroke-width="1.5" />
+      <circle cx="0" cy="0" r="14" stroke="#F5B841" stroke-width="1.2" />
+      <circle cx="0" cy="0" r="4.5" fill="#D93829" />
+    </g>
+    <!-- Copernicus &amp; Aristarchus Glowing Craters -->
+    <g transform="translate(232, 218)">
+      <circle cx="0" cy="0" r="24" fill="#56CCF2" fill-opacity="0.2" />
+      <circle cx="0" cy="0" r="17" fill="#FFFDF7" stroke="#284366" stroke-width="1.4" />
+      <circle cx="0" cy="0" r="11" fill="none" stroke="#D93829" stroke-width="0.9" stroke-dasharray="2 2" />
+      <circle cx="0" cy="0" r="3.5" fill="#F5B841" />
+    </g>
+    <g transform="translate(172, 185)">
+      <circle cx="0" cy="0" r="14" fill="#70E1F5" fill-opacity="0.45" stroke="#FFFDF7" stroke-width="1.2" />
+      <circle cx="0" cy="0" r="3" fill="#FFFDF7" />
+    </g>
+    <!-- Night-Side Lunar Terminator &amp; Indigo Shadow -->
+    <path d="M 300 83 A 85 182 0 0 0 300 447 A 182 182 0 0 1 300 83 Z" fill="#0B111E" fill-opacity="0.82" />
+    <path d="M 300 83 A 105 182 0 0 0 300 447" fill="none" stroke="#F5B841" stroke-width="1.5" stroke-dasharray="4 3" />
+    <path d="M 300 83 A 85 182 0 0 0 300 447" fill="none" stroke="#56CCF2" stroke-width="1" stroke-dasharray="2 4" />
+  </g>
+  <!-- Golden Lunar Limb Ring -->
+  <circle cx="300" cy="265" r="182" fill="none" stroke="#D4AF37" stroke-width="2" />
+  <!-- High-Magnification Crater Hypsometry Loupe (Top Right) -->
+  <g transform="translate(485, 112)">
+    <circle cx="0" cy="0" r="56" fill="#101926" stroke="#D4AF37" stroke-width="1.8" />
+    <circle cx="0" cy="0" r="49" fill="none" stroke="#56CCF2" stroke-width="0.8" stroke-dasharray="2 3" />
+    <!-- False-color Elevation Rings inside Loupe -->
+    <circle cx="0" cy="0" r="38" fill="#D93829" fill-opacity="0.35" stroke="#D93829" stroke-width="1.2" />
+    <circle cx="0" cy="0" r="28" fill="#F5B841" fill-opacity="0.35" stroke="#F5B841" stroke-width="1.2" />
+    <circle cx="0" cy="0" r="18" fill="#75C865" fill-opacity="0.35" stroke="#75C865" stroke-width="1.2" />
+    <circle cx="0" cy="0" r="9" fill="#3B4CC0" fill-opacity="0.6" stroke="#56CCF2" stroke-width="1.2" />
+    <circle cx="0" cy="0" r="3" fill="#FFFDF7" />
+    <line x1="-54" y1="0" x2="54" y2="0" stroke="#D4AF37" stroke-width="0.6" stroke-dasharray="2 2" />
+    <line x1="0" y1="-54" x2="0" y2="54" stroke="#D4AF37" stroke-width="0.6" stroke-dasharray="2 2" />
+    <polyline points="-40,40 -82,82 -207,256" fill="none" stroke="#F5B841" stroke-width="1.2" stroke-dasharray="3 3" />
+  </g>
+  <!-- Bottom Laser Altimetry Profile &amp; Hypsometric Scale -->
+  <g transform="translate(55, 495)">
+    <rect x="0" y="0" width="490" height="52" fill="#0E1624" stroke="#D4AF37" stroke-width="1.2" />
+    <rect x="12" y="38" width="466" height="6" rx="3" fill="url(#luna-altimetry)" />
+    <line x1="12" y1="22" x2="478" y2="22" stroke="#6488EA" stroke-width="0.6" stroke-dasharray="3 3" />
+    <path d="M 12 22 L 85 22 L 115 7 L 138 32 L 200 32 L 218 14 L 236 32 L 295 32 L 318 7 L 348 22 L 478 22" fill="none" stroke="#56CCF2" stroke-width="1.5" />
+    <path d="M 115 7 L 138 32 L 200 32 L 218 14 L 236 32 L 295 32 L 318 7" fill="#F5B841" fill-opacity="0.2" stroke="#F5B841" stroke-width="1.5" />
+  </g>
+  <!-- Telemetry Labels -->
 </svg>
