@@ -41,7 +41,7 @@ html[data-theme="observatory"] {
   --obs-subj-phys:  #8FBFE0;
   --obs-subj-chem:  #A9C9A4;
   --obs-subj-math:  #E5C07B;
-  --obs-plate-op:  .16;
+  --obs-plate-op:  .085;
   --obs-grain-op:  .04;
 
   /* legacy foundation remap — anything already on tokens converts itself */
@@ -112,7 +112,7 @@ html[data-theme="observatory"][data-mode="dusk"] {
   --obs-void:   #12141C;
   --obs-void-2: #181B25;
   --obs-panel:  rgba(24, 27, 37, .72);
-  --obs-plate-op: .26;
+  --obs-plate-op: .14;
   --obs-grain-op: .028;
 }
 
@@ -234,19 +234,19 @@ html[data-obs-screen="settings"][data-mode="night"]  .obs-plate[data-screen="set
 html[data-obs-screen="settings"][data-mode="dusk"]   .obs-plate[data-screen="settings"][data-variant="dusk"],
 html[data-obs-screen="lunar"][data-mode="night"]     .obs-plate[data-screen="lunar"][data-variant="night"],
 html[data-obs-screen="lunar"][data-mode="dusk"]      .obs-plate[data-screen="lunar"][data-variant="dusk"] {
-  opacity: calc(var(--obs-plate-op) + .03);
+  opacity: var(--obs-plate-op);
   visibility: visible;
   animation: obs-drift 40s ease-in-out infinite alternate;
   will-change: transform, opacity;
 }
 html[data-obs-screen="lunar"]     .obs-plate[data-screen="lunar"]:not([data-variant])  {
-  opacity: calc(var(--obs-plate-op) * .9);
+  opacity: calc(var(--obs-plate-op) * .85);
   visibility: visible;
   animation: obs-drift 40s ease-in-out infinite alternate;
   will-change: transform, opacity;
 }
 html[data-obs-screen="boot"]      .obs-plate[data-screen="boot"]   {
-  opacity: .2;
+  opacity: .10;
   visibility: visible;
   animation: obs-drift 40s ease-in-out infinite alternate;
   will-change: transform, opacity;
