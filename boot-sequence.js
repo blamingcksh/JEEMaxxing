@@ -30,9 +30,30 @@
     const MAX_DEFER_RETRIES = 6; // give up after ~30s of persistent conflict
 
     const MOODS = [
-        { val: 'sad', cls: 'is-sad', emoji: '🥱', label: 'fried', desc: 'running on fumes', targets: 'targets ×0.70' },
-        { val: 'neutral', cls: 'is-neutral', emoji: '🌤️', label: 'steady', desc: 'calm and cruising', targets: 'targets ×1.00' },
-        { val: 'happy', cls: 'is-happy', emoji: '✨', label: 'locked in', desc: 'ready to crush it today', targets: 'targets ×1.20' },
+        {
+            val: 'sad',
+            cls: 'is-sad',
+            emoji: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15.5A7.5 7.5 0 1 1 10.5 4a6 6 0 0 0 7.5 11.5Z"/><circle cx="15.5" cy="7.5" r="1" fill="currentColor"/></svg>',
+            label: 'Low',
+            desc: 'Waning crescent · running on fumes',
+            targets: 'targets ×0.70'
+        },
+        {
+            val: 'neutral',
+            cls: 'is-neutral',
+            emoji: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><line x1="3.5" y1="12" x2="20.5" y2="12"/><line x1="12" y1="3.5" x2="12" y2="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>',
+            label: 'Steady',
+            desc: 'Equinox horizon · calm and cruising',
+            targets: 'targets ×1.00'
+        },
+        {
+            val: 'happy',
+            cls: 'is-happy',
+            emoji: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.2 2.2M16.9 16.9l2.2 2.2M19.1 4.9l-2.2 2.2M7.1 16.9l-2.2 2.2"/></svg>',
+            label: 'Sharp',
+            desc: 'Solar corona · locked in and ready',
+            targets: 'targets ×1.20'
+        },
     ];
 
     let _active = false;       // overlay currently mounted
@@ -79,84 +100,44 @@
         st.id = 'boot-seq-styles';
         st.textContent = [
             '.bootseq{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;',
-            'font-family:"IBM Plex Sans","Chakra Petch",sans-serif;overflow:hidden;padding:20px;',
-            'background:radial-gradient(900px 620px at 15% 0%,rgba(248,187,217,.20),transparent 60%),',
-            'radial-gradient(820px 620px at 85% 100%,rgba(167,199,255,.20),transparent 60%),',
-            'radial-gradient(700px 500px at 80% 10%,rgba(216,180,254,.14),transparent 60%),',
-            'rgba(10,6,20,.55);backdrop-filter:blur(8px);}',
-            '.moodpop{position:relative;width:min(440px,92vw);border-radius:36px;padding:40px 30px 30px;text-align:center;',
-            'background:linear-gradient(170deg,#fff5fa 0%,#f3ecff 48%,#e8f3ff 100%);overflow:hidden;',
-            'box-shadow:0 34px 90px rgba(80,40,120,.5),inset 0 0 0 1.5px rgba(255,255,255,.85);',
-            'animation:moodpop-in .7s cubic-bezier(.34,1.56,.64,1) both;}',
-            '@keyframes moodpop-in{from{opacity:0;transform:translateY(30px) scale(.8) rotate(-1.5deg)}',
-            '60%{transform:translateY(-4px) scale(1.02) rotate(.5deg)}to{opacity:1;transform:none}}',
-            // dreamy halo bleeding past the card's top edge
-            '.moodpop::before{content:"";position:absolute;top:-70px;left:50%;width:280px;height:160px;',
-            'transform:translateX(-50%);pointer-events:none;',
-            'background:radial-gradient(ellipse at center,rgba(248,187,217,.5),transparent 70%);',
-            'animation:moodpop-halo 4.5s ease-in-out infinite alternate;}',
-            '@keyframes moodpop-halo{from{opacity:.6}to{opacity:1}}',
-            // drifting hearts/sparkles inside the card
-            '.moodpop-float{position:absolute;bottom:-24px;color:#e9a8c9;font-size:13px;opacity:0;pointer-events:none;',
-            'animation:moodpop-drift 8s linear infinite;}',
-            '.moodpop-float.f1{left:8%;animation-delay:0s;}',
-            '.moodpop-float.f2{left:24%;font-size:10px;color:#b9a8e8;animation-delay:2.6s;}',
-            '.moodpop-float.f3{left:42%;font-size:11px;color:#8fb8ec;animation-delay:5.2s;}',
-            '.moodpop-float.f4{left:60%;font-size:14px;color:#f4c2a1;animation-delay:1.4s;}',
-            '.moodpop-float.f5{left:76%;font-size:10px;color:#b9a8e8;animation-delay:4s;}',
-            '.moodpop-float.f6{left:90%;font-size:12px;color:#e9a8c9;animation-delay:6.4s;}',
-            '@keyframes moodpop-drift{0%{opacity:0;transform:translateY(0) rotate(-10deg)}',
-            '12%{opacity:.65}80%{opacity:.4}100%{opacity:0;transform:translateY(-340px) rotate(14deg)}}',
-            // twinkles beside the mascot
-            '.moodpop-spark{position:absolute;top:34px;font-size:13px;color:#c9a8e0;pointer-events:none;',
-            'animation:moodpop-twinkle 2.4s ease-in-out infinite;}',
-            '.moodpop-spark.s1{left:calc(50% - 74px);}',
-            '.moodpop-spark.s2{right:calc(50% - 74px);font-size:11px;animation-delay:1.2s;}',
-            '@keyframes moodpop-twinkle{0%,100%{opacity:.25;transform:scale(.8) rotate(0deg)}',
-            '50%{opacity:.9;transform:scale(1.15) rotate(18deg)}}',
-            // mascot in a glowing pastel badge
+            'font-family:"IBM Plex Sans","JetBrains Mono",sans-serif;overflow:hidden;padding:20px;',
+            'background:rgba(6,7,10,0.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}',
+            '.moodpop{position:relative;width:min(440px,92vw);border-radius:18px;padding:36px 28px 28px;text-align:center;',
+            'background:#0B0E16;border:1px solid rgba(229,192,123,0.28);overflow:hidden;',
+            'box-shadow:0 34px 90px rgba(0,0,0,.85),0 0 40px rgba(229,192,123,.08);',
+            'animation:moodpop-in .5s cubic-bezier(.23,1,.32,1) both;}',
+            '@keyframes moodpop-in{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}',
             '.moodpop-mascot{position:relative;display:inline-flex;align-items:center;justify-content:center;',
-            'width:86px;height:86px;border-radius:50%;font-size:44px;line-height:1;',
-            'background:radial-gradient(circle at 32% 26%,#ffffff,#ffe9f3 58%,#f3e6ff);',
-            'box-shadow:0 12px 28px rgba(240,166,200,.5),inset 0 0 0 2px rgba(255,255,255,.95);',
-            'animation:moodpop-float 3.4s ease-in-out infinite;}',
-            '@keyframes moodpop-float{0%,100%{transform:translateY(0) rotate(-2.5deg)}50%{transform:translateY(-9px) rotate(3deg)}}',
-            '.moodpop-title{position:relative;margin:16px 0 6px;font-size:23px;font-weight:800;letter-spacing:.01em;',
-            'color:#7d5bb5;background:linear-gradient(92deg,#c05c8e 0%,#8a63c9 55%,#5f8fd6 100%);',
-            '-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}',
-            '.moodpop-sub{position:relative;font-size:12.5px;color:#a08cb4;margin:0 0 24px;}',
-            '.moodpop-opts{position:relative;display:flex;flex-direction:column;gap:12px;}',
+            'width:78px;height:78px;border-radius:50%;margin-bottom:14px;',
+            'background:rgba(229,192,123,0.06);border:1px solid rgba(229,192,123,0.38);',
+            'box-shadow:0 0 24px rgba(229,192,123,0.12);}',
+            '.moodpop-mascot img{width:56px;height:56px;object-fit:contain;}',
+            '.moodpop-micro{display:block;font-family:"JetBrains Mono","IBM Plex Mono",monospace;font-size:9.5px;',
+            'font-weight:600;letter-spacing:.22em;color:rgba(229,192,123,0.85);text-transform:uppercase;margin-bottom:6px;}',
+            '.moodpop-title{position:relative;margin:0 0 6px;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;',
+            'font-size:28px;font-weight:500;color:#F2EDE3;letter-spacing:.02em;}',
+            '.moodpop-sub{position:relative;font-size:12px;color:rgba(242,237,227,0.6);margin:0 0 24px;}',
+            '.moodpop-opts{position:relative;display:flex;flex-direction:column;gap:10px;}',
             '.moodpop-opt{display:flex;align-items:center;gap:14px;width:100%;text-align:left;font-family:inherit;',
-            'background:rgba(255,255,255,.92);border:1.5px solid rgba(190,160,220,.35);border-radius:22px;',
-            'padding:11px 16px;cursor:pointer;',
-            'transition:transform .2s cubic-bezier(.34,1.56,.64,1),border-color .18s ease,box-shadow .18s ease;}',
+            'background:rgba(18,23,36,0.72);border:1px solid rgba(229,192,123,0.18);border-radius:12px;',
+            'padding:10px 14px;cursor:pointer;color:#F2EDE3;',
+            'transition:transform .2s cubic-bezier(.23,1,.32,1),border-color .18s ease,background .18s ease,box-shadow .18s ease;}',
             '.moodpop-emoji{flex:none;display:flex;align-items:center;justify-content:center;',
-            'width:50px;height:50px;border-radius:18px;font-size:26px;line-height:1;',
-            'transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .18s ease;}',
+            'width:42px;height:42px;border-radius:8px;line-height:1;',
+            'background:rgba(229,192,123,0.06);border:1px solid rgba(229,192,123,0.22);color:#E5C07B;',
+            'transition:transform .2s cubic-bezier(.23,1,.32,1),border-color .18s ease;}',
             '.moodpop-optlabel{flex:1;min-width:0;}',
-            '.moodpop-label{display:block;font-size:15px;font-weight:700;color:#4a3a5e;}',
-            '.moodpop-desc{display:block;font-size:11.5px;color:#a08cb4;margin-top:2px;}',
-            '.moodpop-key{flex:none;width:24px;height:24px;display:flex;align-items:center;justify-content:center;',
-            'font-size:11px;font-weight:600;color:#a78bba;border:1px solid rgba(190,160,220,.5);',
-            'border-radius:50%;background:rgba(255,255,255,.7);}',
-            // per-mood pastel accents
-            '.moodpop-opt.is-sad .moodpop-emoji{background:#f1e9ff;}',
-            '.moodpop-opt.is-neutral .moodpop-emoji{background:#e3f2ff;}',
-            '.moodpop-opt.is-happy .moodpop-emoji{background:#fff0e0;}',
-            '.moodpop-opt.is-sad:hover{border-color:#c9a8e8;box-shadow:0 12px 28px rgba(201,168,232,.45);}',
-            '.moodpop-opt.is-neutral:hover{border-color:#93c1ec;box-shadow:0 12px 28px rgba(147,193,236,.45);}',
-            '.moodpop-opt.is-happy:hover{border-color:#f4c290;box-shadow:0 12px 28px rgba(244,194,144,.5);}',
-            '.moodpop-opt:hover{transform:translateY(-3px) scale(1.025);}',
-            '.moodpop-opt:hover .moodpop-emoji{transform:scale(1.15) rotate(-8deg);',
-            'box-shadow:0 8px 18px rgba(80,40,120,.15);}',
+            '.moodpop-label{display:block;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-size:19px;font-weight:600;color:#F2EDE3;}',
+            '.moodpop-desc{display:block;font-family:"JetBrains Mono","IBM Plex Mono",monospace;font-size:10.5px;color:rgba(242,237,227,0.55);margin-top:2px;}',
+            '.moodpop-key{flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;',
+            'font-family:"JetBrains Mono","IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;color:#E5C07B;border:1px solid rgba(229,192,123,0.35);',
+            'border-radius:4px;background:rgba(229,192,123,0.08);}',
+            '.moodpop-opt:hover{border-color:rgba(229,192,123,0.65);background:rgba(26,33,52,0.95);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.5),0 0 16px rgba(229,192,123,0.12);}',
+            '.moodpop-opt:hover .moodpop-emoji{border-color:rgba(229,192,123,0.6);transform:scale(1.08);}',
             '.moodpop-opt:active{transform:translateY(0) scale(.99);}',
-            '.bootseq button:focus-visible{outline:2px solid #f0a6c8;outline-offset:2px;}',
-            '@media (prefers-reduced-motion:reduce){.moodpop,.moodpop-mascot,.moodpop-float,',
-            '.moodpop-spark,.moodpop-emoji{animation:none!important;}',
-            '.moodpop-float,.moodpop-spark{opacity:.35!important;transform:none!important;}',
-            '.moodpop-opt,.moodpop-emoji{transition:none!important;}',
-            '.moodpop-opt:hover,.moodpop-emoji{transform:none!important;}}',
-            '@media (max-width:420px){.moodpop{padding:32px 18px 24px;}.moodpop-key{display:none;}}'
+            '.bootseq button:focus-visible{outline:2px solid #E5C07B;outline-offset:2px;}',
+            '@media (prefers-reduced-motion:reduce){.moodpop,.moodpop-mascot,.moodpop-opt,.moodpop-emoji{animation:none!important;transition:none!important;}}',
+            '@media (max-width:420px){.moodpop{padding:28px 16px 20px;}.moodpop-key{display:none;}}'
         ].join('');
         document.head.appendChild(st);
     }
@@ -170,17 +151,10 @@
         _overlay.setAttribute('aria-label', 'Daily mood check');
         _overlay.innerHTML =
             '<div class="moodpop">' +
-                '<span class="moodpop-float f1" aria-hidden="true">♡</span>' +
-                '<span class="moodpop-float f2" aria-hidden="true">✦</span>' +
-                '<span class="moodpop-float f3" aria-hidden="true">✿</span>' +
-                '<span class="moodpop-float f4" aria-hidden="true">♡</span>' +
-                '<span class="moodpop-float f5" aria-hidden="true">✦</span>' +
-                '<span class="moodpop-float f6" aria-hidden="true">♪</span>' +
-                '<span class="moodpop-spark s1" aria-hidden="true">✦</span>' +
-                '<span class="moodpop-spark s2" aria-hidden="true">✧</span>' +
-                '<span class="moodpop-mascot" aria-hidden="true">🌷</span>' +
-                '<h2 class="moodpop-title">how are you feeling today?</h2>' +
-                '<p class="moodpop-sub">your daily targets will tune themselves to match ♡</p>' +
+                '<div class="moodpop-mascot" aria-hidden="true"><img src="atlas/atmos-v-armillary.svg" alt="" aria-hidden="true"></div>' +
+                '<span class="moodpop-micro">MERIDIAN CHECK · DAILY CALIBRATION</span>' +
+                '<h2 class="moodpop-title">How’s the head today?</h2>' +
+                '<p class="moodpop-sub">Calibrating today’s meridian capacity &amp; target scaling</p>' +
                 '<div class="moodpop-opts"></div>' +
             '</div>';
         document.body.appendChild(_overlay);

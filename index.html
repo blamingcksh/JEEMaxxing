@@ -34,7 +34,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <title>JEEMaxxing · Locked In</title>
 
 <!-- Favicon (app.js upgrades this to a generated PNG apple-touch-icon) -->
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%2306070A' stroke='%23E5C07B' stroke-width='1.5'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23E5C07B' stroke-width='1'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='4.5' fill='none' stroke='%23E5C07B' stroke-width='1' transform='rotate(-28 16 16)'/%3E%3Cline x1='16' y1='2' x2='16' y2='30' stroke='%23E5C07B' stroke-width='1' stroke-dasharray='2 2'/%3E%3Ccircle cx='16' cy='16' r='2' fill='%23E5C07B'/%3E%3C/svg%3E">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 
 <!-- ── Type system (observatory): Cormorant Garamond (display serif) ·
@@ -89,7 +89,13 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     <aside class="sidebar" id="sidebar">
         <div class="logo-container">
             <span class="logo-mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 4.5 13.5H11L10 21.5 19.5 10.5H12.5Z"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="9.5"/>
+                    <ellipse cx="12" cy="12" rx="9.5" ry="3.8" transform="rotate(-28 12 12)"/>
+                    <line x1="12" y1="2" x2="12" y2="4.5"/>
+                    <line x1="12" y1="19.5" x2="12" y2="22"/>
+                    <circle cx="12" cy="12" r="1.6" fill="currentColor"/>
+                </svg>
             </span>
             <span class="logo-text">JEEMaxxing</span>
             <span class="logo-icon-alt">JX</span>
@@ -115,7 +121,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
         <!-- app.js injects #global-mmr-row into .user-profile -->
         <div class="user-profile">
-            <img id="display-pfp" class="pfp-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='100%' height='100%' fill='%232a2a3a'/><text x='50%' y='58%' font-size='30' text-anchor='middle'>🦊</text></svg>" alt="Profile">
+            <img id="display-pfp" class="pfp-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='64' height='64'><rect width='64' height='64' rx='32' fill='%230B0E16'/><circle cx='32' cy='32' r='28' fill='none' stroke='%23E5C07B' stroke-width='1' stroke-opacity='0.4'/><circle cx='32' cy='32' r='22' fill='none' stroke='%23E5C07B' stroke-width='0.75' stroke-dasharray='2 2'/><circle cx='32' cy='32' r='14' fill='none' stroke='%23E5C07B' stroke-width='1'/><ellipse cx='32' cy='32' rx='22' ry='9' transform='rotate(-28 32 32)' fill='none' stroke='%23E5C07B' stroke-width='0.75' stroke-opacity='0.6'/><line x1='32' y1='8' x2='32' y2='56' stroke='%23E5C07B' stroke-width='0.75' stroke-opacity='0.5'/><line x1='8' y1='32' x2='56' y2='32' stroke='%23E5C07B' stroke-width='0.75' stroke-opacity='0.5'/><circle cx='32' cy='32' r='2.5' fill='%23E5C07B'/></svg>" alt="Profile">
             <span class="username-txt" id="display-username">Grindset</span>
         </div>
 
@@ -170,17 +176,8 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <!-- ── Hemingway Bridge & Tuck-In banners (fixed mounts above the bento grid) ── -->
             <div id="bridge-banner" hidden></div>
             <div id="tuckin-door-banner" hidden></div>
-            <!-- ── Quick Action bar (low-friction 1-click stateful launchers) ── -->
-            <div id="dash-quick-bar" class="dash-quick-bar">
-                <button type="button" class="dash-quick-btn" id="dq-attack-btn">
-                    <span class="dq-icon"><svg class="g"><use href="#g-target"></use></svg></span>
-                    <span class="dq-label" id="dq-attack-label">Attack Weakest Chapter →</span>
-                </button>
-                <button type="button" class="dash-quick-btn" id="dq-vault-btn">
-                    <span class="dq-icon"><svg class="g"><use href="#g-shield"></use></svg></span>
-                    <span class="dq-label" id="dq-vault-label">Open Error Vault →</span>
-                </button>
-            </div>
+            <!-- ── Deck Layout Bar (holds #dc-layout-fab) ── -->
+            <div id="dash-quick-bar" class="dash-quick-bar"></div>
 
             <div class="dash-grid">
 
@@ -188,7 +185,10 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                      (app.js renderDailyVarianceHeatmap fills months + grid). ── -->
                 <div class="dash-card dash-card-variance" data-bento-span="12">
                     <div class="dv-head dv-head-wrap">
-                        <h2 class="dv-title">Consistency</h2>
+                        <div class="dv-head-left">
+                            <h2 class="dv-title">Consistency</h2>
+                            <span class="dv-streak" id="dv-streak" hidden></span>
+                        </div>
                         <span class="daily-variance-legend" aria-hidden="true">
                             <span class="daily-variance-legend-label">Less</span>
                             <i class="daily-variance-swatch" data-level="0"></i>
@@ -208,6 +208,11 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <!-- ── TODAY'S PROGRESS · the one number that matters, three
                      subject ledgers under it. Steppers are the quick-log. ── -->
                 <div class="dash-card dash-card-tracker" data-bento-span="4">
+                    <!-- conic ring layers: oversized rotating gradient clipped to
+                         the 1px border band + interior plate (see styles.css) —
+                         replaces the paint-per-frame --aes-angle animation. -->
+                    <div class="tracker-ring" aria-hidden="true"><div class="tracker-ring-spin"></div></div>
+                    <div class="tracker-hole" aria-hidden="true"></div>
                     <div class="dv-head">
                         <h2 class="dv-title">Today’s Progress</h2>
                         <span class="tp-variance" id="variance-val" title="Solved vs target today">0.0%</span>
@@ -326,23 +331,26 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                             <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()"><svg class="g"><use href="#g-spark"></use></svg> Fix Queue</button>
                             <button class="daily-queue-master-btn" id="bounty-rail-btn" onclick="openDailyBounty()" style="display:none"><svg class="g"><use href="#g-trophy"></use></svg> Bounty</button>
                             <button class="btn btn-primary rail-btn" onclick="openModal('add-error-modal')">+ Log</button>
-                            <button class="btn btn-dump rail-btn" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')"><svg class="g"><use href="#g-eye"></use></svg> Dump</button>
+                            <button class="btn btn-dump rail-btn" id="ai-dump-btn" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')"><svg class="g"><use href="#g-eye"></use></svg> Mistake Report</button>
                         </div>
                     </div>
 
                     <div class="vt-row vt-row-sub">
                         <nav class="vault-subjects" aria-label="Error subjects">
                             <div class="subject-folder active" data-subject="physics" onclick="openErrorMatrix('physics', this)">
+                                <img class="vault-folder-watermark" src="atlas/specimen-phys-corona.svg" alt="" aria-hidden="true" loading="lazy">
                                 <span class="folder-icon"><svg class="g"><use href="#g-physics"></use></svg></span>
                                 <span class="folder-name">Physics</span>
                                 <span class="folder-count" id="folder-count-physics" title="Mistakes tracked in this subject">0</span>
                             </div>
                             <div class="subject-folder" data-subject="chemistry" onclick="openErrorMatrix('chemistry', this)">
+                                <img class="vault-folder-watermark" src="atlas/specimen-chem-dendrite.svg" alt="" aria-hidden="true" loading="lazy">
                                 <span class="folder-icon"><svg class="g"><use href="#g-chemistry"></use></svg></span>
                                 <span class="folder-name">Chemistry</span>
                                 <span class="folder-count" id="folder-count-chemistry" title="Mistakes tracked in this subject">0</span>
                             </div>
                             <div class="subject-folder" data-subject="maths" onclick="openErrorMatrix('maths', this)">
+                                <img class="vault-folder-watermark" src="atlas/specimen-math-nautilus.svg" alt="" aria-hidden="true" loading="lazy">
                                 <span class="folder-icon"><svg class="g"><use href="#g-maths"></use></svg></span>
                                 <span class="folder-name">Maths</span>
                                 <span class="folder-count" id="folder-count-maths" title="Mistakes tracked in this subject">0</span>
@@ -407,17 +415,29 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <span class="kicker">// QUESTION BANK</span>
                 <h2 class="box-title center-head">Pick Your Arena</h2>
                 <div class="subject-cards">
-                    <div class="subject-card" onclick="selectSubject('physics')">
+                    <div class="subject-card subject-card--phys" onclick="selectSubject('physics')">
+                        <span class="obs-specimen-plate-tag">OBS. 07 · CHLADNI RESONANCE</span>
+                        <div class="obs-specimen-frame">
+                            <img src="atlas/specimen-phys-chladni.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                        </div>
                         <div class="subject-icon"><svg class="g"><use href="#g-physics"></use></svg></div>
                         <h3>Physics</h3>
                         <div class="subject-card-meta" id="subj-meta-physics">Loading…</div>
                     </div>
-                    <div class="subject-card" onclick="selectSubject('chemistry')">
+                    <div class="subject-card subject-card--chem" onclick="selectSubject('chemistry')">
+                        <span class="obs-specimen-plate-tag">OBS. 06 · CRYSTAL SYMMETRY</span>
+                        <div class="obs-specimen-frame">
+                            <img src="atlas/specimen-chem-dendrite.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                        </div>
                         <div class="subject-icon"><svg class="g"><use href="#g-chemistry"></use></svg></div>
                         <h3>Chemistry</h3>
                         <div class="subject-card-meta" id="subj-meta-chemistry">Loading…</div>
                     </div>
-                    <div class="subject-card" onclick="selectSubject('maths')">
+                    <div class="subject-card subject-card--math" onclick="selectSubject('maths')">
+                        <span class="obs-specimen-plate-tag">OBS. 05 · GOLDEN SPIRAL</span>
+                        <div class="obs-specimen-frame">
+                            <img src="atlas/specimen-math-nautilus.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                        </div>
                         <div class="subject-icon"><svg class="g"><use href="#g-maths"></use></svg></div>
                         <h3>Maths</h3>
                         <div class="subject-card-meta" id="subj-meta-maths">Loading…</div>
@@ -492,17 +512,18 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     <p class="box-desc">Link Google Drive to go unlimited. Data syncs to 'JEEMaxxing_Cloud'. No more storage caps.</p>
                     <button id="btn-drive-auth" class="btn btn-primary" onclick="handleDriveAuth()">Link Google Drive</button>
                     <div id="drive-status" class="drive-ok" style="display:none">✔ Cloud Sync Locked In</div>
-                    <button class="btn btn-secondary" onclick="cacheAllDriveImages()">📦 Cache All Images Locally</button>
+                    <button class="btn btn-secondary" onclick="cacheAllDriveImages()"><svg class="g"><use href="#g-archive"></use></svg> Cache All Images Locally</button>
                 </div>
 
                 <!-- Data Vault — full backup / restore [AUDIT P1-1] -->
                 <div class="settings-card">
                     <h3><svg class="g"><use href="#g-archive"></use></svg>Data Vault</h3>
+                    <img class="settings-card-watermark" src="atlas/folio-i-horizon.svg" alt="" aria-hidden="true" loading="lazy">
                     <p class="box-desc">One-file backup of EVERYTHING — question bank, images, ELO, mocks, solve history, checkpoint lockdown and settings. Every section is fingerprinted, and restore verifies each one. Do this regularly; cloud sync is not a backup.</p>
-                    <button id="backup-download-btn" class="btn btn-primary" onclick="exportFullBackup()">⬇ Download Full Backup</button>
+                    <button id="backup-download-btn" class="btn btn-primary" onclick="exportFullBackup()"><svg class="g"><use href="#g-download"></use></svg> Download Full Backup</button>
                     <div class="file-upload-wrapper" style="margin-top:10px">
                         <label class="file-upload-label compact-upload" for="restore-backup-input">
-                            <span class="file-icon">⬆</span>
+                            <span class="file-icon"><svg class="g"><use href="#g-upload"></use></svg></span>
                             <span class="file-text">Restore From Backup…</span>
                         </label>
                         <input type="file" id="restore-backup-input" accept="application/json,.json" style="display:none" onchange="restoreFullBackup(this); this.value='';">
@@ -520,7 +541,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         <label>PFP</label>
                         <div class="file-upload-wrapper">
                             <label class="file-upload-label compact-upload" for="set-pfp">
-                                <span class="file-icon">🖼️</span>
+                                <span class="file-icon"><svg class="g"><use href="#g-image"></use></svg></span>
                                 <span class="file-text">Upload PFP</span>
                             </label>
                             <input type="file" id="set-pfp" accept="image/*" style="display:none" onchange="previewImage(event, 'pfp')">
@@ -534,9 +555,10 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                      "Daily Grind Quota" + "Daily Fix Quota" cards. Contracts
                      are computed, not set; no 24h lock. ── -->
                 <div class="settings-card">
+                    <img class="settings-card-watermark" src="atlas/specimen-botanical.svg" alt="" aria-hidden="true" loading="lazy">
                     <h3><svg class="g"><use href="#g-target"></use></svg>Daily Directive</h3>
                     <div id="directive-settings-body"></div>
-                    <button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="window.scheduleDeloadFromUi()">🌿 Schedule Earned Rest</button>
+                    <button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="window.scheduleDeloadFromUi()"><svg class="g"><use href="#g-seed"></use></svg> Schedule Earned Rest</button>
                 </div>
 
                 <!-- Gemini API -->
@@ -546,21 +568,21 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         <label for="gemini-key">API Key</label>
                         <input id="gemini-key" class="pomo-input" type="password" placeholder="AIza…" autocomplete="off">
                     </div>
-                    <button class="btn btn-secondary" onclick="testGeminiKey()">🔑 Verify Key</button>
+                    <button class="btn btn-secondary" onclick="testGeminiKey()"><svg class="g"><use href="#g-key"></use></svg> Verify Key</button>
                     <div id="key-test-result" class="key-test-result"></div>
                 </div>
                 <!-- Audio & Visual FX -->
 <div class="settings-card" id="fx-settings-card">
     <h3><svg class="g"><use href="#g-gauge"></use></svg>Audio &amp; Visual FX</h3>
     <p class="box-desc">Tune the dopamine. Sound, motion and haptics are fully modular. Turning off <b>Visual FX</b> also calms the UI for photosensitivity / low‑power (it mirrors your OS reduced‑motion setting on first load).</p>
-    <div class="fx-row"><span class="fx-row-label">🔊 Sound Effects</span><label class="fx-switch"><input type="checkbox" id="fx-sound"><span class="fx-slider"></span></label></div>
-    <div class="fx-row"><span class="fx-row-label">🎚️ UI Volume</span><input type="range" id="fx-volume" class="fx-range" min="0" max="100" value="70"></div>
-    <div class="fx-row"><span class="fx-row-label">✨ Visual Effects</span><label class="fx-switch"><input type="checkbox" id="fx-effects"><span class="fx-slider"></span></label></div>
-    <div class="fx-row"><span class="fx-row-label">📳 Haptics (vibration)</span><label class="fx-switch"><input type="checkbox" id="fx-haptics"><span class="fx-slider"></span></label></div>
-    <div class="fx-row"><span class="fx-row-label">🔈 Hover &amp; Chart Ticks</span><label class="fx-switch"><input type="checkbox" id="fx-hover"><span class="fx-slider"></span></label></div>
+    <div class="fx-row"><span class="fx-row-label"><svg class="g"><use href="#g-volume"></use></svg> Sound Effects</span><label class="fx-switch"><input type="checkbox" id="fx-sound"><span class="fx-slider"></span></label></div>
+    <div class="fx-row"><span class="fx-row-label"><svg class="g"><use href="#g-sliders"></use></svg> UI Volume</span><input type="range" id="fx-volume" class="fx-range" min="0" max="100" value="70"></div>
+    <div class="fx-row"><span class="fx-row-label"><svg class="g"><use href="#g-spark"></use></svg> Visual Effects</span><label class="fx-switch"><input type="checkbox" id="fx-effects"><span class="fx-slider"></span></label></div>
+    <div class="fx-row"><span class="fx-row-label"><svg class="g"><use href="#g-target"></use></svg> Haptics (vibration)</span><label class="fx-switch"><input type="checkbox" id="fx-haptics"><span class="fx-slider"></span></label></div>
+    <div class="fx-row"><span class="fx-row-label"><svg class="g"><use href="#g-volume"></use></svg> Hover &amp; Chart Ticks</span><label class="fx-switch"><input type="checkbox" id="fx-hover"><span class="fx-slider"></span></label></div>
     <div class="fx-test-row">
-        <button type="button" class="btn btn-secondary btn-sm" id="fx-test-sound">🔊 Test Sound</button>
-        <button type="button" class="btn btn-secondary btn-sm" id="fx-test-fx">✨ Test Effects</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="fx-test-sound"><svg class="g"><use href="#g-volume"></use></svg> Test Sound</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="fx-test-fx"><svg class="g"><use href="#g-spark"></use></svg> Test Effects</button>
     </div>
 </div>
 
@@ -745,12 +767,18 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <div id="add-error-modal" class="modal-overlay" onclick="closeModal(event, 'add-error-modal')">
     <div class="modal-content">
         <button class="close-btn" onclick="closeModalStr('add-error-modal')" aria-label="Close">✕</button>
-        <h2>Log a Mistake</h2>
+        <div class="modal-header-wrap" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+            <img class="obs-modal-emblem" src="atlas/folio-iv-microscope.svg" alt="" aria-hidden="true" style="width:52px;height:52px;object-fit:contain;flex-shrink:0;">
+            <div>
+                <span class="kicker" style="display:block;font-size:10px;letter-spacing:.2em;color:var(--obs-ink,#e5c07b);margin-bottom:2px;">// FOLIO IV · MICROSCOPY &amp; RESOLUTION</span>
+                <h2 style="margin:0;">Log a Mistake</h2>
+            </div>
+        </div>
         <div class="input-group" style="margin-top:16px">
             <label>Question Screenshot</label>
             <div class="file-upload-wrapper">
                 <label class="file-upload-label" for="err-img-input">
-                    <span class="file-icon">📷</span>
+                    <span class="file-icon"><svg class="g"><use href="#g-image"></use></svg></span>
                     <span class="file-text">Upload Screenshot</span>
                     <span class="file-hint">PNG / JPG straight from the paper</span>
                 </label>
@@ -775,7 +803,13 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <div id="ai-dump-modal" class="modal-overlay" onclick="closeModal(event, 'ai-dump-modal')">
     <div class="modal-content" style="max-width:520px;max-height:85vh;overflow-y:auto;">
         <button class="close-btn" onclick="closeModalStr('ai-dump-modal')" aria-label="Close">✕</button>
-        <h2>🧠 Smart Mistake Report</h2>
+        <div class="ai-dump-modal-header" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+            <img class="obs-modal-emblem" src="atlas/specimen-iris.svg" alt="" aria-hidden="true" style="width:56px;height:56px;object-fit:contain;flex-shrink:0;">
+            <div>
+                <span class="kicker" style="display:block;font-size:10px;letter-spacing:.2em;color:var(--obs-ink,#e5c07b);margin-bottom:2px;">// OBS. 08 · OCULAR DIOPTRIC RAY-TRACE</span>
+                <h2 style="margin:0;">Smart Mistake Report</h2>
+            </div>
+        </div>
         <p style="color:var(--text-muted);margin:4px 0 16px;font-size:13px;">Pick chapters — the analysis below updates live: which tags produced how many mistakes, at what difficulty, and why.</p>
 
         <div id="ai-dump-chapter-list"></div>
@@ -783,14 +817,14 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <div id="ai-dump-report-preview" class="rp-preview" aria-live="polite"></div>
 
         <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
-            <button class="btn btn-secondary" onclick="window.selectAllDumpChapters(true)" style="flex:1;">✅ Select All</button>
-            <button class="btn btn-secondary" onclick="window.selectAllDumpChapters(false)" style="flex:1;">❌ Clear All</button>
+            <button class="btn btn-secondary" onclick="window.selectAllDumpChapters(true)" style="flex:1;"><svg class="g"><use href="#g-check"></use></svg> Select All</button>
+            <button class="btn btn-secondary" onclick="window.selectAllDumpChapters(false)" style="flex:1;"><svg class="g"><use href="#g-cross"></use></svg> Clear All</button>
         </div>
-        <button class="btn btn-primary" onclick="window.exportSmartReport()" style="width:100%;margin-top:12px;">📥 Download Smart Report (.txt)</button>
+        <button class="btn btn-primary" onclick="window.exportSmartReport()" style="width:100%;margin-top:12px;"><svg class="g"><use href="#g-download"></use></svg> Download Smart Report (.txt)</button>
         <details class="rp-advanced">
-            <summary>⬇ Advanced: raw JSON export &amp; maintenance</summary>
-            <button class="btn btn-secondary" onclick="window.exportRawBankJson()" style="width:100%;margin-top:8px;">⬇ Raw Bank JSON (.json)</button>
-            <button class="btn btn-danger" onclick="window.purgeDuplicateQuestions()" style="width:100%;margin-top:8px;">🧹 Purge Duplicate Questions</button>
+            <summary><svg class="g"><use href="#g-folder"></use></svg> Advanced: raw JSON export &amp; maintenance</summary>
+            <button class="btn btn-secondary" onclick="window.exportRawBankJson()" style="width:100%;margin-top:8px;"><svg class="g"><use href="#g-doc"></use></svg> Raw Bank JSON (.json)</button>
+            <button class="btn btn-danger" onclick="window.purgeDuplicateQuestions()" style="width:100%;margin-top:8px;"><svg class="g"><use href="#g-trash"></use></svg> Purge Duplicate Questions</button>
         </details>
     </div>
 </div>
@@ -829,15 +863,15 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <h2>Feed Questions</h2>
 
         <div class="ingestion-toggle-row">
-            <button class="ingestion-toggle-btn active" id="toggle-multicrop" onclick="switchIngestionTrack('multicrop')">🖼️ Traditional Multicrop</button>
-            <button class="ingestion-toggle-btn" id="toggle-texttrack" onclick="switchIngestionTrack('texttrack')">⚡ Gemini Gem Text Track</button>
+            <button class="ingestion-toggle-btn active" id="toggle-multicrop" onclick="switchIngestionTrack('multicrop')"><svg class="g"><use href="#g-image"></use></svg> Traditional Multicrop</button>
+            <button class="ingestion-toggle-btn" id="toggle-texttrack" onclick="switchIngestionTrack('texttrack')"><svg class="g"><use href="#g-bolt"></use></svg> Gemini Gem Text Track</button>
         </div>
 
         <!-- Track A: Multicrop -->
         <div id="ingestion-panel-multicrop" class="ingestion-panel active">
             <div class="file-upload-wrapper">
                 <label class="file-upload-label" for="upload-images">
-                    <span class="file-icon">📤</span>
+                    <span class="file-icon"><svg class="g"><use href="#g-upload"></use></svg></span>
                     <span class="file-text">Tap to select images</span>
                     <span class="file-hint">or drag & drop 'em</span>
                 </label>
@@ -856,18 +890,18 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <div id="ingestion-panel-texttrack" class="ingestion-panel">
             <div class="text-track-terminal">
                 <div class="text-track-header">
-                    <span class="text-track-badge">⚡ GEM TEXT DUMP</span>
+                    <span class="text-track-badge"><svg class="g"><use href="#g-bolt"></use></svg> GEM TEXT DUMP</span>
                     <span style="font-size:11px;color:var(--text-muted)">Paste a JSON array — or upload the dump file directly</span>
-                    <label class="btn btn-secondary" style="margin-left:auto;padding:3px 10px;font-size:11px;cursor:pointer;">📄 Upload .json
+                    <label class="btn btn-secondary" style="margin-left:auto;padding:3px 10px;font-size:11px;cursor:pointer;"><svg class="g"><use href="#g-doc"></use></svg> Upload .json
                         <input type="file" id="json-dump-file" accept=".json,application/json,.txt" style="display:none" onchange="loadJsonDumpFile(this)">
                     </label>
                 </div>
                 <textarea id="text-add-terminal" class="pomo-input text-track-terminal-input" rows="8" placeholder='[{"extractedText":"...","options":["..."],"correctAnswer":"C","type":"mcq","solution":"..."}] — or upload a .json file above' aria-label="Gem text dump JSON input"></textarea>
             </div>
             <details class="gem-map-instructions" style="margin-top:10px;">
-                <summary>📋 Prompt for your Gem — copy this so dumps parse cleanly</summary>
+                <summary><svg class="g"><use href="#g-copy"></use></svg> Prompt for your Gem — copy this so dumps parse cleanly</summary>
                 <div class="gem-map-instr-actions">
-                    <button class="btn btn-secondary btn-sm" onclick="window.copyGemDumpPrompt()">📋 Copy prompt</button>
+                    <button class="btn btn-secondary btn-sm" onclick="window.copyGemDumpPrompt()"><svg class="g"><use href="#g-copy"></use></svg> Copy prompt</button>
                 </div>
                 <pre id="gem-dump-prompt-text" class="gem-map-instruction-text"></pre>
             </details>
@@ -884,14 +918,14 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <div id="gem-image-map-modal" class="modal-overlay" onclick="closeModal(event, 'gem-image-map-modal')">
     <div class="modal-card gem-map-modal-card">
         <button class="close-btn" onclick="closeModalStr('gem-image-map-modal')" aria-label="Close">✕</button>
-        <h2>🗺 Gem Diagram Map</h2>
+        <h2><svg class="g"><use href="#g-map"></use></svg> Gem Diagram Map</h2>
         <p id="gem-map-intro" class="box-desc" style="margin-bottom:14px;"></p>
         <div id="gem-image-map-body"></div>
         <div id="gem-image-map-status" class="gem-map-status"></div>
         <details class="gem-map-instructions" id="gem-map-instructions">
-            <summary>📋 Copy this into Gemini so your dumps carry crop coordinates</summary>
+            <summary><svg class="g"><use href="#g-copy"></use></svg> Copy this into Gemini so your dumps carry crop coordinates</summary>
             <div class="gem-map-instr-actions">
-                <button class="btn btn-secondary btn-sm" id="btn-copy-gem-instr" onclick="window.copyGemImageInstructions()">📋 Copy</button>
+                <button class="btn btn-secondary btn-sm" id="btn-copy-gem-instr" onclick="window.copyGemImageInstructions()"><svg class="g"><use href="#g-copy"></use></svg> Copy</button>
             </div>
             <pre id="gem-map-instruction-text" class="gem-map-instruction-text"></pre>
         </details>
@@ -1029,7 +1063,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <div id="bounty-modal" class="modal-overlay" onclick="closeModal(event, 'bounty-modal')">
     <div class="modal-content square-modal">
         <button class="close-btn" onclick="closeModalStr('bounty-modal')" aria-label="Close">✕</button>
-        <h2>⚔️ Bounty Boss Fight</h2>
+        <h2><svg class="g"><use href="#g-sword"></use></svg> Bounty Boss Fight</h2>
         <p class="box-desc" style="margin-top:12px">Clutch this mistake before time runs out to earn 3 guaranteed critical hits and instant Purple Fire.</p>
         <p class="box-desc">Fail and you're cooked: 24h lock + daily quota goes up.</p>
         <div style="text-align:center;margin:24px 0">

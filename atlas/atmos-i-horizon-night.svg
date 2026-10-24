@@ -1,78 +1,69 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
-<defs>
-<radialGradient id="photon-glow" cx="50%" cy="50%" r="50%">
-<stop offset="40%" stop-color="#1E1D1A" stop-opacity="0" />
-<stop offset="52%" stop-color="#D96B43" stop-opacity="0.45" />
-<stop offset="68%" stop-color="#C59B5F" stop-opacity="0.2" />
-<stop offset="100%" stop-color="#F4EFE6" stop-opacity="0" />
-</radialGradient>
-</defs>
-<!-- Background &amp; Frame -->
-<!-- Lower Spacetime Curvature Embedding Funnel (Gravity Well) -->
-<g stroke="#F2EDE3" stroke-width="0.65" stroke-opacity="0.45" fill="none">
-<ellipse cx="300" cy="360" rx="240" ry="52" />
-<ellipse cx="300" cy="395" rx="180" ry="38" />
-<ellipse cx="300" cy="435" rx="115" ry="24" />
-<ellipse cx="300" cy="475" rx="68" ry="14" stroke="#D96B43" stroke-opacity="0.8" />
-<ellipse cx="300" cy="515" rx="38" ry="8" stroke="#D96B43" />
-<ellipse cx="300" cy="545" rx="22" ry="5" fill="#06070A" />
-<!-- Funnel Meridian Curves -->
-<path d="M 60 360 C 165 385, 245 445, 278 545" />
-<path d="M 125 326 C 200 365, 260 440, 285 545" />
-<path d="M 195 313 C 245 355, 275 440, 292 545" />
-<path d="M 540 360 C 435 385, 355 445, 322 545" />
-<path d="M 475 326 C 400 365, 340 440, 315 545" />
-<path d="M 405 313 C 355 355, 325 440, 308 545" />
-</g>
-<!-- Outer Astrometric Vernier Dial -->
-<g transform="translate(300, 245)" fill="none" stroke="#F2EDE3">
-<circle cx="0" cy="0" r="195" stroke-width="0.8" stroke-dasharray="4 6" />
-<circle cx="0" cy="0" r="185" stroke-width="4" stroke-dasharray="1 5" />
-<circle cx="0" cy="0" r="145" fill="url(#photon-glow)" stroke="none" />
-</g>
-<!-- Relativistic Kerr Singularity &amp; Warped Accretion Disk (Tilted -16 deg) -->
-<g transform="translate(300, 245) rotate(-16)">
-<!-- Relativistic Polar Jets &amp; Helical Magnetic Flux -->
-<line x1="0" y1="-205" x2="0" y2="205" stroke="#D96B43" stroke-width="1.2" stroke-dasharray="5 3" />
-<path d="M -22 -185 L 0 -65 L 22 -185" fill="#D96B43" fill-opacity="0.12" stroke="#C59B5F" stroke-width="0.8" />
-<path d="M -18 175 L 0 65 L 18 175" fill="#D96B43" fill-opacity="0.12" stroke="#C59B5F" stroke-width="0.8" />
-<path d="M -6 -80 C -28 -105, 28 -125, -14 -155 C -32 -175, 24 -185, 0 -200" fill="none" stroke="#F2EDE3" stroke-width="0.9" />
-<path d="M 6 80 C 28 105, -28 125, 14 155 C 32 175, -24 185, 0 200" fill="none" stroke="#F2EDE3" stroke-width="0.9" />
-<!-- Gravitationally Lensed Upper &amp; Lower Halo Arcs -->
-<path d="M -135 0 A 135 125 0 0 1 135 0" fill="#E6DEC8" fill-opacity="0.6" stroke="#F2EDE3" stroke-width="1.5" />
-<path d="M -120 0 A 120 108 0 0 1 120 0" fill="none" stroke="#D96B43" stroke-width="1.4" stroke-dasharray="6 3" />
-<path d="M -105 0 A 105 92 0 0 1 105 0" fill="none" stroke="#C59B5F" stroke-width="1.2" />
-<path d="M -125 0 A 125 112 0 0 0 125 0" fill="none" stroke="#F2EDE3" stroke-width="1.2" />
-<path d="M -108 0 A 108 95 0 0 0 108 0" fill="none" stroke="#D96B43" stroke-width="1" stroke-dasharray="3 3" />
-<!-- Photon Sphere &amp; Event Horizon Shadow -->
-<circle cx="0" cy="0" r="78" fill="#F4EFE6" stroke="#D96B43" stroke-width="2" />
-<circle cx="0" cy="0" r="70" fill="#06070A" />
-<circle cx="0" cy="0" r="64" fill="none" stroke="#D96B43" stroke-width="1.2" />
-<circle cx="0" cy="0" r="56" fill="none" stroke="#C59B5F" stroke-width="0.7" stroke-dasharray="2 4" />
-<!-- Foreground Equatorial Accretion Disk -->
-<path d="M -225 0 A 225 46 0 0 0 225 0 A 225 32 0 0 1 -225 0 Z" fill="#E6DEC8" stroke="#F2EDE3" stroke-width="1.8" />
-<ellipse cx="0" cy="0" rx="225" ry="38" fill="none" stroke="#F2EDE3" stroke-width="1.5" />
-<ellipse cx="0" cy="0" rx="195" ry="31" fill="none" stroke="#D96B43" stroke-width="1.5" stroke-dasharray="10 4" />
-<ellipse cx="0" cy="0" rx="165" ry="24" fill="none" stroke="#F2EDE3" stroke-width="1" />
-<ellipse cx="0" cy="0" rx="135" ry="18" fill="none" stroke="#C59B5F" stroke-width="1.5" />
-<!-- Relativistic Doppler Beaming Nodes (Left Side Brighter) -->
-<circle cx="-165" cy="8" r="5" fill="#D96B43" stroke="#F2EDE3" stroke-width="1" />
-<circle cx="-135" cy="-6" r="4" fill="#D96B43" />
-<circle cx="165" cy="-8" r="4" fill="#F4EFE6" stroke="#F2EDE3" stroke-width="1" />
-<!-- Central Singularity Reticle -->
-<line x1="-25" y1="0" x2="25" y2="0" stroke="#F4EFE6" stroke-width="0.7" />
-<line x1="0" y1="-25" x2="0" y2="25" stroke="#F4EFE6" stroke-width="0.7" />
-<circle cx="0" cy="0" r="4" fill="none" stroke="#D96B43" stroke-width="1.2" />
-</g>
-<!-- Schwarzschild Radius Dimension Callout -->
-<g stroke="#F2EDE3" stroke-width="1" fill="none">
-<line x1="230" y1="120" x2="370" y2="120" />
-<line x1="230" y1="115" x2="230" y2="245" stroke-dasharray="2 3" />
-<line x1="370" y1="115" x2="370" y2="245" stroke-dasharray="2 3" />
-<polygon points="230,120 238,117 238,123" fill="#06070A" />
-<polygon points="370,120 362,117 362,123" fill="#06070A" />
-</g>
-<!-- Technical Annotations -->
-<g font-family="monospace" font-size="10" fill="#06070A" letter-spacing="1.5">
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="36 36 528 528" width="100%" height="100%">
+  <defs>
+    <radialGradient id="photon-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="40%" stop-color="#05070C" stop-opacity="0" />
+      <stop offset="52%" stop-color="#E07A52" stop-opacity="0.45" />
+      <stop offset="68%" stop-color="#E5C07B" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#090C14" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <!-- Background &amp; Frame -->
+  <!-- Lower Spacetime Curvature Embedding Funnel (Gravity Well) -->
+  <g stroke="#F2EDE3" stroke-width="0.65" stroke-opacity="0.45" fill="none">
+    <ellipse cx="300" cy="360" rx="240" ry="52" />
+    <ellipse cx="300" cy="395" rx="180" ry="38" />
+    <ellipse cx="300" cy="435" rx="115" ry="24" />
+    <ellipse cx="300" cy="475" rx="68" ry="14" stroke="#E07A52" stroke-opacity="0.8" />
+    <ellipse cx="300" cy="515" rx="38" ry="8" stroke="#E07A52" />
+    <ellipse cx="300" cy="545" rx="22" ry="5" fill="#05070C" />
+    <!-- Funnel Meridian Curves -->
+    <path d="M 60 360 C 165 385, 245 445, 278 545" />
+    <path d="M 125 326 C 200 365, 260 440, 285 545" />
+    <path d="M 195 313 C 245 355, 275 440, 292 545" />
+    <path d="M 540 360 C 435 385, 355 445, 322 545" />
+    <path d="M 475 326 C 400 365, 340 440, 315 545" />
+    <path d="M 405 313 C 355 355, 325 440, 308 545" />
+  </g>
+  <!-- Outer Astrometric Vernier Dial -->
+  <g transform="translate(300, 245)" fill="none" stroke="#F2EDE3">
+    <circle cx="0" cy="0" r="195" stroke-width="0.8" stroke-dasharray="4 6" />
+    <circle cx="0" cy="0" r="185" stroke-width="4" stroke-dasharray="1 5" />
+    <circle cx="0" cy="0" r="145" fill="url(#photon-glow)" stroke="none" />
+  </g>
+  <!-- Relativistic Kerr Singularity &amp; Warped Accretion Disk (Tilted -16 deg) -->
+  <g transform="translate(300, 245) rotate(-16)">
+    <!-- Relativistic Polar Jets &amp; Helical Magnetic Flux -->
+    <line x1="0" y1="-205" x2="0" y2="205" stroke="#E07A52" stroke-width="1.2" stroke-dasharray="5 3" />
+    <path d="M -22 -185 L 0 -65 L 22 -185" fill="#E07A52" fill-opacity="0.12" stroke="#E5C07B" stroke-width="0.8" />
+    <path d="M -18 175 L 0 65 L 18 175" fill="#E07A52" fill-opacity="0.12" stroke="#E5C07B" stroke-width="0.8" />
+    <path d="M -6 -80 C -28 -105, 28 -125, -14 -155 C -32 -175, 24 -185, 0 -200" fill="none" stroke="#F2EDE3" stroke-width="0.9" />
+    <path d="M 6 80 C 28 105, -28 125, 14 155 C 32 175, -24 185, 0 200" fill="none" stroke="#F2EDE3" stroke-width="0.9" />
+    <!-- Gravitationally Lensed Upper &amp; Lower Halo Arcs -->
+    <path d="M -135 0 A 135 125 0 0 1 135 0" fill="#121724" fill-opacity="0.6" stroke="#F2EDE3" stroke-width="1.5" />
+    <path d="M -120 0 A 120 108 0 0 1 120 0" fill="none" stroke="#E07A52" stroke-width="1.4" stroke-dasharray="6 3" />
+    <path d="M -105 0 A 105 92 0 0 1 105 0" fill="none" stroke="#E5C07B" stroke-width="1.2" />
+    <path d="M -125 0 A 125 112 0 0 0 125 0" fill="none" stroke="#F2EDE3" stroke-width="1.2" />
+    <path d="M -108 0 A 108 95 0 0 0 108 0" fill="none" stroke="#E07A52" stroke-width="1" stroke-dasharray="3 3" />
+    <!-- Photon Sphere &amp; Event Horizon Shadow -->
+    <circle cx="0" cy="0" r="78" fill="#090C14" stroke="#E07A52" stroke-width="2" />
+    <circle cx="0" cy="0" r="70" fill="#05070C" />
+    <circle cx="0" cy="0" r="64" fill="none" stroke="#E07A52" stroke-width="1.2" />
+    <circle cx="0" cy="0" r="56" fill="none" stroke="#E5C07B" stroke-width="0.7" stroke-dasharray="2 4" />
+    <!-- Foreground Equatorial Accretion Disk -->
+    <path d="M -225 0 A 225 46 0 0 0 225 0 A 225 32 0 0 1 -225 0 Z" fill="#121724" stroke="#F2EDE3" stroke-width="1.8" />
+    <ellipse cx="0" cy="0" rx="225" ry="38" fill="none" stroke="#F2EDE3" stroke-width="1.5" />
+    <ellipse cx="0" cy="0" rx="195" ry="31" fill="none" stroke="#E07A52" stroke-width="1.5" stroke-dasharray="10 4" />
+    <ellipse cx="0" cy="0" rx="165" ry="24" fill="none" stroke="#F2EDE3" stroke-width="1" />
+    <ellipse cx="0" cy="0" rx="135" ry="18" fill="none" stroke="#E5C07B" stroke-width="1.5" />
+    <!-- Relativistic Doppler Beaming Nodes (Left Side Brighter) -->
+    <circle cx="-165" cy="8" r="5" fill="#E07A52" stroke="#F2EDE3" stroke-width="1" />
+    <circle cx="-135" cy="-6" r="4" fill="#E07A52" />
+    <circle cx="165" cy="-8" r="4" fill="#090C14" stroke="#F2EDE3" stroke-width="1" />
+    <!-- Central Singularity Reticle -->
+    <line x1="-25" y1="0" x2="25" y2="0" stroke="#F2EDE3" stroke-width="0.7" />
+    <line x1="0" y1="-25" x2="0" y2="25" stroke="#F2EDE3" stroke-width="0.7" />
+    <circle cx="0" cy="0" r="4" fill="none" stroke="#E07A52" stroke-width="1.2" />
+  </g>
+  <!-- Schwarzschild Radius Dimension Callout -->
+  <!-- Technical Annotations -->
 </svg>

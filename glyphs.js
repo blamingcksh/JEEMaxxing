@@ -24,6 +24,10 @@
     shield:   '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4 21 21"/><path d="M7.5 10.5a3 3 0 0 1 3-3"/>',
     flame:    '<path d="M12 2.5c.9 4.6 2.4 6.1 7 7-4.6.9-6.1 2.4-7 7-.9-4.6-2.4-6.1-7-7 4.6-.9 6.1-2.4 7-7Z"/>',
     spark:    '<path d="M12 3l1.5 7.5L21 12l-7.5 1.5L12 21l-1.5-7.5L3 12l7.5-1.5Z"/>',
+    bolt:     '<path d="M13.4 2.6 5.2 13.2h5.4l-1 8.2 8.2-10.6h-5.4Z"/>',
+    person:   '<circle cx="12" cy="7.4" r="3.1"/><path d="M6.2 20.2a5.8 5.8 0 0 1 11.6 0"/>',
+    skull:    '<path d="M12 3.25a6.9 6.9 0 0 0-6.9 6.9c0 2.5 1.3 4.3 2.9 5.5v2.6a1.5 1.5 0 0 0 1.5 1.5h5a1.5 1.5 0 0 0 1.5-1.5v-2.6c1.6-1.2 2.9-3 2.9-5.5A6.9 6.9 0 0 0 12 3.25Z"/>' +
+              '<circle class="dot" cx="9.4" cy="10.6" r="1.2"/><circle class="dot" cx="14.6" cy="10.6" r="1.2"/><path d="M10.4 19.75v-2.2M13.6 19.75v-2.2"/>',
 
     /* ── modes ── */
     flow:     '<ellipse cx="12" cy="12" rx="9" ry="4.25" transform="rotate(-24 12 12)"/>' +
@@ -66,6 +70,16 @@
     upload:   '<path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15"/>',
     download: '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15"/>',
     volume:   '<path d="M4 9.5v5h3.5L12 19V5L7.5 9.5Z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/>',
+    sliders:  '<path d="M4 7h16M4 17h16M8 4.5v5M16 14.5v5"/>',
+    trash:    '<path d="M4 6h16M10 3h4M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>',
+    copy:     '<rect x="8.5" y="8.5" width="11" height="11" rx="1.5"/><path d="M5.5 15.5h-1a1.5 1.5 0 0 1-1.5-1.5v-9a1.5 1.5 0 0 1 1.5-1.5h9a1.5 1.5 0 0 1 1.5 1.5v1"/>',
+    doc:      '<path d="M6 3.5h8.5l4.5 4.5V20a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V5A1.5 1.5 0 0 1 6 3.5Z"/><path d="M14.5 3.5V8H19M8.5 12.5h7M8.5 16.5h4.5"/>',
+    map:      '<path d="M3.5 6.5 8.5 4l7 2.5 5-2.5v13.5l-5 2.5-7-2.5-5 2.5Z"/><path d="M8.5 4v13.5M15.5 6.5V20"/>',
+    sword:    '<path d="M18.5 3.5 20.5 5.5l-9.5 9.5-2.5-2.5 9.5-9.5Z"/><path d="M6 18l2.5 2.5M7 16l-3.5 3.5L5 21l3.5-3.5M3 21l-1 1"/>',
+    hourglass:'<path d="M6 3h12M6 21h12M7 3v4.5a5 5 0 0 0 2.5 4.33L12 13.5l2.5-1.67A5 5 0 0 0 17 7.5V3M7 21v-4.5a5 5 0 0 1 2.5-4.33L12 10.5l2.5 1.67A5 5 0 0 1 17 16.5V21"/>',
+    wand:     '<path d="M15 4l5 5L7 22l-5-5ZM18.5 2.5l1 2 2 1-2 1-1 2-1-2-2-1 2-1ZM5 3l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5Z"/>',
+    folder:   '<path d="M3.5 6a1.5 1.5 0 0 1 1.5-1.5h4.5l2.5 2.5H19a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5Z"/>',
+    compass:  '<circle cx="12" cy="12" r="8.5"/><polygon points="12,6.5 14.5,12 12,17.5 9.5,12"/><circle class="dot" cx="12" cy="12" r="1.2"/>',
     arrow:    '<path d="M4 12h15M13 6l6 6-6 6"/>',
     check:    '<path d="M4.5 12.5 10 18 19.5 6.5"/>',
     cross:    '<path d="M5.5 5.5l13 13M18.5 5.5l-13 13"/>'
@@ -73,12 +87,14 @@
 
   /* Typographic fallbacks for string contexts (textContent / title / toast). */
   var TEXT = {
-    target: '◎', shield: '◍', flame: '✦', spark: '✦', flow: '◌', hardcore: '☄',
+    target: '◎', shield: '◍', flame: '✦', spark: '✦', bolt: '↯', person: '◍', skull: '☠', flow: '◌', hardcore: '☄',
     lock: '⊘', gauge: '◷', physics: '⚗', chemistry: '⚗', maths: '∆',
     moon: '☾', sun: '☀', sleep: '☾', eclipse: '◐', eye: '◉',
     bell: '◔', clock: '◷', chart: '∿', trophy: '✦', seed: '❧',
     cloud: '∘', archive: '▤', gear: '✺', key: '⚥', image: '▣',
-    upload: '↑', download: '↓', volume: '◍', arrow: '→', check: '✓', cross: '✕'
+    upload: '↑', download: '↓', volume: '◍', arrow: '→', check: '✓', cross: '✕',
+    sliders: '⌸', trash: '⌫', copy: '⎘', doc: '▤', map: '☲', sword: '⚔',
+    hourglass: '⏳', wand: '✦', folder: '📁', compass: '⎈'
   };
 
   function sprite() {

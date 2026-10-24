@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="36 36 528 528" width="100%" height="100%">
+  <defs>
+    <clipPath id="lens-left">
+      <path d="M 100 100 L 500 500 L 100 500 Z" />
+    </clipPath>
+    <clipPath id="lens-right">
+      <path d="M 100 100 L 500 500 L 500 100 Z" />
+    </clipPath>
+  </defs>
+  <!-- Background & Outer Frame -->
+  <!-- Azimuth & Elevation Spider Grid -->
+  <g transform="translate(300, 300)" fill="none" stroke="#F2EDE3">
+    <!-- Concentric Measurement Rings -->
+    <circle cx="0" cy="0" r="248" stroke-width="1.2" />
+    <circle cx="0" cy="0" r="240" stroke-width="5" stroke-dasharray="1 5.28" />
+    <circle cx="0" cy="0" r="215" stroke-width="0.7" stroke-dasharray="4 4" />
+    <circle cx="0" cy="0" r="185" stroke-width="1.5" />
+    <!-- Radial Sighting Spokes (Every 30 deg) -->
+    <g stroke-width="0.5" stroke-opacity="0.45">
+      <line x1="-248" y1="0" x2="248" y2="0" />
+      <line x1="0" y1="-248" x2="0" y2="248" />
+      <line x1="-215" y1="-124" x2="215" y2="124" />
+      <line x1="-124" y1="-215" x2="124" y2="215" />
+      <line x1="-215" y1="124" x2="215" y2="-124" />
+      <line x1="-124" y1="215" x2="124" y2="-215" />
+    </g>
+    <!-- 8-Pointed Geometric Star Polygon -->
+    <rect x="-130" y="-130" width="260" height="260" stroke="#E5C07B" stroke-width="1" />
+    <rect x="-130" y="-130" width="260" height="260" transform="rotate(45)" stroke="#E5C07B" stroke-width="1" />
+  </g>
+  <!-- Split-Lens Heliometer Assembly (45-Degree Micrometer Axis) -->
+  <!-- Lower-Left Half Objective Lens (Shifted -14px, +14px along split line) -->
+  <g clip-path="url(#lens-left)">
+    <g transform="translate(-12, -12)">
+      <circle cx="300" cy="300" r="165" fill="#121724" stroke="#F2EDE3" stroke-width="2" />
+      <circle cx="300" cy="300" r="152" fill="none" stroke="#F2EDE3" stroke-width="1" stroke-dasharray="3 3" />
+      <!-- Solar Disk Image A -->
+      <circle cx="272" cy="328" r="78" fill="#E07A52" fill-opacity="0.35" stroke="#E07A52" stroke-width="1.8" />
+      <circle cx="272" cy="328" r="58" fill="none" stroke="#F2EDE3" stroke-width="0.7" stroke-dasharray="2 4" />
+    </g>
+  </g>
+  <!-- Upper-Right Half Objective Lens (Shifted +12px, -12px along split line) -->
+  <g clip-path="url(#lens-right)">
+    <g transform="translate(12, 12)">
+      <circle cx="300" cy="300" r="165" fill="#090C14" stroke="#F2EDE3" stroke-width="2" />
+      <circle cx="300" cy="300" r="152" fill="none" stroke="#F2EDE3" stroke-width="1" stroke-dasharray="3 3" />
+      <!-- Solar Disk Image B -->
+      <circle cx="328" cy="272" r="78" fill="#E5C07B" fill-opacity="0.35" stroke="#F2EDE3" stroke-width="1.8" />
+      <circle cx="328" cy="272" r="58" fill="none" stroke="#E07A52" stroke-width="0.7" stroke-dasharray="2 4" />
+    </g>
+  </g>
+  <!-- Interferometric Overlap & Tangency Measurement Geometry -->
+  <g fill="none">
+    <!-- Overlapping Solar Disk Outlines (Unclipped for Optical Clarity) -->
+    <circle cx="260" cy="316" r="78" stroke="#E07A52" stroke-width="1.2" stroke-dasharray="4 3" />
+    <circle cx="340" cy="284" r="78" stroke="#F2EDE3" stroke-width="1.2" stroke-dasharray="4 3" />
+    <!-- Sunspot & Barycenter Markers -->
+    <circle cx="260" cy="316" r="4" fill="#E07A52" />
+    <circle cx="340" cy="284" r="4" fill="#F2EDE3" />
+    <line x1="260" y1="316" x2="340" y2="284" stroke="#F2EDE3" stroke-width="1.5" />
+    <!-- Diagonal Split-Lens Track & Micrometer Screws -->
+    <line x1="95" y1="95" x2="505" y2="505" stroke="#F2EDE3" stroke-width="2.2" />
+    <line x1="102" y1="90" x2="510" y2="498" stroke="#E07A52" stroke-width="0.8" />
+    <!-- Top-Left Micrometer Screw Head -->
+    <g transform="translate(115, 115) rotate(-45)">
+      <rect x="-14" y="-32" width="28" height="22" fill="#E5C07B" stroke="#F2EDE3" stroke-width="1.5" />
+      <rect x="-20" y="-44" width="40" height="12" rx="2" fill="#090C14" stroke="rgba(242,237,227,0.45)" stroke-width="0.9" />
+      <line x1="-10" y1="-21" x2="10" y2="-21" stroke="#F2EDE3" stroke-width="1" />
+      <line x1="-10" y1="-16" x2="10" y2="-16" stroke="#F2EDE3" stroke-width="1" />
+    </g>
+    <!-- Bottom-Right Micrometer Screw Head -->
+    <g transform="translate(485, 485) rotate(135)">
+      <rect x="-14" y="-32" width="28" height="22" fill="#E5C07B" stroke="#F2EDE3" stroke-width="1.5" />
+      <rect x="-20" y="-44" width="40" height="12" rx="2" fill="#090C14" stroke="rgba(242,237,227,0.45)" stroke-width="0.9" />
+      <line x1="-10" y1="-21" x2="10" y2="-21" stroke="#F2EDE3" stroke-width="1" />
+      <line x1="-10" y1="-16" x2="10" y2="-16" stroke="#F2EDE3" stroke-width="1" />
+    </g>
+    <!-- Central Reticle & Vernier Crosshair -->
+    <circle cx="300" cy="300" r="32" stroke="#F2EDE3" stroke-width="1.2" />
+    <circle cx="300" cy="300" r="12" fill="#090C14" stroke="#E07A52" stroke-width="1.5" />
+    <circle cx="300" cy="300" r="3" fill="#F2EDE3" />
+  </g>
+  <!-- Corner Sine Wave / Diffraction Calibration Graph (Bottom Left) -->
+  <g transform="translate(46, 485)" fill="none" stroke="#F2EDE3">
+    <rect x="0" y="0" width="110" height="45" fill="#090C14" stroke-width="1" />
+    <line x1="0" y1="22.5" x2="110" y2="22.5" stroke-width="0.5" stroke-dasharray="2 2" />
+    <path d="M 5 22.5 Q 18 22.5, 25 14 T 42 34 T 55 4 T 68 41 T 85 14 T 98 22.5 L 105 22.5" stroke="#E07A52" stroke-width="1.2" />
+  </g>
+  <!-- Technical Labels -->
+</svg>

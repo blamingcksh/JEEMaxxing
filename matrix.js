@@ -977,8 +977,19 @@ const CHAPTER_SHORT = {
     'permutations and combinations': 'P & C',
     'binomial theorem': 'Binomial'
 };
-function shortChapterName(name) {
+// Chapter names are user-typed at upload time and go straight to the ledger —
+// common misspellings get a display-level correction here. Raw names are never
+// rewritten (they key chapter lookups, memory kernels and data-enc routes).
+const CHAPTER_NAME_FIX = {
+    'stoichimetry': 'Stoichiometry',
+};
+function displayChapterName(name) {
     const s = String(name == null ? '' : name);
+    if (!s) return s;
+    return CHAPTER_NAME_FIX[s.trim().toLowerCase()] || s;
+}
+function shortChapterName(name) {
+    const s = displayChapterName(name);
     if (!s) return s;
     // Mock-test chapters keep their prefix and shorten the paper part:
     // `Mock: Thermodynamics` → `Mock: Thermo`.
@@ -2604,13 +2615,17 @@ export function filterErrors() {
 
     const blocks = document.querySelectorAll('#error-list-container .error-block');
     let visible = 0;
+    let dueNow = 0;
+    const shownByStatus = Object.create(null); // sr-status -> visible count (feeds group heads + meta)
     blocks.forEach(block => {
         const bType = block.getAttribute('data-type');
         const bSrStatus = block.getAttribute('data-sr-status');
         const bSubj = block.getAttribute('data-subject');
 
-        const bChapter = block.querySelector('.error-chapter') ? block.querySelector('.error-chapter').textContent.toLowerCase() : '';
-        const bTag = block.querySelector('.error-tag') ? block.querySelector('.error-tag').textContent.toLowerCase() : '';
+        const chapEl = block.querySelector('.error-chapter');
+        const bChapter = chapEl ? chapEl.textContent.toLowerCase() : '';
+        const tagEl = block.querySelector('.error-tag');
+        const bTag = tagEl ? tagEl.textContent.toLowerCase() : '';
 
         let typeMatch = (typeFilter === 'all' || typeFilter === bType);
         let subjMatch = (_normSubj(bSubj) === _normSubj(AppState.currentErrorSubject));
@@ -2625,21 +2640,20 @@ export function filterErrors() {
         if (typeMatch && statusMatch && subjMatch && textMatch) {
             block.classList.remove('hidden');
             visible++;
+            shownByStatus[bSrStatus] = (shownByStatus[bSrStatus] || 0) + 1;
+            if (bSrStatus === 'ready') dueNow++;
         } else {
             block.classList.add('hidden');
         }
     });
 
-    _updateMatrixMeta(visible, blocks.length, { typeFilter, statusFilter, textFilter });
+    _updateMatrixMeta(visible, blocks.length, { typeFilter, statusFilter, textFilter }, dueNow);
 
     // Section headers mirror their members: a group with no visible cards
     // collapses (and its counter shows the filtered count, not the total).
     document.querySelectorAll('#error-list-container .em-group-head').forEach(head => {
         const st = head.getAttribute('data-group-status');
-        let shown = 0;
-        document.querySelectorAll('#error-list-container .error-block[data-sr-status="' + st + '"]').forEach(b => {
-            if (!b.classList.contains('hidden')) shown++;
-        });
+        const shown = shownByStatus[st] || 0;
         head.hidden = shown === 0;
         const cnt = head.querySelector('.emg-count');
         if (cnt) cnt.textContent = String(shown);
@@ -2649,7 +2663,7 @@ export function filterErrors() {
 // ── Live result feedback ("how many / what's due / how to reset") ──────────
 // DMMT: a filter change must always answer three questions at a glance —
 // how many cards matched, how many need action today, and how to undo.
-function _updateMatrixMeta(visible, total, f) {
+function _updateMatrixMeta(visible, total, f, dueNow) {
     const meta = document.getElementById('matrix-meta');
     if (!meta) return;
 
@@ -2657,10 +2671,8 @@ function _updateMatrixMeta(visible, total, f) {
 
     const filtersActive = (f.statusFilter !== 'all') || (f.typeFilter !== 'all') || !!f.textFilter;
     meta.hidden = false;
-    let dueNow = 0;
-    document.querySelectorAll('#error-list-container .error-block:not(.hidden)').forEach(b => {
-        if (b.getAttribute('data-sr-status') === 'ready') dueNow++;
-    });
+    // dueNow arrives pre-tallied from filterErrors' single pass (it used to
+    // rescan every visible block here with a :not(.hidden) selector).
 
     meta.innerHTML =
         '<span class="matrix-meta-count"><b>' + visible + '</b>&nbsp;of ' + total + ' shown</span>' +
@@ -2677,7 +2689,9 @@ function _updateDailyQueueMeta() {
     const meta = document.getElementById('matrix-meta');
     if (!meta) return;
     _toggleNoMatchNode(false);   // the queue renders its own empty state
-    const targets = _getDailyQueueSnapshot().map(_bankQuestionById).filter(Boolean);
+    const targets = _getDailyQueueSnapshot()
+        .map(id => (id == null ? null : (_bankByIdMap().get(String(id)) || null)))
+        .filter(Boolean);
     if (targets.length === 0) { meta.hidden = true; meta.innerHTML = ''; return; }
     const done = targets.filter(_isCompletedToday).length;
     meta.hidden = false;
@@ -2693,6 +2707,21 @@ function _bankQuestionById(id) {
     return AppState.questionBank.find(q => q.id != null && String(q.id) === s) || null;
 }
 
+/**
+ * id→question Map for lookups over MANY ids (queue renders, lazy loaders).
+ * First-wins insertion matches `_bankQuestionById`'s Array.find semantics;
+ * building it once turns bank×queue string scans into O(1) hits.
+ */
+function _bankByIdMap() {
+    const m = new Map();
+    for (const q of AppState.questionBank) {
+        if (!q || q.id == null) continue;
+        const k = String(q.id);
+        if (!m.has(k)) m.set(k, q);
+    }
+    return m;
+}
+
 // Zero matches → inject a "way back" card instead of silent blank space.
 function _toggleNoMatchNode(show) {
     const c = document.getElementById('error-list-container');
@@ -2706,7 +2735,7 @@ function _toggleNoMatchNode(show) {
         }
         node.className = 'em-empty em-empty--filter';
         node.innerHTML =
-            '<div class="em-empty-icon" aria-hidden="true">🔍</div>' +
+            '<div class="em-empty-icon" aria-hidden="true"><svg class="g"><use href="#g-target"></use></svg></div>' +
             '<div class="em-empty-title">Nothing matches those filters</div>' +
             '<div class="em-empty-desc">Every card is hidden by the current status / type / search combo.</div>' +
             '<div class="em-empty-actions"><button class="em-empty-secondary" onclick="clearMatrixFilters()" type="button">✕ Clear all filters</button></div>';
@@ -2759,7 +2788,7 @@ function _showDailyQueue() {
     const title = document.getElementById('error-matrix-title');
     const badge = document.getElementById('daily-queue-badge');
     if (btn) btn.classList.add('active');
-    if (title) title.textContent = '⚡ Daily Core Queue';
+    if (title) title.textContent = 'Daily Core Queue';
     if (badge) badge.style.display = 'inline';
     const shell = document.querySelector('.vault-shell');
     if (shell) shell.classList.add('queue-active');
@@ -2918,13 +2947,14 @@ function _renderDailyQueueCards() {
     if (!c) return;
 
     const snapshotIds = _getDailyQueueSnapshot();
-    const targets = snapshotIds.map(_bankQuestionById).filter(Boolean);
+    const byId = _bankByIdMap();
+    const targets = snapshotIds.map(id => (id == null ? null : (byId.get(String(id)) || null))).filter(Boolean);
 
     if (targets.length === 0) {
         c.innerHTML = `
             <div class="em-empty em-empty--queue">
-                <div class="em-empty-icon" aria-hidden="true">⚡</div>
-                <div class="em-empty-title">Queue's clear</div>
+                <div class="em-empty-plate"><img src="atlas/folio-vi-constellation.svg" alt="" aria-hidden="true"></div>
+                <div class="em-empty-title">All meridian transits cleared for today</div>
                 <div class="em-empty-desc">Nothing is due right now across any subject. Fresh fix slots unlock tomorrow — or log a new mistake to queue it up.</div>
                 <div class="em-empty-actions">
                     <button class="btn btn-primary" onclick="toggleDailyQueue()">Back to Matrix</button>
@@ -2940,9 +2970,9 @@ function _renderDailyQueueCards() {
     });
 
     const subjectMeta = {
-        physics:   { icon: '⚛️', label: 'Physics',   limit: DAILY_QUEUE_LIMITS.physics },
-        maths:     { icon: '📐', label: 'Maths',     limit: DAILY_QUEUE_LIMITS.maths },
-        chemistry: { icon: '🧪', label: 'Chemistry', limit: DAILY_QUEUE_LIMITS.chemistry },
+        physics:   { icon: '<svg class="g"><use href="#g-physics"/></svg>',   label: 'Physics',   limit: DAILY_QUEUE_LIMITS.physics },
+        maths:     { icon: '<svg class="g"><use href="#g-maths"/></svg>',     label: 'Maths',     limit: DAILY_QUEUE_LIMITS.maths },
+        chemistry: { icon: '<svg class="g"><use href="#g-chemistry"/></svg>', label: 'Chemistry', limit: DAILY_QUEUE_LIMITS.chemistry },
     };
 
     // ── Batch: collect all HTML fragments into an array, then assign in a
@@ -3099,12 +3129,11 @@ function _buildErrorCardHTML(q, dueInfo) {
                             History
                             <span class="sr-chevron" id="sr-chevron-${_jsId(q.id)}">▾</span>
                         </button>
-                        <button class="delete-btn" onclick="event.stopPropagation();removeErrorLog('${_jsId(q.id)}')" title="Delete" aria-label="Delete this mistake">🗑</button>
+                        <button class="delete-btn" onclick="event.stopPropagation();removeErrorLog('${_jsId(q.id)}')" title="Delete" aria-label="Delete this mistake"><svg class="g"><use href="#g-trash"/></svg></button>
                     </div>
                 </div>
                 <div class="sr-expanded-history" id="sr-history-${_jsId(q.id)}" style="display:none;" onclick="event.stopPropagation();">
                     <div class="sr-history-header">Attempt History</div>
-                    ${_buildHistoryLogs(q.historyLogs)}
                 </div>
             </div>`;
 }
@@ -3346,10 +3375,10 @@ export function renderErrorMatrixFromBank() {
 // work through, in what order, and how much of it is there?"
 const EM_STATUS_ORDER = { ready: 0, due_soon: 1, scheduled: 2, mastered: 3 };
 const EM_GROUP_META = {
-    ready:     { icon: '🟢', label: 'Due Now',  blurb: 'act on these today' },
-    due_soon:  { icon: '⏳', label: 'Due Soon', blurb: 'within 3 days' },
-    scheduled: { icon: '🗓️', label: 'Later',   blurb: 'parked in memory' },
-    mastered:  { icon: '💤', label: 'Mastered', blurb: 'resting — no action needed' },
+    ready:     { icon: '', label: 'Due Now',  blurb: 'act on these today' },
+    due_soon:  { icon: '', label: 'Due Soon', blurb: 'within 3 days' },
+    scheduled: { icon: '', label: 'Later',   blurb: 'parked in memory' },
+    mastered:  { icon: '', label: 'Mastered', blurb: 'resting — no action needed' },
 };
 
 function _buildGroupedBoardHTML(errs) {
@@ -3384,7 +3413,7 @@ function _buildGroupedBoardHTML(errs) {
             parts.push(
                 '<div class="em-group-head em-group--' + st + '" data-group-status="' + st + '">' +
                     '<span class="emg-dot" aria-hidden="true"></span>' +
-                    '<span class="emg-label">' + meta.icon + ' ' + meta.label + '</span>' +
+                    '<span class="emg-label">' + (meta.icon ? meta.icon + ' ' : '') + meta.label + '</span>' +
                     '<span class="emg-count">' + (countByStatus[st] || 0) + '</span>' +
                     '<span class="emg-rule" aria-hidden="true"></span>' +
                     '<span class="emg-blurb">' + meta.blurb + '</span>' +
@@ -3400,12 +3429,12 @@ function _buildGroupedBoardHTML(errs) {
 function _buildEmptyStateHTML() {
     return `
             <div class="em-empty">
-                <div class="em-empty-icon" aria-hidden="true">🗂️</div>
+                <div class="em-empty-plate"><img src="atlas/specimen-heliometer.svg" alt="" aria-hidden="true"></div>
                 <div class="em-empty-title">No mistakes tracked here yet</div>
                 <div class="em-empty-desc">Every wrong answer is a lever. Log one and the spaced-repetition engine will resurface it until it's dead.</div>
                 <div class="em-empty-actions">
                     <button class="btn btn-primary" onclick="openModal('add-error-modal')">+ Log First Mistake</button>
-                    <button class="em-empty-secondary" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')">🧠 AI Dump</button>
+                    <button class="em-empty-secondary" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')"><svg class="g"><use href="#g-eye"></use></svg> Mistake Report</button>
                 </div>
             </div>`;
 }
@@ -3432,6 +3461,22 @@ export function toggleCardHistory(qId) {
     const el = document.getElementById(`sr-history-${qId}`);
     const chevron = document.getElementById(`sr-chevron-${qId}`);
     if (!el) return;
+    // History rows build on FIRST open — pre-rendering them into every card
+    // meant parsing up to 30 hidden log rows × N cards on each board render.
+    if (!el.dataset.built) {
+        el.dataset.built = '1';
+        // Handler args arrive percent-encoded (_jsId); _findQByHandlerId
+        // resolves both encoded and raw ids back to the bank row.
+        const q = _findQByHandlerId(qId);
+        const rowsHtml = _buildHistoryLogs(q ? q.historyLogs : null);
+        if (rowsHtml) {
+            const frag = document.createElement('template');
+            frag.innerHTML = rowsHtml;
+            const header = el.querySelector('.sr-history-header');
+            if (header) header.after(frag.content);
+            else el.appendChild(frag.content);
+        }
+    }
     const isVisible = el.style.display !== 'none';
     el.style.display = isVisible ? 'none' : 'block';
     if (chevron) chevron.style.transform = isVisible ? '' : 'rotate(180deg)';
@@ -3832,16 +3877,17 @@ export function renderChapterDecayGrid() {
         // so, and show both factors, or a well-studied-but-shallow chapter and
         // a thoroughly-drilled one become indistinguishable on hover.
         const retTxt = ch.stats ? Math.round(ch.stats.retention) : null;
-        ch.title = `${ch.name} — health ${Math.round(h)}%`
+        const chDisplay = displayChapterName(ch.name);
+        ch.title = `${chDisplay} — health ${Math.round(h)}%`
             + (retTxt != null ? ` · retention ${retTxt}%` : '')
             + ` · coverage ${covPct}% · ${ch.questionCount} items`
             + (retTxt != null ? ' · tap for item decay' : ' · nothing reviewed yet');
         return `<div class="rh-row rh-${band}" style="--i:${i}" role="button" tabindex="0"
                  data-subject="${_esc(encodeURIComponent(ch.subject || ''))}"
                  data-chapter="${_esc(encodeURIComponent(ch.name || ''))}"
-                 aria-label="${_esc(ch.name)}: ${Math.round(h)} percent health"
+                 aria-label="${_esc(chDisplay)}: ${Math.round(h)} percent health"
                  title="${_esc(ch.title)}"
-><span class="rh-name"><span class="ch-full">${_esc(ch.name)}</span><span class="ch-short" aria-hidden="true">${_esc(shortChapterName(ch.name))}</span></span><span class="rh-gauge" aria-hidden="true"><i class="rh-cov" style="width:${covPct}%"></i><i class="rh-line" style="width:${h.toFixed(1)}%"></i>${fc != null ? `<i class="rh-fc" style="left:${fc.toFixed(1)}%"></i>` : ''}<i class="rh-dot" style="left:${h.toFixed(1)}%"></i></span><span class="rh-val">${Math.round(h)}<em>%</em>${trend}</span><span class="rh-hz ${horizonCls}">${_esc(horizonTxt)}</span></div>`;
+><span class="rh-name"><span class="ch-full">${_esc(chDisplay)}</span><span class="ch-short" aria-hidden="true">${_esc(shortChapterName(ch.name))}</span></span><span class="rh-gauge" aria-hidden="true"><i class="rh-cov" style="width:${covPct}%"></i><i class="rh-line" style="width:${h.toFixed(1)}%"></i>${fc != null ? `<i class="rh-fc" style="left:${fc.toFixed(1)}%"></i>` : ''}<i class="rh-dot" style="left:${h.toFixed(1)}%"></i></span><span class="rh-val">${Math.round(h)}<em>%</em>${trend}</span><span class="rh-hz ${horizonCls}">${_esc(horizonTxt)}</span></div>`;
     }).join('');
 
     // Commit this render's health as the NEXT baseline — but only once the
@@ -4195,7 +4241,7 @@ export function renderChapterProgressList() {
                ` data-subj="${r.subj}" data-enc="${encodeURIComponent(r.name)}" data-pct="${r.pct}"` +
                ` aria-label="${name} · ${r.pct}% complete" title="${name} · ${r.pct}% complete">` +
                `<span class="cpx-subj" aria-hidden="true">${SUBJ_META[r.subj] || '·'}</span>` +
-               `<span class="cpx-name"><span class="ch-full">${escapeHtml(r.name)}</span><span class="ch-short" aria-hidden="true">${escapeHtml(shortChapterName(r.name))}</span></span>` +
+               `<span class="cpx-name"><span class="ch-full">${escapeHtml(displayChapterName(r.name))}</span><span class="ch-short" aria-hidden="true">${escapeHtml(shortChapterName(r.name))}</span></span>` +
                `<span class="cpx-track" aria-hidden="true"><i style="width:${r.pct}%"></i></span>` +
                `<span class="cpx-pct">${r.pct}<i>%</i></span>` +
            `</div>`;

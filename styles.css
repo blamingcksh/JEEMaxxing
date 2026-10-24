@@ -1066,11 +1066,20 @@ body {
     gap: 11px;
     z-index: 900;
     box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
-    transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s;
+    transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s, visibility 0s;
     cursor: pointer;
     will-change: transform, opacity;
 }
-.pomo-mini-widget.hidden { opacity: 0; pointer-events: none; transform: translateY(-18px); }
+/* PERF: opacity:0 alone kept the widget's composited layer + 16px backdrop
+   blur alive while stowed. visibility flips in with zero delay on show, and
+   only after the 0.4s slide-up fade on hide. */
+.pomo-mini-widget.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-18px);
+    visibility: hidden;
+    transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s, visibility 0s linear 0.4s;
+}
 .pomo-mini-widget.collapsed { transform: translateX(calc(100% - 32px)); border-color: var(--line-strong); }
 .mini-collapse-btn {
     background: rgba(255, 255, 255, 0.05);
@@ -4827,14 +4836,38 @@ body::before {
 #view-dashboard .dash-card-head .box-title { font-family: var(--aes-display); }
 
 /* ── HERO CARD (tracker) — animated conic gradient edge ────────────────── */
+/* PERF: the ring used to animate the registered --aes-angle custom property
+   inside a border-box conic-gradient — a paint-every-frame effect on a large
+   always-visible card. The gradient now lives on an oversized transform-
+   rotated layer (compositor-only) clipped to the same 1px border band, with
+   an interior plate reproducing the padding-box fill. Rotating a centered
+   conic gradient is geometrically identical to animating its from-angle, so
+   the visible ring is pixel-for-pixel the same at every instant. */
 #view-dashboard .dash-card-tracker {
     border: 1px solid transparent !important;
-    background:
-        linear-gradient(180deg, rgba(20,22,32,0.78), rgba(11,13,20,0.82)) padding-box,
-        conic-gradient(from var(--aes-angle), var(--aes-amber), var(--aes-cyan), var(--aes-violet), var(--aes-amber)) border-box !important;
-    animation: aesSpin 8s linear infinite;
+    background: none !important;
+    animation: none;
+    isolation: isolate; /* owns its negative-z ring layers under every theme */
 }
-@keyframes aesSpin { to { --aes-angle: 360deg; } }
+#view-dashboard .dash-card-tracker .tracker-ring {
+    position: absolute; inset: -1px; border-radius: 22px;
+    overflow: hidden; pointer-events: none; z-index: -1;
+}
+#view-dashboard .dash-card-tracker .tracker-ring-spin {
+    position: absolute; left: 50%; top: 50%; width: 300%; height: 300%;
+    background: conic-gradient(var(--aes-amber), var(--aes-cyan), var(--aes-violet), var(--aes-amber));
+    transform: translate(-50%, -50%) rotate(0deg);
+    animation: trackerRingSpin 8s linear infinite;
+}
+#view-dashboard .dash-card-tracker .tracker-hole {
+    position: absolute; inset: 0; border-radius: 21px;
+    background: linear-gradient(180deg, rgba(20,22,32,0.78), rgba(11,13,20,0.82));
+    pointer-events: none; z-index: -1;
+}
+@keyframes trackerRingSpin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
 #view-dashboard .dash-card-tracker::after {
     content: ''; position: absolute; inset: 0; border-radius: 22px; pointer-events: none;
     background: radial-gradient(120% 80% at 50% -10%, rgba(255,178,36,0.10), transparent 60%);
@@ -14413,7 +14446,11 @@ body:has(#view-pomodoro.active) #pomo-mini-widget {
     color: #f8fafc !important;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    /* PERF: opacity:0 alone keeps the composited layer + 20px backdrop blur
+       alive while invisible (the HUD lives in the DOM permanently). Hiding
+       visibility — delayed to let the fade-out finish — releases the blur. */
+    visibility: hidden;
+    transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.25s;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -14422,6 +14459,10 @@ body:has(#view-pomodoro.active) #pomo-mini-widget {
 .lockin-break-hud.active {
     opacity: 1 !important;
     pointer-events: auto !important;
+    visibility: visible !important;
+    /* visibility must flip on IMMEDIATELY when showing, or the fade-in runs
+       while still invisible; base rule carries the delayed hide variant. */
+    transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s;
     transform: translateX(-50%) translateY(0) !important;
 }
 #lockin-break-hud.hidden,
@@ -14674,3 +14715,26 @@ body:has(#view-pomodoro.active) #pomo-mini-widget {
     color: #f8fafc;
 }
 
+
+.exam-countdown-chip {
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    text-align: center;
+    font-size: 10.5px;
+    letter-spacing: .4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-family: 'Space Grotesk', monospace;
+    font-weight: 700;
+    color: #c4b5fd;
+    background: rgba(168,85,247,0.10);
+    border: 1px solid rgba(168,85,247,0.3);
+}
+.exam-countdown-chip.is-urgent {
+    color: #fda4af;
+    background: rgba(244,63,94,0.12);
+    border: 1px solid rgba(244,63,94,0.35);
+}

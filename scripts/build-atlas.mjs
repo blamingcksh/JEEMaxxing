@@ -1,13 +1,6 @@
-// build-atlas.mjs — Observatory plate pipeline (dev tool, not part of the app).
-// Reads the engraved folio plates in SVGs/pl-*.svg and writes atmosphere
-// variants to atlas/: the folio chrome (paper, frames, cartouche, annotation
-// groups, every <text>) is stripped, keeping only the subject, its stars and
-// nebula. viewBox is re-cropped to the surviving art so CSS placement is
-// predictable. No dependencies — a tiny balanced-tag walker, not a DOM.
-//
-// Also (Phase 2) emits atlas/line-*.svg accent glyphs from the cream
-// gemini-svg* line drawings; the mapping table is filled in once each
-// drawing has been visually identified, so it is empty for now.
+// build-atlas.mjs — Observatory plate pipeline.
+// Reads the engraved folio plates in SVGs/pl-*.svg and gemini-svg*.svg
+// and writes all 26 museum-grade SVGs to atlas/.
 //
 // Usage: node scripts/build-atlas.mjs
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
@@ -18,95 +11,269 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'SVGs');
 const OUT = join(ROOT, 'atlas');
 
-// ── Plate table ──────────────────────────────────────────────────────────
-// keep   : top-level <g id="…"> groups that survive (the subject + its sky)
-// loose  : keep unnamed top-level elements that appear after the first <g>
-//          (some plates carry the moon disc / crater field / dial face /
-//          star-chart wrapper as unnamed groups — the folio chrome is always
-//          BEFORE the first <g>, so unnamed content after it is safe).
+// ── Master pl-*.svg Folio Plates ──────────────────────────────────────────
 const PLATES = [
-  { src: 'pl-i-event-horizon.svg',   out: 'atmos-i-horizon.svg',
+  { src: 'pl-i-event-horizon.svg',   out: 'folio-i-horizon.svg',
     keep: ['nebula-wisps', 'star-field-40', 'gargantua-system'], loose: false },
-  { src: 'pl-ii-instrument.svg',     out: 'atmos-ii-instrument.svg',
+  { src: 'pl-ii-instrument.svg',     out: 'atmos-ii-instrument-dusk.svg',
     keep: ['mount-pillar-and-feet', 'clock-drive-and-weight', 'equatorial-head', 'refractor-ota'], loose: false },
-  { src: 'pl-iii-lunar-log.svg',     out: 'atmos-iii-lunar.svg',
+  { src: 'pl-iii-lunar-log.svg',     out: 'folio-iii-lunar.svg',
     keep: ['moonlight-glow'], loose: true },
-  { src: 'pl-iv-microscope.svg',     out: 'atmos-iv-microscope.svg',
+  { src: 'pl-iv-microscope.svg',     out: 'folio-iv-microscope.svg',
     keep: ['claw-feet-and-base', 'forked-gimbal-mirror', 'doubled-limb-and-makers-plate',
            'microscope-body-tube', 'three-objective-turret', 'mechanical-stage-and-iris'], loose: false },
-  { src: 'pl-v-armillary.svg',       out: 'atmos-v-armillary.svg',
+  { src: 'pl-v-armillary.svg',       out: 'folio-v-armillary.svg',
     keep: ['voyager-pulsar-radiance', 'collared-column-stand', 'armillary-sphere-core',
            'meridian-and-horizon-frame'], loose: false },
-  { src: 'pl-vi-constellation.svg',  out: 'atmos-vi-constellation.svg',
-    keep: [], loose: true },   // the whole star chart is one unnamed wrapper <g>
-  { src: 'pl-vii-regulator.svg',     out: 'atmos-vii-regulator.svg',
+  { src: 'pl-vi-constellation.svg',  out: 'folio-vi-constellation.svg',
+    keep: [], loose: true },
+  { src: 'pl-vii-regulator.svg',     out: 'folio-vii-regulator.svg',
     keep: ['chassis-and-four-slotted-screws', 'knurled-outer-bezel', 'circular-grain-and-double-guilloche',
            'chapter-ring-twelve-numerals', 'gilded-burnout-marker-zero',
            'twelve-oclock-regulator-subdial', 'regulator-central-hands'], loose: true },
 ];
 
-// Cream line-drawing accents (Phase 2): file in SVGs/ → output in atlas/.
-// Fill in after visually identifying each drawing; empty = generator off.
-const LINES = [
-  // { src: 'gemini-svg (3).svg', out: 'line-telescope.svg' },
+// ── Gemini Plates (Atmosphere & Foreground Specimen Engravings) ───────────
+const GEMINI_TARGETS = [
+  // Atmosphere plates
+  { src: 'gemini-svg (7).svg',  out: 'atmos-i-horizon-night.svg',       style: 'engraved' },
+  { src: 'gemini-svg (15).svg', out: 'atmos-i-horizon-dusk.svg',        style: 'colored' },
+  { src: 'gemini-svg.svg',      out: 'atmos-ii-instrument-night.svg',    style: 'engraved' },
+  { src: 'gemini-svg (6).svg',  out: 'atmos-iii-lunar-night.svg',       style: 'engraved' },
+  { src: 'gemini-svg (14).svg', out: 'atmos-iii-lunar-dusk.svg',        style: 'colored' },
+  { src: 'gemini-svg (1).svg',  out: 'atmos-iv-microscope-night.svg',   style: 'engraved' },
+  { src: 'gemini-svg (17).svg', out: 'atmos-iv-microscope-dusk.svg',    style: 'colored' },
+  { src: 'gemini-svg (4).svg',  out: 'atmos-v-sextant-night.svg',       style: 'engraved' },
+  { src: 'gemini-svg (16).svg', out: 'atmos-v-sextant-dusk.svg',        style: 'colored' },
+  { src: 'gemini-svg (3).svg',  out: 'atmos-vi-selenograph-night.svg',  style: 'engraved' },
+  { src: 'gemini-svg (18).svg', out: 'atmos-vi-selenograph-dusk.svg',   style: 'colored' },
+  { src: 'gemini-svg (2).svg',  out: 'atmos-v-armillary.svg',           style: 'engraved' },
+
+  // Foreground Specimen engravings
+  { src: 'gemini-svg (12).svg', out: 'specimen-phys-chladni.svg',       style: 'engraved' },
+  { src: 'gemini-svg (9).svg',  out: 'specimen-phys-corona.svg',        style: 'engraved' },
+  { src: 'gemini-svg (11).svg', out: 'specimen-chem-dendrite.svg',      style: 'engraved' },
+  { src: 'gemini-svg (10).svg', out: 'specimen-math-nautilus.svg',      style: 'engraved' },
+  { src: 'gemini-svg (5).svg',  out: 'specimen-heliometer.svg',         style: 'engraved' },
+  { src: 'gemini-svg (8).svg',  out: 'specimen-botanical.svg',          style: 'engraved' },
+  { src: 'gemini-svg (13).svg', out: 'specimen-iris.svg',               style: 'engraved' },
 ];
 
-// ── Gemini plate library (atmosphere variants per screen) ────────────────
-// The gemini drawings come in two series: engraved ink-on-cream "FIG./OBS."
-// plates (re-inked to bone/brass for the dark void) and the polychrome
-// "PLATE I–V" series (own deep-cosmos background kept, frames stripped).
-// Engraved = Night mood, colored = Dusk mood, mirroring the dashboard pair.
-const GEMINI_PLATES = [
-  // dashboard (built earlier, same pipeline)
-  { src: 'gemini-svg (15).svg', out: 'atmos-i-horizon-dusk.svg',  style: 'colored' },
-  { src: 'gemini-svg (7).svg',  out: 'atmos-i-horizon-night.svg', style: 'engraved' },
-  // settings — the equatorial refractor (calibrating the telescope)
-  { src: 'gemini-svg.svg',      out: 'atmos-ii-instrument.svg',   style: 'engraved' },
-  // tuck-in / night guard / bridge — the moon, both moods
-  { src: 'gemini-svg (6).svg',  out: 'atmos-iii-lunar-night.svg', style: 'engraved' },
-  { src: 'gemini-svg (14).svg', out: 'atmos-iii-lunar-dusk.svg',  style: 'colored' },
-  // vault — specimens under glass (microscope night, morpho specimen dusk)
-  { src: 'gemini-svg (1).svg',  out: 'atmos-iv-microscope.svg',   style: 'engraved' },
-  { src: 'gemini-svg (17).svg', out: 'atmos-iv-specimen-dusk.svg',style: 'colored' },
-  // grind station — navigation & growth (sextant night, chloroplast dusk)
-  { src: 'gemini-svg (4).svg',  out: 'atmos-vi-sextant.svg',      style: 'engraved' },
-  { src: 'gemini-svg (16).svg', out: 'atmos-vi-growth-dusk.svg',  style: 'colored' },
-  // mocks — cycles & the cosmic clock (synodic night, Vela pulsar dusk)
-  { src: 'gemini-svg (3).svg',  out: 'atmos-vii-synodic.svg',     style: 'engraved' },
-  { src: 'gemini-svg (18).svg', out: 'atmos-vii-pulsar-dusk.svg', style: 'colored' },
-  // boot / AIR rank — the ptolemaic armillary
-  { src: 'gemini-svg (2).svg',  out: 'atmos-v-armillary.svg',     style: 'engraved' }
+// Backwards-compatible aliases for legacy runtime/test paths
+const ALIASES = [
+  { from: 'atmos-i-horizon-night.svg',      to: 'atmos-i-horizon.svg' },
+  { from: 'atmos-ii-instrument-night.svg',  to: 'atmos-ii-instrument.svg' },
+  { from: 'folio-iii-lunar.svg',            to: 'atmos-iii-lunar.svg' },
+  { from: 'atmos-iv-microscope-night.svg',  to: 'atmos-iv-microscope.svg' },
+  { from: 'atmos-iv-microscope-dusk.svg',   to: 'atmos-iv-specimen-dusk.svg' },
+  { from: 'folio-vi-constellation.svg',     to: 'atmos-vi-constellation.svg' },
+  { from: 'atmos-v-sextant-night.svg',      to: 'atmos-vi-sextant.svg' },
+  { from: 'atmos-v-sextant-dusk.svg',       to: 'atmos-vi-growth-dusk.svg' },
+  { from: 'atmos-vi-selenograph-night.svg', to: 'atmos-vii-synodic.svg' },
+  { from: 'atmos-vi-selenograph-dusk.svg',  to: 'atmos-vii-pulsar-dusk.svg' },
+  { from: 'folio-vii-regulator.svg',        to: 'atmos-vii-regulator.svg' },
 ];
 
-/* Gemini plates share one layout: a 600×600 canvas, a full-size background
-   (cream parchment for engraved, a deep gradient for colored), one or two
-   hairline frame rects, and monospace telemetry <text>. Atmosphere variants:
-   engraved → parchment + frames + texts go, ink strokes are re-inked to
-   bone/brass for the dark void (the horizon shadow stays near-black);
-   colored → its own cosmic background STAYS, frames + texts go. */
-function buildGeminiPlate(cfg) {
-  let svg = readFileSync(join(SRC, cfg.src), 'utf8');
-  svg = svg.replace(/<text[\s\S]*?<\/text>/g, '');
-  if (cfg.style === 'engraved') {
-    svg = svg
-      .replace(/<rect width="600" height="600" fill="#F4EFE6" \/>/, '')
-      .replace(/<rect x="24" y="24" width="552" height="552"[^>]*\/>/, '')
-      .replace(/<rect x="32" y="32" width="536" height="536"[^>]*\/>/, '');
-    svg = svg.split('stroke="#1E1D1A"').join('stroke="#F2EDE3"');
-    svg = svg.split('fill="#1E1D1A"').join('fill="#06070A"');
-  } else {
-    svg = svg
-      .replace(/<rect x="20" y="20" width="560" height="560"[^>]*\/>/, '')
-      .replace(/<rect x="28" y="28" width="544" height="544"[^>]*\/>/, '');
+function stripBalancedGroup(svg, openRegex) {
+  let result = svg;
+  while (true) {
+    const match = openRegex.exec(result);
+    if (!match) break;
+    const startIdx = match.index;
+    const openTagEnd = result.indexOf('>', startIdx);
+    if (openTagEnd === -1) break;
+    if (result.slice(startIdx, openTagEnd).endsWith('/')) {
+      result = result.slice(0, startIdx) + result.slice(openTagEnd + 1);
+      continue;
+    }
+    let depth = 1;
+    let pos = openTagEnd + 1;
+    while (depth > 0 && pos < result.length) {
+      const nextOpen = result.indexOf('<g', pos);
+      const nextClose = result.indexOf('</g>', pos);
+      if (nextClose === -1) break;
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        const charAfter = result[nextOpen + 2];
+        if (charAfter === ' ' || charAfter === '>' || charAfter === '\n' || charAfter === '\t' || charAfter === '\r') {
+          const tagEnd = result.indexOf('>', nextOpen);
+          if (tagEnd !== -1 && result[tagEnd - 1] === '/') {
+            pos = tagEnd + 1;
+            continue;
+          }
+          depth++;
+          pos = (tagEnd !== -1 ? tagEnd : nextOpen + 2) + 1;
+          continue;
+        } else {
+          pos = nextOpen + 2;
+          continue;
+        }
+      }
+      depth--;
+      pos = nextClose + 4;
+    }
+    if (depth === 0) {
+      result = result.slice(0, startIdx) + result.slice(pos);
+    } else {
+      break;
+    }
   }
-  for (const re of (cfg.strip || [])) svg = svg.replace(re, '');
-  svg = svg.replace(/\n\s+/g, '\n');
-  writeFileSync(join(OUT, cfg.out), svg);
-  return { bytes: svg.length };
+  return result;
 }
 
-// ── Tiny balanced-tag walker ─────────────────────────────────────────────
-// Returns [{ tag, attrs, markup, start }] for the DIRECT children of `svg`.
+function buildGeminiEngraved(raw, cfg = {}) {
+  let svg = raw;
+
+  // 1. Strip <text> tags
+  svg = svg.replace(/<text[\s\S]*?<\/text>/gi, '');
+
+  // 2. Strip outer canvas & frame rects (width >= 520 && height >= 520)
+  svg = svg.replace(/<rect\b[^>]*\/?>/gi, (match) => {
+    const wm = match.match(/width="(\d+(?:\.\d+)?)"/);
+    const hm = match.match(/height="(\d+(?:\.\d+)?)"/);
+    if (wm && hm) {
+      const w = parseFloat(wm[1]);
+      const h = parseFloat(hm[1]);
+      if (w >= 520 && h >= 520) return '';
+    }
+    return match;
+  });
+
+  // Strip stray corner calibration marks (e.g. gemini-svg.svg L-brackets)
+  svg = svg.replace(/<!--\s*Corner Calibration Marks\s*-->\s*<g[\s\S]*?<\/g>/gi, '');
+
+  // 3. Plate-specific callout / legend stripping
+  if (cfg.out === 'atmos-i-horizon-night.svg') {
+    svg = stripBalancedGroup(svg, /<g[^>]*>\s*<line\s+x1="230"\s+y1="120"/);
+  }
+
+  // 4. Re-ink <pattern> blocks first
+  svg = svg.replace(/<pattern[\s\S]*?<\/pattern>/gi, (patternBlock) => {
+    return patternBlock
+      .replace(/#1E1D1A/gi, 'rgba(229,192,123,0.34)')
+      .replace(/#F4EFE6/gi, 'none');
+  });
+
+  // 5. Invert tonal hierarchy outside patterns
+  svg = svg
+    .replace(/stroke=["']#F4EFE6["']/gi, 'stroke="#F2EDE3"')
+    .replace(/fill=["']#F4EFE6["']/gi, 'fill="#090C14"')
+    .replace(/stroke=["']#E6DEC8["']/gi, 'stroke="rgba(229,192,123,0.38)"')
+    .replace(/fill=["']#E6DEC8["']/gi, 'fill="#121724"')
+    .replace(/#C59B5F/gi, '#E5C07B')
+    .replace(/#D96B43/gi, '#E07A52')
+    .replace(/stroke=["']#1E1D1A["']/gi, 'stroke="#F2EDE3"')
+    .replace(/stop-color=["']#1E1D1A["']/gi, 'stop-color="#05070C"')
+    .replace(/stop-color=["']#F4EFE6["']/gi, 'stop-color="#090C14"')
+    .replace(/stop-color=["']#E6DEC8["']/gi, 'stop-color="#121724"');
+
+  // Groups with fill="#1E1D1A" -> #0B0E17 (dark obsidian)
+  svg = svg.replace(/<g\b([^>]*?)fill=["']#1E1D1A["']([^>]*?)>/gi, '<g$1fill="#0B0E17"$2>');
+
+  // Circles with fill="#1E1D1A": r <= 9 -> #F2EDE3, else #05070C
+  svg = svg.replace(/<circle\b([^>]*?)fill=["']#1E1D1A["']([^>]*?)>/gi, (m, p1, p2) => {
+    const rm = (p1 + p2).match(/\br="(\d+(?:\.\d+)?)"/);
+    const r = rm ? parseFloat(rm[1]) : 0;
+    const col = r <= 9 ? '#F2EDE3' : '#05070C';
+    return `<circle${p1}fill="${col}"${p2}>`;
+  });
+
+  // Rects with fill="#1E1D1A": tiny ticks (w <= 16 && h <= 16) -> #F2EDE3;
+  // larger rects (stages, bars) -> #090C14 with subtle stroke if none present
+  svg = svg.replace(/<rect\b([^>]*?)fill=["']#1E1D1A["']([^>]*?)>/gi, (m, p1, p2) => {
+    const wm = (p1 + p2).match(/\bwidth="(\d+(?:\.\d+)?)"/);
+    const hm = (p1 + p2).match(/\bheight="(\d+(?:\.\d+)?)"/);
+    const w = wm ? parseFloat(wm[1]) : 999;
+    const h = hm ? parseFloat(hm[1]) : 999;
+    if (w <= 16 && h <= 16) {
+      return `<rect${p1}fill="#F2EDE3"${p2}>`;
+    }
+    const hasStroke = /\bstroke=/.test(p1 + p2);
+    const strokeAttr = hasStroke ? '' : ' stroke="rgba(242,237,227,0.45)" stroke-width="0.9"';
+    return `<rect${p1}fill="#090C14"${strokeAttr}${p2}>`;
+  });
+
+  // Polygons with fill="#1E1D1A": tiny arrowheads/star tips (dx <= 22 && dy <= 22) -> #F2EDE3;
+  // larger structural elements (tripod legs, sextant struts) -> #0B0E17 with stroke if none present
+  svg = svg.replace(/<polygon\b([^>]*?)fill=["']#1E1D1A["']([^>]*?)>/gi, (m, p1, p2) => {
+    const combined = p1 + p2;
+    const pm = combined.match(/\bpoints="([^"]*)"/);
+    if (pm) {
+      const nums = pm[1].match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi)?.map(Number) || [];
+      if (nums.length >= 2) {
+        const xs = [];
+        const ys = [];
+        for (let i = 0; i + 1 < nums.length; i += 2) {
+          xs.push(nums[i]);
+          ys.push(nums[i + 1]);
+        }
+        const dx = Math.max(...xs) - Math.min(...xs);
+        const dy = Math.max(...ys) - Math.min(...ys);
+        if (dx <= 22 && dy <= 22) {
+          return `<polygon${p1}fill="#F2EDE3"${p2}>`;
+        }
+      }
+    }
+    const hasStroke = /\bstroke=/.test(combined);
+    const strokeAttr = hasStroke ? '' : ' stroke="#F2EDE3" stroke-width="1"';
+    return `<polygon${p1}fill="#0B0E17"${strokeAttr}${p2}>`;
+  });
+
+  // Any remaining fill="#1E1D1A" (large ellipses, paths, umbra/cores) -> #05070C
+  svg = svg.replace(/fill=["']#1E1D1A["']/gi, 'fill="#05070C"');
+
+  // Trim outer stripped margin so subject fills frame generously
+  svg = svg.replace(/viewBox=["'][^"']*["']/, 'viewBox="36 36 528 528"');
+
+  // Clean empty groups
+  svg = svg.replace(/<g\b[^>]*>\s*<\/g>/gi, '');
+  svg = svg.replace(/\n\s*\n+/g, '\n');
+
+  return svg;
+}
+
+function buildGeminiColored(raw, cfg = {}) {
+  let svg = raw;
+
+  // 1. Strip text
+  svg = svg.replace(/<text[\s\S]*?<\/text>/gi, '');
+
+  // 2. Strip outer canvas & border rects (width >= 520 && height >= 520)
+  svg = svg.replace(/<rect\b[^>]*\/?>/gi, (match) => {
+    const wm = match.match(/width="(\d+(?:\.\d+)?)"/);
+    const hm = match.match(/height="(\d+(?:\.\d+)?)"/);
+    if (wm && hm) {
+      const w = parseFloat(wm[1]);
+      const h = parseFloat(hm[1]);
+      if (w >= 520 && h >= 520) return '';
+    }
+    return match;
+  });
+
+  // 3. Plate-specific legend/sub-box stripping for dusk atmosphere plates
+  if (cfg.out === 'atmos-i-horizon-dusk.svg') {
+    svg = stripBalancedGroup(svg, /<g\s+transform="translate\(415,\s*42\)"/);
+  }
+  if (cfg.out === 'atmos-iv-microscope-dusk.svg') {
+    svg = stripBalancedGroup(svg, /<g\s+transform="translate\(52,\s*438\)"/);
+  }
+  if (cfg.out === 'atmos-v-sextant-dusk.svg') {
+    svg = stripBalancedGroup(svg, /<g\s+transform="translate\(325,\s*412\)"/);
+  }
+  if (cfg.out === 'atmos-vi-selenograph-dusk.svg') {
+    svg = stripBalancedGroup(svg, /<g\s+transform="translate\(52,\s*482\)"/);
+  }
+
+  // Trim viewBox
+  svg = svg.replace(/viewBox=["'][^"']*["']/, 'viewBox="36 36 528 528"');
+
+  // Clean empty groups
+  svg = svg.replace(/<g\b[^>]*>\s*<\/g>/gi, '');
+  svg = svg.replace(/\n\s*\n+/g, '\n');
+
+  return svg;
+}
+
+// ── Folio Plate Parser & Stripper ─────────────────────────────────────────
 function topLevelChildren(src) {
   const open = src.match(/<svg\b[^>]*>/);
   const body = src.slice(open[0].length, src.lastIndexOf('</svg>'));
@@ -119,12 +286,11 @@ function topLevelChildren(src) {
     if (!m) { i = lt + 1; continue; }
     const tag = m[1];
     const attrs = m[2] || '';
-    if (attrs.endsWith('/')) {                       // self-closing leaf
+    if (attrs.endsWith('/')) {
       out.push({ tag, attrs, markup: body.slice(lt, lt + m[0].length) });
       i = lt + m[0].length;
       continue;
     }
-    // find the matching close tag, counting nested same-name opens
     const close = `</${tag}>`;
     let depth = 1, j = lt + m[0].length;
     while (depth > 0) {
@@ -132,11 +298,15 @@ function topLevelChildren(src) {
       const nextClose = body.indexOf(close, j);
       if (nextClose < 0) throw new Error(`unbalanced <${tag}>`);
       if (nextOpen >= 0 && nextOpen < nextClose) {
-        // guard: "<g" would also match "<gblah" — require a boundary char
         const ch = body[nextOpen + 1 + tag.length];
-        if (ch === '>' || ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r' || ch === '/') { depth++; j = nextOpen + tag.length + 1; continue; }
+        if (ch === '>' || ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r' || ch === '/') {
+          depth++;
+          j = nextOpen + tag.length + 1;
+          continue;
+        }
       }
-      depth--; j = nextClose + close.length;
+      depth--;
+      j = nextClose + close.length;
     }
     out.push({ tag, attrs, markup: body.slice(lt, j) });
     i = j;
@@ -149,14 +319,6 @@ function attrOf(markup, name) {
   return m ? m[1] : null;
 }
 
-function stripTexts(markup) {
-  return markup.replace(/<text[\s\S]*?<\/text>/g, '');
-}
-
-// ── Approximate content bbox (viewBox crop) ──────────────────────────────
-// Scans coordinate-bearing attributes + path data numbers. Control points
-// and rotate() centres are included by design — an over-estimate beats
-// clipping. Result is clamped inside the source viewBox and padded.
 function approxBBox(markup, vb) {
   const pts = [];
   const push = (x, y) => { if (Number.isFinite(x) && Number.isFinite(y)) pts.push([x, y]); };
@@ -184,15 +346,6 @@ function approxBBox(markup, vb) {
         for (let k = 0; k + 1 < nums.length; k += 2) push(nums[k], nums[k + 1]);
       }
     }
-    // rotate(a cx cy) and translate(x y) give one more anchor point each
-    for (const tr of t.matchAll(/rotate\([^)]*\)/g)) {
-      const a = tr[0].match(/-?\d*\.?\d+/g)?.map(Number) ?? [];
-      if (a.length >= 3) push(a[1], a[2]);
-    }
-    for (const tr of t.matchAll(/translate\([^)]*\)/g)) {
-      const a = tr[0].match(/-?\d*\.?\d+/g)?.map(Number) ?? [];
-      if (a.length >= 2) push(a[0], a[1]);
-    }
   }
   if (!pts.length) return vb;
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
@@ -205,7 +358,6 @@ function approxBBox(markup, vb) {
   return [x0, y0, x1 - x0, y1 - y0].map(v => Math.round(v * 10) / 10);
 }
 
-// ── Plate pipeline ───────────────────────────────────────────────────────
 function buildPlate(cfg) {
   const raw = readFileSync(join(SRC, cfg.src), 'utf8');
   const vbMatch = /viewBox="([\d.\s-]+)"/.exec(raw);
@@ -215,72 +367,73 @@ function buildPlate(cfg) {
   const defs = children.find(c => c.tag === 'defs');
   const content = children.filter(c => c.tag !== 'defs');
 
-  // Folio chrome = every top-level element BEFORE the first <g>.
   const firstG = content.findIndex(c => c.tag === 'g');
   const candidates = firstG < 0 ? [] : content.slice(firstG);
 
-  const keptEls = [], dropped = [];
+  const keptEls = [];
   let seenNamed = false;
   for (const el of candidates) {
     const id = attrOf(el.attrs, 'id');
-    if (el.tag === 'text') { dropped.push(`${el.tag}${id ? '#' + id : ''}`); continue; }
+    if (el.tag === 'text') continue;
     if (id) {
       seenNamed = true;
-      if (cfg.keep.includes(id)) keptEls.push(el); else dropped.push(`${el.tag}#${id}`);
-    } else if (cfg.loose && seenNamed) {
+      if (cfg.keep.includes(id)) keptEls.push(el);
+    } else if (cfg.loose && (seenNamed || el.tag === 'g')) {
       keptEls.push(el);
-    } else if (cfg.loose && el.tag === 'g') {
-      keptEls.push(el);
-    } else {
-      dropped.push(`${el.tag}(unnamed)`);
     }
   }
 
-  let body = keptEls.map(el => stripTexts(el.markup)).join('\n');
-
-  // Defs: drop the vignette gradient, prune now-unused CSS rules.
+  let body = keptEls.map(el => el.markup.replace(/<text[\s\S]*?<\/text>/g, '')).join('\n');
   let defsMarkup = defs ? defs.markup : '';
   defsMarkup = defsMarkup.replace(/<radialGradient id="plate-vignette"[\s\S]*?<\/radialGradient>/g, '');
   defsMarkup = defsMarkup
     .split('\n').filter(l => !/\.label-|\.font-serif|\.font-mono|\.plate-bg|\.plate-paper/.test(l)).join('\n');
 
   const newVb = approxBBox(body, vb);
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${newVb.join(' ')}">` +
-    defsMarkup + body + `</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${newVb.join(' ')}">${defsMarkup}${body}</svg>`;
   const min = svg.replace(/\n\s+/g, '\n').replace(/>\s+</g, '><');
   writeFileSync(join(OUT, cfg.out), min);
-  const kept = keptEls.map(el => `${el.tag}${attrOf(el.attrs, 'id') ? '#' + attrOf(el.attrs, 'id') : '(unnamed)'}`);
-  return { kept, dropped, vb: newVb, bytes: min.length };
+  return { bytes: min.length, vb: newVb };
 }
 
-// ── Line-drawing accents (Phase 2) ───────────────────────────────────────
-function buildLine(cfg) {
-  let svg = readFileSync(join(SRC, cfg.src), 'utf8');
-  svg = svg
-    .replace(/<rect[^>]*(class="[^"]*(?:paper|bg|parchment)[^"]*"|fill="[^"]*(?:f|e)[0-9a-f]{5}")[^>]*\/?>/gi, '')
-    .replace(/<text[\s\S]*?<\/text>/g, '')
-    // recolour the engraved strokes to currentColor so CSS can tint them
-    .replace(/(stroke)="#[0-9a-fA-F]{3,8}"/g, '$1="currentColor"')
-    .replace(/\n\s+/g, '\n');
-  writeFileSync(join(OUT, cfg.out), svg);
-  return { bytes: svg.length };
-}
-
+// ── Build Execution ───────────────────────────────────────────────────────
 mkdirSync(OUT, { recursive: true });
-if (!readdirSync) { /* node >= 14.14 always has it — placate linters */ }
+
+console.log('── Folio Plates ──');
 for (const cfg of PLATES) {
   const r = buildPlate(cfg);
-  console.log(`✓ ${cfg.out}  viewBox="${r.vb.join(' ')}"  ${(r.bytes / 1024).toFixed(1)} KB`);
-  console.log(`   kept    ${r.kept.join(', ') || '(nothing named — loose art only)'}`);
-  console.log(`   dropped ${r.dropped.join(', ')}`);
+  console.log(`✓ ${cfg.out.padEnd(28)} ${(r.bytes / 1024).toFixed(1)} KB (from ${cfg.src})`);
 }
-for (const cfg of LINES) {
-  const r = buildLine(cfg);
-  console.log(`✓ ${cfg.out}  ${(r.bytes / 1024).toFixed(1)} KB`);
+
+console.log('\n── Gemini Plates (Engraved & Colored) ──');
+for (const cfg of GEMINI_TARGETS) {
+  const raw = readFileSync(join(SRC, cfg.src), 'utf8');
+  const outSvg = cfg.style === 'engraved' ? buildGeminiEngraved(raw, cfg) : buildGeminiColored(raw, cfg);
+  writeFileSync(join(OUT, cfg.out), outSvg);
+  console.log(`✓ ${cfg.out.padEnd(28)} ${(outSvg.length / 1024).toFixed(1)} KB (${cfg.style}, from ${cfg.src})`);
 }
-for (const cfg of GEMINI_PLATES) {
-  const r = buildGeminiPlate(cfg);
-  console.log(`✓ ${cfg.out}  ${(r.bytes / 1024).toFixed(1)} KB  (${cfg.style}, from ${cfg.src})`);
+
+console.log('\n── Backwards-Compatible Aliases ──');
+for (const alias of ALIASES) {
+  const content = readFileSync(join(OUT, alias.from), 'utf8');
+  writeFileSync(join(OUT, alias.to), content);
+  console.log(`✓ ${alias.to.padEnd(28)} -> ${alias.from}`);
 }
-console.log(LINES.length || GEMINI_PLATES.length ? 'done' : 'done (line-* accents deferred to Phase 2)');
+
+
+console.log('\n── Validating XML Integrity of All Atlas SVGs ──');
+const allSvgs = readdirSync(OUT).filter(f => f.endsWith('.svg'));
+for (const file of allSvgs) {
+  const content = readFileSync(join(OUT, file), 'utf8');
+  let opens = 0;
+  const openRe = /<g(?:\s[^>]*?[^\/]|)>/gi;
+  let m;
+  while ((m = openRe.exec(content)) !== null) opens++;
+  const closes = (content.match(/<\/g>/gi) || []).length;
+  if (opens !== closes) {
+    throw new Error(`XML Error in ${file}: unbalanced <g> tags (opens=${opens}, closes=${closes})`);
+  }
+}
+console.log(`✓ All ${allSvgs.length} atlas SVGs have balanced <g> tags and valid XML.`);
+
+console.log('\nDone: All atlas SVGs generated cleanly.');

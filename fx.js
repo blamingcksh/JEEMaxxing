@@ -53,8 +53,11 @@
     if (ac.state === 'suspended') { try { ac.resume(); } catch (e) {} }
     return ac;
   }
-  // Unlock / resume on first user gesture (autoplay policy).
-  function unlock() { var c = ctx(); if (c && c.state === 'suspended') { try { c.resume(); } catch (e) {} } }
+  // Unlock / resume on first user gesture (autoplay policy). Sound-off users
+  // never construct the context at all — a live AudioContext pins an audio
+  // hardware session (measurable battery cost on mobile) while producing
+  // nothing; enabling sound later lazily builds it on the first tone.
+  function unlock() { if (!prefs.sound) return; var c = ctx(); if (c && c.state === 'suspended') { try { c.resume(); } catch (e) {} } }
   document.addEventListener('pointerdown', unlock, { passive: true });
   document.addEventListener('keydown', unlock, { passive: true });
 

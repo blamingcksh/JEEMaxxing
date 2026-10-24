@@ -392,16 +392,20 @@ function todayLocalKey() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+let _forestStoreCache = null; // parsed mirror of LS_DAILY_FOREST — only this module touches the key
 function loadDailyForestStore() {
+  if (_forestStoreCache) return _forestStoreCache;
   try {
     const o = JSON.parse(localStorage.getItem(LS_DAILY_FOREST) || '{}');
-    return (o && typeof o === 'object') ? o : {};
+    _forestStoreCache = (o && typeof o === 'object') ? o : {};
   } catch (e) {
-    return {};
+    _forestStoreCache = {};
   }
+  return _forestStoreCache;
 }
 
 function saveDailyForestStore(o) {
+  _forestStoreCache = o;
   try {
     localStorage.setItem(LS_DAILY_FOREST, JSON.stringify(o));
   } catch (e) {}
@@ -502,12 +506,14 @@ function _loadCum() {
 function _saveCum() { try { localStorage.setItem(LS_CUM, JSON.stringify(cumStudy)); } catch (e) {} }
 function _saveCumDayStart() { try { localStorage.setItem(LS_CUM_DAYSTART, JSON.stringify(cumDayStart)); } catch (e) {} }
 function tickCumStudy() {
+  let _dirty = false;
   for (const s of ['physics', 'chemistry', 'maths']) {
     const now = Math.max(0, Math.floor(Number(studySecs[s]) || 0));
     const delta = Math.max(0, now - (_lastSeenStudy[s] || 0));   // max(0,…) makes the midnight reset a clean 0-delta
-    if (delta > 0) { cumStudy[s] += delta; _saveCum(); }
+    if (delta > 0) { cumStudy[s] += delta; _dirty = true; }
     _lastSeenStudy[s] = now;
   }
+  if (_dirty) _saveCum(); // one stringify + localStorage write per tick, not per subject
 }
 function bootCumStudy() {
   if (_cumBooted) return; _cumBooted = true;
@@ -1221,6 +1227,10 @@ export function toggleSidebar() {
     }
 }
 
+// Last sibling-save sequence seen by switchTab's reload gate (storage.js
+// bumps window.__jmaxRemoteSavedSeq whenever a foreign tab commits).
+let _lastRemoteSaveSeq = 0;
+
 export async function switchTab(viewId, element) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     const targetView = document.getElementById('view-' + viewId);
@@ -1238,13 +1248,28 @@ export async function switchTab(viewId, element) {
         }
     }
 
-    // Flush any pending coalesced save BEFORE re-reading the bank from IDB,
-    // or a tab switch right after a solve could load stale persisted state.
-    try { await flushSaves(); } catch (_) {}
-    await loadDataAsync();
+    // Re-read persisted state ONLY when a sibling tab committed since our last
+    // read (storage.js bumps __jmaxRemoteSavedSeq on every foreign save ping).
+    // Our own in-memory state is authoritative between saves, so the common
+    // single-tab switch skips a full IndexedDB deserialize of the whole bank.
+    let _remoteSeq = 0;
+    try { _remoteSeq = Number(window.__jmaxRemoteSavedSeq) || 0; } catch (_) {}
+    if (_remoteSeq !== _lastRemoteSaveSeq) {
+        _lastRemoteSaveSeq = _remoteSeq;
+        // Flush any pending coalesced save BEFORE re-reading the bank from IDB,
+        // or a tab switch right after a solve could load stale persisted state.
+        try { await flushSaves(); } catch (_) {}
+        await loadDataAsync();
+    }
+    // Both are cheap and independent of the reload: bootCumStudy is a one-shot
+    // (it also owns the only start of the 2s cum-study ticker), and the restore
+    // is a localStorage max-merge that is a no-op against current memory.
     bootCumStudy();
     restoreDailyCountsIntoSolved();
-    if (viewId === 'practice') showPracticeSubview('practice-subject-view');
+    if (viewId === 'practice') {
+        showPracticeSubview('practice-subject-view');
+        try { updateQuickLaunchAndArena(); } catch (_) {}
+    }
     if (viewId === 'errors') {
         assignDailyBountyIfNeeded();
         try { refreshBountyRail(); } catch (_) {}
@@ -1254,12 +1279,12 @@ export async function switchTab(viewId, element) {
         if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
     }
     if (viewId === 'dashboard') {
-        await renderGraph();
+        try { await renderGraph(); } catch (e) { console.warn('[renderGraph]', e); }
         try { void renderDailyVarianceHeatmap(); } catch (_) {}
         try { renderChapterDecayGrid(); } catch (_) {}
         try { renderChapterProgressList(); } catch (_) {}
-        try { _renderCalibrationReport(); } catch (_) {}
     }
+    try { _renderCalibrationReport(); } catch (_) {}
 }
 
 export function showPracticeSubview(id) {
@@ -1381,6 +1406,7 @@ function _updatePaceTick(barId) {
 }
 
 function updateQuickLaunchAndArena() {
+    const perSubjCount = new Map(); // raw or normalized subject -> question count
     try {
         const attackBtn = document.getElementById('dq-attack-btn');
         const attackLbl = document.getElementById('dq-attack-label');
@@ -1391,13 +1417,29 @@ function updateQuickLaunchAndArena() {
         let weakest = null;
         let lowestAcc = 1.1;
         const allChapters = AppState.chapters || {};
+        // Single pass over the bank: per-(subject, normalized chapter) tallies
+        // and per-subject counts.
+        const perCh = new Map();   // rawSubject::normChapter -> {solved,wrong}
+        let dueErrors = 0;
+        const _now = Date.now();
+        for (const q of (AppState.questionBank || [])) {
+            if (!q) continue;
+            const sKey = (typeof _normalizeSubjectKey === 'function') ? _normalizeSubjectKey(q.subject) : String(q.subject || '').trim().toLowerCase();
+            if (sKey) perSubjCount.set(sKey, (perSubjCount.get(sKey) || 0) + 1);
+            if (q.status === 'solved' || q.status === 'wrong') {
+                const key = (sKey || q.subject) + '::' + String(q.chapter || '').trim().toLowerCase();
+                let a = perCh.get(key);
+                if (!a) { a = { solved: 0, wrong: 0 }; perCh.set(key, a); }
+                if (q.status === 'solved') a.solved++; else a.wrong++;
+            }
+            if (q.status === 'wrong' || (q.reviewDue && q.reviewDue <= _now)) dueErrors++;
+        }
+        const _zeroTally = { solved: 0, wrong: 0 };
         for (const [subj, chaps] of Object.entries(allChapters)) {
             for (const ch of (chaps || [])) {
-                const qs = (AppState.questionBank || []).filter(q => q.subject === subj && _chaptersMatch(q.chapter, ch));
-                const solvedQs = qs.filter(q => q.status === 'solved');
-                const wrongQs = qs.filter(q => q.status === 'wrong');
-                const attempts = solvedQs.length + wrongQs.length;
-                const acc = attempts > 0 ? solvedQs.length / attempts : 0.5;
+                const a = perCh.get(subj + '::' + String(ch || '').trim().toLowerCase()) || _zeroTally;
+                const attempts = a.solved + a.wrong;
+                const acc = attempts > 0 ? a.solved / attempts : 0.5;
                 if (acc < lowestAcc || !weakest) {
                     lowestAcc = acc;
                     weakest = { subject: subj, chapter: ch };
@@ -1417,10 +1459,10 @@ function updateQuickLaunchAndArena() {
             }
         }
 
-        const now = Date.now();
-        const dueErrors = (AppState.questionBank || []).filter(q => q.status === 'wrong' || (q.reviewDue && q.reviewDue <= now)).length;
+        const now = _now;
+        const dueErrCount = dueErrors;
         if (vaultLbl) {
-            vaultLbl.textContent = dueErrors > 0 ? `Vault Due: ${dueErrors} error${dueErrors === 1 ? '' : 's'} →` : 'Open Error Vault →';
+            vaultLbl.textContent = dueErrCount > 0 ? `Vault Due: ${dueErrCount} error${dueErrCount === 1 ? '' : 's'} →` : 'Open Error Vault →';
         }
         if (vaultBtn && !vaultBtn.dataset.bound) {
             vaultBtn.dataset.bound = '1';
@@ -1444,8 +1486,8 @@ function updateQuickLaunchAndArena() {
             const metaEl = document.getElementById(`subj-meta-${sub}`);
             if (metaEl) {
                 const chCount = (AppState.chapters && AppState.chapters[sub] && AppState.chapters[sub].length) || 0;
-                const qCount = (AppState.questionBank || []).filter(q => q.subject === sub).length;
-                const eloVal = (AppState.elo && AppState.elo[sub]) ? Math.round(AppState.elo[sub]) : 1500;
+                const qCount = perSubjCount.get(sub) || 0;
+                const eloVal = (AppState.elo && typeof AppState.elo[sub] === 'number' && isFinite(AppState.elo[sub])) ? Math.round(AppState.elo[sub]) : 1200;
                 metaEl.textContent = `${chCount} chapters · ${qCount} questions · ${eloVal} ELO`;
             }
         });
@@ -1742,6 +1784,32 @@ export async function renderDailyVarianceHeatmap() {
     if (token !== _varianceHeatmapRenderToken) return;
     if (monthsEl) monthsEl.innerHTML = monthsHtml;
     grid.innerHTML = weekHtml.join('');
+
+    // Streak chip beside the card title — same ledger the whole app reads
+    // (window.__jmaxStreak from updateStreakDisplay), with a local walk over
+    // the already-loaded history as boot-order fallback.
+    const streakChip = document.getElementById('dv-streak');
+    if (streakChip) {
+        let days = (window.__jmaxStreak && typeof window.__jmaxStreak.days === 'number')
+            ? window.__jmaxStreak.days : null;
+        if (days === null) {
+            days = 0;
+            const cursor = new Date(today);
+            if (_varianceEntryCount(historyByDate.get(_varianceDateKey(cursor))) <= 0) {
+                cursor.setDate(cursor.getDate() - 1);
+            }
+            for (let i = 0; i < 3650; i++) {
+                const k = _varianceDateKey(cursor);
+                if (_varianceEntryCount(historyByDate.get(k)) > 0) {
+                    days++;
+                    cursor.setDate(cursor.getDate() - 1);
+                } else break;
+            }
+        }
+        const chipTxt = days > 0 ? `${days}D STREAK` : '';
+        if (streakChip.textContent !== chipTxt) streakChip.textContent = chipTxt;
+        streakChip.hidden = days <= 0;
+    }
 }
 
 // ==================== STREAK VECTOR TRACKER ====================
@@ -1756,6 +1824,8 @@ export async function updateStreakDisplay() {
         try { window.__jmaxStreak = { days: 0, label: '0 Days (start something)' }; } catch (_) {}
         const streakEl = document.getElementById('top-streak');
         if (streakEl) streakEl.textContent = "0 Days (start something)";
+        const _chip0 = document.getElementById('dv-streak');
+        if (_chip0) { _chip0.textContent = ''; _chip0.hidden = true; }
         return;
     }
 
@@ -1833,6 +1903,14 @@ export async function updateStreakDisplay() {
     if (streakEl) {
         streakEl.textContent = streakLabel;
     }
+    // Consistency-card chip: the heatmap may have rendered earlier from its
+    // boot-order fallback walk, so the canonical pass re-stamps it here.
+    const streakChip = document.getElementById('dv-streak');
+    if (streakChip) {
+        const chipTxt = streak > 0 ? `${streak}D STREAK` : '';
+        if (streakChip.textContent !== chipTxt) streakChip.textContent = chipTxt;
+        streakChip.hidden = streak <= 0;
+    }
     // Live bridge for headless consumers — see note above.
     try { window.__jmaxStreak = { days: streak, label: streakLabel }; } catch (_) {}
 }
@@ -1879,13 +1957,17 @@ function _vaultWeight(q) {
  * ≤ 0) collapse τ to 1 (neutral), so they neither inflate nor deflate the
  * friction-inverse term instead of doubling it.
  */
-function _cognitiveItemWeight(q) {
+function _cognitiveItemWeight(q, chapterAgg) {
     const qElo = (typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0)
         ? q.qElo : 1200;
     const difficulty = qElo / 1200;
 
     const T_act = Math.max(0, Number(q.timeTaken) || 0);
-    const T_avg = Math.max(1, _getChapterAvgTime(q.subject, q.chapter));
+    // With a prebuilt chapter-aggregate index the per-item cost is a Map
+    // lookup instead of a full-bank rescan (identical arithmetic).
+    const T_avg = Math.max(1, chapterAgg
+        ? _chapterAvgTimeFromAgg(chapterAgg, q.subject, q.chapter)
+        : _getChapterAvgTime(q.subject, q.chapter));
     const tau = T_act > 0 ? (T_act / T_avg) : 1;        // temporal divergence
     const frictionInverse = 2 / (1 + Math.max(0, tau));  // 2/(1+τ)
 
@@ -1904,6 +1986,7 @@ function _cognitiveItemWeight(q) {
  */
 function _buildYieldIndex() {
     const byDate = new Map();
+    const chapterAgg = _buildChapterAggIndex();
     for (const q of AppState.questionBank) {
         if (!q || q.status !== 'solved') continue;
         // Resolve the solve date from lastReviewedAt. The field is an ISO
@@ -1919,7 +2002,7 @@ function _buildYieldIndex() {
             bucket = { maths: 0, physics: 0, chemistry: 0, matched: 0 };
             byDate.set(dateStr, bucket);
         }
-        bucket[subj] += _cognitiveItemWeight(q);
+        bucket[subj] += _cognitiveItemWeight(q, chapterAgg);
         bucket.matched++;
     }
     return byDate;
@@ -2256,13 +2339,28 @@ export function renderChaptersList() {
     // registered here so its questions become reachable again. ──
     const _known = AppState.chapters[AppState.currentSubject] || (AppState.chapters[AppState.currentSubject] = []);
     let _healed = false;
+    // Single pass with a lowercase-name Set: the old `.some(_chaptersMatch)`
+    // probe rescanned the chapter list per question (bank × chapters).
+    const _knownSet = new Set(_known.map(c => String(c || '').trim().toLowerCase()));
     for (const q of AppState.questionBank) {
-        if (q.subject === AppState.currentSubject && q.chapter && !_known.some(c => _chaptersMatch(c, q.chapter))) {
-            _known.push(q.chapter);
-            _healed = true;
+        if (q.subject === AppState.currentSubject && q.chapter) {
+            const _k = String(q.chapter).trim().toLowerCase();
+            if (!_knownSet.has(_k)) {
+                _knownSet.add(_k);
+                _known.push(q.chapter);
+                _healed = true;
+            }
         }
     }
     if (_healed) saveAllAsync().catch(console.error);
+    // One pass counting questions per normalized chapter name — the render
+    // loop used to re-filter the whole bank per chapter tile.
+    const _countByCh = new Map();
+    for (const q of (AppState.questionBank || [])) {
+        if (q.subject !== AppState.currentSubject) continue;
+        const _k = String(q.chapter || '').trim().toLowerCase();
+        _countByCh.set(_k, (_countByCh.get(_k) || 0) + 1);
+    }
     let cont = document.getElementById('chapters-list-container');
     cont.innerHTML = '';
     // ── Ghost review row: pre-label-era uploads with no chapter render
@@ -2287,8 +2385,7 @@ export function renderChaptersList() {
         // Mock-test chapters wear their label + badge so test uploads are
         // visibly grouped instead of masquerading as syllabus chapters.
         const _mockBadge = isMockChapterName(ch) ? '<span class="mock-chapter-badge" title="Mock test chapter">🧪</span>' : '';
-        const chQuestions = (AppState.questionBank || []).filter(q => q.subject === AppState.currentSubject && _chaptersMatch(q.chapter, ch));
-        const qCount = chQuestions.length;
+        const qCount = _countByCh.get(String(ch || '').trim().toLowerCase()) || 0;
         const countPill = `<span class="chapter-stat-pill">${qCount} Q</span>`;
         div.innerHTML =
             `<span class="chapter-item-title">${_mockBadge}${escapeHtml(ch)} ${countPill}</span>` +
@@ -5124,14 +5221,18 @@ function schedulePracticeFreeSweep() {
     requestAnimationFrame(() => {
         _practiceSweepPending = false;
         const vh = window.innerHeight;
+        // Two phases — collect (reads) then swap (writes). Interleaving
+        // rect reads with src swaps forced a synchronous reflow per image.
+        const far = [];
         document.querySelectorAll('.lazy-practice-img[data-loaded="1"]').forEach(img => {
             const r = img.getBoundingClientRect();
-            if (r.bottom < -2000 || r.top > vh + 2000) {
-                img._lazyToken = (img._lazyToken || 0) + 1;
-                img.dataset.loaded = '';
-                img.src = LAZY_IMG_PLACEHOLDER;
-            }
+            if (r.bottom < -2000 || r.top > vh + 2000) far.push(img);
         });
+        for (const img of far) {
+            img._lazyToken = (img._lazyToken || 0) + 1;
+            img.dataset.loaded = '';
+            img.src = LAZY_IMG_PLACEHOLDER;
+        }
     });
 }
 
@@ -6299,15 +6400,26 @@ const ELO_SUBJECT_BASELINES = {
     maths:     { K: 16, defaultTime: 240 },
 };
 
-// Strict competitive rank brackets
+// Strict competitive rank brackets.
+// `icon` is a glyphs.js sprite name (thin engraved strokes, theme ink) — the
+// old emoji tier marks broke the monochrome instrument language of the chips.
 const ELO_RANK_TIERS = [
-    { min: 0,    max: 1199,      name: 'NPC',                  icon: '🧍' },
-    { min: 1200, max: 1599,      name: 'Skill Issue',          icon: '💀' },
-    { min: 1600, max: 1999,      name: 'Cooking',              icon: '🍳' },
-    { min: 2000, max: 2399,      name: 'Let Him Cook',         icon: '👨‍🍳' },
-    { min: 2400, max: 2799,      name: 'Diffed the Exam',      icon: '💀' },
-    { min: 2800, max: Infinity,  name: 'Unhinged Gigachad',    icon: '🗿' },
+    { min: 0,    max: 1199,      name: 'NPC',                  icon: 'person' },
+    { min: 1200, max: 1599,      name: 'Skill Issue',          icon: 'skull' },
+    { min: 1600, max: 1999,      name: 'Cooking',              icon: 'flame' },
+    { min: 2000, max: 2399,      name: 'Let Him Cook',         icon: 'spark' },
+    { min: 2400, max: 2799,      name: 'Diffed the Exam',      icon: 'trophy' },
+    { min: 2800, max: Infinity,  name: 'Unhinged Gigachad',    icon: 'hardcore' },
 ];
+
+/** Tier icon as inline sprite markup; typographic fallback before glyphs.js runs. */
+function _tierIconMarkup(tier) {
+    if (!tier || !tier.icon) return '';
+    if (typeof window !== 'undefined' && typeof window.__glyph === 'function') {
+        return window.__glyph(tier.icon);
+    }
+    return (typeof window !== 'undefined' && window.__glyphText && window.__glyphText[tier.icon]) || '';
+}
 
 /**
  * Parse any integer rating into its competitive skill tier.
@@ -6316,11 +6428,11 @@ function getRankTierDetails(rating) {
     const r = Math.max(0, Math.floor(Number(rating) || 0));
     for (const t of ELO_RANK_TIERS) {
         if (r >= t.min && r <= t.max) {
-            return { name: t.name, icon: t.icon, badge: `${t.icon} ${t.name}`, rating: r };
+            return { name: t.name, icon: t.icon, badge: `${window.__glyphText ? (window.__glyphText[t.icon] || '') : ''} ${t.name}`.trim(), rating: r };
         }
     }
     const top = ELO_RANK_TIERS[ELO_RANK_TIERS.length - 1];
-    return { name: top.name, icon: top.icon, badge: `${top.icon} ${top.name}`, rating: r };
+    return { name: top.name, icon: top.icon, badge: `${window.__glyphText ? (window.__glyphText[top.icon] || '') : ''} ${top.name}`.trim(), rating: r };
 }
 
 /** Returns the lower bound of the tier immediately above the current rating. */
@@ -6361,6 +6473,38 @@ function _getChapterAvgTime(subject, chapter) {
     if (timed.length === 0) return baseline.defaultTime;
     const sum = timed.reduce((acc, q) => acc + (q.timeTaken || 0), 0);
     return sum / timed.length;
+}
+
+/**
+ * One-pass chapter aggregates over the whole bank, keyed by
+ * `<raw q.subject>::<normalized chapter>` — exactly the membership predicate
+ * the per-chapter helpers above use (`q.subject === safeSubject` strict +
+ * `_chaptersMatch` normalized). Consumers read O(1) buckets instead of
+ * rescanning the bank per call; arithmetic is identical by construction.
+ */
+function _buildChapterAggIndex() {
+    const agg = new Map();
+    for (const q of AppState.questionBank) {
+        if (!q) continue;
+        const key = q.subject + '::' + String(q.chapter || '').trim().toLowerCase();
+        let a = agg.get(key);
+        if (!a) { a = { tSum: 0, tCnt: 0, eSum: 0, eCnt: 0 }; agg.set(key, a); }
+        if (!q.isAnomaly) {
+            if (q.timeTaken > 0) { a.tSum += (q.timeTaken || 0); a.tCnt++; }
+            a.eSum += _safeQElo(q); a.eCnt++;
+        }
+    }
+    return agg;
+}
+
+/** `_getChapterAvgTime` read from a prebuilt `_buildChapterAggIndex()` map. */
+function _chapterAvgTimeFromAgg(agg, subject, chapter) {
+    const safeSubject = _normalizeSubjectKey(subject);
+    const baseline = ELO_SUBJECT_BASELINES[safeSubject];
+    if (!baseline) return 180;
+    const a = agg.get(safeSubject + '::' + String(chapter || '').trim().toLowerCase());
+    if (!a || a.tCnt === 0) return baseline.defaultTime;
+    return a.tSum / a.tCnt;
 }
 
 /**
@@ -8392,7 +8536,8 @@ function _renderCalibrationReport() {
     const el = document.getElementById('calibration-report');
     if (!el) return;
     try { _ensureEloV2State(); } catch (_) {}
-    const log = Array.isArray(AppState.calibrationLog) ? AppState.calibrationLog : [];
+    const rawLog = Array.isArray(AppState.calibrationLog) ? AppState.calibrationLog : [];
+    const log = rawLog.filter(c => c && isFinite(Number(c.p)) && isFinite(Number(c.s)));
     if (log.length < 5) {
         el.innerHTML =
             '<span class="calib-kicker">CALIBRATION</span>' +
@@ -8401,9 +8546,9 @@ function _renderCalibrationReport() {
     }
     const recent = log.slice(-60);
     const n = recent.length;
-    const acc = recent.reduce((a, c) => a + c.s, 0) / n;
-    const avgP = recent.reduce((a, c) => a + c.p, 0) / n;
-    const brier = recent.reduce((a, c) => a + Math.pow(c.p - c.s, 2), 0) / n;
+    const acc = recent.reduce((a, c) => a + Number(c.s), 0) / n;
+    const avgP = recent.reduce((a, c) => a + Number(c.p), 0) / n;
+    const brier = recent.reduce((a, c) => a + Math.pow(Number(c.p) - Number(c.s), 2), 0) / n;
     const gap = avgP - acc;   // >0 overconfident · <0 underconfident
     const verdict = (gap > 0.08)
         ? { txt: 'OVERCONFIDENT', color: '#fda4af', note: 'You say sure when you are not — discount first instincts.' }
@@ -8442,7 +8587,7 @@ function _renderGlobalMmrRow(globalElo) {
     const tier = getRankTierDetails(globalElo);
 
     // Completely drops the long tier string text to display just the icon and numeric Elo value
-    row.innerHTML = `<span class="mmr-tier-badge">${tier.icon} ${Math.round(globalElo)} ELO</span>`;
+    row.innerHTML = `<span class="mmr-tier-badge">${_tierIconMarkup(tier)} ${Math.round(globalElo)} ELO</span>`;
 
     // ── Make the ELO badge clickable → opens the JEE Advanced AIR projection
     // popup. The row persists across re-renders (getElementById reuse above),
@@ -8525,7 +8670,9 @@ function _examCountdownText() {
         const t = new Date(AppState.examDate).getTime();
         if (isNaN(t)) return null;
         const days = Math.ceil((t - Date.now()) / 86400000);
-        if (days > 0) return days + ' days to exam';
+        // "134d to exam" — the long form wrapped inside the sidebar's profile
+        // chip and got clipped to "134 da" at the bar edge.
+        if (days > 0) return days + 'd to exam';
         if (days === 0) return 'EXAM DAY';
         return 'exam done — reset target?';
     } catch (_) { return null; }
@@ -8587,7 +8734,7 @@ function _airPopupInnerHtml(globalElo) {
             ${examTxt ? `<div class="air-pop-sec-row"><span class="air-pop-sec-label">Countdown</span><span class="air-pop-sec-val">${escapeHtml(examTxt)}</span></div>` : ''}
         </div>
         <div class="air-pop-foot">
-            <span class="air-pop-tier">${tier.icon} ${tier.name}</span>
+            <span class="air-pop-tier">${_tierIconMarkup(tier)} ${tier.name}</span>
             <span class="air-pop-elo">${Math.round(globalElo)} Global</span>
         </div>`;
 }
@@ -8868,7 +9015,7 @@ function _renderSubjectEloMonitor(subject, elo) {
     const tier = getRankTierDetails(elo);
     const nextThreshold = _getNextTierThreshold(elo);
     monitor.innerHTML =
-        `<span class="elo-monitor-rating">${tier.icon} ${Math.round(elo)}</span>` +
+        `<span class="elo-monitor-rating">${_tierIconMarkup(tier)} ${Math.round(elo)}</span>` +
         `<span class="elo-monitor-tier">${tier.name}</span>`;
     // Hover breakdown: relative points away from the next higher tier badge.
     if (nextThreshold !== null) {
@@ -10516,6 +10663,8 @@ function startMidnightRolloverWatcher() {
 
 // ==================== INITIALIZATION ====================
 async function initApp() {
+    try { _renderCalibrationReport(); } catch (_) {}
+    try { updateQuickLaunchAndArena(); } catch (_) {}
     // Register UI callbacks so storage.js can call back into app.js
     // ── View-gated hot-reloads ──
     // changeCount() fires renderGraph + renderErrorMatrixFromBank on EVERY
@@ -10548,6 +10697,8 @@ async function initApp() {
     });
 
     await loadDataAsync();
+    try { _renderCalibrationReport(); } catch (_) {}
+    try { updateQuickLaunchAndArena(); } catch (_) {}
 
     // Restore the permanent daily solved-count store from IndexedDB (merge into
     // localStorage + today's live counters), in case localStorage was cleared.
@@ -10669,7 +10820,7 @@ async function initApp() {
         topDate.textContent = `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
     }
 
-    await renderGraph();
+    try { await renderGraph(); } catch (e) { console.warn('[renderGraph]', e); }
     updateUI();
 
     // ── Daily Bounty: assign today's (if due) and surface the rail trigger.
@@ -10779,7 +10930,6 @@ function _renderChapterScopePicker(listEl, opts = {}) {
         bySubject[e.subject].push(e);
     });
 
-    const icons = { physics: '🌌', chemistry: '🧪', maths: '📐' };
     const ctxSubj = opts.ctxSubject ? String(opts.ctxSubject).toLowerCase() : null;
     // Weak-first pre-check: chapters that already produced logged errors get
     // ticked automatically (capped) so the analysis is never empty on arrival.
@@ -10791,8 +10941,11 @@ function _renderChapterScopePicker(listEl, opts = {}) {
     );
     let html = '';
     for (const [subj, chapters] of Object.entries(bySubject)) {
+        const glyphHtml = (typeof window.__glyph === 'function')
+            ? window.__glyph(subj.toLowerCase(), 'g-xs')
+            : '';
         html += `<div style="margin-bottom:12px;">`;
-        html += `<div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--accent-primary);">${icons[subj]||'📋'} ${escapeHtml(subj.toUpperCase())}</div>`;
+        html += `<div style="font-weight:700;font-size:13px;letter-spacing:.04em;margin-bottom:6px;color:var(--accent-primary);display:flex;align-items:center;gap:6px;">${glyphHtml}<span>${escapeHtml(subj.toUpperCase())}</span></div>`;
         chapters.forEach(c => {
             const checked = ctxSubj
                 ? (subj.toLowerCase() === ctxSubj)
@@ -12033,6 +12186,7 @@ document.addEventListener('DOMContentLoaded', function () {
     shields: 0,
     tickerIdx: 0, tickerAt: 0,
     last: {},           // text de-dup cache
+    lastP: {}, lastC: {}, // ring --p / --ring-c de-dup caches
     navBuilt: false, slowAt: 0,
   };
   try { CK.shields = Math.max(0, parseInt(localStorage.getItem(LS_SHIELDS) || '0', 10) || 0); } catch (e) { CK.shields = 0; }
@@ -12053,7 +12207,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const $ = (id) => document.getElementById(id);
   const setT = (id, t) => { if (CK.last[id] === t) return; CK.last[id] = t; const e = $(id); if (e) e.textContent = t; };
-  const setRing = (id, p, c) => { const e = $(id); if (!e) return; e.style.setProperty('--p', Math.max(0, Math.min(100, p))); if (c) e.style.setProperty('--ring-c', c); };
+  // Mirrors setT's de-dup: the 1s refreshNav tick used to rewrite --p/--ring-c
+  // on every ring even when the value was unchanged, dirtying sidebar style 4×/s.
+  const setRing = (id, p, c) => {
+    const e = $(id); if (!e) return;
+    const pv = Math.max(0, Math.min(100, p));
+    if (CK.lastP[id] !== pv) { CK.lastP[id] = pv; e.style.setProperty('--p', pv); }
+    if (c && CK.lastC[id] !== c) { CK.lastC[id] = c; e.style.setProperty('--ring-c', c); }
+  };
   const totalSolved = () => (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
 
   // ---- Cockpit removed: the practice-modal header keeps its original layout ----
@@ -12114,9 +12275,15 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ---- Navigation helpers ----
+  // The nav is static markup — a resolved hit is memoized forever; the
+  // textContent fallback still runs for tabs that miss the attribute.
+  const _navItemCache = new Map();
   function ckNavItem(tab, label) {
+    const cached = _navItemCache.get(tab);
+    if (cached) { if (cached.isConnected) return cached; _navItemCache.delete(tab); }
     let el = document.querySelector('.nav-item[data-tab="' + tab + '"]');
     if (!el) [...document.querySelectorAll('.nav-item')].forEach(n => { if ((n.textContent || '').indexOf(label) >= 0) el = n; });
+    if (el) _navItemCache.set(tab, el);
     return el;
   }
   function buildNav() {
@@ -12284,7 +12451,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const cur = getRankTierDetails(elo).name;
         const idx = ELO_RANK_TIERS.findIndex(t => elo >= t.min && elo <= t.max);
         const show = ELO_RANK_TIERS.slice(Math.max(0, idx - 1), idx + 2);
-        const html = show.map(t => '<div class="nav-ck-rung' + (t.name === cur ? ' here' : '') + '"><span class="nav-ck-rung-ic">' + t.icon + '</span><span class="nav-ck-rung-nm">' + t.name + '</span></div>').join('');
+        const html = show.map(t => '<div class="nav-ck-rung' + (t.name === cur ? ' here' : '') + '"><span class="nav-ck-rung-ic">' + _tierIconMarkup(t) + '</span><span class="nav-ck-rung-nm">' + t.name + '</span></div>').join('');
         if (ladder.getAttribute('data-rungs') !== html) {
           ladder.setAttribute('data-rungs', html);
           ladder.innerHTML = html;

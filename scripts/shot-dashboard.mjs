@@ -9,7 +9,7 @@ const OUT = process.env.SHOT_OUT || 'scripts/_shot';
 const W = parseInt(process.env.SHOT_W || '1440', 10);
 const H = parseInt(process.env.SHOT_H || '900', 10);
 
-const browser = await chromium.launch();
+let browser; try { browser = await chromium.launch({ channel: "msedge", headless: true }); } catch { browser = await chromium.launch({ channel: "chrome", headless: true }); }
 
 async function settle(page) {
   // The app may reload itself once shortly after boot (app.js migration),

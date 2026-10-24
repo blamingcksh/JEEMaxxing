@@ -631,7 +631,7 @@ export function renderReportHtml(report, opts) {
         '</div>';
 
     // Tag leaderboard
-    html += '<div class="rp-section"><div class="rp-h">🎯 Where it hurts — tags ranked by mistakes</div>';
+    html += '<div class="rp-section"><div class="rp-h"><svg class="g"><use href="#g-target"/></svg> Where it hurts — tags ranked by mistakes</div>';
     if (!report.tagRows.length) {
         html += '<div class="rp-empty">No tagged questions in this scope yet.</div>';
     } else {
@@ -670,7 +670,7 @@ export function renderReportHtml(report, opts) {
     html += '</div>';
 
     // Difficulty distribution bars
-    html += '<div class="rp-section"><div class="rp-h">📊 Difficulty profile — where mistakes live</div>';
+    html += '<div class="rp-section"><div class="rp-h"><svg class="g"><use href="#g-chart"/></svg> Difficulty profile — where mistakes live</div>';
     const maxM = Math.max.apply(null, report.bandRows.map(b => b.mistakes).concat([1]));
     html += '<div class="rp-bars">';
     for (const b of report.bandRows) {
@@ -692,14 +692,14 @@ export function renderReportHtml(report, opts) {
 
     // Signals
     if (report.signals.length) {
-        html += '<div class="rp-section"><div class="rp-h">🔍 Signals</div>';
+        html += '<div class="rp-section"><div class="rp-h"><svg class="g"><use href="#g-spark"/></svg> Signals</div>';
         for (const s of report.signals) html += '<div class="rp-signal">• ' + _esc(s) + '</div>';
         html += '</div>';
     }
 
     // Actions
     if (report.actions.length) {
-        html += '<div class="rp-section"><div class="rp-h">🧭 Next actions</div>';
+        html += '<div class="rp-section"><div class="rp-h"><svg class="g"><use href="#g-compass"/></svg> Next actions</div>';
         report.actions.forEach((a, i) => {
             html += '<div class="rp-action"><b>' + (i + 1) + '. ' + _esc(a.tag) + '</b> (' + a.mistakes + '/' + a.questions + ' wrong)' +
                 '<div class="rp-action-body">→ ' + _esc(a.action) + '</div></div>';
