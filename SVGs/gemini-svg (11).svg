@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+  <defs>
+    <!-- Single 60-degree Dendrite Arm Definition for 6-Fold Symmetry -->
+    <g id="dendrite-arm">
+      <!-- Primary Spine -->
+      <line x1="0" y1="0" x2="0" y2="-205" stroke="#1E1D1A" stroke-width="2.2" />
+      <!-- Inner Hexagonal Plate Sector -->
+      <polygon points="0,-42 36.4,-21 0,-52" fill="#E6DEC8" stroke="#1E1D1A" stroke-width="1" />
+      <line x1="0" y1="-82" x2="71" y2="-41" stroke="#C59B5F" stroke-width="1.2" stroke-dasharray="3 2" />
+      <!-- Primary Side Branches (60 deg angles) -->
+      <polyline points="-38,-88 0,-110 38,-88" fill="none" stroke="#1E1D1A" stroke-width="1.8" />
+      <polyline points="-54,-118 0,-150 54,-118" fill="none" stroke="#1E1D1A" stroke-width="1.8" />
+      <polyline points="-28,-162 0,-178 28,-162" fill="none" stroke="#D96B43" stroke-width="1.5" />
+      <!-- Faceted Diamond Tip -->
+      <polygon points="0,-218 12,-195 0,-178 -12,-195" fill="#F4EFE6" stroke="#1E1D1A" stroke-width="1.5" />
+      <circle cx="0" cy="-150" r="3.5" fill="#D96B43" />
+      <circle cx="38" cy="-88" r="2.5" fill="#1E1D1A" />
+      <circle cx="-38" cy="-88" r="2.5" fill="#1E1D1A" />
+    </g>
+  </defs>
+
+  <!-- Background & Outer Frame -->
+  <rect width="600" height="600" fill="#F4EFE6" />
+  <rect x="24" y="24" width="552" height="552" fill="none" stroke="#1E1D1A" stroke-width="1.5" />
+  <rect x="32" y="32" width="536" height="536" fill="none" stroke="#1E1D1A" stroke-width="0.6" />
+
+  <!-- Crystallographic Bravais Lattice & Goniometer Rings -->
+  <g transform="translate(300, 285)" fill="none" stroke="#1E1D1A">
+    <circle cx="0" cy="0" r="228" stroke-width="1" />
+    <circle cx="0" cy="0" r="220" stroke-width="4" stroke-dasharray="1 4.76" />
+    <circle cx="0" cy="0" r="150" stroke="#C59B5F" stroke-width="0.8" stroke-dasharray="4 4" />
+    <circle cx="0" cy="0" r="110" stroke-width="0.6" stroke-dasharray="2 3" />
+
+    <!-- Outer Bounding Hexagon -->
+    <polygon points="0,-205 177.5,-102.5 177.5,102.5 0,205 -177.5,102.5 -177.5,-102.5" stroke="#D96B43" stroke-width="0.9" stroke-dasharray="5 4" />
+
+    <!-- 6-Fold Stellar Dendrite Assembly -->
+    <use href="#dendrite-arm" transform="rotate(0)" />
+    <use href="#dendrite-arm" transform="rotate(60)" />
+    <use href="#dendrite-arm" transform="rotate(120)" />
+    <use href="#dendrite-arm" transform="rotate(180)" />
+    <use href="#dendrite-arm" transform="rotate(240)" />
+    <use href="#dendrite-arm" transform="rotate(300)" />
+
+    <!-- Central Basal Hexagonal Core -->
+    <polygon points="0,-42 36.4,-21 36.4,21 0,42 -36.4,21 -36.4,-21" fill="#F4EFE6" stroke="#1E1D1A" stroke-width="2" />
+    <polygon points="0,-24 20.8,-12 20.8,12 0,24 -20.8,12 -20.8,-12" fill="#D96B43" fill-opacity="0.3" stroke="#D96B43" stroke-width="1.2" />
+    <circle cx="0" cy="0" r="4" fill="#1E1D1A" />
+  </g>
+
+  <!-- Corner Inset: H2O Tetrahedral Bond Geometry (Bottom Left) -->
+  <g transform="translate(46, 455)">
+    <rect x="0" y="0" width="145" height="82" fill="#F4EFE6" stroke="#1E1D1A" stroke-width="1.2" />
+    <line x1="72" y1="28" x2="32" y2="62" stroke="#1E1D1A" stroke-width="2" />
+    <line x1="72" y1="28" x2="112" y2="62" stroke="#1E1D1A" stroke-width="2" />
+    <path d="M 52 45 A 26 26 0 0 0 92 45" fill="none" stroke="#D96B43" stroke-width="1.2" stroke-dasharray="2 2" />
+    <circle cx="72" cy="28" r="11" fill="#D96B43" stroke="#1E1D1A" stroke-width="1.5" />
+    <circle cx="32" cy="62" r="7" fill="#E6DEC8" stroke="#1E1D1A" stroke-width="1.2" />
+    <circle cx="112" cy="62" r="7" fill="#E6DEC8" stroke="#1E1D1A" stroke-width="1.2" />
+    <text x="52" y="68" font-family="monospace" font-size="8" fill="#1E1D1A">104.5°</text>
+  </g>
+
+  <!-- Corner Inset: Nakaya Morphology Diagram (Bottom Right) -->
+  <g transform="translate(409, 455)" fill="none" stroke="#1E1D1A">
+    <rect x="0" y="0" width="145" height="82" fill="#F4EFE6" stroke-width="1.2" />
+    <path d="M 12 68 Q 45 65, 65 20 T 115 48 T 135 15" stroke="#1E1D1A" stroke-width="1.2" />
+    <circle cx="65" cy="20" r="4" fill="#D96B43" />
+    <line x1="65" y1="0" x2="65" y2="82" stroke="#D96B43" stroke-width="0.7" stroke-dasharray="2 2" />
+    <text x="10" y="16" font-family="monospace" font-size="8" fill="#1E1D1A" stroke="none">-15°C DENDRITIC PEAK</text>
+  </g>
+
+  <!-- Technical Annotations -->
+  <g font-family="monospace" font-size="10" fill="#1E1D1A" letter-spacing="1.5">
+    <text x="44" y="52">OBS. 06 // HEXAGONAL ICE DENDRITE (Ih)</text>
+    <text x="44" y="68" fill="#D96B43">SPACE GROUP P6₃/mmc • SYMMETRY D₆h</text>
+  </g>
+</svg>

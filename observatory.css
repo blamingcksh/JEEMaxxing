@@ -1,0 +1,1464 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   observatory.css — the Observatory reskin (Phase 1)
+   Loaded LAST (after styles-ipad.css). Every visible surface is overridden
+   from here while the legacy sheets keep working underneath.
+
+   One theme, two moods, three inks:
+     html[data-theme="observatory"]  always set by theme.js / pre-boot
+     html[data-ink="brass|starlight|ember"]
+     html[data-mode="night|dusk"]
+
+   Rules of the house (see the plan):
+     · one plate per screen, never inside cards, never side by side
+     · content floats on the void — folios, not boxes
+     · brass is light, not paint — one accent per view
+     · serif for meaning, mono for measurement
+     · motion is drift, not bounce
+     · focus means darkness
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §1 · TOKENS — observatory palette + full legacy remap
+   ───────────────────────────────────────────────────────────────────────── */
+html[data-theme="observatory"] {
+  color-scheme: dark;
+
+  /* observatory palette (Night mood values; Dusk overrides below) */
+  --obs-void:    #06070A;
+  --obs-void-2:  #0B0D13;
+  --obs-panel:   rgba(11, 13, 19, .72);
+  --obs-hair:    rgba(229, 192, 123, .10);
+  --obs-hair-2:  rgba(242, 237, 227, .08);
+  --obs-edge:    rgba(229, 192, 123, .24);
+  --obs-bone:    #F2EDE3;
+  --obs-bone-2:  rgba(242, 237, 227, .62);
+  --obs-bone-3:  rgba(242, 237, 227, .38);
+  --obs-ink:     #E5C07B;                       /* brass default */
+  --obs-ok:      #A9C9A4;
+  --obs-warn:    #D9B36A;
+  --obs-crit:    #D9785F;
+  --obs-subj-phys:  #8FBFE0;
+  --obs-subj-chem:  #A9C9A4;
+  --obs-subj-math:  #E5C07B;
+  --obs-plate-op:  .085;
+  --obs-grain-op:  .04;
+
+  /* legacy foundation remap — anything already on tokens converts itself */
+  --bg-base:         var(--obs-void);
+  --bg-raise:        var(--obs-void-2);
+  --bg-inset:        #08090E;
+  --bg-surface:      var(--obs-panel);
+  --bg-surface-hover: rgba(18, 21, 30, .85);
+  --text-primary:    var(--obs-bone);
+  --text-secondary:  var(--obs-bone-2);
+  --text-muted:      var(--obs-bone-3);
+  --line:            var(--obs-hair);
+  --line-strong:     var(--obs-edge);
+
+  --furnace:     var(--obs-ink);
+  --furnace-hot: var(--obs-ink);
+  --telemetry:   var(--obs-ink);
+  --vault:       var(--obs-ink);
+  --glow-green:  var(--obs-ok);
+  --glow-red:    var(--obs-crit);
+  --glow-yellow: var(--obs-warn);
+  --glow-orange: var(--obs-crit);
+  --teal:        var(--obs-subj-phys);
+  --grad-furnace: linear-gradient(100deg, var(--obs-ink), var(--obs-ink));
+  --grad-flow:    linear-gradient(90deg, var(--obs-ink), var(--obs-ink));
+  --aes-amber:  var(--obs-ink);
+  --aes-amber2: var(--obs-ink);
+  --aes-cyan:   var(--obs-ink);
+  --aes-violet: var(--obs-ink);
+  --aes-line:   var(--obs-hair);
+  --aur-1: transparent; --aur-2: transparent; --aur-3: transparent;
+
+  --accent:      var(--obs-ink);
+  --accent-2:    var(--obs-ink);
+  --accent-a3:   color-mix(in srgb, var(--obs-ink) 8%,  transparent);
+  --accent-a6:   color-mix(in srgb, var(--obs-ink) 14%, transparent);
+  --accent-a10:  color-mix(in srgb, var(--obs-ink) 22%, transparent);
+  --accent-a18:  color-mix(in srgb, var(--obs-ink) 36%, transparent);
+  --accent-a30:  color-mix(in srgb, var(--obs-ink) 55%, transparent);
+  --accent-soft: color-mix(in srgb, var(--obs-ink) 30%, transparent);
+  --accent-ink:  var(--obs-void-2);
+
+  --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-body:    'IBM Plex Sans', system-ui, sans-serif;
+  --font-num:     'IBM Plex Mono', ui-monospace, 'Courier New', monospace;
+
+  --e-1: none; --e-2: none; --e-3: none;
+  --ring-focus: 0 0 0 1px var(--obs-edge);
+  --r-sm: 4px; --r-md: 4px; --r-lg: 6px; --r-xl: 6px; --r-full: 999px;
+  --topbar-h: 56px;
+  --topbar-h-collapsed: 48px;
+}
+
+/* inks — declared after the theme block so they win the tie */
+html[data-ink="starlight"] { --obs-ink: #9CD3F0; --obs-subj-math: #9CD3F0; }
+html[data-ink="ember"]     { --obs-ink: #E07A52; --obs-subj-math: #E07A52; }
+
+/* dusk mood — a warmer, lighter night */
+html[data-theme="observatory"][data-mode="dusk"] {
+  --obs-void:   #12141C;
+  --obs-void-2: #181B25;
+  --obs-panel:  rgba(24, 27, 37, .72);
+  --obs-plate-op: .18;
+  --obs-grain-op: .028;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §2 · BASE — body, scrollbars, selection, focus, placeholders
+   ───────────────────────────────────────────────────────────────────────── */
+html[data-theme="observatory"] body {
+  background: var(--obs-void);
+  color: var(--obs-bone-2);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+/* the legacy aurora + noise sheet flattens to plain void (grain moves to §3) */
+html[data-theme="observatory"] body::before {
+  background: var(--obs-void) !important;
+  animation: none !important;
+}
+html[data-theme="observatory"] ::selection {
+  background: color-mix(in srgb, var(--obs-ink) 26%, transparent);
+  color: var(--obs-bone);
+}
+html[data-theme="observatory"] ::-webkit-scrollbar        { width: 10px; height: 10px; }
+html[data-theme="observatory"] ::-webkit-scrollbar-track  { background: transparent; }
+html[data-theme="observatory"] ::-webkit-scrollbar-thumb  { background: rgba(242, 237, 227, .12); border-radius: 5px; border: 3px solid transparent; background-clip: content-box; }
+html[data-theme="observatory"] ::-webkit-scrollbar-thumb:hover { background-color: rgba(242, 237, 227, .22); }
+html[data-theme="observatory"] :focus-visible {
+  outline: 1px solid var(--obs-edge);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+html[data-theme="observatory"] input::placeholder,
+html[data-theme="observatory"] textarea::placeholder { color: var(--obs-bone-3); opacity: 1; }
+
+/* glyph sprite sizing (glyphs.js) */
+html[data-theme="observatory"] svg.g {
+  width: 1em; height: 1em; display: inline-block;
+  vertical-align: -0.125em; flex: none;
+}
+
+/* the forest wallpaper retires with the observatory (JS unload lands Phase 4) */
+html[data-theme="observatory"] [id^="forest-bg"],
+html[data-theme="observatory"] .forest-bg-btn { display: none !important; }
+
+/* app shell sits above the sky */
+html[data-theme="observatory"] .app-container { position: relative; z-index: 1; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §3 · ATMOSPHERE — sky, plates, grain (markup from atmosphere.js)
+   ───────────────────────────────────────────────────────────────────────── */
+.obs-atmos {
+  position: fixed; inset: 0; z-index: 0;
+  overflow: hidden; pointer-events: none;
+  transform: translateY(var(--obs-par, 0px));   /* gentle scroll parallax */
+  contain: strict;
+}
+.obs-sky { position: absolute; inset: 0; }
+.obs-stars {
+  position: absolute; top: 0; left: 0;
+  width: 2px; height: 2px; border-radius: 50%;
+  background: transparent;
+}
+.obs-stars-deep { color: rgba(242, 237, 227, .26); }
+.obs-stars-near { color: rgba(242, 237, 227, .55); }
+
+.obs-plate {
+  position: fixed; top: 50%;
+  height: 138vh; width: auto;
+  max-width: none;
+  opacity: 0;
+  visibility: hidden;
+  animation: none;
+  transition: opacity 1.2s ease, visibility 1.2s ease;
+  pointer-events: none; user-select: none;
+  -webkit-user-drag: none;
+}
+/* no hard edges — and the content side dissolves harder so text stays dark */
+.obs-plate[data-anchor="right"] {
+  right: -22vh; transform: translateY(-50%);
+  -webkit-mask-image: radial-gradient(70% 70% at 66% 48%, #000 26%, transparent 76%);
+  mask-image: radial-gradient(74% 72% at 64% 48%, #000 30%, transparent 80%);
+}
+.obs-plate[data-anchor="left"] {
+  left: -22vh; transform: translateY(-50%);
+  -webkit-mask-image: radial-gradient(74% 72% at 36% 48%, #000 30%, transparent 80%);
+  mask-image: radial-gradient(74% 72% at 36% 48%, #000 30%, transparent 80%);
+}
+.obs-plate[data-anchor="centre"] {
+  left: 50%; height: 106vh; transform: translate(-50%, -50%);
+  -webkit-mask-image: radial-gradient(78% 72% at 50% 46%, #000 38%, transparent 84%);
+  mask-image: radial-gradient(78% 72% at 50% 46%, #000 38%, transparent 84%);
+}
+
+/* drift, not bounce — the `translate` property composes with `transform` */
+@keyframes obs-drift { from { translate: 0 0; } to { translate: 14px -20px; } }
+
+/* screen selection — exactly one plate breathes at a time.
+   Every screen carries gemini plates: engraved ink in Night mood, the
+   polychrome PLATE-series in Dusk; single-plate screens run both moods. */
+html[data-obs-screen="dashboard"] .obs-plate[data-screen="dashboard"]:not([data-variant]),
+html[data-obs-screen="vault"]     .obs-plate[data-screen="vault"]:not([data-variant]),
+html[data-obs-screen="practice"]  .obs-plate[data-screen="practice"]:not([data-variant]),
+html[data-obs-screen="mocks"]     .obs-plate[data-screen="mocks"]:not([data-variant]),
+html[data-obs-screen="settings"]  .obs-plate[data-screen="settings"]:not([data-variant]) {
+  opacity: var(--obs-plate-op);
+  visibility: visible;
+  animation: obs-drift 40s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+html[data-obs-screen="dashboard"][data-mode="night"] .obs-plate[data-screen="dashboard"][data-variant="night"],
+html[data-obs-screen="dashboard"][data-mode="dusk"]  .obs-plate[data-screen="dashboard"][data-variant="dusk"],
+html[data-obs-screen="vault"][data-mode="night"]     .obs-plate[data-screen="vault"][data-variant="night"],
+html[data-obs-screen="vault"][data-mode="dusk"]      .obs-plate[data-screen="vault"][data-variant="dusk"],
+html[data-obs-screen="practice"][data-mode="night"]  .obs-plate[data-screen="practice"][data-variant="night"],
+html[data-obs-screen="practice"][data-mode="dusk"]   .obs-plate[data-screen="practice"][data-variant="dusk"],
+html[data-obs-screen="mocks"][data-mode="night"]     .obs-plate[data-screen="mocks"][data-variant="night"],
+html[data-obs-screen="mocks"][data-mode="dusk"]      .obs-plate[data-screen="mocks"][data-variant="dusk"],
+html[data-obs-screen="lunar"][data-mode="night"]     .obs-plate[data-screen="lunar"][data-variant="night"],
+html[data-obs-screen="lunar"][data-mode="dusk"]      .obs-plate[data-screen="lunar"][data-variant="dusk"] {
+  opacity: calc(var(--obs-plate-op) + .03);
+  visibility: visible;
+  animation: obs-drift 40s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+html[data-obs-screen="lunar"]     .obs-plate[data-screen="lunar"]:not([data-variant])  {
+  opacity: calc(var(--obs-plate-op) * .9);
+  visibility: visible;
+  animation: obs-drift 40s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+html[data-obs-screen="boot"]      .obs-plate[data-screen="boot"]   {
+  opacity: .2;
+  visibility: visible;
+  animation: obs-drift 40s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+/* focus means darkness — solving dims the sky to a whisper */
+html[data-theme="observatory"][data-obs-focus] .obs-plate { opacity: .04 !important; }
+
+.obs-grain {
+  position: absolute; inset: -60px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  opacity: var(--obs-grain-op);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §4 · PRIMITIVES — buttons, inputs, chips, toggles, meters, popovers
+   ───────────────────────────────────────────────────────────────────────── */
+html[data-theme="observatory"] .btn {
+  background: transparent !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  color: var(--obs-bone-2) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  font-family: var(--font-num);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  transition: color .18s ease, border-color .18s ease, background .18s ease;
+}
+html[data-theme="observatory"] .btn:hover {
+  color: var(--obs-bone) !important;
+  border-color: var(--obs-edge) !important;
+  transform: none;
+}
+html[data-theme="observatory"] .btn-primary {
+  border-color: color-mix(in srgb, var(--obs-ink) 55%, transparent) !important;
+  color: var(--obs-ink) !important;
+  background: transparent !important;
+}
+html[data-theme="observatory"] .btn-primary:hover {
+  background: var(--obs-ink) !important;
+  color: var(--obs-void-2) !important;
+  border-color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] .btn-danger  { color: var(--obs-crit) !important; border-color: color-mix(in srgb, var(--obs-crit) 45%, transparent) !important; }
+html[data-theme="observatory"] .btn-success { color: var(--obs-ok)   !important; border-color: color-mix(in srgb, var(--obs-ok) 45%, transparent) !important; }
+
+html[data-theme="observatory"] .pomo-input,
+html[data-theme="observatory"] .pomo-select,
+html[data-theme="observatory"] textarea.pomo-input,
+html[data-theme="observatory"] input.pomo-input {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  color: var(--obs-bone) !important;
+  box-shadow: none !important;
+  font-family: var(--font-body);
+}
+html[data-theme="observatory"] .pomo-input:focus,
+html[data-theme="observatory"] .pomo-select:focus {
+  border-color: var(--obs-edge) !important;
+  outline: none !important;
+}
+
+/* toggles — thin 28×14 switches */
+html[data-theme="observatory"] .fx-switch,
+html[data-theme="observatory"] .fb-switch { position: relative; width: 28px; height: 14px; flex: none; }
+html[data-theme="observatory"] .fx-switch input,
+html[data-theme="observatory"] .fb-switch input { opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+html[data-theme="observatory"] .fx-slider,
+html[data-theme="observatory"] .fb-slider {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: transparent !important;
+  border: 1px solid var(--obs-hair);
+  transition: border-color .18s ease;
+  pointer-events: none;
+}
+html[data-theme="observatory"] .fx-slider::after,
+html[data-theme="observatory"] .fb-slider::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--obs-bone-3);
+  transition: left .18s ease, background .18s ease;
+}
+html[data-theme="observatory"] .fx-switch input:checked + .fx-slider,
+html[data-theme="observatory"] .fb-switch input:checked + .fb-slider { border-color: color-mix(in srgb, var(--obs-ink) 55%, transparent); }
+html[data-theme="observatory"] .fx-switch input:checked + .fx-slider::after,
+html[data-theme="observatory"] .fb-switch input:checked + .fb-slider::after { left: 16px; background: var(--obs-ink); }
+
+/* kickers + badges go quiet mono */
+html[data-theme="observatory"] .kicker,
+html[data-theme="observatory"] .calib-kicker {
+  font-family: var(--font-num);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--obs-bone-3);
+}
+
+/* tiny status dots (vault filter pills etc.) */
+html[data-theme="observatory"] .sdot {
+  display: inline-block;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: 1.5px;
+}
+html[data-theme="observatory"] .sdot-ready { background: var(--obs-ok); }
+html[data-theme="observatory"] .sdot-soon  { background: var(--obs-warn); }
+html[data-theme="observatory"] .sdot-later { background: color-mix(in srgb, var(--obs-ink) 45%, transparent); }
+html[data-theme="observatory"] .sdot-done  { background: var(--obs-bone-3); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §5 · SHELL — top nav, header, calibration strip, sync cluster
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* nav rail: transparent over the sky; a hairline only after scroll */
+html[data-theme="observatory"] #sidebar,
+html[data-theme="observatory"] .sidebar {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-right: 0 !important;
+  border-bottom: 1px solid transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  transition: border-color .3s ease;
+}
+html[data-theme="observatory"][data-obs-scrolled] #sidebar,
+html[data-theme="observatory"][data-obs-scrolled] .sidebar {
+  border-bottom-color: var(--obs-hair) !important;
+}
+html[data-theme="observatory"] #sidebar::after,
+html[data-theme="observatory"] .sidebar::after { display: none !important; }
+
+/* wordmark — letterspaced caps; the bolt becomes a thin brass ring */
+html[data-theme="observatory"] #sidebar .logo-container { margin-bottom: 0 !important; }
+html[data-theme="observatory"] #sidebar .logo-mark {
+  width: 20px !important; height: 20px !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: 1px solid var(--obs-edge);
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] #sidebar .logo-mark svg { display: none; }
+html[data-theme="observatory"] #sidebar .logo-text {
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+  -webkit-text-fill-color: currentColor !important;
+  color: var(--obs-bone) !important;
+  text-shadow: none !important;
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  font-weight: 500;
+  letter-spacing: .34em;
+  text-transform: uppercase;
+}
+html[data-theme="observatory"] #sidebar .logo-text::after { display: none !important; }
+
+/* nav items — 11px tracked caps; active = bone + 1px brass underline */
+html[data-theme="observatory"] #sidebar .nav-item {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  color: var(--obs-bone-3) !important;
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  transition: color .18s ease;
+}
+html[data-theme="observatory"] #sidebar .nav-item .text-label { letter-spacing: .18em; }
+html[data-theme="observatory"] #sidebar .nav-item .icon { color: var(--obs-bone-3); margin-right: 0 !important; }
+html[data-theme="observatory"] #sidebar .nav-item .icon svg { width: 15px !important; height: 15px !important; }
+html[data-theme="observatory"] #sidebar .nav-item:hover {
+  background: transparent !important;
+  transform: none !important;
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] #sidebar .nav-item:hover .icon { color: var(--obs-bone-2); }
+html[data-theme="observatory"] #sidebar .nav-item.active {
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--obs-bone) !important;
+}
+html[data-theme="observatory"] #sidebar .nav-item.active .icon { color: var(--obs-ink) !important; filter: none !important; }
+html[data-theme="observatory"] #sidebar .nav-item.active::before {
+  left: 18% !important; right: 18% !important; bottom: 5px !important;
+  top: auto !important;
+  width: auto !important; height: 1px !important;
+  border-radius: 0 !important;
+  background: var(--obs-ink) !important;
+  box-shadow: none !important;
+  opacity: .8;
+}
+
+/* profile = quiet initial chip + mono readouts */
+html[data-theme="observatory"] #sidebar .user-profile {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] #sidebar .pfp-img {
+  width: 26px !important; height: 26px !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 0 1px var(--obs-edge) !important;
+  filter: saturate(.75);
+}
+html[data-theme="observatory"] #sidebar .username-txt {
+  font-family: var(--font-num) !important;
+  font-size: 10.5px !important;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] #sidebar .global-mmr-row,
+html[data-theme="observatory"] .global-mmr-row {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .global-mmr-row .mmr-score,
+html[data-theme="observatory"] .global-mmr-row {
+  font-family: var(--font-num);
+  color: var(--obs-bone-3);
+}
+
+/* utility icon buttons (theme picker, collapse) */
+html[data-theme="observatory"] #sidebar .theme-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  width: auto !important;
+  min-width: unset !important;
+  height: 28px !important;
+  padding: 0 10px !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 999px !important;
+  background: rgba(242, 237, 227, .03) !important;
+  color: var(--obs-bone-2) !important;
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  letter-spacing: .08em !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+  transition: border-color .18s ease, background .18s ease, color .18s ease !important;
+}
+html[data-theme="observatory"] #sidebar .theme-btn:hover {
+  border-color: var(--obs-edge) !important;
+  color: var(--obs-bone) !important;
+  background: rgba(242, 237, 227, .06) !important;
+}
+html[data-theme="observatory"] #sidebar .theme-btn .theme-btn-dot {
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  background: var(--obs-ink) !important;
+  box-shadow: 0 0 5px color-mix(in srgb, var(--obs-ink) 50%, transparent) !important;
+}
+html[data-theme="observatory"] #sidebar .theme-btn .theme-btn-label {
+  display: inline !important;
+  font-size: 10.5px !important;
+  text-transform: uppercase !important;
+  letter-spacing: .12em !important;
+}
+html[data-theme="observatory"] #sidebar .theme-btn .theme-btn-chev {
+  display: inline !important;
+  font-size: 9px !important;
+  opacity: .7 !important;
+}
+html[data-theme="observatory"] #sidebar .collapse-btn {
+  display: none !important;
+}
+
+/* theme popover — three ink dots + a Night/Dusk segmented control */
+html[data-theme="observatory"] #theme-panel,
+html[data-theme="observatory"] .theme-pop {
+  position: fixed !important;
+  z-index: 100000 !important;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .18s ease, visibility .18s ease;
+  background: #10131C !important;
+  border: 1px solid var(--obs-edge) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 18px 60px -20px rgba(0, 0, 0, .9), 0 0 0 1px rgba(6, 7, 10, .6) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  padding: 14px 16px !important;
+  width: 232px !important;
+}
+html[data-theme="observatory"] .theme-pop-title {
+  font-family: var(--font-num); font-size: 9.5px; font-weight: 500;
+  letter-spacing: .26em; text-transform: uppercase;
+  color: var(--obs-bone-2); margin: 0 0 10px;
+}
+html[data-theme="observatory"] #theme-panel.open,
+html[data-theme="observatory"] .theme-pop.open {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+html[data-theme="observatory"] .theme-ink-row { display: flex; gap: 14px; margin-bottom: 14px; }
+html[data-theme="observatory"] .theme-ink {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid var(--obs-hair);
+  background: transparent !important;
+  position: relative; cursor: pointer; padding: 0;
+  transition: border-color .18s ease;
+}
+html[data-theme="observatory"] .theme-ink::after {
+  content: ''; position: absolute; inset: 5px; border-radius: 50%;
+  background: var(--ink-dot, var(--obs-ink));
+}
+html[data-theme="observatory"] .theme-ink[aria-pressed="true"] { border-color: var(--obs-edge); }
+html[data-theme="observatory"] .theme-mode-seg {
+  display: flex; border: 1px solid var(--obs-hair); border-radius: 4px; overflow: hidden;
+}
+html[data-theme="observatory"] .theme-mode-seg button {
+  flex: 1; background: transparent; border: 0; cursor: pointer;
+  padding: 7px 0;
+  font-family: var(--font-num); font-size: 10.5px; font-weight: 500;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--obs-bone-2);
+  transition: color .18s ease, background .18s ease;
+}
+html[data-theme="observatory"] .theme-mode-seg button + button { border-left: 1px solid var(--obs-hair); }
+html[data-theme="observatory"] .theme-mode-seg button[aria-pressed="true"] {
+  color: var(--obs-ink);
+  background: color-mix(in srgb, var(--obs-ink) 9%, transparent);
+}
+
+/* header — serif title over an eyebrow */
+html[data-theme="observatory"] .header-section { align-items: flex-end; }
+html[data-theme="observatory"] #view-title {
+  font-family: var(--font-display) !important;
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(30px, 3.2vw, 44px);
+  line-height: 1.05;
+  letter-spacing: .005em;
+  color: var(--obs-bone) !important;
+  text-shadow: none !important;
+}
+html[data-theme="observatory"] .header-sub {
+  font-family: var(--font-num);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--obs-bone-3);
+  margin-top: 9px;
+}
+html[data-theme="observatory"] .header-sub #top-date { color: var(--obs-bone-2); }
+
+/* calibration strip — one dim mono line */
+html[data-theme="observatory"] .calib-strip,
+html[data-theme="observatory"] #calibration-report {
+  background: transparent !important;
+  border: 0 !important;
+  border-left: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 3px 14px 3px 12px !important;
+  font-family: var(--font-num);
+  font-size: 11px;
+  color: var(--obs-bone-2);
+}
+html[data-theme="observatory"] .calib-warmup { color: var(--obs-bone-2); }
+
+/* sync cluster — a status dot and a label */
+html[data-theme="observatory"] .sync-cluster {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  position: relative;
+  padding-left: 14px !important;
+}
+html[data-theme="observatory"] .sync-cluster::before {
+  content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--obs-ok);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--obs-ok) 60%, transparent);
+}
+html[data-theme="observatory"] .manual-sync-btn {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] .manual-sync-btn:hover { color: var(--obs-ink) !important; transform: none !important; }
+html[data-theme="observatory"] #sync-sub-text {
+  font-family: var(--font-num);
+  font-size: 10px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--obs-bone-3);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §6 · GRIND HUB — quick bar, folios, star map, tracker, ledgers
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* quick actions — two text actions with glyphs */
+html[data-theme="observatory"] .dash-quick-bar {
+  display: flex; align-items: center; gap: 34px;
+  padding: 8px 2px 0;
+  margin: 2px 0 30px;
+}
+html[data-theme="observatory"] .dash-quick-btn {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 6px 0 !important;
+  display: inline-flex; align-items: center; gap: 9px;
+  font-family: var(--font-num);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--obs-bone-2) !important;
+  transition: color .18s ease;
+}
+html[data-theme="observatory"] .dash-quick-btn:hover { color: var(--obs-bone) !important; }
+html[data-theme="observatory"] .dq-icon { display: inline-flex; color: var(--obs-ink); }
+html[data-theme="observatory"] .dq-icon .g { width: 15px; height: 15px; }
+
+/* layout FAB rides the quick bar quietly */
+html[data-theme="observatory"] #dc-layout-fab {
+  width: 30px; height: 30px;
+  margin-left: auto;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: 1px solid var(--obs-hair) !important;
+  box-shadow: none !important;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] #dc-layout-fab:hover,
+html[data-theme="observatory"] #dc-layout-fab.active {
+  color: var(--obs-ink) !important;
+  border-color: var(--obs-edge) !important;
+}
+
+/* folio grid — no boxes, hairline rules, generous air */
+html[data-theme="observatory"] #view-dashboard .dash-grid { gap: 46px 44px; }
+html[data-theme="observatory"] #view-dashboard .dash-grid > .dash-card {
+  background: transparent !important;
+  border: 0 !important;
+  border-top: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  padding: 13px 2px 0 !important;
+  transition: border-color .3s ease;
+}
+html[data-theme="observatory"] #view-dashboard .dash-grid > .dash-card:hover {
+  border-top-color: var(--obs-edge) !important;
+  transform: none !important;
+}
+html[data-theme="observatory"] .dv-head { margin: 0 0 15px; }
+html[data-theme="observatory"] .dv-title {
+  font-family: var(--font-num) !important;
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: .24em !important;
+  text-transform: uppercase !important;
+  color: var(--obs-bone-3) !important;
+  text-shadow: none !important;
+}
+html[data-theme="observatory"] .dv-legend,
+html[data-theme="observatory"] .daily-variance-legend {
+  font-family: var(--font-num);
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--obs-bone-3);
+}
+html[data-theme="observatory"] .dv-legend i,
+html[data-theme="observatory"] .daily-variance-legend .daily-variance-legend-label { font-style: normal; }
+html[data-theme="observatory"] .dv-legend i { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+html[data-theme="observatory"] .dv-legend i[data-h="ok"]   { background: var(--obs-ok); }
+html[data-theme="observatory"] .dv-legend i[data-h="fade"] { background: var(--obs-warn); }
+html[data-theme="observatory"] .dv-legend i[data-h="crit"] { background: var(--obs-crit); }
+
+/* consistency — astronomy-inspired date chart */
+html[data-theme="observatory"] .daily-variance-months {
+  display: flex !important;
+  width: 100% !important;
+  max-width: 900px !important;
+  gap: 3px !important;
+  margin-bottom: 8px !important;
+}
+html[data-theme="observatory"] .daily-variance-month {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  font-family: var(--font-num) !important;
+  font-size: 9.5px !important;
+  letter-spacing: .08em !important;
+  color: var(--obs-bone-3) !important;
+  text-align: center !important;
+}
+html[data-theme="observatory"] .daily-variance-grid {
+  display: flex !important;
+  width: 100% !important;
+  max-width: 900px !important;
+  gap: 3px !important;
+  align-items: stretch !important;
+}
+html[data-theme="observatory"] .daily-variance-week {
+  display: grid !important;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  grid-template-rows: repeat(7, 1fr) !important;
+  gap: 3px !important;
+}
+html[data-theme="observatory"] .daily-variance-dot {
+  display: block !important;
+  width: 100% !important;
+  aspect-ratio: 1 !important;
+  max-width: 12px !important;
+  padding: 0 !important;
+  border: 1px solid rgba(242, 237, 227, .06) !important;
+  border-radius: 2.5px !important;
+  background: rgba(242, 237, 227, .08) !important;
+  box-shadow: none !important;
+  box-sizing: border-box !important;
+  transition: background .18s ease, border-color .18s ease !important;
+}
+html[data-theme="observatory"] .daily-variance-dot[data-level="1"] {
+  background: color-mix(in srgb, var(--obs-ink) 35%, rgba(242, 237, 227, .08)) !important;
+  border-color: color-mix(in srgb, var(--obs-ink) 30%, transparent) !important;
+}
+html[data-theme="observatory"] .daily-variance-dot[data-level="2"] {
+  background: color-mix(in srgb, var(--obs-ink) 60%, rgba(242, 237, 227, .08)) !important;
+  border-color: color-mix(in srgb, var(--obs-ink) 50%, transparent) !important;
+}
+html[data-theme="observatory"] .daily-variance-dot[data-level="3"] {
+  background: color-mix(in srgb, var(--obs-ink) 85%, transparent) !important;
+  border-color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] .daily-variance-dot[data-level="4"] {
+  background: var(--obs-ink) !important;
+  border-color: var(--obs-ink) !important;
+  box-shadow: 0 0 7px color-mix(in srgb, var(--obs-ink) 65%, transparent) !important;
+}
+html[data-theme="observatory"] .daily-variance-dot[data-today="true"] {
+  outline: 1.5px solid var(--obs-bone) !important;
+  outline-offset: 1px !important;
+}
+html[data-theme="observatory"] .daily-variance-swatch {
+  width: 7px !important; height: 7px !important;
+  border-radius: 2px !important;
+  border: 1px solid rgba(242, 237, 227, .1) !important;
+  box-sizing: border-box !important;
+}
+html[data-theme="observatory"] .daily-variance-swatch[data-level="0"] { background: rgba(242, 237, 227, .08); }
+html[data-theme="observatory"] .daily-variance-swatch[data-level="1"] { background: color-mix(in srgb, var(--obs-ink) 35%, rgba(242, 237, 227, .08)); }
+html[data-theme="observatory"] .daily-variance-swatch[data-level="2"] { background: color-mix(in srgb, var(--obs-ink) 60%, rgba(242, 237, 227, .08)); }
+html[data-theme="observatory"] .daily-variance-swatch[data-level="3"] { background: color-mix(in srgb, var(--obs-ink) 85%, transparent); }
+html[data-theme="observatory"] .daily-variance-swatch[data-level="4"] { background: var(--obs-ink); }
+
+/* today's progress — the hero number */
+html[data-theme="observatory"] #view-dashboard .tp-reading {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 6px !important;
+  margin: 4px 0 16px !important;
+}
+html[data-theme="observatory"] #view-dashboard .tp-figure {
+  display: flex !important;
+  align-items: baseline !important;
+  gap: 10px !important;
+  margin: 0 !important;
+}
+html[data-theme="observatory"] .tp-num-big {
+  font-family: var(--font-display) !important;
+  font-weight: 500 !important;
+  font-style: normal !important;
+  font-size: clamp(54px, 5.6vw, 74px) !important;
+  line-height: .95 !important;
+  letter-spacing: 0 !important;
+  color: var(--obs-bone) !important;
+  text-shadow: none !important;
+}
+html[data-theme="observatory"] .tp-figure-tgt {
+  font-family: var(--font-num) !important;
+  font-size: 13px !important;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] .tp-caption {
+  font-family: var(--font-num);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--obs-bone-3);
+}
+html[data-theme="observatory"] .tp-variance {
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  color: var(--obs-bone-2) !important;
+}
+/* meters — 1px rules */
+html[data-theme="observatory"] .tp-meter,
+html[data-theme="observatory"] .tp-sub-meter {
+  height: 1px !important;
+  background: rgba(242, 237, 227, .12) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+html[data-theme="observatory"] .tp-meter-fill,
+html[data-theme="observatory"] .tp-sub-fill {
+  height: 1px !important;
+  background: var(--obs-ink) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  opacity: .9;
+}
+html[data-theme="observatory"] .tp-meter { margin: 20px 0 6px !important; }
+
+/* subject ledger rows */
+html[data-theme="observatory"] .compact-subject-card {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 11px 0 12px !important;
+}
+html[data-theme="observatory"] .compact-subject-card:last-child { border-bottom: 0 !important; }
+html[data-theme="observatory"] .tp-row-top { gap: 10px; }
+html[data-theme="observatory"] .tp-dot {
+  width: 5px !important; height: 5px !important;
+  border-radius: 50% !important;
+  background: var(--obs-bone-3) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .compact-subject-card[data-subject="physics"]  .tp-dot { background: var(--obs-subj-phys) !important; }
+html[data-theme="observatory"] .compact-subject-card[data-subject="chemistry"] .tp-dot { background: var(--obs-subj-chem) !important; }
+html[data-theme="observatory"] .compact-subject-card[data-subject="maths"]  .tp-dot { background: var(--obs-subj-math) !important; }
+html[data-theme="observatory"] .tp-row-top h4 {
+  font-family: var(--font-body) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  letter-spacing: .02em;
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] .tp-count { font-family: var(--font-num); }
+html[data-theme="observatory"] .tp-num { font-size: 13px; color: var(--obs-bone); }
+html[data-theme="observatory"] .tp-tgt  { font-size: 11px; color: var(--obs-bone-3); }
+html[data-theme="observatory"] .tp-step-btn {
+  width: 22px !important; height: 22px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: 1px solid var(--obs-hair) !important;
+  box-shadow: none !important;
+  color: var(--obs-bone-2) !important;
+  font-family: var(--font-num) !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+  transition: border-color .18s ease, color .18s ease;
+}
+html[data-theme="observatory"] .tp-step-btn:hover {
+  border-color: var(--obs-edge) !important;
+  color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] .dash-card-tracker.tp-day-done .tp-meter-fill,
+html[data-theme="observatory"] .dash-card-tracker.tp-day-done .tp-num-big { color: var(--obs-ink) !important; }
+
+/* retention health — ruled ledger */
+html[data-theme="observatory"] .rh-head,
+html[data-theme="observatory"] .rh-head-g,
+html[data-theme="observatory"] .rh-head-r {
+  font-family: var(--font-num) !important;
+  font-size: 9px !important;
+  font-weight: 500 !important;
+  letter-spacing: .18em !important;
+  text-transform: uppercase !important;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] .rh-row {
+  border-bottom: 1px solid var(--obs-hair);
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+html[data-theme="observatory"] .rh-row:hover { background: transparent !important; }
+html[data-theme="observatory"] .rh-name {
+  font-family: var(--font-body) !important;
+  font-size: 12.5px !important;
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] .rh-gauge {
+  height: 2px !important;
+  background: rgba(242, 237, 227, .08) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .rh-cov  { height: 2px !important; background: rgba(242, 237, 227, .17) !important; border-radius: 0 !important; }
+html[data-theme="observatory"] .rh-line { height: 2px !important; background: var(--obs-ink) !important; border-radius: 0 !important; box-shadow: none !important; }
+html[data-theme="observatory"] .rh-fading   .rh-line { background: var(--obs-warn) !important; }
+html[data-theme="observatory"] .rh-critical .rh-line { background: var(--obs-crit) !important; }
+html[data-theme="observatory"] .rh-dot {
+  width: 4px !important; height: 4px !important;
+  border-radius: 50% !important;
+  background: var(--obs-ink) !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+html[data-theme="observatory"] .rh-fading   .rh-dot { background: var(--obs-warn) !important; }
+html[data-theme="observatory"] .rh-critical .rh-dot { background: var(--obs-crit) !important; }
+html[data-theme="observatory"] .rh-fc { width: 1px !important; background: var(--obs-crit) !important; opacity: .8; }
+html[data-theme="observatory"] .rh-val {
+  font-family: var(--font-num) !important;
+  font-size: 12px !important;
+  color: var(--obs-bone) !important;
+}
+html[data-theme="observatory"] .rh-val em,
+html[data-theme="observatory"] .rh-hz { font-family: var(--font-num); color: var(--obs-bone-3); font-style: normal; }
+html[data-theme="observatory"] .rh-hz { font-size: 10px !important; letter-spacing: .06em; }
+html[data-theme="observatory"] .rh-trend { font-style: normal; font-family: var(--font-num); }
+html[data-theme="observatory"] .rh-up   { color: var(--obs-ok); }
+html[data-theme="observatory"] .rh-dn   { color: var(--obs-crit); }
+html[data-theme="observatory"] .rh-more,
+html[data-theme="observatory"] .cpx-more {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 8px 0 2px !important;
+  font-family: var(--font-num) !important;
+  font-size: 10px !important;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--obs-bone-3) !important;
+  cursor: pointer;
+}
+html[data-theme="observatory"] .rh-more:hover,
+html[data-theme="observatory"] .cpx-more:hover { color: var(--obs-ink) !important; }
+html[data-theme="observatory"] .rh-empty,
+html[data-theme="observatory"] .cpx-empty,
+html[data-theme="observatory"] .cpx-empty-title,
+html[data-theme="observatory"] .cpx-empty-sub {
+  font-family: var(--font-num);
+  color: var(--obs-bone-3);
+  background: transparent !important;
+}
+html[data-theme="observatory"] .rh-empty {
+  border: 0;
+  padding: 14px 0 6px;
+  font-size: 11px;
+  letter-spacing: .08em;
+}
+
+/* chapter progress — the second ledger */
+html[data-theme="observatory"] .cpx-cols {
+  font-family: var(--font-num) !important;
+  font-size: 9px !important;
+  letter-spacing: .18em !important;
+  text-transform: uppercase !important;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] .cpx-row {
+  border-bottom: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .cpx-row:hover { background: transparent !important; }
+html[data-theme="observatory"] .cpx-subj {
+  font-family: var(--font-num) !important;
+  font-size: 9.5px !important;
+  letter-spacing: .1em;
+  color: var(--obs-bone-3) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+html[data-theme="observatory"] .cpx-name,
+html[data-theme="observatory"] .cpx-name .ch-full,
+html[data-theme="observatory"] .cpx-name .ch-short {
+  font-family: var(--font-body) !important;
+  font-size: 12.5px !important;
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] .cpx-track {
+  height: 2px !important;
+  background: rgba(242, 237, 227, .08) !important;
+  border-radius: 0 !important;
+}
+html[data-theme="observatory"] .cpx-track i {
+  height: 2px !important;
+  background: color-mix(in srgb, var(--obs-bone) 45%, transparent) !important;
+  border-radius: 0 !important;
+}
+html[data-theme="observatory"] .cpx-row.is-flag .cpx-track i { background: var(--obs-ink) !important; }
+html[data-theme="observatory"] .cpx-row.is-flag .cpx-name { color: var(--obs-bone) !important; }
+html[data-theme="observatory"] .cpx-pct {
+  font-family: var(--font-num) !important;
+  font-size: 12px !important;
+  color: var(--obs-bone) !important;
+}
+html[data-theme="observatory"] .cpx-pct i { font-style: normal; font-size: 9px; color: var(--obs-bone-3); }
+
+/* bento editor chrome (FAB panel) */
+html[data-theme="observatory"] .bento-toolbar.dc-fab-panel {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 24px 80px -32px rgba(0, 0, 0, .8) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+html[data-theme="observatory"] .bt-label,
+html[data-theme="observatory"] .bento-hint {
+  font-family: var(--font-num);
+  font-size: 9.5px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--obs-bone-3);
+}
+html[data-theme="observatory"] .bento-seg button,
+html[data-theme="observatory"] .bento-edit-btn,
+html[data-theme="observatory"] .bento-reset-btn {
+  background: transparent !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  color: var(--obs-bone-3) !important;
+  font-family: var(--font-num) !important;
+  font-size: 10px !important;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+html[data-theme="observatory"] .bento-seg button.active {
+  background: transparent !important;
+  color: var(--obs-ink) !important;
+  border-color: color-mix(in srgb, var(--obs-ink) 45%, transparent) !important;
+  box-shadow: none !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §7 · OVERLAY BASELINE — modals, loading (full sweep in Phase 3)
+   ───────────────────────────────────────────────────────────────────────── */
+html[data-theme="observatory"] .modal-overlay {
+  background: rgba(6, 7, 10, .72) !important;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+html[data-theme="observatory"][data-mode="dusk"] .modal-overlay { background: rgba(10, 12, 18, .72) !important; }
+html[data-theme="observatory"] .modal-content,
+html[data-theme="observatory"] .modal-card {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-edge) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 24px 80px -32px rgba(0, 0, 0, .8) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+html[data-theme="observatory"] .modal-content h2,
+html[data-theme="observatory"] .modal-card h2 {
+  font-family: var(--font-num) !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: .22em !important;
+  text-transform: uppercase !important;
+  color: var(--obs-bone) !important;
+  text-shadow: none !important;
+}
+html[data-theme="observatory"] .close-btn {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--obs-bone-3) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .close-btn:hover { color: var(--obs-ink) !important; }
+html[data-theme="observatory"] .box-desc { color: var(--obs-bone-2) !important; }
+
+/* loading overlay — the void with one mono line */
+html[data-theme="observatory"] #loading-overlay,
+html[data-theme="observatory"] .loading-overlay { background: var(--obs-void) !important; }
+html[data-theme="observatory"] .loading-card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .loading-text {
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] .loading-bar {
+  height: 1px !important;
+  background: rgba(242, 237, 227, .12) !important;
+  border-radius: 0 !important;
+}
+html[data-theme="observatory"] .loading-fill { height: 1px !important; background: var(--obs-ink) !important; }
+
+/* generic surface neutralizers (deep pass per-surface in Phase 2) */
+html[data-theme="observatory"] .glow-wrapper,
+html[data-theme="observatory"] .glow-box-inner {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .settings-card {
+  background: transparent !important;
+  border: 0 !important;
+  border-top: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .settings-card h3 {
+  font-family: var(--font-num);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--obs-bone-2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+html[data-theme="observatory"] .settings-card h3 .g { width: 16px; height: 16px; color: var(--obs-ink); }
+html[data-theme="observatory"] .fx-row-label { font-family: var(--font-body); font-size: 13px; color: var(--obs-bone-2); }
+html[data-theme="observatory"] .fx-row-label .g { width: 15px; height: 15px; color: var(--obs-bone-3); margin-right: 8px; vertical-align: -2px; }
+
+/* ── toasts — bottom-centre mono one-liners (inline styles → !important) ── */
+html[data-theme="observatory"] .jmax-app-toast,
+html[data-theme="observatory"] .skip-undo-toast {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 12px 40px -18px rgba(0, 0, 0, .8) !important;
+  color: var(--obs-bone-2) !important;
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  letter-spacing: .06em;
+  padding: 9px 16px !important;
+}
+
+/* ── bridge / tuck-in banners — observation notes, not slabs ── */
+html[data-theme="observatory"] .bridge-banner,
+html[data-theme="observatory"] .tuckin-door-banner,
+html[data-theme="observatory"] .tuckin-door-banner * {
+  background: transparent !important;
+  border: 0 !important;
+  border-top: 1px solid var(--obs-hair) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+html[data-theme="observatory"] .bridge-banner {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 2px 0;
+  margin: 0 0 26px;
+}
+html[data-theme="observatory"] .tuckin-door-banner {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 2px 0;
+  margin: 0 0 26px;
+}
+html[data-theme="observatory"] .bridge-banner-content,
+html[data-theme="observatory"] .tuckin-door-content {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  font-family: var(--font-num); font-size: 11px; letter-spacing: .08em;
+  color: var(--obs-bone-2);
+}
+html[data-theme="observatory"] .bridge-banner-badge,
+html[data-theme="observatory"] .tuckin-door-icon {
+  font-size: 13px; color: var(--obs-ink);
+  background: transparent !important;
+  border: 0 !important; padding: 0 !important;
+}
+html[data-theme="observatory"] .bridge-banner-text b,
+html[data-theme="observatory"] .tuckin-door-text b {
+  color: var(--obs-bone); font-weight: 500;
+}
+html[data-theme="observatory"] .bridge-banner-btn,
+html[data-theme="observatory"] .tuckin-door-btn { margin-left: auto; }
+
+/* ── elo monitor chip — a whisper, not a badge ── */
+html[data-theme="observatory"] .elo-monitor,
+html[data-theme="observatory"] .elo-monitor-rating,
+html[data-theme="observatory"] .elo-monitor-tier {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-family: var(--font-num) !important;
+  font-size: 9.5px !important;
+  letter-spacing: .1em;
+  color: var(--obs-bone-3) !important;
+  padding: 0 !important;
+}
+html[data-theme="observatory"] .mmr-tier-badge {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-family: var(--font-num) !important;
+  font-size: 9.5px !important;
+  letter-spacing: .12em;
+  color: var(--obs-bone-3) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §8½ · NIGHT SURFACES + FLOATING WIDGETS (auto-popups that strike at night)
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Night Guard (post-23:00 takeover) — the inline <style> in index.html paints
+   it violet; these higher-specificity rules pull it into the observatory. */
+html[data-theme="observatory"] .nightguard-card {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-edge) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 24px 80px -32px rgba(0, 0, 0, .8) !important;
+}
+html[data-theme="observatory"] .nightguard-card p {
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] .nightguard-icon {
+  color: var(--obs-ink);
+  font-size: 34px;
+  line-height: 1;
+}
+html[data-theme="observatory"] #nightguard-override-btn:active { background: transparent; transform: none; }
+html[data-theme="observatory"] body.nightguard-tint { background-color: var(--obs-void) !important; }
+html[data-theme="observatory"] body.nightguard-tint::after { background: rgba(6, 7, 10, .5); }
+
+/* Daily Mood Check (bootseq) — the pastel dream popup becomes a quiet folio.
+   Its styles arrive at runtime via #boot-seq-styles; specificity wins. */
+html[data-theme="observatory"] .bootseq {
+  background: rgba(6, 7, 10, .78) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  backdrop-filter: blur(6px) !important;
+  font-family: var(--font-body) !important;
+}
+html[data-theme="observatory"] .bootseq .moodpop {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-edge) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 24px 80px -32px rgba(0, 0, 0, .8) !important;
+  padding: 34px 26px 24px !important;
+  animation: none !important;
+}
+html[data-theme="observatory"] .bootseq .moodpop::before,
+html[data-theme="observatory"] .bootseq .moodpop-float,
+html[data-theme="observatory"] .bootseq .moodpop-spark { display: none !important; }
+html[data-theme="observatory"] .bootseq .moodpop-mascot {
+  background: transparent !important;
+  box-shadow: none !important;
+  width: 64px; height: 64px; font-size: 36px;
+  animation: none !important;
+  border: 1px solid var(--obs-hair);
+  border-radius: 50%;
+}
+html[data-theme="observatory"] .bootseq .moodpop-title {
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+  -webkit-text-fill-color: currentColor !important;
+  color: var(--obs-bone) !important;
+  font-family: var(--font-display) !important;
+  font-style: italic;
+  font-weight: 400 !important;
+  font-size: 26px !important;
+  letter-spacing: .01em;
+}
+html[data-theme="observatory"] .bootseq .moodpop-sub {
+  font-family: var(--font-num);
+  font-size: 10.5px !important;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] .bootseq .moodpop-opt {
+  background: transparent !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  padding: 10px 14px !important;
+  transition: border-color .18s ease !important;
+  animation: none !important;
+}
+html[data-theme="observatory"] .bootseq .moodpop-opt:hover {
+  transform: none !important;
+  border-color: var(--obs-edge) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .bootseq .moodpop-emoji {
+  background: transparent !important;
+  border: 1px solid var(--obs-hair);
+  border-radius: 50% !important;
+  width: 40px; height: 40px; font-size: 20px;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .bootseq .moodpop-opt:hover .moodpop-emoji { transform: none !important; box-shadow: none !important; }
+html[data-theme="observatory"] .bootseq .moodpop-label {
+  font-family: var(--font-body);
+  font-size: 13.5px !important;
+  font-weight: 400 !important;
+  color: var(--obs-bone) !important;
+}
+html[data-theme="observatory"] .bootseq .moodpop-desc {
+  font-family: var(--font-num);
+  font-size: 10px !important;
+  letter-spacing: .08em;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] .bootseq .moodpop-key {
+  background: transparent !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 50% !important;
+  color: var(--obs-bone-3) !important;
+  font-family: var(--font-num) !important;
+}
+html[data-theme="observatory"] .bootseq button:focus-visible { outline: 1px solid var(--obs-edge) !important; }
+
+/* Metronome FAB + popover — a quiet capsule bottom-right */
+html[data-theme="observatory"] .metro-fab {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 8px 30px -14px rgba(0, 0, 0, .8) !important;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] .metro-fab:hover { border-color: var(--obs-edge) !important; color: var(--obs-ink) !important; }
+html[data-theme="observatory"] .metro-fab .metro-fab-badge {
+  background: transparent !important;
+  color: var(--obs-bone-3) !important;
+  font-family: var(--font-num) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .metro-pop {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 24px 80px -32px rgba(0, 0, 0, .8) !important;
+  color: var(--obs-bone-2) !important;
+}
+
+/* Metronome FAB docked in the sidebar — same quiet circle as the theme btn */
+html[data-theme="observatory"] #sidebar .metro-fab,
+html[data-theme="observatory"] body.dc-active #sidebar .metro-fab {
+  background: transparent !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 50% !important;
+  box-shadow: none !important;
+  color: var(--obs-bone-3) !important;
+  opacity: 1 !important;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+html[data-theme="observatory"] #sidebar .metro-fab:hover,
+html[data-theme="observatory"] .metro-fab.playing {
+  background: transparent !important;
+  border-color: var(--obs-hair) !important;
+  color: var(--obs-ink) !important;
+}
+
+/* Checkpoint Sentry Hub (bottom-left) — quiet ring button */
+html[data-theme="observatory"] #cp-hub {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  box-shadow: 0 8px 30px -14px rgba(0, 0, 0, .8) !important;
+  color: var(--obs-bone-3) !important;
+}
+html[data-theme="observatory"] #cp-hub:hover { border-color: var(--obs-edge) !important; }
+
+/* Pomodoro mini widget — quiet capsule */
+html[data-theme="observatory"] .pomo-mini-widget {
+  background: var(--obs-void-2) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 8px 30px -14px rgba(0, 0, 0, .8) !important;
+  color: var(--obs-bone-2) !important;
+  font-family: var(--font-num) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §8 · REDUCED MOTION + RESPONSIVE
+   ───────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="observatory"] .obs-plate { animation: none; transition: opacity .25s linear; }
+  .obs-atmos { transform: none !important; }
+}
+@media (max-width: 1180px) {
+  html[data-theme="observatory"] #view-dashboard .dash-grid { gap: 34px 28px; }
+}
+@media (max-width: 1024px) {
+  .obs-plate { height: 122vh; }
+  html[data-theme="observatory"] #view-dashboard .dash-grid { gap: 28px 20px; }
+  html[data-theme="observatory"] #sidebar .nav-item { padding: 0 9px !important; letter-spacing: .1em; }
+  html[data-theme="observatory"] #sidebar .nav-item .text-label { letter-spacing: .1em; }
+}
+@media (max-width: 1024px) {
+  html[data-theme="observatory"] #sidebar .nav-item .text-label,
+  html[data-theme="observatory"] #sidebar .username-txt { display: none; }
+  html[data-theme="observatory"] #sidebar .nav-item { padding: 0 11px !important; }
+}
+@media (max-width: 768px) {
+  html[data-theme="observatory"] .dash-quick-bar { gap: 20px; flex-wrap: wrap; }
+  html[data-theme="observatory"] #view-dashboard .dash-grid { gap: 24px 16px; }
+  .obs-plate { height: 108vh; }
+}
+@media (max-width: 480px) {
+  html[data-theme="observatory"] .dash-quick-bar { flex-direction: column; align-items: flex-start; gap: 12px; }
+}

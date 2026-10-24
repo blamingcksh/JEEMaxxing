@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+  <defs>
+    <pattern id="phi-dots" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="10" cy="10" r="0.7" fill="#1E1D1A" fill-opacity="0.3" />
+    </pattern>
+  </defs>
+
+  <!-- Background &amp; Outer Frame -->
+  <rect width="600" height="600" fill="#F4EFE6" />
+  <rect x="24" y="24" width="552" height="552" fill="url(#phi-dots)" stroke="#1E1D1A" stroke-width="1.5" />
+
+  <!-- Golden Rectangle Subdivision Grid (486 x 300 centered) -->
+  <g transform="translate(57, 135)" fill="none" stroke="#1E1D1A">
+    <!-- Main Golden Rectangle -->
+    <rect x="0" y="0" width="486" height="300" stroke-width="1.5" />
+    <!-- Square 1 (300x300 Left) -->
+    <line x1="300" y1="0" x2="300" y2="300" stroke-width="1" />
+    <line x1="0" y1="300" x2="300" y2="0" stroke-width="0.5" stroke-dasharray="3 3" />
+    <!-- Square 2 (186x186 Top Right) -->
+    <line x1="300" y1="186" x2="486" y2="186" stroke-width="1" />
+    <line x1="300" y1="0" x2="486" y2="186" stroke-width="0.5" stroke-dasharray="3 3" />
+    <!-- Square 3 (114x114 Bottom Right) -->
+    <line x1="372" y1="186" x2="372" y2="300" stroke-width="1" />
+    <line x1="486" y1="186" x2="372" y2="300" stroke-width="0.5" stroke-dasharray="3 3" />
+    <!-- Square 4 (72x72 Bottom Mid) -->
+    <line x1="300" y1="228" x2="372" y2="228" stroke-width="1" />
+    <!-- Square 5 (42x42 Top Mid) -->
+    <line x1="342" y1="186" x2="342" y2="228" stroke-width="1" />
+    <!-- Square 6 (30x30) -->
+    <line x1="342" y1="216" x2="372" y2="216" stroke-width="1" />
+
+    <!-- Radial Polar Vectors from Spiral Pole (352, 208) -->
+    <g transform="translate(352, 208)" stroke="#C59B5F" stroke-width="0.7" stroke-dasharray="3 3">
+      <line x1="-352" y1="0" x2="134" y2="0" />
+      <line x1="0" y1="-208" x2="0" y2="92" />
+      <line x1="-295" y1="-195" x2="134" y2="88" />
+      <line x1="-295" y1="92" x2="134" y2="-195" />
+      <circle cx="0" cy="0" r="195" stroke="#1E1D1A" stroke-width="0.6" />
+    </g>
+
+    <!-- Chambered Nautilus Cross-Section &amp; Septa Walls -->
+    <path d="M 0 300 A 300 300 0 0 1 300 0 A 186 186 0 0 1 486 186 A 114 114 0 0 1 372 300 A 72 72 0 0 1 300 228 A 42 42 0 0 1 342 186 A 30 30 0 0 1 372 216 L 352 208 L 0 300 Z" fill="#E6DEC8" fill-opacity="0.7" stroke="none" />
+
+    <!-- Outer Logarithmic Spiral Curve -->
+    <path d="M 0 300 A 300 300 0 0 1 300 0 A 186 186 0 0 1 486 186 A 114 114 0 0 1 372 300 A 72 72 0 0 1 300 228 A 42 42 0 0 1 342 186 A 30 30 0 0 1 372 216 A 18 18 0 0 1 354 228" stroke="#1E1D1A" stroke-width="2.5" />
+
+    <!-- Inner Siphuncle Tube (Terracotta) -->
+    <path d="M 145 262 A 165 165 0 0 1 315 95 A 102 102 0 0 1 418 195 A 62 62 0 0 1 355 256 A 38 38 0 0 1 320 215 A 22 22 0 0 1 345 196" stroke="#D96B43" stroke-width="2" stroke-dasharray="6 3" />
+
+    <!-- Internal Hydrostatic Septa Curves -->
+    <g stroke="#1E1D1A" stroke-width="1.4">
+      <path d="M 30 175 Q 195 215 352 208" />
+      <path d="M 88 88 Q 220 175 352 208" />
+      <path d="M 185 25 Q 270 135 352 208" />
+      <path d="M 300 0 Q 315 115 352 208" />
+      <path d="M 395 28 Q 365 125 352 208" />
+      <path d="M 462 95 Q 395 165 352 208" />
+      <path d="M 486 186 Q 410 185 352 208" />
+      <path d="M 455 262 Q 395 225 352 208" />
+      <path d="M 372 300 Q 355 248 352 208" />
+      <path d="M 315 268 Q 338 232 352 208" />
+      <path d="M 300 228 Q 328 218 352 208" />
+    </g>
+
+    <!-- Siphuncle Collar Nodes -->
+    <g fill="#D96B43" stroke="#1E1D1A" stroke-width="1">
+      <circle cx="176" cy="200" r="4.5" />
+      <circle cx="212" cy="148" r="4.5" />
+      <circle cx="262" cy="112" r="4" />
+      <circle cx="322" cy="96" r="4" />
+      <circle cx="375" cy="108" r="3.5" />
+      <circle cx="408" cy="145" r="3.5" />
+      <circle cx="418" cy="195" r="3" />
+      <circle cx="395" cy="235" r="3" />
+      <circle cx="352" cy="208" r="5" fill="#1E1D1A" />
+    </g>
+  </g>
+
+  <!-- Bottom Fibonacci Proportion Scale -->
+  <g transform="translate(57, 480)" font-family="monospace" font-size="9" fill="#1E1D1A">
+    <line x1="0" y1="0" x2="486" y2="0" stroke="#1E1D1A" stroke-width="1.2" />
+    <line x1="0" y1="-6" x2="0" y2="6" stroke="#1E1D1A" stroke-width="1.5" />
+    <line x1="300" y1="-6" x2="300" y2="6" stroke="#D96B43" stroke-width="1.5" />
+    <line x1="486" y1="-6" x2="486" y2="6" stroke="#1E1D1A" stroke-width="1.5" />
+    <text x="125" y="18">a = 1.000 (300 units)</text>
+    <text x="355" y="18" fill="#D96B43">b = 0.618 (186 units)</text>
+  </g>
+
+  <!-- Technical Annotations -->
+  <g font-family="monospace" font-size="10" fill="#1E1D1A" letter-spacing="1.5">
+    <text x="44" y="52">OBS. 05 // NAUTILUS LOGARITHMIC SPIRAL</text>
+    <text x="44" y="68" fill="#D96B43">r(θ) = a·e^(bθ) • GOLDEN RATIO φ = 1.6180339</text>
+    <text x="44" y="548">HYDROSTATIC SEPTA &amp; SIPHUNCLE CONDUIT</text>
+  </g>
+</svg>

@@ -1,0 +1,364 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 920" width="100%" height="100%">
+<defs>
+
+  <style>
+    .plate-bg { fill: var(--plate-bg, #090b10); }
+    .plate-paper { fill: var(--plate-paper, #0c0f17); }
+    .ink-gold { stroke: var(--ink-gold, #e5c07b); fill: none; }
+    .ink-gold-fill { fill: var(--ink-gold, #e5c07b); }
+    .ink-amber { stroke: var(--ink-amber, #f59e0b); fill: none; }
+    .ink-amber-fill { fill: var(--ink-amber, #f59e0b); }
+    .ink-ivory { stroke: var(--ink-ivory, #f4efe6); fill: none; }
+    .ink-ivory-fill { fill: var(--ink-ivory, #f4efe6); }
+    .ink-dim { stroke: var(--ink-dim, #8b7650); fill: none; }
+    .ink-dim-fill { fill: var(--ink-dim, #8b7650); }
+    .ink-faint { stroke: var(--ink-faint, #4a4031); fill: none; }
+    .ink-cyan { stroke: var(--ink-cyan, #56d4ff); fill: none; }
+    .ink-cyan-fill { fill: var(--ink-cyan, #56d4ff); }
+    .ink-red { stroke: var(--ink-red, #f97316); fill: none; }
+    .ink-red-fill { fill: var(--ink-red, #f97316); }
+    .font-serif { font-family: 'Cormorant Garamond', 'EB Garamond', 'Georgia', 'Times New Roman', serif; }
+    .font-mono { font-family: 'Space Grotesk', 'IBM Plex Mono', 'Courier New', monospace; }
+    .label-title { font-family: 'Cormorant Garamond', 'Georgia', serif; font-size: 15px; letter-spacing: 0.22em; fill: var(--ink-ivory, #f4efe6); font-weight: 600; }
+    .label-sub { font-family: 'Space Grotesk', 'Courier New', monospace; font-size: 9.5px; letter-spacing: 0.16em; fill: var(--ink-gold, #e5c07b); opacity: 0.85; }
+    .label-anno { font-family: 'Space Grotesk', 'Courier New', monospace; font-size: 9.5px; letter-spacing: 0.11em; fill: var(--ink-ivory, #f4efe6); }
+    .label-anno-dim { font-family: 'Space Grotesk', 'Courier New', monospace; font-size: 8.5px; letter-spacing: 0.10em; fill: var(--ink-gold, #e5c07b); opacity: 0.8; }
+    .label-serif-italic { font-family: 'Cormorant Garamond', 'Georgia', serif; font-style: italic; font-size: 12px; letter-spacing: 0.06em; fill: var(--ink-ivory, #f4efe6); }
+  </style>
+  <filter id="glow-soft" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="3.5" result="blur" />
+    <feMerge>
+      <feMergeNode in="blur" />
+      <feMergeNode in="SourceGraphic" />
+    </feMerge>
+  </filter>
+  <filter id="glow-intense" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="7" result="blur1" />
+    <feGaussianBlur stdDeviation="2" result="blur2" />
+    <feMerge>
+      <feMergeNode in="blur1" />
+      <feMergeNode in="blur2" />
+      <feMergeNode in="SourceGraphic" />
+    </feMerge>
+  </filter>
+  <filter id="haze-blur" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="12" />
+  </filter>
+  <marker id="arrow-gold" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M 0 1.8 L 9 5 L 0 8.2 L 2.2 5 z" fill="#e5c07b" />
+  </marker>
+  <marker id="arrow-ivory" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M 0 1.8 L 9 5 L 0 8.2 L 2.2 5 z" fill="#f4efe6" />
+  </marker>
+  <marker id="dot-gold" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="4.5" markerHeight="4.5">
+    <circle cx="4" cy="4" r="2.6" fill="#e5c07b" stroke="#090b10" stroke-width="0.8" />
+  </marker>
+
+
+        <radialGradient id="bh-void" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#020305" stop-opacity="1"/>
+          <stop offset="86%" stop-color="#04050a" stop-opacity="1"/>
+          <stop offset="96%" stop-color="#1a120b" stop-opacity="0.95"/>
+          <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="hot-inner-rim" cx="46%" cy="50%" r="52%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+          <stop offset="38%" stop-color="#fef3c7" stop-opacity="0.95"/>
+          <stop offset="52%" stop-color="#fbbf24" stop-opacity="0.75"/>
+          <stop offset="72%" stop-color="#d97706" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#78350f" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="disk-band-outer" x1="0%" y1="50%" x2="100%" y2="50%">
+          <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.05"/>
+          <stop offset="18%" stop-color="#d97706" stop-opacity="0.55"/>
+          <stop offset="45%" stop-color="#b45309" stop-opacity="0.38"/>
+          <stop offset="82%" stop-color="#92400e" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="#78350f" stop-opacity="0.03"/>
+        </linearGradient>
+        <linearGradient id="disk-band-mid" x1="0%" y1="50%" x2="100%" y2="50%">
+          <stop offset="0%" stop-color="#fde68a" stop-opacity="0.08"/>
+          <stop offset="22%" stop-color="#fbbf24" stop-opacity="0.82"/>
+          <stop offset="50%" stop-color="#f59e0b" stop-opacity="0.58"/>
+          <stop offset="80%" stop-color="#d97706" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="#92400e" stop-opacity="0.04"/>
+        </linearGradient>
+        <linearGradient id="disk-band-inner" x1="0%" y1="50%" x2="100%" y2="50%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.15"/>
+          <stop offset="26%" stop-color="#fffbeb" stop-opacity="0.98"/>
+          <stop offset="52%" stop-color="#fde68a" stop-opacity="0.85"/>
+          <stop offset="78%" stop-color="#f59e0b" stop-opacity="0.45"/>
+          <stop offset="100%" stop-color="#b45309" stop-opacity="0.05"/>
+        </linearGradient>
+        <radialGradient id="doppler-flare-1" cx="35%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+          <stop offset="28%" stop-color="#fef08a" stop-opacity="0.75"/>
+          <stop offset="65%" stop-color="#f59e0b" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="nebula-wisp-grad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#e5c07b" stop-opacity="0.11"/>
+          <stop offset="55%" stop-color="#56d4ff" stop-opacity="0.04"/>
+          <stop offset="100%" stop-color="#090b10" stop-opacity="0"/>
+        </radialGradient>
+        
+</defs>
+<rect width="800" height="920" rx="6" class="plate-bg" />
+<rect x="18" y="18" width="764" height="884" class="plate-paper" />
+
+    <radialGradient id="plate-vignette" cx="50%" cy="48%" r="60%">
+      <stop offset="0%" stop-color="#171c28" stop-opacity="0.45"/>
+      <stop offset="70%" stop-color="#0c0f17" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#050609" stop-opacity="0.75"/>
+    </radialGradient>
+    <rect x="18" y="18" width="764" height="884" fill="url(#plate-vignette)" />
+    
+<rect x="24" y="24" width="752" height="872" class="ink-dim" stroke-width="1.2" opacity="0.75" />
+<rect x="29" y="29" width="742" height="862" class="ink-gold" stroke-width="0.6" opacity="0.45" />
+<rect x="33" y="33" width="734" height="854" class="ink-dim" stroke-width="0.4" opacity="0.3" />
+<path d="M 29 47 L 47 29" class="ink-gold" stroke-width="0.8" opacity="0.65"/>
+<path d="M 29 53 L 53 29" class="ink-dim" stroke-width="0.5" opacity="0.45"/>
+<circle cx="38" cy="38" r="2.2" class="ink-gold" stroke-width="0.7" opacity="0.7"/>
+<circle cx="38" cy="38" r="0.8" class="ink-gold-fill" opacity="0.7"/>
+<path d="M 771 47 L 753 29" class="ink-gold" stroke-width="0.8" opacity="0.65"/>
+<path d="M 771 53 L 747 29" class="ink-dim" stroke-width="0.5" opacity="0.45"/>
+<circle cx="762" cy="38" r="2.2" class="ink-gold" stroke-width="0.7" opacity="0.7"/>
+<circle cx="762" cy="38" r="0.8" class="ink-gold-fill" opacity="0.7"/>
+<path d="M 29 873 L 47 891" class="ink-gold" stroke-width="0.8" opacity="0.65"/>
+<path d="M 29 867 L 53 891" class="ink-dim" stroke-width="0.5" opacity="0.45"/>
+<circle cx="38" cy="882" r="2.2" class="ink-gold" stroke-width="0.7" opacity="0.7"/>
+<circle cx="38" cy="882" r="0.8" class="ink-gold-fill" opacity="0.7"/>
+<path d="M 771 873 L 753 891" class="ink-gold" stroke-width="0.8" opacity="0.65"/>
+<path d="M 771 867 L 747 891" class="ink-dim" stroke-width="0.5" opacity="0.45"/>
+<circle cx="762" cy="882" r="2.2" class="ink-gold" stroke-width="0.7" opacity="0.7"/>
+<circle cx="762" cy="882" r="0.8" class="ink-gold-fill" opacity="0.7"/>
+<text x="48" y="54" class="label-sub">PL. I — EVENT HORIZON</text>
+<text x="752" y="54" text-anchor="end" class="label-sub" opacity="0.65">ARCHIVUM ASTRONOMICUM · FOLIO IV</text>
+<line x1="44" y1="63" x2="756" y2="63" class="ink-dim" stroke-width="0.6" opacity="0.5" />
+<line x1="44" y1="65.5" x2="756" y2="65.5" class="ink-faint" stroke-width="0.4" opacity="0.4" />
+<line x1="44" y1="842" x2="756" y2="842" class="ink-dim" stroke-width="0.6" opacity="0.5" />
+<text x="400" y="864" text-anchor="middle" class="label-title">PL. I — EVENT HORIZON</text>
+<text x="400" y="881" text-anchor="middle" class="label-sub">RELATIVISTIC KERR LENSING · PHOTON SPHERE · ISCO &amp; OBSERVER TRAJECTORY</text>
+<text x="48" y="876" class="label-anno-dim" opacity="0.55">FIG. 1 — GARGANTUA METRIC (a/M = 0.998)</text>
+<text x="752" y="876" text-anchor="end" class="label-anno-dim" opacity="0.55">SCULPSIT · MMXXVI</text>
+<g id="nebula-wisps" opacity="0.85">
+<ellipse cx="250" cy="270" rx="190" ry="75" transform="rotate(-22 250 270)" fill="url(#nebula-wisp-grad)" filter="url(#haze-blur)"/>
+<ellipse cx="565" cy="610" rx="210" ry="80" transform="rotate(-18 565 610)" fill="url(#nebula-wisp-grad)" filter="url(#haze-blur)"/>
+<ellipse cx="530" cy="250" rx="150" ry="55" transform="rotate(15 530 250)" fill="url(#nebula-wisp-grad)" filter="url(#haze-blur)"/>
+<path d="M 110 295 C 175 245, 260 275, 340 225 C 390 195, 450 205, 515 175" class="ink-dim" stroke-width="0.55" stroke-dasharray="3 4 8 3" opacity="0.38" />
+<path d="M 130 310 C 195 262, 270 285, 355 238" class="ink-dim" stroke-width="0.55" stroke-dasharray="3 4 8 3" opacity="0.38" />
+<path d="M 465 645 C 535 615, 610 640, 685 585 C 715 562, 735 535, 745 510" class="ink-dim" stroke-width="0.55" stroke-dasharray="3 4 8 3" opacity="0.38" />
+<path d="M 485 660 C 555 632, 625 650, 695 602" class="ink-dim" stroke-width="0.55" stroke-dasharray="3 4 8 3" opacity="0.38" />
+<path d="M 95 560 C 145 595, 215 585, 275 630" class="ink-dim" stroke-width="0.55" stroke-dasharray="3 4 8 3" opacity="0.38" />
+<path d="M 540 210 C 595 190, 650 215, 705 185" class="ink-dim" stroke-width="0.55" stroke-dasharray="3 4 8 3" opacity="0.38" />
+</g>
+<g id="star-field-40">
+<circle cx="653.0" cy="283.0" r="2.15" class="ink-ivory-fill" opacity="0.90" />
+<path d="M 644.4 283.0 L 661.6 283.0 M 653.0 274.4 L 653.0 291.6" class="ink-ivory" stroke-width="0.5" opacity="0.65"/>
+<circle cx="653.0" cy="283.0" r="4.5" class="ink-gold" stroke-width="0.35" opacity="0.35"/>
+<circle cx="610.0" cy="451.0" r="1.45" class="ink-ivory-fill" opacity="0.63" />
+<circle cx="737.0" cy="599.0" r="1.04" class="ink-gold-fill" opacity="0.48" />
+<circle cx="555.0" cy="793.0" r="1.95" class="ink-ivory-fill" opacity="0.82" />
+<path d="M 547.0 793.0 L 563.0 793.0 M 555.0 785.0 L 555.0 801.0" class="ink-ivory" stroke-width="0.5" opacity="0.65"/>
+<circle cx="555.0" cy="793.0" r="4.1" class="ink-gold" stroke-width="0.35" opacity="0.35"/>
+<circle cx="130.0" cy="345.0" r="1.01" class="ink-gold-fill" opacity="0.47" />
+<circle cx="148.0" cy="539.0" r="1.93" class="ink-ivory-fill" opacity="0.81" />
+<circle cx="433.0" cy="280.0" r="1.45" class="ink-ivory-fill" opacity="0.63" />
+<circle cx="710.0" cy="497.0" r="1.38" class="ink-gold-fill" opacity="0.60" />
+<circle cx="122.0" cy="524.0" r="1.45" class="ink-ivory-fill" opacity="0.63" />
+<circle cx="274.0" cy="197.0" r="1.74" class="ink-ivory-fill" opacity="0.74" />
+<circle cx="697.0" cy="780.0" r="1.23" class="ink-gold-fill" opacity="0.55" />
+<circle cx="491.0" cy="162.0" r="1.35" class="ink-gold-fill" opacity="0.59" />
+<circle cx="742.0" cy="512.0" r="0.71" class="ink-gold-fill" opacity="0.35" />
+<circle cx="533.0" cy="305.0" r="1.56" class="ink-ivory-fill" opacity="0.67" />
+<circle cx="411.0" cy="106.0" r="1.29" class="ink-gold-fill" opacity="0.57" />
+<circle cx="426.0" cy="93.0" r="1.12" class="ink-gold-fill" opacity="0.51" />
+<circle cx="215.0" cy="119.0" r="1.39" class="ink-gold-fill" opacity="0.61" />
+<circle cx="342.0" cy="151.0" r="1.92" class="ink-ivory-fill" opacity="0.81" />
+<circle cx="472.0" cy="785.0" r="2.29" class="ink-ivory-fill" opacity="0.94" />
+<path d="M 463.0 785.0 L 481.0 785.0 M 472.0 776.0 L 472.0 794.0" class="ink-ivory" stroke-width="0.5" opacity="0.65"/>
+<circle cx="472.0" cy="785.0" r="4.8" class="ink-gold" stroke-width="0.35" opacity="0.35"/>
+<circle cx="429.0" cy="752.0" r="1.61" class="ink-ivory-fill" opacity="0.69" />
+<circle cx="228.0" cy="594.0" r="2.05" class="ink-ivory-fill" opacity="0.86" />
+<path d="M 219.7 594.0 L 236.3 594.0 M 228.0 585.7 L 228.0 602.3" class="ink-ivory" stroke-width="0.5" opacity="0.65"/>
+<circle cx="228.0" cy="594.0" r="4.3" class="ink-gold" stroke-width="0.35" opacity="0.35"/>
+<circle cx="580.0" cy="402.0" r="2.09" class="ink-ivory-fill" opacity="0.87" />
+<path d="M 571.6 402.0 L 588.4 402.0 M 580.0 393.6 L 580.0 410.4" class="ink-ivory" stroke-width="0.5" opacity="0.65"/>
+<circle cx="580.0" cy="402.0" r="4.4" class="ink-gold" stroke-width="0.35" opacity="0.35"/>
+<circle cx="243.0" cy="791.0" r="1.55" class="ink-ivory-fill" opacity="0.67" />
+<circle cx="64.0" cy="170.0" r="0.81" class="ink-gold-fill" opacity="0.39" />
+<circle cx="647.0" cy="438.0" r="1.55" class="ink-ivory-fill" opacity="0.67" />
+<circle cx="510.0" cy="205.0" r="1.78" class="ink-ivory-fill" opacity="0.76" />
+<circle cx="682.0" cy="703.0" r="1.99" class="ink-ivory-fill" opacity="0.84" />
+<path d="M 673.9 703.0 L 690.1 703.0 M 682.0 694.9 L 682.0 711.1" class="ink-ivory" stroke-width="0.5" opacity="0.65"/>
+<circle cx="682.0" cy="703.0" r="4.2" class="ink-gold" stroke-width="0.35" opacity="0.35"/>
+<circle cx="710.0" cy="227.0" r="1.80" class="ink-ivory-fill" opacity="0.76" />
+<circle cx="263.0" cy="644.0" r="1.41" class="ink-gold-fill" opacity="0.62" />
+<circle cx="200.0" cy="167.0" r="2.23" class="ink-ivory-fill" opacity="0.92" />
+<path d="M 191.2 167.0 L 208.8 167.0 M 200.0 158.2 L 200.0 175.8" class="ink-ivory" stroke-width="0.5" opacity="0.65"/>
+<circle cx="200.0" cy="167.0" r="4.7" class="ink-gold" stroke-width="0.35" opacity="0.35"/>
+<circle cx="442.0" cy="153.0" r="0.80" class="ink-gold-fill" opacity="0.39" />
+<circle cx="621.0" cy="789.0" r="2.30" class="ink-ivory-fill" opacity="0.95" />
+<path d="M 612.0 789.0 L 630.0 789.0 M 621.0 780.0 L 621.0 798.0" class="ink-ivory" stroke-width="0.5" opacity="0.65"/>
+<circle cx="621.0" cy="789.0" r="4.8" class="ink-gold" stroke-width="0.35" opacity="0.35"/>
+<circle cx="532.0" cy="142.0" r="1.01" class="ink-gold-fill" opacity="0.47" />
+<circle cx="393.0" cy="176.0" r="1.15" class="ink-gold-fill" opacity="0.52" />
+<circle cx="215.0" cy="340.0" r="1.45" class="ink-ivory-fill" opacity="0.63" />
+<circle cx="493.0" cy="198.0" r="1.54" class="ink-ivory-fill" opacity="0.66" />
+<circle cx="155.0" cy="371.0" r="1.75" class="ink-ivory-fill" opacity="0.74" />
+<circle cx="238.0" cy="96.0" r="0.72" class="ink-gold-fill" opacity="0.36" />
+<circle cx="462.0" cy="711.0" r="1.43" class="ink-ivory-fill" opacity="0.63" />
+<circle cx="641.0" cy="129.0" r="1.99" class="ink-ivory-fill" opacity="0.83" />
+<path d="M 632.9 129.0 L 649.1 129.0 M 641.0 120.9 L 641.0 137.1" class="ink-ivory" stroke-width="0.5" opacity="0.65"/>
+<circle cx="641.0" cy="129.0" r="4.2" class="ink-gold" stroke-width="0.35" opacity="0.35"/>
+</g>
+<g id="metric-grid" opacity="0.22">
+<circle cx="400" cy="445" r="160" class="ink-dim" stroke-width="0.45" stroke-dasharray="2 5" />
+<circle cx="400" cy="445" r="250" class="ink-dim" stroke-width="0.45" stroke-dasharray="2 5" />
+<circle cx="400" cy="445" r="330" class="ink-dim" stroke-width="0.45" stroke-dasharray="2 5" />
+<line x1="545.0" y1="445.0" x2="745.0" y2="445.0" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="525.6" y1="517.5" x2="698.8" y2="617.5" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="472.5" y1="570.6" x2="572.5" y2="743.8" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="400.0" y1="590.0" x2="400.0" y2="790.0" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="327.5" y1="570.6" x2="227.5" y2="743.8" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="274.4" y1="517.5" x2="101.2" y2="617.5" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="255.0" y1="445.0" x2="55.0" y2="445.0" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="274.4" y1="372.5" x2="101.2" y2="272.5" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="327.5" y1="319.4" x2="227.5" y2="146.2" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="400.0" y1="300.0" x2="400.0" y2="100.0" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="472.5" y1="319.4" x2="572.5" y2="146.2" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+<line x1="525.6" y1="372.5" x2="698.8" y2="272.5" class="ink-dim" stroke-width="0.35" stroke-dasharray="1 6" />
+</g>
+<g id="observer-orbit">
+<ellipse cx="400" cy="445" rx="342" ry="238" transform="rotate(-19 400 445)" class="ink-cyan" stroke-width="1.15" stroke-dasharray="7 5" opacity="0.65" />
+<ellipse cx="400" cy="445" rx="346" ry="241" transform="rotate(-19 400 445)" class="ink-gold" stroke-width="0.4" stroke-dasharray="2 8" opacity="0.4" />
+</g>
+<g id="gargantua-system" transform="rotate(-11 400 445)">
+<path d="M 145 445 C 205 230, 595 230, 655 445 C 575 280, 225 280, 145 445 Z" fill="url(#disk-band-outer)" opacity="0.85" />
+<path d="M 180 445 C 235 267, 565 267, 620 445 C 545 310, 255 310, 180 445 Z" fill="url(#disk-band-mid)" opacity="0.9" />
+<path d="M 218 445 C 265 303, 535 303, 582 445 C 518 337, 282 337, 218 445 Z" fill="url(#disk-band-inner)" filter="url(#glow-soft)" />
+<path d="M 147.6 445 C 218.3 243.0, 581.7 253.0, 652.4 445" class="ink-gold" stroke-width="0.55" opacity="0.45" />
+<path d="M 157.2 445 C 225.2 257.0, 574.8 267.0, 642.8 445" class="ink-gold" stroke-width="0.65" opacity="0.6" />
+<path d="M 168.0 445 C 233.0 273.0, 567.0 283.0, 632.0 445" class="ink-gold" stroke-width="0.75" opacity="0.7" />
+<path d="M 178.9 445 C 240.8 289.0, 559.2 299.0, 621.1 445" class="ink-gold" stroke-width="0.85" opacity="0.8" />
+<path d="M 189.8 445 C 248.7 305.0, 551.3 313.0, 610.2 445" class="ink-gold" stroke-width="1.0" opacity="0.9" />
+<path d="M 199.3 445 C 255.5 319.0, 544.5 327.0, 600.7 445" class="ink-gold" stroke-width="1.15" opacity="0.95" />
+<path d="M 160 445 C 220 643, 580 643, 640 445 C 562 597, 238 597, 160 445 Z" fill="url(#disk-band-outer)" opacity="0.78" />
+<path d="M 194 445 C 248 609, 552 609, 606 445 C 538 571, 262 571, 194 445 Z" fill="url(#disk-band-mid)" opacity="0.85" />
+<path d="M 228 445 C 275 579, 525 579, 572 445 C 512 549, 288 549, 228 445 Z" fill="url(#disk-band-inner)" filter="url(#glow-soft)" />
+<path d="M 167.8 445 C 232.8 633.0, 567.2 623.0, 632.2 445" class="ink-gold" stroke-width="0.5" opacity="0.4" />
+<path d="M 178.2 445 C 240.3 617.0, 559.7 607.0, 621.8 445" class="ink-gold" stroke-width="0.6" opacity="0.55" />
+<path d="M 188.6 445 C 247.8 601.0, 552.2 591.0, 611.4 445" class="ink-gold" stroke-width="0.7" opacity="0.68" />
+<path d="M 199.0 445 C 255.3 585.0, 544.7 575.0, 601.0 445" class="ink-gold" stroke-width="0.85" opacity="0.78" />
+<path d="M 209.4 445 C 262.8 569.0, 537.2 561.0, 590.6 445" class="ink-gold" stroke-width="1.0" opacity="0.88" />
+<path d="M 217.2 445 C 268.4 557.0, 531.6 551.0, 582.8 445" class="ink-gold" stroke-width="1.1" opacity="0.92" />
+<circle cx="396" cy="445" r="120" fill="url(#hot-inner-rim)" filter="url(#glow-intense)" opacity="0.88" />
+<circle cx="400" cy="445" r="102" fill="#030407" />
+<circle cx="400" cy="445" r="68" fill="#010204" stroke="#f59e0b" stroke-width="0.6" stroke-dasharray="3 3" opacity="0.55" />
+<g id="photon-sphere-3-rings" filter="url(#glow-soft)">
+<circle cx="396.5" cy="445" r="106.5" stroke="#fbbf24" stroke-width="0.75" fill="none" opacity="0.72" />
+<circle cx="398.0" cy="445" r="103.5" stroke="#fef08a" stroke-width="1.15" fill="none" opacity="0.90" />
+<circle cx="399.5" cy="445" r="100.8" stroke="#ffffff" stroke-width="1.45" fill="none" opacity="0.98" />
+</g>
+<path d="M 290 445 A 106 104 0 1 1 506 445" stroke="#ffffff" stroke-width="2.2" fill="none" opacity="0.85" filter="url(#glow-soft)" />
+<path d="M 65 445 A 335 62 0 0 0 735 445 L 665 445 A 265 44 0 0 1 135 445 Z" fill="url(#disk-band-outer)" opacity="0.92" />
+<path d="M 65 445 A 335 42 0 0 1 735 445 L 665 445 A 265 30 0 0 0 135 445 Z" fill="url(#disk-band-outer)" opacity="0.65" />
+<path d="M 135 445 A 265 44 0 0 0 665 445 L 604 445 A 204 28 0 0 1 196 445 Z" fill="url(#disk-band-mid)" opacity="0.96" />
+<path d="M 135 445 A 265 30 0 0 1 665 445 L 604 445 A 204 20 0 0 0 196 445 Z" fill="url(#disk-band-mid)" opacity="0.75" />
+<path d="M 196 445 A 204 28 0 0 0 604 445 L 512 449 A 112 11 0 0 1 288 449 Z" fill="url(#disk-band-inner)" filter="url(#glow-soft)" />
+<path d="M 235 447 C 315 464, 485 464, 565 447 C 490 454, 310 454, 235 447 Z" fill="#ffffff" opacity="0.95" filter="url(#glow-intense)" />
+<path d="M 68 445 A 332 61 0 0 0 732 445" class="ink-amber" stroke-width="0.65" opacity="0.62" />
+<path d="M 68 445 A 332 41 0 0 1 215 423" class="ink-dim" stroke-width="0.5" opacity="0.45" />
+<path d="M 585 423 A 332 41 0 0 1 732 445" class="ink-dim" stroke-width="0.5" opacity="0.45" />
+<path d="M 84 445 A 316 56 0 0 0 716 445" class="ink-amber" stroke-width="0.65" opacity="0.62" />
+<path d="M 84 445 A 316 38 0 0 1 215 423" class="ink-dim" stroke-width="0.5" opacity="0.45" />
+<path d="M 585 423 A 316 38 0 0 1 716 445" class="ink-dim" stroke-width="0.5" opacity="0.45" />
+<path d="M 100 445 A 300 52 0 0 0 700 445" class="ink-amber" stroke-width="0.65" opacity="0.62" />
+<path d="M 100 445 A 300 35 0 0 1 215 423" class="ink-dim" stroke-width="0.5" opacity="0.45" />
+<path d="M 585 423 A 300 35 0 0 1 700 445" class="ink-dim" stroke-width="0.5" opacity="0.45" />
+<path d="M 118 445 A 282 48 0 0 0 682 445" class="ink-amber" stroke-width="0.65" opacity="0.62" />
+<path d="M 118 445 A 282 32 0 0 1 215 423" class="ink-dim" stroke-width="0.5" opacity="0.45" />
+<path d="M 585 423 A 282 32 0 0 1 682 445" class="ink-dim" stroke-width="0.5" opacity="0.45" />
+<path d="M 135 445 A 265 44 0 0 0 665 445" class="ink-gold" stroke-width="0.85" opacity="0.82" />
+<path d="M 135 445 A 265 30 0 0 1 245 427" class="ink-gold" stroke-width="0.6" opacity="0.55" />
+<path d="M 555 427 A 265 30 0 0 1 665 445" class="ink-gold" stroke-width="0.6" opacity="0.55" />
+<path d="M 152 445 A 248 40 0 0 0 648 445" class="ink-gold" stroke-width="0.85" opacity="0.82" />
+<path d="M 152 445 A 248 27 0 0 1 245 427" class="ink-gold" stroke-width="0.6" opacity="0.55" />
+<path d="M 555 427 A 248 27 0 0 1 648 445" class="ink-gold" stroke-width="0.6" opacity="0.55" />
+<path d="M 168 445 A 232 35 0 0 0 632 445" class="ink-gold" stroke-width="0.85" opacity="0.82" />
+<path d="M 168 445 A 232 24 0 0 1 245 427" class="ink-gold" stroke-width="0.6" opacity="0.55" />
+<path d="M 555 427 A 232 24 0 0 1 632 445" class="ink-gold" stroke-width="0.6" opacity="0.55" />
+<path d="M 182 445 A 218 31 0 0 0 618 445" class="ink-gold" stroke-width="0.85" opacity="0.82" />
+<path d="M 182 445 A 218 22 0 0 1 245 427" class="ink-gold" stroke-width="0.6" opacity="0.55" />
+<path d="M 555 427 A 218 22 0 0 1 618 445" class="ink-gold" stroke-width="0.6" opacity="0.55" />
+<path d="M 196 445 A 204 28 0 0 0 604 445" class="ink-ivory" stroke-width="1.05" opacity="0.92" />
+<path d="M 214 445 A 186 24 0 0 0 586 445" class="ink-ivory" stroke-width="1.05" opacity="0.92" />
+<path d="M 232 445 A 168 20 0 0 0 568 445" class="ink-ivory" stroke-width="1.05" opacity="0.92" />
+<path d="M 252 445 A 148 16 0 0 0 548 445" class="ink-ivory" stroke-width="1.05" opacity="0.92" />
+<path d="M 272 445 A 128 13 0 0 0 528 445" class="ink-ivory" stroke-width="1.05" opacity="0.92" />
+<path d="M 135 445 A 265 44 0 0 0 665 445" stroke="#fef08a" stroke-width="1.3" fill="none" opacity="0.85" />
+<path d="M 196 445 A 204 28 0 0 0 604 445" stroke="#ffffff" stroke-width="1.6" fill="none" opacity="0.95" />
+<g id="doubled-doppler-flare" filter="url(#glow-intense)">
+<ellipse cx="232" cy="451" rx="92" ry="14" transform="rotate(4 232 451)" fill="url(#doppler-flare-1)" />
+<path d="M 115 447 Q 232 461 318 452" stroke="#ffffff" stroke-width="2.6" fill="none" opacity="0.95" />
+<ellipse cx="175" cy="438" rx="108" ry="11" transform="rotate(-5 175 438)" fill="url(#doppler-flare-1)" opacity="0.85" />
+<path d="M 52 441 Q 180 430 285 442" stroke="#fef08a" stroke-width="2.0" fill="none" opacity="0.9" />
+<circle cx="242" cy="450" r="5.5" fill="#ffffff" />
+<line x1="204" y1="450" x2="280" y2="450" stroke="#ffffff" stroke-width="1.2" opacity="0.9" />
+<line x1="242" y1="432" x2="242" y2="468" stroke="#ffffff" stroke-width="1.0" opacity="0.85" />
+</g>
+</g>
+<g id="observer-satellite" transform="translate(226.1, 682.9)">
+<circle cx="0" cy="0" r="18" class="ink-cyan" stroke-width="0.7" stroke-dasharray="2 3" opacity="0.75" />
+<circle cx="0" cy="0" r="25" class="ink-cyan" stroke-width="0.4" opacity="0.35" />
+<line x1="6" y1="6" x2="36" y2="27" class="ink-cyan" stroke-width="1.1" marker-end="url(#arrow-ivory)" />
+<g transform="rotate(34)">
+<rect x="-26" y="-4" width="17" height="8" fill="#0d131d" stroke="#56d4ff" stroke-width="0.9" />
+<line x1="-20.5" y1="-4" x2="-20.5" y2="4" stroke="#56d4ff" stroke-width="0.45" />
+<line x1="-15" y1="-4" x2="-15" y2="4" stroke="#56d4ff" stroke-width="0.45" />
+<line x1="-26" y1="0" x2="-9" y2="0" stroke="#56d4ff" stroke-width="0.45" />
+<rect x="9" y="-4" width="17" height="8" fill="#0d131d" stroke="#56d4ff" stroke-width="0.9" />
+<line x1="14.5" y1="-4" x2="14.5" y2="4" stroke="#56d4ff" stroke-width="0.45" />
+<line x1="20" y1="-4" x2="20" y2="4" stroke="#56d4ff" stroke-width="0.45" />
+<line x1="9" y1="0" x2="26" y2="0" stroke="#56d4ff" stroke-width="0.45" />
+<polygon points="-6,-6 6,-6 8,0 6,6 -6,6 -8,0" fill="#1b1812" stroke="#e5c07b" stroke-width="1.1" />
+<circle cx="0" cy="0" r="2.5" fill="#56d4ff" />
+<path d="M -5 -9 Q 0 -5 5 -9" stroke="#f4efe6" stroke-width="1.1" fill="none" />
+<line x1="0" y1="-6" x2="0" y2="-12" stroke="#f4efe6" stroke-width="0.8" />
+<circle cx="0" cy="-12.5" r="1.1" fill="#56d4ff" />
+</g>
+</g>
+<line x1="226.1" y1="682.9" x2="400" y2="445" stroke="#56d4ff" stroke-width="0.55" stroke-dasharray="2 5" opacity="0.45" />
+<g id="real-annotations">
+<circle cx="400" cy="445" r="2.2" fill="#e5c07b" />
+<line x1="400" y1="445" x2="346.4" y2="403.1" stroke="#e5c07b" stroke-width="1.0" marker-end="url(#arrow-gold)" />
+<polyline points="346.4,403.1 278,312 195,312" class="ink-gold" stroke-width="0.85" />
+<text x="190" y="308" text-anchor="end" class="label-anno">HORIZON RADIUS · Rₛ</text>
+<text x="190" y="322" text-anchor="end" class="label-anno-dim">Rₛ = 2GM / c² (SHADOW CORE)</text>
+<polyline points="477.3,375.4 558,282 722,282" class="ink-ivory" stroke-width="0.9" marker-start="url(#dot-gold)" />
+<text x="722" y="276" text-anchor="end" class="label-anno">PHOTON SPHERE · 1.5 Rₛ</text>
+<text x="722" y="294" text-anchor="end" class="label-anno-dim">3-RING CRITICAL CURVE (n = 1, 2, ∞)</text>
+<polyline points="596,419 648,376 734,376" class="ink-gold" stroke-width="0.9" marker-start="url(#dot-gold)" />
+<text x="734" y="370" text-anchor="end" class="label-anno">ISCO · 3 Rₛ</text>
+<text x="734" y="388" text-anchor="end" class="label-anno-dim">INNERMOST STABLE CIRCULAR ORBIT</text>
+<polyline points="422,281 465,198 635,198" class="ink-dim" stroke-width="0.75" marker-start="url(#dot-gold)" />
+<text x="635" y="193" text-anchor="end" class="label-anno-dim">PRIMARY LENSED FAR-DISK (OVER SHADOW)</text>
+<polyline points="435,597 495,672 685,672" class="ink-dim" stroke-width="0.75" marker-start="url(#dot-gold)" />
+<text x="685" y="667" text-anchor="end" class="label-anno-dim">SECONDARY LENSED FAR-DISK (UNDER SHADOW)</text>
+<polyline points="185,473 152,518 68,518" class="ink-gold" stroke-width="0.8" marker-start="url(#dot-gold)" />
+<text x="68" y="512" class="label-anno">DOUBLED DOPPLER FLARE (β → 0.6c)</text>
+<text x="68" y="530" class="label-anno-dim">APPROACHING WING RELATIVISTIC BEAMING</text>
+<polyline points="214.1,696.9 142,728 68,728" class="ink-cyan" stroke-width="0.95" marker-start="url(#dot-gold)" />
+<text x="68" y="722" class="label-anno" fill="#56d4ff">OBSERVER SATELLITE — [YOU]</text>
+<text x="68" y="740" class="label-anno-dim">DASHED KEPLERIAN RECONNAISSANCE ORBIT · r = 5.2 Rₛ</text>
+<g transform="translate(58, 102)">
+<rect x="0" y="0" width="215" height="68" fill="#090b10" fill-opacity="0.82" stroke="#8b7650" stroke-width="0.6" />
+<text x="10" y="16" class="label-sub">ACCRETION DEPTH STRATA</text>
+<line x1="10" y1="28" x2="36" y2="28" stroke="#ffffff" stroke-width="2.2" />
+<text x="44" y="31" class="label-anno-dim">BAND I · INNER THERMAL RIM (T ~ 10⁷ K)</text>
+<line x1="10" y1="42" x2="36" y2="42" stroke="#fbbf24" stroke-width="2.2" />
+<text x="44" y="45" class="label-anno-dim">BAND II · KEPLERIAN TORUS FLUX</text>
+<line x1="10" y1="56" x2="36" y2="56" stroke="#d97706" stroke-width="2.2" />
+<text x="44" y="59" class="label-anno-dim">BAND III · OUTER CORONAL ENVELOPE</text>
+</g>
+</g>
+</svg>

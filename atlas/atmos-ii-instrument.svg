@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+<defs>
+<pattern id="grid-1" width="30" height="30" patternUnits="userSpaceOnUse">
+<path d="M 30 0 L 0 0 0 30" fill="none" stroke="#F2EDE3" stroke-width="0.4" stroke-opacity="0.15" />
+</pattern>
+<clipPath id="moon-clip">
+<circle cx="445" cy="155" r="52" />
+</clipPath>
+</defs>
+<!-- Background & Frame -->
+<!-- Corner Calibration Marks -->
+<g stroke="#F2EDE3" stroke-width="1" fill="none">
+<path d="M 45 65 L 45 45 L 65 45" />
+<path d="M 555 65 L 555 45 L 535 45" />
+<path d="M 45 535 L 45 555 L 65 555" />
+<path d="M 555 535 L 555 555 L 535 555" />
+</g>
+<!-- Background Celestial Declination Circles -->
+<g fill="none" stroke="#F2EDE3">
+<circle cx="300" cy="300" r="230" stroke-width="0.6" stroke-dasharray="4 6" />
+<circle cx="300" cy="300" r="190" stroke-width="0.5" stroke-opacity="0.4" />
+<circle cx="445" cy="155" r="95" stroke-width="0.7" stroke-dasharray="2 4" />
+<circle cx="445" cy="155" r="72" stroke-width="0.6" />
+</g>
+<!-- Target Moon Geometry -->
+<g>
+<circle cx="445" cy="155" r="52" fill="#E6DEC8" stroke="#F2EDE3" stroke-width="1.5" />
+<g clip-path="url(#moon-clip)">
+<circle cx="420" cy="175" r="56" fill="#06070A" fill-opacity="0.85" />
+<circle cx="465" cy="135" r="12" fill="none" stroke="#F2EDE3" stroke-width="0.8" />
+<circle cx="480" cy="165" r="7" fill="none" stroke="#F2EDE3" stroke-width="0.8" />
+<circle cx="448" cy="118" r="5" fill="none" stroke="#F2EDE3" stroke-width="0.8" />
+<line x1="390" y1="155" x2="500" y2="155" stroke="#D96B43" stroke-width="0.7" stroke-dasharray="2 2" />
+<line x1="445" y1="100" x2="445" y2="210" stroke="#D96B43" stroke-width="0.7" stroke-dasharray="2 2" />
+</g>
+<circle cx="445" cy="155" r="52" fill="none" stroke="#F2EDE3" stroke-width="1.5" />
+<!-- Moon Crosshair Ticks -->
+<line x1="445" y1="48" x2="445" y2="75" stroke="#F2EDE3" stroke-width="1" />
+<line x1="445" y1="235" x2="445" y2="262" stroke="#F2EDE3" stroke-width="1" />
+<line x1="338" y1="155" x2="365" y2="155" stroke="#F2EDE3" stroke-width="1" />
+<line x1="525" y1="155" x2="552" y2="155" stroke="#F2EDE3" stroke-width="1" />
+</g>
+<!-- Optical Sight & Light Cone Projections -->
+<g stroke="#D96B43" fill="none">
+<line x1="115" y1="405" x2="495" y2="117" stroke-width="1" stroke-dasharray="6 4" />
+<line x1="115" y1="405" x2="412" y2="180" stroke-width="0.8" stroke-dasharray="3 3" />
+<line x1="115" y1="405" x2="478" y2="130" stroke-width="0.8" stroke-dasharray="3 3" />
+<polygon points="348,200 412,115 478,202 380,242" fill="#D96B43" fill-opacity="0.1" />
+</g>
+<!-- Equatorial Mount & Setting Circles -->
+<g transform="translate(260, 325)">
+<circle cx="0" cy="0" r="68" fill="none" stroke="#F2EDE3" stroke-width="1" />
+<circle cx="0" cy="0" r="62" fill="none" stroke="#F2EDE3" stroke-width="3" stroke-dasharray="1.5 4.9" />
+<circle cx="0" cy="0" r="44" fill="#F4EFE6" stroke="#F2EDE3" stroke-width="1.2" />
+<circle cx="0" cy="0" r="32" fill="none" stroke="#C59B5F" stroke-width="1.2" />
+<!-- Counterweight Rod -->
+<line x1="-22" y1="-28" x2="-92" y2="-120" stroke="#F2EDE3" stroke-width="3" />
+<g transform="translate(-76, -99) rotate(-37)">
+<rect x="-18" y="-8" width="36" height="16" rx="2" fill="#06070A" />
+<rect x="-14" y="10" width="28" height="10" rx="1" fill="#C59B5F" stroke="#F2EDE3" stroke-width="1" />
+</g>
+<circle cx="-92" cy="-120" r="5" fill="#D96B43" stroke="#F2EDE3" stroke-width="1" />
+</g>
+<!-- Tripod & Base -->
+<g stroke="#F2EDE3" fill="none">
+<!-- Pillar -->
+<path d="M 244 355 L 276 355 L 284 425 L 236 425 Z" fill="#E6DEC8" stroke-width="1.5" />
+<line x1="260" y1="325" x2="260" y2="545" stroke-width="0.8" stroke-dasharray="4 4" />
+<!-- Left Leg -->
+<polygon points="242,425 254,425 168,545 156,545" fill="#F4EFE6" stroke-width="1.5" />
+<!-- Right Leg -->
+<polygon points="266,425 278,425 364,545 352,545" fill="#F4EFE6" stroke-width="1.5" />
+<!-- Center Leg -->
+<polygon points="255,425 265,425 266,545 254,545" fill="#06070A" />
+<!-- Spreader Tray -->
+<line x1="198" y1="490" x2="322" y2="490" stroke-width="2" />
+<polygon points="245,490 275,490 260,504" fill="#C59B5F" stroke-width="1.2" />
+<!-- Baseline -->
+<line x1="90" y1="545" x2="510" y2="545" stroke-width="1.5" />
+</g>
+<!-- Telescope Optical Tube Assembly (Rotated -37.2 deg) -->
+<g transform="translate(260, 295) rotate(-37.2)">
+<!-- Finder Scope -->
+<g transform="translate(10, -42)">
+<line x1="-25" y1="18" x2="-25" y2="4" stroke="#F2EDE3" stroke-width="2" />
+<line x1="25" y1="18" x2="25" y2="4" stroke="#F2EDE3" stroke-width="2" />
+<rect x="-45" y="-4" width="90" height="10" fill="#06070A" />
+<rect x="45" y="-6" width="14" height="14" fill="#C59B5F" stroke="#F2EDE3" stroke-width="1.2" />
+</g>
+<!-- Eyepiece & Focuser -->
+<rect x="-175" y="-8" width="35" height="16" fill="#06070A" />
+<rect x="-140" y="-14" width="35" height="28" fill="#E6DEC8" stroke="#F2EDE3" stroke-width="1.5" />
+<circle cx="-122" cy="24" r="9" fill="#C59B5F" stroke="#F2EDE3" stroke-width="1.5" />
+<circle cx="-122" cy="24" r="3" fill="#06070A" />
+<line x1="-122" y1="14" x2="-122" y2="18" stroke="#F2EDE3" stroke-width="2" />
+<!-- Main Tube with Internal Baffles & Ray Diagram -->
+<polygon points="-105,-22 105,-32 105,32 -105,22" fill="#F4EFE6" stroke="#F2EDE3" stroke-width="1.8" />
+<!-- Internal Optical Lenses & Light Rays -->
+<path d="M 102,-30 Q 92,0 102,30 Q 112,0 102,-30 Z" fill="#D96B43" fill-opacity="0.35" stroke="#D96B43" stroke-width="1.2" />
+<path d="M -102,-20 Q -95,0 -102,20 Q -109,0 -102,-20 Z" fill="#C59B5F" fill-opacity="0.4" stroke="#F2EDE3" stroke-width="1" />
+<line x1="102" y1="-28" x2="-102" y2="16" stroke="#D96B43" stroke-width="0.9" />
+<line x1="102" y1="28" x2="-102" y2="-16" stroke="#D96B43" stroke-width="0.9" />
+<line x1="102" y1="-14" x2="-140" y2="0" stroke="#C59B5F" stroke-width="0.8" stroke-dasharray="3 2" />
+<line x1="102" y1="14" x2="-140" y2="0" stroke="#C59B5F" stroke-width="0.8" stroke-dasharray="3 2" />
+<!-- Internal Baffle Rings -->
+<line x1="-45" y1="-24" x2="-45" y2="24" stroke="#F2EDE3" stroke-width="1" stroke-dasharray="2 3" />
+<line x1="25" y1="-28" x2="25" y2="28" stroke="#F2EDE3" stroke-width="1" stroke-dasharray="2 3" />
+<!-- Tube Cradle Rings -->
+<rect x="-24" y="-29" width="12" height="58" fill="#C59B5F" stroke="#F2EDE3" stroke-width="1.5" />
+<rect x="12" y="-31" width="12" height="62" fill="#C59B5F" stroke="#F2EDE3" stroke-width="1.5" />
+<!-- Dew Shield & Objective Cell -->
+<rect x="105" y="-36" width="52" height="72" fill="#06070A" />
+<rect x="105" y="-36" width="10" height="72" fill="#C59B5F" stroke="#F2EDE3" stroke-width="1.5" />
+<line x1="157" y1="-44" x2="157" y2="44" stroke="#D96B43" stroke-width="1.2" />
+<!-- Central Pivot Hub -->
+<circle cx="0" cy="0" r="16" fill="#F4EFE6" stroke="#F2EDE3" stroke-width="2" />
+<circle cx="0" cy="0" r="6" fill="#D96B43" stroke="#F2EDE3" stroke-width="1.2" />
+</g>
+<!-- Technical Annotations -->
+<g font-family="monospace" font-size="10" fill="#06070A" letter-spacing="1.5">
+</g>
+</svg>

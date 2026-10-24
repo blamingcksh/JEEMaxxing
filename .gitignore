@@ -11,3 +11,6 @@ node_modules/.bin/
 
 # harness binary
 omp-windows-x64.exe
+
+# Observatory gate-screenshot artifacts
+scripts/_obs/

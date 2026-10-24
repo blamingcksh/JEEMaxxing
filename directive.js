@@ -612,7 +612,7 @@ async function _toastDirective() {
     }
     if (state.mockDay) parts.push('Mock day : the mock IS today\u2019s target.');
     if (meta.weeklyLine) { parts.push(meta.weeklyLine); meta.weeklyLine = null; _save(); }
-    window.__jmaxAppToast(`⚡ ${parts.join(' ')}`);
+    window.__jmaxAppToast(`✦ ${parts.join(' ')}`);
 }
 
 // ── Native-language day summary (consumed by app.js updateUI + the card) ────

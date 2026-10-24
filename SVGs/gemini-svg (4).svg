@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+  <defs>
+    <pattern id="cross-5" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 18 20 L 22 20 M 20 18 L 20 22" stroke="#1E1D1A" stroke-width="0.6" stroke-opacity="0.35" />
+    </pattern>
+  </defs>
+
+  <!-- Background & Frame -->
+  <rect width="600" height="600" fill="#F4EFE6" />
+  <rect x="24" y="24" width="552" height="552" fill="url(#cross-5)" stroke="#1E1D1A" stroke-width="1.5" />
+
+  <!-- Celestial Star Sighting & Horizon Ray Geometry -->
+  <g fill="none">
+    <!-- Star Target (Top Left) -->
+    <g transform="translate(120, 95)">
+      <circle cx="0" cy="0" r="32" stroke="#D96B43" stroke-width="0.8" stroke-dasharray="3 3" />
+      <circle cx="0" cy="0" r="18" stroke="#1E1D1A" stroke-width="0.8" />
+      <polygon points="0,-24 5,-5 24,0 5,5 0,24 -5,5 -24,0 -5,-5" fill="#D96B43" stroke="#1E1D1A" stroke-width="1" />
+      <circle cx="0" cy="0" r="3" fill="#F4EFE6" />
+    </g>
+
+    <!-- Optical Reflection Path: Star -> Index Mirror (320,120) -> Horizon Mirror (215,280) -> Eyepiece (465,280) -->
+    <polyline points="120,95 320,120 215,280 465,280" stroke="#D96B43" stroke-width="1.5" />
+    <!-- Direct Horizon Line of Sight -->
+    <line x1="45" y1="280" x2="215" y2="280" stroke="#D96B43" stroke-width="1.2" stroke-dasharray="6 4" />
+    <!-- Angle Measurement Arc -->
+    <path d="M 110 280 A 105 105 0 0 1 268 188" stroke="#C59B5F" stroke-width="1.2" stroke-dasharray="2 3" />
+  </g>
+
+  <!-- Sextant Frame & Graduated Arc (Pivot at 320, 120) -->
+  <g>
+    <!-- Outer Graduated Brass Limb (Radius 340 to 380, centered at 320,120) -->
+    <path d="M 110 388 A 340 340 0 0 0 530 388 L 555 420 A 380 380 0 0 1 85 420 Z" fill="#E6DEC8" stroke="#1E1D1A" stroke-width="1.8" />
+    <!-- Fine Vernier Degree Scale Arc -->
+    <path d="M 98 404 A 360 360 0 0 0 542 404" fill="none" stroke="#1E1D1A" stroke-width="8" stroke-dasharray="1.5 4.5" />
+    <path d="M 92 412 A 370 370 0 0 0 548 412" fill="none" stroke="#D96B43" stroke-width="1.2" />
+
+    <!-- Structural A-Frame Arms & Trefoil Webbing -->
+    <line x1="320" y1="120" x2="115" y2="412" stroke="#1E1D1A" stroke-width="14" />
+    <line x1="320" y1="120" x2="115" y2="412" stroke="#C59B5F" stroke-width="8" />
+    <line x1="320" y1="120" x2="525" y2="412" stroke="#1E1D1A" stroke-width="14" />
+    <line x1="320" y1="120" x2="525" y2="412" stroke="#C59B5F" stroke-width="8" />
+
+    <!-- Inner Structural Bracing Rings -->
+    <circle cx="320" cy="245" r="46" fill="none" stroke="#1E1D1A" stroke-width="8" />
+    <circle cx="320" cy="245" r="46" fill="none" stroke="#E6DEC8" stroke-width="4" />
+    <circle cx="262" cy="335" r="36" fill="none" stroke="#1E1D1A" stroke-width="7" />
+    <circle cx="262" cy="335" r="36" fill="none" stroke="#E6DEC8" stroke-width="3.5" />
+    <circle cx="378" cy="335" r="36" fill="none" stroke="#1E1D1A" stroke-width="7" />
+    <circle cx="378" cy="335" r="36" fill="none" stroke="#E6DEC8" stroke-width="3.5" />
+
+    <!-- Colored Solar Shade Filters -->
+    <g transform="translate(245, 195) rotate(-25)">
+      <circle cx="0" cy="0" r="18" fill="#D96B43" fill-opacity="0.7" stroke="#1E1D1A" stroke-width="1.5" />
+      <circle cx="-22" cy="12" r="16" fill="#C59B5F" fill-opacity="0.7" stroke="#1E1D1A" stroke-width="1.5" />
+      <line x1="0" y1="18" x2="22" y2="32" stroke="#1E1D1A" stroke-width="3" />
+    </g>
+
+    <!-- Horizon Glass / Half-Silvered Mirror (at 215, 280) -->
+    <g transform="translate(215, 280) rotate(18)">
+      <rect x="-8" y="-26" width="16" height="52" rx="2" fill="#F4EFE6" stroke="#1E1D1A" stroke-width="1.8" />
+      <rect x="-5" y="-23" width="10" height="23" fill="#1E1D1A" />
+      <rect x="-5" y="0" width="10" height="23" fill="#D96B43" fill-opacity="0.35" />
+    </g>
+
+    <!-- Sighting Telescope Tube (Right Side, Horizontal at Y=280) -->
+    <g transform="translate(415, 280)">
+      <rect x="-55" y="-12" width="110" height="24" fill="#1E1D1A" />
+      <polygon points="-55,-12 -85,-18 -85,18 -55,12" fill="#E6DEC8" stroke="#1E1D1A" stroke-width="1.5" />
+      <rect x="-15" y="-16" width="24" height="32" fill="#C59B5F" stroke="#1E1D1A" stroke-width="1.5" />
+      <rect x="55" y="-16" width="14" height="32" fill="#C59B5F" stroke="#1E1D1A" stroke-width="1.5" />
+      <rect x="69" y="-10" width="12" height="20" fill="#1E1D1A" />
+    </g>
+
+    <!-- Pivoting Index Arm & Vernier Drum (Rotated -14 deg from vertical around 320,120) -->
+    <g transform="translate(320, 120) rotate(-14)">
+      <!-- Index Arm -->
+      <polygon points="-9,0 9,0 14,358 -14,358" fill="#F4EFE6" stroke="#1E1D1A" stroke-width="1.8" />
+      <line x1="0" y1="25" x2="0" y2="315" stroke="#D96B43" stroke-width="1.2" stroke-dasharray="4 3" />
+      <!-- Vernier Window & Micrometer Drum -->
+      <rect x="-26" y="325" width="52" height="38" rx="3" fill="#C59B5F" stroke="#1E1D1A" stroke-width="1.5" />
+      <rect x="-16" y="332" width="32" height="14" fill="#F4EFE6" stroke="#1E1D1A" stroke-width="1" />
+      <line x1="0" y1="332" x2="0" y2="346" stroke="#D96B43" stroke-width="1.5" />
+      <!-- Tangent Screw & Magnifier Loupe -->
+      <rect x="26" y="334" width="24" height="18" fill="#1E1D1A" />
+      <circle cx="56" cy="343" r="12" fill="#E6DEC8" stroke="#1E1D1A" stroke-width="1.5" />
+      <circle cx="-24" cy="295" r="16" fill="#D96B43" fill-opacity="0.3" stroke="#1E1D1A" stroke-width="1.5" />
+      <line x1="0" y1="295" x2="-8" y2="295" stroke="#1E1D1A" stroke-width="2" />
+
+      <!-- Index Mirror Housing at Pivot -->
+      <rect x="-28" y="-14" width="56" height="28" rx="3" fill="#C59B5F" stroke="#1E1D1A" stroke-width="1.8" />
+      <line x1="-22" y1="0" x2="22" y2="0" stroke="#1E1D1A" stroke-width="3" />
+      <circle cx="0" cy="0" r="8" fill="#D96B43" stroke="#1E1D1A" stroke-width="1.5" />
+    </g>
+  </g>
+
+  <!-- Technical Labels -->
+  <g font-family="monospace" font-size="10" fill="#1E1D1A" letter-spacing="1.5">
+    <text x="44" y="52">FIG. 05 // NAVIGATIONAL SEXTANT</text>
+    <text x="44" y="528" fill="#D96B43">INDEX ANGLE: 42° 18' 30"</text>
+    <text x="44" y="544">TRUE HORIZON DATUM — 00° 00'</text>
+  </g>
+</svg>

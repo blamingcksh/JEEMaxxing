@@ -50,7 +50,7 @@ const TIERS = [
     },
     {
         name: 'tier3',
-        lo: 3, hi: 24,          // 03:00–24:00 (catch-all for 03:00+)
+        lo: 3, hi: 5,           // 03:00–05:00 (ends at 05:00 dawn cutoff, aligned with Bridge day reset)
         multiplier: 0.20,
         badge: '🛌',
         cssClass: 'night-red',
@@ -298,7 +298,7 @@ export function resolveTier() {
             // (Spec says "03:00+" but 08:00 is a practical upper bound
             // since post-sunrise studying, even all-night, has passed
             // the most neurochemically harmful window.)
-            if (tier.name === 'tier3' && hour >= 8) {
+            if (tier.name === 'tier3' && hour >= 5) {
                 _state._cachedTier = null;
                 _state._cachedTierTs = now;
                 _state._cachedTierHour = hour;
