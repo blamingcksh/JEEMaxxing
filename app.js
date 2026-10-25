@@ -1490,6 +1490,10 @@ function updateQuickLaunchAndArena() {
                 const eloVal = (AppState.elo && typeof AppState.elo[sub] === 'number' && isFinite(AppState.elo[sub])) ? Math.round(AppState.elo[sub]) : 1200;
                 metaEl.textContent = `${chCount} chapters · ${qCount} questions · ${eloVal} ELO`;
             }
+            const dayCountEl = document.getElementById(`arena-day-count-${sub}`);
+            if (dayCountEl) {
+                dayCountEl.textContent = String((solved && solved[sub]) || 0);
+            }
         });
     } catch (_) {}
 }

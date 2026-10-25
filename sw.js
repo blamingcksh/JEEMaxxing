@@ -154,7 +154,7 @@
 //        atmosphere observer narrowed + rAF coalescing, fx AudioContext lazy
 //        for sound-off users, tracker conic ring → composited rotation, hidden
 //        HUDs release their backdrop blurs via visibility.
-const VERSION = 'jeemax-v72';
+const VERSION = 'jeemax-v73';
 const SHELL = [
   './',
   './index.html',

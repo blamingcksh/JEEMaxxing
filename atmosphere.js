@@ -28,12 +28,12 @@
      dashboard's black-hole pair. Single-plate screens (settings, boot) run
      their engraving in both moods. */
   var SCREENS = {
-    dashboard: { anchor: 'right',  plates: [{ stem: 'i-horizon-night', variant: 'night' },
-                                            { stem: 'i-horizon-dusk',  variant: 'dusk'  }] },
+    dashboard: { anchor: 'left',   plates: [{ stem: 'v-sextant-night',     variant: 'night' },
+                                            { stem: 'v-sextant-dusk',      variant: 'dusk'  }] },
     vault:     { anchor: 'right',  plates: [{ stem: 'iv-microscope-night', variant: 'night' },
                                             { stem: 'iv-microscope-dusk',  variant: 'dusk'  }] },
-    practice:  { anchor: 'left',   plates: [{ stem: 'v-sextant-night',     variant: 'night' },
-                                            { stem: 'v-sextant-dusk',      variant: 'dusk'  }] },
+    practice:  { anchor: 'right',  plates: [{ stem: 'i-horizon-night', variant: 'night' },
+                                            { stem: 'i-horizon-dusk',  variant: 'dusk'  }] },
     mocks:     { anchor: 'right',  plates: [{ stem: 'vi-selenograph-night', variant: 'night' },
                                             { stem: 'vi-selenograph-dusk',  variant: 'dusk'  }] },
     settings:  { anchor: 'left',   plates: [{ stem: 'ii-instrument-night', variant: 'night' },
