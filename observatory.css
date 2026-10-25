@@ -195,7 +195,7 @@ html[data-theme="observatory"] .app-container { position: relative; z-index: 1; 
   -webkit-mask-image: radial-gradient(70% 70% at 66% 48%, #000 26%, transparent 76%);
   mask-image: radial-gradient(74% 72% at 64% 48%, #000 30%, transparent 80%);
 }
-.obs-plate[data-screen="dashboard"] {
+.obs-plate[data-screen="practice"] {
   right: -18vh;
   height: 118vh;
   -webkit-mask-image: radial-gradient(70% 70% at 56% 48%, #000 40%, rgba(0, 0, 0, .52) 66%, transparent 86%);
@@ -245,13 +245,13 @@ html[data-obs-screen="lunar"][data-mode="dusk"]      .obs-plate[data-screen="lun
   animation: obs-drift 40s ease-in-out infinite alternate;
   will-change: transform, opacity;
 }
-/* 3D Moon & Celestial Astrolabe on Dashboard: soft-shaded sphere with dark
+/* 3D Moon & Celestial Astrolabe on Arena Dashboard: soft-shaded sphere with dark
    terminator needs slightly higher plate opacity than dense line engravings
    while remaining calm and subordinate to foreground typography. */
-html[data-obs-screen="dashboard"][data-mode="night"]:not([data-obs-focus]) .obs-plate[data-screen="dashboard"][data-variant="night"] {
+html[data-obs-screen="practice"][data-mode="night"]:not([data-obs-focus]) .obs-plate[data-screen="practice"][data-variant="night"] {
   opacity: .14;
 }
-html[data-obs-screen="dashboard"][data-mode="dusk"]:not([data-obs-focus])  .obs-plate[data-screen="dashboard"][data-variant="dusk"] {
+html[data-obs-screen="practice"][data-mode="dusk"]:not([data-obs-focus])  .obs-plate[data-screen="practice"][data-variant="dusk"] {
   opacity: .18;
 }
 html[data-obs-screen="lunar"]     .obs-plate[data-screen="lunar"]:not([data-variant])  {
@@ -1830,6 +1830,36 @@ html[data-theme="observatory"] .subject-cards {
   margin: 0 auto !important;
   justify-items: stretch !important;
   align-items: stretch !important;
+}
+html[data-theme="observatory"] .subject-col {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+html[data-theme="observatory"] .subject-col > .subject-card {
+  flex: 1 1 auto !important;
+}
+html[data-theme="observatory"] .subject-day-count {
+  margin-top: 18px !important;
+  font-family: var(--font-num) !important;
+  font-size: 32px !important;
+  font-weight: 400 !important;
+  line-height: 1 !important;
+  letter-spacing: .02em !important;
+  font-variant-numeric: tabular-nums !important;
+  color: var(--obs-bone) !important;
+  user-select: none !important;
+}
+html[data-theme="observatory"] .subject-col[data-subject="physics"] .subject-day-count {
+  color: var(--obs-subj-phys) !important;
+}
+html[data-theme="observatory"] .subject-col[data-subject="chemistry"] .subject-day-count {
+  color: var(--obs-subj-chem) !important;
+}
+html[data-theme="observatory"] .subject-col[data-subject="maths"] .subject-day-count {
+  color: var(--obs-subj-math) !important;
 }
 html[data-theme="observatory"] .subject-card {
   width: 100% !important;

@@ -102,19 +102,19 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         </div>
 
         <ul class="nav-menu" role="list">
-            <li><a class="nav-item active" data-tab="dashboard" href="#dashboard" title="Grind Hub (Alt+1)" onclick="switchTab('dashboard', this);return false;">
+            <li><a class="nav-item active" data-tab="practice" href="#practice" title="Arena (Alt+1)" onclick="switchTab('practice', this);return false;">
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.4C10.1 4.8 7.2 4.2 3.8 4.5V18c3.4-.3 6.3.3 8.2 1.9 1.9-1.6 4.8-2.2 8.2-1.9V4.5c-3.4-.3-6.3.3-8.2 1.9Z"/><path d="M12 6.4V19.9"/></svg></span>
+                <span class="text-label">Grind Station</span></a></li>
+            <li><a class="nav-item" data-tab="dashboard" href="#dashboard" title="Grind Hub (Alt+2)" onclick="switchTab('dashboard', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.75" y="3.75" width="7" height="7" rx="1.8"/><rect x="13.25" y="3.75" width="7" height="7" rx="1.8"/><rect x="3.75" y="13.25" width="7" height="7" rx="1.8"/><rect x="13.25" y="13.25" width="7" height="7" rx="1.8"/></svg></span>
                 <span class="text-label">Grind Hub</span></a></li>
             <li><a class="nav-item" data-tab="errors" href="#vault" title="The Vault (Alt+3)" onclick="switchTab('errors', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 19 5.8V11c0 4.6-2.9 8.1-7 10-4.1-1.9-7-5.4-7-10V5.8Z"/></svg></span>
                 <span class="text-label">The Vault</span></a></li>
-            <li><a class="nav-item" data-tab="practice" href="#practice" title="Grind Station (Alt+4)" onclick="switchTab('practice', this);return false;">
-                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.4C10.1 4.8 7.2 4.2 3.8 4.5V18c3.4-.3 6.3.3 8.2 1.9 1.9-1.6 4.8-2.2 8.2-1.9V4.5c-3.4-.3-6.3.3-8.2 1.9Z"/><path d="M12 6.4V19.9"/></svg></span>
-                <span class="text-label">Grind Station</span></a></li>
-            <li><a class="nav-item" data-tab="mocks" href="#mocks" title="Mocks (Alt+5)" onclick="switchTab('mocks', this);return false;">
+            <li><a class="nav-item" data-tab="mocks" href="#mocks" title="Mocks (Alt+4)" onclick="switchTab('mocks', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.25"/><path d="M12 7.5V12l3 2"/></svg></span>
                 <span class="text-label">Mocks</span></a></li>
-            <li><a class="nav-item" data-tab="settings" href="#config" title="Config (Alt+6)" onclick="switchTab('settings', this);return false;">
+            <li><a class="nav-item" data-tab="settings" href="#config" title="Config (Alt+5)" onclick="switchTab('settings', this);return false;">
                 <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 5h-6.8"/><path d="M10.2 5H3"/><path d="M21 12h-8.8"/><path d="M8.2 12H3"/><path d="M21 19h-4.8"/><path d="M12.2 19H3"/><path d="M14.2 3v4"/><path d="M8.2 10v4"/><path d="M16.2 17v4"/></svg></span>
                 <span class="text-label">Config</span></a></li>
         </ul>
@@ -136,7 +136,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
              .sync-cluster/#manual-sync-btn/#sync-sub-text (storage.js / dashboard-clean.js).
              Streak / focus chips and the calendar button were removed — streak and study
              time already live on dashboard cards, history lives on the variance map. -->
-        <header class="header-section" id="main-header">
+        <header class="header-section hidden" id="main-header">
             <div class="header-copy">
                 <h1 id="view-title">Grind Hub</h1>
                 <p class="header-sub">Welcome back · <span id="top-date">Today</span></p>
@@ -172,7 +172,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
               Skin lives in styles-dashboard.css (loaded just before styles-ipad.css,
               which stays last so the iPad standalone hardening wins).
         ════════════════════════════════════════════ -->
-        <section id="view-dashboard" class="view-section active">
+        <section id="view-dashboard" class="view-section">
             <!-- ── Hemingway Bridge & Tuck-In banners (fixed mounts above the bento grid) ── -->
             <div id="bridge-banner" hidden></div>
             <div id="tuckin-door-banner" hidden></div>
@@ -408,39 +408,48 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <!-- ═══════════════════════════════════════════
              VIEW · GRIND STATION (PRACTICE)
         ════════════════════════════════════════════ -->
-        <section id="view-practice" class="view-section">
+        <section id="view-practice" class="view-section active">
 
             <!-- Subview: subject select -->
             <div id="practice-subject-view" class="practice-subview active">
                 <span class="kicker">// QUESTION BANK</span>
                 <h2 class="box-title center-head">Pick Your Arena</h2>
                 <div class="subject-cards">
-                    <div class="subject-card subject-card--phys" onclick="selectSubject('physics')">
-                        <span class="obs-specimen-plate-tag">OBS. 07 · CHLADNI RESONANCE</span>
-                        <div class="obs-specimen-frame">
-                            <img src="atlas/specimen-phys-chladni.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                    <div class="subject-col" data-subject="physics">
+                        <div class="subject-card subject-card--phys" onclick="selectSubject('physics')">
+                            <span class="obs-specimen-plate-tag">OBS. 07 · CHLADNI RESONANCE</span>
+                            <div class="obs-specimen-frame">
+                                <img src="atlas/specimen-phys-chladni.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                            </div>
+                            <div class="subject-icon"><svg class="g"><use href="#g-physics"></use></svg></div>
+                            <h3>Physics</h3>
+                            <div class="subject-card-meta" id="subj-meta-physics">Loading…</div>
                         </div>
-                        <div class="subject-icon"><svg class="g"><use href="#g-physics"></use></svg></div>
-                        <h3>Physics</h3>
-                        <div class="subject-card-meta" id="subj-meta-physics">Loading…</div>
+                        <div class="subject-day-count" id="arena-day-count-physics" title="Physics solved today">0</div>
                     </div>
-                    <div class="subject-card subject-card--chem" onclick="selectSubject('chemistry')">
-                        <span class="obs-specimen-plate-tag">OBS. 06 · CRYSTAL SYMMETRY</span>
-                        <div class="obs-specimen-frame">
-                            <img src="atlas/specimen-chem-dendrite.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                    <div class="subject-col" data-subject="chemistry">
+                        <div class="subject-card subject-card--chem" onclick="selectSubject('chemistry')">
+                            <span class="obs-specimen-plate-tag">OBS. 06 · CRYSTAL SYMMETRY</span>
+                            <div class="obs-specimen-frame">
+                                <img src="atlas/specimen-chem-dendrite.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                            </div>
+                            <div class="subject-icon"><svg class="g"><use href="#g-chemistry"></use></svg></div>
+                            <h3>Chemistry</h3>
+                            <div class="subject-card-meta" id="subj-meta-chemistry">Loading…</div>
                         </div>
-                        <div class="subject-icon"><svg class="g"><use href="#g-chemistry"></use></svg></div>
-                        <h3>Chemistry</h3>
-                        <div class="subject-card-meta" id="subj-meta-chemistry">Loading…</div>
+                        <div class="subject-day-count" id="arena-day-count-chemistry" title="Chemistry solved today">0</div>
                     </div>
-                    <div class="subject-card subject-card--math" onclick="selectSubject('maths')">
-                        <span class="obs-specimen-plate-tag">OBS. 05 · GOLDEN SPIRAL</span>
-                        <div class="obs-specimen-frame">
-                            <img src="atlas/specimen-math-nautilus.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                    <div class="subject-col" data-subject="maths">
+                        <div class="subject-card subject-card--math" onclick="selectSubject('maths')">
+                            <span class="obs-specimen-plate-tag">OBS. 05 · GOLDEN SPIRAL</span>
+                            <div class="obs-specimen-frame">
+                                <img src="atlas/specimen-math-nautilus.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                            </div>
+                            <div class="subject-icon"><svg class="g"><use href="#g-maths"></use></svg></div>
+                            <h3>Maths</h3>
+                            <div class="subject-card-meta" id="subj-meta-maths">Loading…</div>
                         </div>
-                        <div class="subject-icon"><svg class="g"><use href="#g-maths"></use></svg></div>
-                        <h3>Maths</h3>
-                        <div class="subject-card-meta" id="subj-meta-maths">Loading…</div>
+                        <div class="subject-day-count" id="arena-day-count-maths" title="Maths solved today">0</div>
                     </div>
                 </div>
             </div>

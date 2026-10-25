@@ -64,6 +64,15 @@ for (let i = 0; i < 6; i++) {
 assert(!(await page.locator('.bootseq').count()), 'boot briefing dismissed');
 await page.waitForTimeout(800);
 
+// Switch to Grind Hub tab to test the Today's Progress card
+await page.evaluate(() => {
+    const dashNav = document.querySelector('[data-tab="dashboard"]');
+    if (dashNav && typeof window.switchTab === 'function') {
+        window.switchTab('dashboard', dashNav);
+    }
+});
+await page.waitForTimeout(500);
+
 const card = page.locator('.dash-card-tracker');
 assert(await card.isVisible(), 'tracker card visible');
 
