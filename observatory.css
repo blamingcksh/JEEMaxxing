@@ -1955,6 +1955,47 @@ html[data-theme="observatory"] .subject-card-meta {
 html[data-theme="observatory"] .obs-specimen-plate-tag { display: block; }
 .obs-specimen-frame img { max-width: 100%; height: auto; }
 
+/* ── Arena ritual strip — Bridge/Tuck-In banners align to the 1040px folio
+      grid; the quiet Tuck-In pill sits below the daily solve counts. ── */
+html[data-theme="observatory"] #practice-subject-view #bridge-banner,
+html[data-theme="observatory"] #practice-subject-view #tuckin-door-banner {
+  margin: 0 auto 20px;
+  width: 100%;
+}
+html[data-theme="observatory"] .arena-ritual-row {
+  display: flex;
+  justify-content: center;
+  margin: 30px auto 8px;
+}
+html[data-theme="observatory"] .arena-tuckin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 18px;
+  background: transparent !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  color: var(--obs-bone-3) !important;
+  font-family: var(--font-num) !important;
+  font-size: 10.5px !important;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  transition: color .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+html[data-theme="observatory"] .arena-tuckin-btn:hover {
+  color: var(--obs-ink) !important;
+  border-color: var(--obs-edge) !important;
+  background: color-mix(in srgb, var(--obs-ink) 6%, transparent) !important;
+  box-shadow: 0 0 18px -8px color-mix(in srgb, var(--obs-ink) 55%, transparent);
+}
+html[data-theme="observatory"] .arena-tuckin-icon {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--obs-ink);
+}
+
 /* Practice header & buttons */
 html[data-theme="observatory"] .practice-header {
   border-bottom: 1px solid var(--obs-hair) !important;

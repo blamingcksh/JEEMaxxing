@@ -64,7 +64,7 @@ const glacierIcon = await page.locator('.nav-item.active .icon').evaluate(el => 
 assert(glacierIcon.includes('56, 189, 248'), `active icon follows glacier accent (${glacierIcon})`);
 await page.evaluate(() => window.JEEMaxTheme && window.JEEMaxTheme.set('furnace'));
 await page.waitForTimeout(200);
-assert((await page.locator('#view-title').textContent()) === 'Grind Hub', 'title Grind Hub');
+assert((await page.locator('#view-title').textContent()) === 'Analysis Hub', 'title Analysis Hub');
 await page.locator('.nav-item[data-tab="dashboard"]').click({ timeout: TL });
 await page.waitForTimeout(400);
 const themeW = await page.locator('#theme-btn').evaluate(el => Math.round(el.getBoundingClientRect().width));

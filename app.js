@@ -906,64 +906,6 @@ let lastTime = 0;
 let currentIntensity = 0.62;
 let particles = [];
 
-// ==================== FAVICON GENERATION ====================
-// ==================== FAVICON GENERATION ====================
-(function generateFavicon() {
-    if (document.getElementById('apple-icon-png')) return;
-    const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 200 200">
-      <defs>
-        <linearGradient id="foxGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#ff2d95"/>
-          <stop offset="100%" style="stop-color:#00f0ff"/>
-        </linearGradient>
-      </defs>
-      <g stroke="url(#foxGrad)" stroke-width="2" fill="none" opacity="0.8">
-        <path d="M100 160 Q80 120 60 100"/>
-        <path d="M100 160 Q90 110 80 80"/>
-        <path d="M100 160 Q100 100 100 60"/>
-        <path d="M100 160 Q110 110 120 80"/>
-        <path d="M100 160 Q120 120 140 100"/>
-        <path d="M100 160 Q70 130 50 120"/>
-        <path d="M100 160 Q130 130 150 120"/>
-        <path d="M100 160 Q85 140 75 130"/>
-        <path d="M100 160 Q115 140 125 130"/>
-      </g>
-      <ellipse cx="100" cy="140" rx="20" ry="25" fill="none" stroke="url(#foxGrad)" stroke-width="2"/>
-      <circle cx="100" cy="110" r="16" fill="none" stroke="url(#foxGrad)" stroke-width="2"/>
-      <polygon points="90,95 85,75 98,90" fill="url(#foxGrad)" opacity="0.8"/>
-      <polygon points="110,95 115,75 102,90" fill="url(#foxGrad)" opacity="0.8"/>
-      <circle cx="96" cy="108" r="3" fill="#ff2d95"/>
-      <circle cx="104" cy="108" r="3" fill="#ff2d95"/>
-      <circle cx="60" cy="100" r="1.5" fill="#00f0ff">
-        <animate attributeName="cy" values="100;90;100" dur="2s" repeatCount="indefinite"/>
-      </circle>
-      <circle cx="140" cy="100" r="1.5" fill="#00f0ff">
-        <animate attributeName="cy" values="100;90;100" dur="1.8s" repeatCount="indefinite"/>
-      </circle>
-    </svg>`;
-    const canvas = document.createElement('canvas');
-    canvas.width = 180;
-    canvas.height = 180;
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    const blob = new Blob([svg], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    img.onload = function () {
-        ctx.drawImage(img, 0, 0, 180, 180);
-        const pngData = canvas.toDataURL('image/png');
-        const existing = document.querySelector('link[rel="apple-touch-icon"]');
-        if (existing) existing.remove();
-        const link = document.createElement('link');
-        link.id = 'apple-icon-png';
-        link.rel = 'apple-touch-icon';
-        link.href = pngData;
-        document.head.appendChild(link);
-        URL.revokeObjectURL(url);
-    };
-    img.src = url;
-})();
-
 // ==================== MODAL FUNCTIONS ====================
 // ── Modal open/close race guard ──
 // openModal defers `.active` to a requestAnimationFrame so the fade-in CSS
@@ -1046,14 +988,14 @@ try {
     }, false);
 } catch (_) {}
 
-// ── Global low-friction tab navigation shortcuts (Alt+1 .. Alt+6) ──
+// ── Global low-friction tab navigation shortcuts (Alt+1 .. Alt+5) ──
 try {
     const TAB_KEY_MAP = {
-        '1': 'dashboard',
-        '3': 'errors',
-        '4': 'practice',
-        '5': 'mocks',
-        '6': 'settings'
+        '1': 'practice',
+        '2': 'errors',
+        '3': 'mocks',
+        '4': 'dashboard',
+        '5': 'settings'
     };
     document.addEventListener('keydown', function (e) {
         if (!e.altKey || e.ctrlKey || e.metaKey) return;
@@ -1269,6 +1211,8 @@ export async function switchTab(viewId, element) {
     if (viewId === 'practice') {
         showPracticeSubview('practice-subject-view');
         try { updateQuickLaunchAndArena(); } catch (_) {}
+        try { window.Bridge?.renderBanner?.(); } catch (_) {}
+        try { window.TuckIn?.renderDoor?.(); } catch (_) {}
     }
     if (viewId === 'errors') {
         assignDailyBountyIfNeeded();
