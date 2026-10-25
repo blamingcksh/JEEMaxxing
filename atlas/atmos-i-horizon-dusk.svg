@@ -1,93 +1,453 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="36 36 528 528" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="30 30 940 940" width="1000" height="1000">
   <defs>
-    <radialGradient id="bh-void" cx="50%" cy="45%" r="65%">
-      <stop offset="0%" stop-color="#1A102B" />
-      <stop offset="55%" stop-color="#0C0816" />
-      <stop offset="100%" stop-color="#05030A" />
+    <!-- Deep Space Background Gradient -->
+    <!-- Outer Atmospheric Corona Glow -->
+    <radialGradient id="corona-outer" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#E5C07B" stop-opacity="0.26" />
+      <stop offset="38%" stop-color="#F2EDE3" stop-opacity="0.11" />
+      <stop offset="70%" stop-color="#E5C07B" stop-opacity="0.02" />
+      <stop offset="100%" stop-color="#E5C07B" stop-opacity="0" />
     </radialGradient>
-    <radialGradient id="bh-photon-glow" cx="50%" cy="50%" r="50%">
-      <stop offset="36%" stop-color="#000000" stop-opacity="1" />
-      <stop offset="44%" stop-color="#FF512F" stop-opacity="0.85" />
-      <stop offset="52%" stop-color="#F59E0B" stop-opacity="0.65" />
-      <stop offset="68%" stop-color="#9333EA" stop-opacity="0.3" />
-      <stop offset="100%" stop-color="#05030A" stop-opacity="0" />
+
+    <!-- Inner Warm-Cyan Halo -->
+    <radialGradient id="corona-inner" cx="46%" cy="44%" r="36%">
+      <stop offset="0%" stop-color="#F2EDE3" stop-opacity="0.42" />
+      <stop offset="55%" stop-color="#E5C07B" stop-opacity="0.18" />
+      <stop offset="80%" stop-color="#C8A96E" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#12141C" stop-opacity="0" />
     </radialGradient>
-    <!-- Relativistic Doppler Beaming Gradient (Blue-shift left, Red-shift right) -->
-    <linearGradient id="bh-doppler-disk" x1="0%" y1="50%" x2="100%" y2="50%">
-      <stop offset="0%" stop-color="#38BDF8" />
-      <stop offset="18%" stop-color="#E0F2FE" />
-      <stop offset="42%" stop-color="#FBBF24" />
-      <stop offset="72%" stop-color="#EF4444" />
-      <stop offset="100%" stop-color="#7E22CE" />
+
+    <!-- Illuminated Lunar Surface Base -->
+    <radialGradient id="lunar-surface" cx="34%" cy="32%" r="68%" fx="28%" fy="26%">
+      <stop offset="0%" stop-color="#F2EDE3" />
+      <stop offset="22%" stop-color="#E6DEC8" />
+      <stop offset="48%" stop-color="#C9BEA7" />
+      <stop offset="74%" stop-color="#7E7566" />
+      <stop offset="90%" stop-color="#3A3631" />
+      <stop offset="100%" stop-color="#171615" />
+    </radialGradient>
+
+    <!-- Warm Pearl Tint Overlay -->
+    <linearGradient id="warm-albedo" x1="15%" y1="15%" x2="85%" y2="85%">
+      <stop offset="0%" stop-color="#E5C07B" stop-opacity="0.32" />
+      <stop offset="48%" stop-color="#F2EDE3" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#8A6D3B" stop-opacity="0.24" />
     </linearGradient>
-    <linearGradient id="bh-jet" x1="50%" y1="0%" x2="50%" y2="100%">
-      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0" />
-      <stop offset="30%" stop-color="#A855F7" stop-opacity="0.55" />
-      <stop offset="50%" stop-color="#F43F5E" stop-opacity="0.8" />
-      <stop offset="70%" stop-color="#A855F7" stop-opacity="0.55" />
-      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0" />
+
+    <!-- Lunar Maria (Dark Basalt Plains) Gradient -->
+    <radialGradient id="mare-dark" cx="45%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#1A1D28" stop-opacity="0.62" />
+      <stop offset="65%" stop-color="#252938" stop-opacity="0.40" />
+      <stop offset="100%" stop-color="#4A453D" stop-opacity="0" />
+    </radialGradient>
+
+    <radialGradient id="mare-deep" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1A1D28" stop-opacity="0.68" />
+      <stop offset="70%" stop-color="#252938" stop-opacity="0.36" />
+      <stop offset="100%" stop-color="#3A3631" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- 3D Terminator Shadow (Creates Crescent/Gibbous Depth + Earthshine) -->
+    <radialGradient id="terminator-shadow" cx="28%" cy="30%" r="72%" fx="22%" fy="24%">
+      <stop offset="0%" stop-color="#12141C" stop-opacity="0" />
+      <stop offset="50%" stop-color="#12141C" stop-opacity="0" />
+      <stop offset="66%" stop-color="#12141C" stop-opacity="0.52" />
+      <stop offset="78%" stop-color="#12141C" stop-opacity="0.86" />
+      <stop offset="92%" stop-color="#0E1017" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#1A1610" stop-opacity="0.88" />
+    </radialGradient>
+
+    <!-- Sunlit Limb Rim Highlight -->
+    <linearGradient id="sunlit-limb" x1="0%" y1="0%" x2="75%" y2="75%">
+      <stop offset="0%" stop-color="#F2EDE3" stop-opacity="0.95" />
+      <stop offset="35%" stop-color="#E5C07B" stop-opacity="0.65" />
+      <stop offset="65%" stop-color="#E5C07B" stop-opacity="0" />
     </linearGradient>
+
+    <!-- Dark Limb Cyan Earthshine Rim -->
+    <linearGradient id="earthshine-limb" x1="100%" y1="100%" x2="25%" y2="25%">
+      <stop offset="0%" stop-color="#E5C07B" stop-opacity="0.55" />
+      <stop offset="28%" stop-color="#C8A96E" stop-opacity="0.22" />
+      <stop offset="55%" stop-color="#C8A96E" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Crater Shadow & Highlight Gradients -->
+    <linearGradient id="crater-pit" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141311" stop-opacity="0.78" />
+      <stop offset="45%" stop-color="#575046" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#F2EDE3" stop-opacity="0.75" />
+    </linearGradient>
+
+    <linearGradient id="crater-rim-light" x1="100%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#F2EDE3" stop-opacity="0.9" />
+      <stop offset="50%" stop-color="#E5C07B" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#1E1D1A" stop-opacity="0.7" />
+    </linearGradient>
+
+    <!-- Celestial Ring Gradients -->
+    <linearGradient id="ring-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F2EDE3" stop-opacity="0.78" />
+      <stop offset="50%" stop-color="#E5C07B" stop-opacity="0.32" />
+      <stop offset="100%" stop-color="#F2EDE3" stop-opacity="0.62" />
+    </linearGradient>
+
+    <linearGradient id="ring-gold" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E5C07B" stop-opacity="0.85" />
+      <stop offset="50%" stop-color="#F2EDE3" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#E5C07B" stop-opacity="0.62" />
+    </linearGradient>
+
+    <!-- Soft Glow Filters -->
+    <filter id="glow-soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="glow-intense" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur1" />
+      <feGaussianBlur stdDeviation="24" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur2" />
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="mare-blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" />
+    </filter>
+
+    <filter id="ray-blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.5" />
+    </filter>
+
+    <!-- Clip Path for the Moon Sphere -->
+    <clipPath id="moon-clip">
+      <circle cx="500" cy="500" r="260" />
+    </clipPath>
+
+    <!-- Reusable 4-Point Star Symbol -->
+    <g id="star-sparkle">
+      <path d="M 0,-12 C 1,-3 3,-1 12,0 C 3,1 1,3 0,12 C -1,3 -3,1 -12,0 C -3,-1 -1,-3 0,-12 Z" fill="#F2EDE3" />
+      <circle cx="0" cy="0" r="2" fill="#F2EDE3" />
+    </g>
+    <!-- Copperplate Engraving Hatching Pattern -->
+    <pattern id="obs-copper-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#1E1D1A" stroke-width="0.9" stroke-opacity="0.42" />
+      <line x1="4" y1="0" x2="4" y2="8" stroke="#F2EDE3" stroke-width="0.45" stroke-opacity="0.16" />
+    </pattern>
+    <pattern id="obs-terminator-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(-42)">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#E5C07B" stroke-width="0.55" stroke-opacity="0.22" />
+    </pattern>
   </defs>
-  <!-- Deep Cosmos Void &amp; Gold Frame -->
-  <!-- Lower Lorentzian Spacetime Gravity Well Mesh -->
-  <g fill="none">
-    <ellipse cx="300" cy="360" rx="245" ry="52" stroke="#38BDF8" stroke-width="0.7" stroke-opacity="0.4" />
-    <ellipse cx="300" cy="398" rx="182" ry="38" stroke="#38BDF8" stroke-width="0.8" stroke-opacity="0.5" />
-    <ellipse cx="300" cy="438" rx="118" ry="24" stroke="#A855F7" stroke-width="0.9" stroke-opacity="0.65" />
-    <ellipse cx="300" cy="478" rx="70" ry="14" stroke="#F43F5E" stroke-width="1.1" stroke-opacity="0.8" />
-    <ellipse cx="300" cy="518" rx="40" ry="8" stroke="#FBBF24" stroke-width="1.3" />
-    <ellipse cx="300" cy="548" rx="22" ry="4.5" fill="#FBBF24" fill-opacity="0.3" stroke="#FFFBEB" stroke-width="1.4" />
-    <!-- Spacetime Curvature Meridians -->
-    <g stroke="url(#bh-doppler-disk)" stroke-width="0.75" stroke-opacity="0.55">
-      <path d="M 55 360 C 165 385, 245 445, 278 548" />
-      <path d="M 122 326 C 200 365, 260 440, 285 548" />
-      <path d="M 195 312 C 245 355, 275 440, 292 548" />
-      <path d="M 545 360 C 435 385, 355 445, 322 548" />
-      <path d="M 478 326 C 400 365, 340 440, 315 548" />
-      <path d="M 405 312 C 355 355, 325 440, 308 548" />
+
+  <!-- 1. DEEP SPACE BACKGROUND -->
+  <g id="background">
+    <!-- Subtle Cosmic Nebula Mist -->
+    <ellipse cx="320" cy="360" rx="340" ry="180" transform="rotate(-28 320 360)" fill="url(#corona-outer)" opacity="0.35" />
+    <ellipse cx="680" cy="640" rx="300" ry="140" transform="rotate(-28 680 640)" fill="url(#corona-outer)" opacity="0.25" />
+  </g>
+
+  <!-- 2. STARFIELD -->
+  <g id="starfield">
+    <!-- Tiny Background Stars -->
+    <g fill="#E6DEC8" opacity="0.55">
+      <circle cx="120" cy="180" r="1" />
+      <circle cx="240" cy="95" r="1.2" />
+      <circle cx="390" cy="110" r="0.8" />
+      <circle cx="670" cy="85" r="1.4" />
+      <circle cx="840" cy="145" r="1" />
+      <circle cx="910" cy="290" r="1.2" />
+      <circle cx="885" cy="490" r="0.9" />
+      <circle cx="920" cy="710" r="1.3" />
+      <circle cx="790" cy="865" r="1.1" />
+      <circle cx="620" cy="920" r="0.8" />
+      <circle cx="310" cy="890" r="1.2" />
+      <circle cx="145" cy="830" r="1.5" />
+      <circle cx="85" cy="620" r="1" />
+      <circle cx="95" cy="390" r="1.3" />
+      <circle cx="195" cy="275" r="0.9" />
+      <circle cx="775" cy="235" r="1.1" />
+      <circle cx="830" cy="610" r="0.8" />
+      <circle cx="215" cy="735" r="1.1" />
+    </g>
+
+    <!-- Cyan & Gold Tinted Stars -->
+    <g fill="#E5C07B" opacity="0.7">
+      <circle cx="165" cy="140" r="1.6" />
+      <circle cx="855" cy="220" r="1.8" />
+      <circle cx="740" cy="830" r="1.5" />
+      <circle cx="130" cy="720" r="1.7" />
+      <circle cx="540" cy="85" r="1.3" />
+    </g>
+    <g fill="#E5C07B" opacity="0.65">
+      <circle cx="290" cy="155" r="1.5" />
+      <circle cx="875" cy="410" r="1.6" />
+      <circle cx="430" cy="915" r="1.4" />
+      <circle cx="115" cy="515" r="1.5" />
+    </g>
+
+    <!-- Luminous 4-Point Star Flares -->
+    <use href="#star-sparkle" transform="translate(180, 210) scale(0.85)" opacity="0.85" filter="url(#glow-intense)" />
+    <use href="#star-sparkle" transform="translate(835, 175) scale(0.65)" opacity="0.7" />
+    <use href="#star-sparkle" transform="translate(815, 775) scale(0.9)" opacity="0.8" filter="url(#glow-intense)" />
+    <use href="#star-sparkle" transform="translate(160, 790) scale(0.6)" opacity="0.65" />
+    <use href="#star-sparkle" transform="translate(740, 120) scale(0.45)" opacity="0.6" />
+    <use href="#star-sparkle" transform="translate(265, 860) scale(0.5)" opacity="0.6" />
+  </g>
+
+  <!-- 3. CELESTIAL OBSERVATORY GEOMETRY (Astrolabe & Orbital Lines) -->
+  <g id="celestial-geometry">
+    <!-- Outer Measurement Ring -->
+    <circle cx="500" cy="500" r="410" fill="none" stroke="url(#ring-cyan)" stroke-width="1.15" opacity="0.55" />
+    <circle cx="500" cy="500" r="398" fill="none" stroke="url(#ring-cyan)" stroke-width="0.9" stroke-dasharray="2 8" opacity="0.5" />
+
+    <!-- Middle Dashed Orbital Ring -->
+    <circle cx="500" cy="500" r="345" fill="none" stroke="url(#ring-gold)" stroke-width="1.2" stroke-dasharray="12 6 2 6" opacity="0.6" />
+
+    <!-- Inner Vernier Ring -->
+    <circle cx="500" cy="500" r="296" fill="none" stroke="url(#ring-cyan)" stroke-width="1.15" opacity="0.64" />
+    <circle cx="500" cy="500" r="290" fill="none" stroke="#E5C07B" stroke-width="3" stroke-dasharray="0.8 15.17" opacity="0.55" />
+
+    <!-- Tilted Elliptical Orbital Tracks -->
+    <g transform="rotate(-32 500 500)">
+      <ellipse cx="500" cy="500" rx="445" ry="145" fill="none" stroke="url(#ring-cyan)" stroke-width="1.15" opacity="0.64" />
+      <ellipse cx="500" cy="500" rx="445" ry="145" fill="none" stroke="#F2EDE3" stroke-width="1.2" stroke-dasharray="1 24" opacity="0.55" />
+      <!-- Orbital Node Markers -->
+      <circle cx="55" cy="500" r="3" fill="#E5C07B" filter="url(#glow-intense)" />
+      <circle cx="945" cy="500" r="2.5" fill="#E5C07B" />
+    </g>
+
+    <g transform="rotate(58 500 500)">
+      <ellipse cx="500" cy="500" rx="380" ry="95" fill="none" stroke="url(#ring-gold)" stroke-width="1.0" stroke-dasharray="6 6" opacity="0.55" />
+    </g>
+
+    <!-- Cardinal Axis Hairlines -->
+    <g stroke="url(#ring-cyan)" stroke-width="1.0" opacity="0.58">
+      <line x1="500" y1="45" x2="500" y2="185" />
+      <line x1="500" y1="815" x2="500" y2="955" />
+      <line x1="45" y1="500" x2="185" y2="500" />
+      <line x1="815" y1="500" x2="955" y2="500" />
+    </g>
+
+    <!-- Diagonal Astrolabe Sightlines -->
+    <g stroke="url(#ring-gold)" stroke-width="0.9" opacity="0.48">
+      <line x1="178" y1="178" x2="275" y2="275" />
+      <line x1="822" y1="822" x2="725" y2="725" />
+      <line x1="822" y1="178" x2="725" y2="275" />
+      <line x1="178" y1="822" x2="275" y2="725" />
+    </g>
+
+    <!-- Geometric Phase / Zenith Diamonds -->
+    <polygon points="500,72 505,86 500,100 495,86" fill="none" stroke="#E5C07B" stroke-width="1.2" opacity="0.6" />
+    <polygon points="500,900 505,914 500,928 495,914" fill="none" stroke="#E5C07B" stroke-width="1.2" opacity="0.6" />
+    <polygon points="72,500 86,495 100,500 86,505" fill="none" stroke="#E5C07B" stroke-width="1.2" opacity="0.6" />
+    <polygon points="900,500 914,495 928,500 914,505" fill="none" stroke="#E5C07B" stroke-width="1.2" opacity="0.6" />
+  </g>
+
+  <!-- 4. LUNAR CORONA & ATMOSPHERIC GLOW -->
+  <g id="lunar-corona">
+    <circle cx="500" cy="500" r="460" fill="url(#corona-outer)" />
+    <circle cx="485" cy="485" r="335" fill="url(#corona-inner)" />
+    <!-- Sunlit Top-Left Bloom -->
+    <circle cx="465" cy="465" r="268" fill="none" stroke="#F2EDE3" stroke-width="8" opacity="0.25" filter="url(#glow-soft)" />
+  </g>
+
+  <!-- 5. THE MOON SPHERE -->
+  <g id="moon-sphere" clip-path="url(#moon-clip)">
+    <!-- Base Illuminated Sphere -->
+    <circle cx="500" cy="500" r="260" fill="url(#lunar-surface)" />
+    <circle cx="500" cy="500" r="260" fill="url(#warm-albedo)" />
+
+    <!-- Subtle Global Albedo Texture Rings -->
+    <circle cx="420" cy="410" r="230" fill="none" stroke="#F2EDE3" stroke-width="40" opacity="0.08" filter="url(#mare-blur)" />
+
+    <!-- LUNAR MARIA (Dark Basalt Seas) -->
+    <g id="lunar-maria" filter="url(#mare-blur)">
+      <!-- Mare Imbrium (Upper Left Basin) -->
+      <path d="M 320,330 C 355,285 430,285 465,325 C 495,360 475,425 430,440 C 375,455 315,430 300,385 C 290,355 300,345 320,330 Z" fill="url(#mare-deep)" stroke="#1E1D1A" stroke-width="1.2" stroke-dasharray="4 2" />
+      
+      <!-- Oceanus Procellarum (Western Expanse) -->
+      <path d="M 255,390 C 285,365 340,395 365,445 C 390,495 375,585 330,625 C 295,655 255,610 245,545 C 235,480 230,410 255,390 Z" fill="url(#mare-dark)" stroke="#1E1D1A" stroke-width="1.0" stroke-dasharray="3 3" />
+
+      <!-- Mare Serenitatis (Upper Center-Right) -->
+      <path d="M 475,335 C 515,320 565,345 575,385 C 585,425 545,460 505,455 C 465,450 445,410 455,375 C 460,355 465,340 475,335 Z" fill="url(#mare-deep)" stroke="#1E1D1A" stroke-width="1.2" stroke-dasharray="4 2" />
+
+      <!-- Mare Tranquillitatis & Fecunditatis (Center-Right & East) -->
+      <path d="M 520,440 C 575,425 635,450 660,500 C 685,550 660,620 610,630 C 565,640 545,585 510,555 C 470,520 475,455 520,440 Z" fill="url(#mare-deep)" stroke="#1E1D1A" stroke-width="1.2" stroke-dasharray="4 2" />
+
+      <!-- Mare Crisium (Isolated Eastern Oval) -->
+      <ellipse cx="675" cy="410" rx="42" ry="54" transform="rotate(-18 675 410)" fill="url(#mare-deep)" stroke="#1E1D1A" stroke-width="1.2" stroke-dasharray="4 2" />
+
+      <!-- Mare Nubium & Humorum (Southern Seas) -->
+      <path d="M 355,545 C 395,525 465,545 480,590 C 495,635 450,680 395,675 C 340,670 325,620 335,580 C 340,560 345,550 355,545 Z" fill="url(#mare-dark)" stroke="#1E1D1A" stroke-width="1.0" stroke-dasharray="3 3" />
+      
+      <!-- Sinus Iridum & Northern Highlands Shading -->
+      <path d="M 355,265 C 410,245 495,250 540,275 C 510,295 435,295 375,285 Z" fill="url(#mare-dark)" stroke="#1E1D1A" stroke-width="1.0" stroke-dasharray="3 3" opacity="0.7" />
+    </g>
+
+    <!-- TYCHO & COPERNICUS EJECTA RAY SYSTEMS -->
+    <g id="ejecta-rays" filter="url(#ray-blur)" opacity="0.55">
+      <!-- Southern Major Crater (Tycho) Rays -->
+      <g transform="translate(435, 645)" stroke="#F2EDE3" stroke-linecap="round">
+        <line x1="0" y1="0" x2="-155" y2="-165" stroke-width="2.2" opacity="0.7" />
+        <line x1="0" y1="0" x2="-95" y2="-240" stroke-width="1.5" opacity="0.5" />
+        <line x1="0" y1="0" x2="-20" y2="-290" stroke-width="1.8" opacity="0.6" />
+        <line x1="0" y1="0" x2="75" y2="-250" stroke-width="1.2" opacity="0.45" />
+        <line x1="0" y1="0" x2="165" y2="-185" stroke-width="2" opacity="0.5" />
+        <line x1="0" y1="0" x2="210" y2="-75" stroke-width="1.4" opacity="0.35" />
+        <line x1="0" y1="0" x2="-175" y2="-45" stroke-width="1.6" opacity="0.6" />
+        <line x1="0" y1="0" x2="-110" y2="85" stroke-width="1.8" opacity="0.55" />
+        <line x1="0" y1="0" x2="65" y2="95" stroke-width="1.5" opacity="0.4" />
+        <circle cx="0" cy="0" r="24" fill="#F2EDE3" opacity="0.45" />
+      </g>
+
+      <!-- Mid-Western Crater (Copernicus) Rays -->
+      <g transform="translate(385, 455)" stroke="#F2EDE3" stroke-linecap="round">
+        <circle cx="0" cy="0" r="32" fill="#F2EDE3" opacity="0.35" />
+        <line x1="0" y1="0" x2="-115" y2="-85" stroke-width="1.6" opacity="0.65" />
+        <line x1="0" y1="0" x2="-125" y2="35" stroke-width="1.4" opacity="0.55" />
+        <line x1="0" y1="0" x2="85" y2="-95" stroke-width="1.5" opacity="0.5" />
+        <line x1="0" y1="0" x2="110" y2="45" stroke-width="1.2" opacity="0.4" />
+        <line x1="0" y1="0" x2="-35" y2="-120" stroke-width="1.3" opacity="0.6" />
+      </g>
+
+      <!-- Kepler Bright Patch -->
+      <g transform="translate(310, 475)">
+        <circle cx="0" cy="0" r="18" fill="#F2EDE3" opacity="0.4" />
+        <line x1="-35" y1="-25" x2="40" y2="30" stroke="#F2EDE3" stroke-width="1.4" opacity="0.5" />
+        <line x1="-25" y1="35" x2="35" y2="-30" stroke="#F2EDE3" stroke-width="1.2" opacity="0.5" />
+      </g>
+    </g>
+
+    
+    <!-- ENGRAVED SELENOGRAPHIC GRATICULE & COPPERPLATE HATCHING -->
+    <g id="engraved-selenograph" opacity="0.62">
+      <!-- Copperplate diagonal line texture across the lunar globe -->
+      <circle cx="500" cy="500" r="260" fill="url(#obs-copper-hatch)" />
+      <!-- Selenographic Parallels (Latitude Arcs) -->
+      <g fill="none" stroke="#1E1D1A" stroke-width="0.75" stroke-dasharray="3 3" opacity="0.48">
+        <ellipse cx="500" cy="500" rx="260" ry="52" transform="rotate(-18 500 500)" />
+        <ellipse cx="500" cy="415" rx="242" ry="44" transform="rotate(-18 500 415)" />
+        <ellipse cx="500" cy="585" rx="242" ry="44" transform="rotate(-18 500 585)" />
+        <ellipse cx="500" cy="335" rx="195" ry="32" transform="rotate(-18 500 335)" />
+        <ellipse cx="500" cy="665" rx="195" ry="32" transform="rotate(-18 500 665)" />
+      </g>
+      <!-- Selenographic Meridians (Longitude Arcs) -->
+      <g fill="none" stroke="#1E1D1A" stroke-width="0.75" stroke-dasharray="4 3" opacity="0.45" transform="rotate(-18 500 500)">
+        <ellipse cx="500" cy="500" rx="55" ry="260" />
+        <ellipse cx="500" cy="500" rx="135" ry="260" />
+        <ellipse cx="500" cy="500" rx="208" ry="260" />
+        <line x1="500" y1="240" x2="500" y2="760" stroke-dasharray="none" stroke-width="0.65" />
+        <line x1="240" y1="500" x2="760" y2="500" stroke-dasharray="none" stroke-width="0.65" />
+      </g>
+      <!-- Gilded Selenographic Reference Ticks on Sunlit Hemisphere -->
+      <g fill="none" stroke="#E5C07B" stroke-width="0.7" stroke-dasharray="2 6" opacity="0.55" transform="rotate(-18 500 500)">
+        <ellipse cx="500" cy="500" rx="135" ry="260" />
+        <ellipse cx="500" cy="500" rx="260" ry="52" />
+      </g>
+    </g>
+    <!-- IMPACT CRATERS (3D Rims, Pits & Central Peaks) -->
+    <g id="craters">
+      <!-- Tycho (Prominent Southern Crater) -->
+      <g transform="translate(435, 645)">
+        <circle cx="0" cy="0" r="16" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="2" />
+        <circle cx="2" cy="2" r="3.5" fill="#F2EDE3" opacity="0.85" />
+      </g>
+
+      <!-- Copernicus -->
+      <g transform="translate(385, 455)">
+        <circle cx="0" cy="0" r="19" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="2.2" />
+        <circle cx="1.5" cy="1.5" r="4" fill="#F2EDE3" opacity="0.8" />
+      </g>
+
+      <!-- Plato (Dark-Floored Northern Rim Crater) -->
+      <g transform="translate(405, 290) rotate(-15)">
+        <ellipse cx="0" cy="0" rx="18" ry="12" fill="#1B1A17" opacity="0.75" stroke="url(#crater-rim-light)" stroke-width="1.8" />
+      </g>
+
+      <!-- Aristarchus (Ultra-Bright Northwestern Point) -->
+      <g transform="translate(295, 395)">
+        <circle cx="0" cy="0" r="11" fill="#F2EDE3" opacity="0.85" filter="url(#ray-blur)" />
+        <circle cx="0" cy="0" r="7" fill="#F2EDE3" stroke="#E6DEC8" stroke-width="1.2" />
+      </g>
+
+      <!-- Kepler -->
+      <g transform="translate(310, 475)">
+        <circle cx="0" cy="0" r="9.5" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.5" />
+      </g>
+
+      <!-- Archimedes -->
+      <g transform="translate(445, 365)">
+        <circle cx="0" cy="0" r="13" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.5" opacity="0.8" />
+      </g>
+
+      <!-- Grimaldi (Western Limb Oval) -->
+      <g transform="translate(262, 520) rotate(12)">
+        <ellipse cx="0" cy="0" rx="9" ry="17" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.4" opacity="0.75" />
+      </g>
+
+      <!-- Clavius & Southern Highlands Crater Cluster -->
+      <g opacity="0.75">
+        <circle cx="405" cy="700" r="24" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.6" />
+        <circle cx="395" cy="705" r="6" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1" />
+        <circle cx="415" cy="692" r="5" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1" />
+        <circle cx="478" cy="675" r="14" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.4" />
+        <circle cx="515" cy="650" r="18" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.5" />
+        <circle cx="355" cy="665" r="12" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.3" />
+        <circle cx="495" cy="585" r="15" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.5" />
+        <circle cx="555" cy="595" r="11" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.2" />
+        <circle cx="605" cy="525" r="13" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.3" />
+        <circle cx="585" cy="345" r="12" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.3" />
+        <circle cx="515" cy="285" r="10" fill="url(#crater-pit)" stroke="url(#crater-rim-light)" stroke-width="1.2" />
+      </g>
+
+      <!-- Micro-Craters & Highland Stippling -->
+      <g fill="#F2EDE3" opacity="0.55">
+        <circle cx="345" cy="315" r="2" />
+        <circle cx="368" cy="412" r="1.8" />
+        <circle cx="422" cy="495" r="2.2" />
+        <circle cx="462" cy="532" r="1.6" />
+        <circle cx="315" cy="585" r="2.4" />
+        <circle cx="378" cy="618" r="1.9" />
+        <circle cx="465" cy="622" r="2.1" />
+        <circle cx="535" cy="495" r="1.7" />
+        <circle cx="488" cy="398" r="1.5" />
+        <circle cx="332" cy="355" r="1.8" />
+      </g>
+    </g>
+
+    <!-- 3D TERMINATOR SHADOW & EARTHSHINE OVERLAY -->
+    <circle cx="500" cy="500" r="260" fill="url(#terminator-shadow)" />
+
+    <!-- Subtle Illuminated Crater Rims Catching Light Along the Terminator -->
+    <g fill="none" stroke="#C8A96E" stroke-linecap="round" opacity="0.45">
+      <path d="M 595,512 A 14,14 0 0 1 612,532" stroke-width="1.8" />
+      <path d="M 548,584 A 11,11 0 0 1 562,602" stroke-width="1.6" />
+      <path d="M 638,448 A 18,18 0 0 1 655,472" stroke-width="1.5" />
+      <path d="M 505,638 A 16,16 0 0 1 524,658" stroke-width="1.7" />
+      <path d="M 658,382 A 22,28 0 0 1 682,425" stroke-width="1.4" />
     </g>
   </g>
-  <!-- Outer Astrometric Vernier Ring -->
-  <g transform="translate(300, 240)" fill="none">
-    <circle cx="0" cy="0" r="198" stroke="#D4AF37" stroke-width="0.8" stroke-dasharray="4 6" stroke-opacity="0.6" />
-    <circle cx="0" cy="0" r="188" stroke="#38BDF8" stroke-width="4" stroke-dasharray="1 5" stroke-opacity="0.55" />
-    <circle cx="0" cy="0" r="165" fill="url(#bh-photon-glow)" />
+
+  <!-- 6. LUNAR LIMB HIGHLIGHTS (Sunlit Edge & Dark-Side Cyan Earthshine) -->
+  <g id="lunar-limb-highlights">
+    <!-- Brilliant Sunlit Northwest Rim -->
+    <circle cx="500" cy="500" r="259.5" fill="none" stroke="url(#sunlit-limb)" stroke-width="2.5" />
+    <!-- Subtle Cyan Earthshine Southeast Rim -->
+    <circle cx="500" cy="500" r="259.5" fill="none" stroke="url(#earthshine-limb)" stroke-width="2" />
   </g>
-  <!-- Relativistic Kerr Singularity &amp; Warped Accretion Disk (Tilted -16 deg) -->
-  <g transform="translate(300, 240) rotate(-16)">
-    <!-- Astrophysical Polar Jets &amp; Helical Magnetic Flux -->
-    <polygon points="-28,-205 0,-60 28,-205" fill="url(#bh-jet)" />
-    <polygon points="-24,195 0,60 24,195" fill="url(#bh-jet)" />
-    <line x1="0" y1="-215" x2="0" y2="215" stroke="#38BDF8" stroke-width="1.2" stroke-dasharray="6 3" />
-    <path d="M -8 -75 C -34 -105, 34 -130, -16 -160 C -36 -180, 26 -190, 0 -208" fill="none" stroke="#E0F2FE" stroke-width="1.1" />
-    <path d="M 8 75 C 34 105, -34 130, 16 160 C 36 180, -26 190, 0 208" fill="none" stroke="#E0F2FE" stroke-width="1.1" />
-    <!-- Gravitationally Lensed Upper &amp; Lower Photon Halo Arcs -->
-    <path d="M -142 0 A 142 132 0 0 1 142 0" fill="none" stroke="url(#bh-doppler-disk)" stroke-width="6" stroke-opacity="0.45" />
-    <path d="M -134 0 A 134 122 0 0 1 134 0" fill="none" stroke="url(#bh-doppler-disk)" stroke-width="2.2" />
-    <path d="M -118 0 A 118 105 0 0 1 118 0" fill="none" stroke="#FFFBEB" stroke-width="1.2" stroke-dasharray="8 4" />
-    <path d="M -128 0 A 128 114 0 0 0 128 0" fill="none" stroke="url(#bh-doppler-disk)" stroke-width="3.5" stroke-opacity="0.6" />
-    <path d="M -112 0 A 112 98 0 0 0 112 0" fill="none" stroke="#FBBF24" stroke-width="1.1" stroke-dasharray="4 3" />
-    <!-- Innermost Stable Circular Orbit (ISCO) &amp; Event Horizon Shadow -->
-    <circle cx="0" cy="0" r="78" fill="#040208" stroke="#FBBF24" stroke-width="2.2" />
-    <circle cx="0" cy="0" r="72" fill="none" stroke="#38BDF8" stroke-width="1.2" stroke-dasharray="12 6" />
-    <circle cx="0" cy="0" r="65" fill="none" stroke="#F43F5E" stroke-width="1.4" />
-    <circle cx="0" cy="0" r="56" fill="none" stroke="#A855F7" stroke-width="0.8" stroke-dasharray="2 4" />
-    <!-- Equatorial Relativistic Accretion Disk -->
-    <path d="M -232 0 A 232 48 0 0 0 232 0 A 232 30 0 0 1 -232 0 Z" fill="url(#bh-doppler-disk)" fill-opacity="0.85" stroke="#FFFBEB" stroke-width="1.2" />
-    <ellipse cx="0" cy="0" rx="232" ry="40" fill="none" stroke="url(#bh-doppler-disk)" stroke-width="2" />
-    <ellipse cx="0" cy="0" rx="200" ry="33" fill="none" stroke="#FFFBEB" stroke-width="1.4" stroke-dasharray="12 5" />
-    <ellipse cx="0" cy="0" rx="168" ry="26" fill="none" stroke="#38BDF8" stroke-width="1.2" />
-    <ellipse cx="0" cy="0" rx="138" ry="19" fill="none" stroke="#FBBF24" stroke-width="1.5" />
-    <!-- Approaching Blue-Shifted Plasma Hotspots (Left) vs Receding Red-Shifted (Right) -->
-    <circle cx="-168" cy="9" r="6" fill="#E0F2FE" stroke="#38BDF8" stroke-width="1.5" />
-    <circle cx="-138" cy="-7" r="4.5" fill="#38BDF8" />
-    <circle cx="168" cy="-9" r="5" fill="#EF4444" stroke="#7E22CE" stroke-width="1.2" />
-    <circle cx="142" cy="8" r="3.5" fill="#F59E0B" />
-    <!-- Central Singularity Crosshair -->
-    <line x1="-26" y1="0" x2="26" y2="0" stroke="#D4AF37" stroke-width="0.7" stroke-opacity="0.7" />
-    <line x1="0" y1="-26" x2="0" y2="26" stroke="#D4AF37" stroke-width="0.7" stroke-opacity="0.7" />
-    <circle cx="0" cy="0" r="4" fill="none" stroke="#F43F5E" stroke-width="1.2" />
+
+  <!-- 7. FOREGROUND CELESTIAL ACCENTS (Overlapping the Moon for Depth) -->
+  <g id="foreground-accents">
+    <!-- Foreground Orbital Arc Crossing in Front of the Moon -->
+    <g transform="rotate(-32 500 500)">
+      <path d="M 55,500 A 445,145 0 0 0 945,500" fill="none" stroke="url(#ring-gold)" stroke-width="0.9" opacity="0.65" />
+      <circle cx="290" cy="628" r="2.2" fill="#F2EDE3" filter="url(#glow-intense)" />
+      <circle cx="710" cy="628" r="1.8" fill="#E5C07B" />
+    </g>
+
+    <!-- Brilliant Star Flare on the Sunlit Limb -->
+    <use href="#star-sparkle" transform="translate(308, 324) scale(0.95)" opacity="0.9" filter="url(#glow-intense)" />
   </g>
-  <!-- Doppler Shift Spectral Bar (Top Right) -->
-  <!-- Telemetry Labels -->
 </svg>

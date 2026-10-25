@@ -195,6 +195,12 @@ html[data-theme="observatory"] .app-container { position: relative; z-index: 1; 
   -webkit-mask-image: radial-gradient(70% 70% at 66% 48%, #000 26%, transparent 76%);
   mask-image: radial-gradient(74% 72% at 64% 48%, #000 30%, transparent 80%);
 }
+.obs-plate[data-screen="dashboard"] {
+  right: -18vh;
+  height: 118vh;
+  -webkit-mask-image: radial-gradient(70% 70% at 56% 48%, #000 40%, rgba(0, 0, 0, .52) 66%, transparent 86%);
+  mask-image: radial-gradient(70% 70% at 56% 48%, #000 40%, rgba(0, 0, 0, .52) 66%, transparent 86%);
+}
 .obs-plate[data-anchor="left"] {
   left: -22vh; transform: translateY(-50%);
   -webkit-mask-image: radial-gradient(74% 72% at 36% 48%, #000 30%, transparent 80%);
@@ -238,6 +244,15 @@ html[data-obs-screen="lunar"][data-mode="dusk"]      .obs-plate[data-screen="lun
   visibility: visible;
   animation: obs-drift 40s ease-in-out infinite alternate;
   will-change: transform, opacity;
+}
+/* 3D Moon & Celestial Astrolabe on Dashboard: soft-shaded sphere with dark
+   terminator needs slightly higher plate opacity than dense line engravings
+   while remaining calm and subordinate to foreground typography. */
+html[data-obs-screen="dashboard"][data-mode="night"]:not([data-obs-focus]) .obs-plate[data-screen="dashboard"][data-variant="night"] {
+  opacity: .14;
+}
+html[data-obs-screen="dashboard"][data-mode="dusk"]:not([data-obs-focus])  .obs-plate[data-screen="dashboard"][data-variant="dusk"] {
+  opacity: .18;
 }
 html[data-obs-screen="lunar"]     .obs-plate[data-screen="lunar"]:not([data-variant])  {
   opacity: calc(var(--obs-plate-op) * .85);

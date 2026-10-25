@@ -36,8 +36,8 @@ const PLATES = [
 // ── Gemini Plates (Atmosphere & Foreground Specimen Engravings) ───────────
 const GEMINI_TARGETS = [
   // Atmosphere plates
-  { src: 'gemini-svg (7).svg',  out: 'atmos-i-horizon-night.svg',       style: 'engraved' },
-  { src: 'gemini-svg (15).svg', out: 'atmos-i-horizon-dusk.svg',        style: 'colored' },
+  { src: 'dashboard-moon-astrolabe.svg', out: 'atmos-i-horizon-night.svg', style: 'moon-night' },
+  { src: 'dashboard-moon-astrolabe.svg', out: 'atmos-i-horizon-dusk.svg',  style: 'moon-dusk' },
   { src: 'gemini-svg.svg',      out: 'atmos-ii-instrument-night.svg',    style: 'engraved' },
   { src: 'gemini-svg (6).svg',  out: 'atmos-iii-lunar-night.svg',       style: 'engraved' },
   { src: 'gemini-svg (14).svg', out: 'atmos-iii-lunar-dusk.svg',        style: 'colored' },
@@ -273,6 +273,234 @@ function buildGeminiColored(raw, cfg = {}) {
   return svg;
 }
 
+function buildMoonAstrolabe(raw, mode = 'night') {
+  let svg = raw;
+
+  // 1. Strip the opaque rectangular space-bg canvas so the Moon & astrolabe float
+  //    seamlessly over the true Observatory void (--obs-void) and starfield.
+  svg = svg.replace(/<radialGradient id="space-bg"[\s\S]*?<\/radialGradient>\s*/i, '');
+  svg = svg.replace(/<rect\b[^>]*fill=["']url\(#space-bg\)["'][^>]*\/?>\s*/i, '');
+
+  const voidCol = mode === 'dusk' ? '#12141C' : '#06070A';
+  const voidDeep = mode === 'dusk' ? '#0E1017' : '#040508';
+  const mareCol1 = mode === 'dusk' ? '#1A1D28' : '#0D1018';
+  const mareCol2 = mode === 'dusk' ? '#252938' : '#151924';
+
+  // 2. Re-ink all gradients from modern cyan/slate into Observatory Copperplate
+  //    (Warm Bone #F2EDE3, Antique Brass #E5C07B, Aged Ivory #D8CEBE, Obsidian Void)
+  svg = svg.replace(
+    /<radialGradient id="corona-outer"[\s\S]*?<\/radialGradient>/i,
+    `<radialGradient id="corona-outer" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#E5C07B" stop-opacity="${mode === 'dusk' ? '0.26' : '0.18'}" />
+      <stop offset="38%" stop-color="#F2EDE3" stop-opacity="${mode === 'dusk' ? '0.11' : '0.07'}" />
+      <stop offset="70%" stop-color="#E5C07B" stop-opacity="0.02" />
+      <stop offset="100%" stop-color="#E5C07B" stop-opacity="0" />
+    </radialGradient>`
+  );
+
+  svg = svg.replace(
+    /<radialGradient id="corona-inner"[\s\S]*?<\/radialGradient>/i,
+    `<radialGradient id="corona-inner" cx="46%" cy="44%" r="36%">
+      <stop offset="0%" stop-color="#F2EDE3" stop-opacity="0.42" />
+      <stop offset="55%" stop-color="#E5C07B" stop-opacity="0.18" />
+      <stop offset="80%" stop-color="#C8A96E" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="${voidCol}" stop-opacity="0" />
+    </radialGradient>`
+  );
+
+  svg = svg.replace(
+    /<radialGradient id="lunar-surface"[\s\S]*?<\/radialGradient>/i,
+    `<radialGradient id="lunar-surface" cx="34%" cy="32%" r="68%" fx="28%" fy="26%">
+      <stop offset="0%" stop-color="#F2EDE3" />
+      <stop offset="22%" stop-color="#E6DEC8" />
+      <stop offset="48%" stop-color="#C9BEA7" />
+      <stop offset="74%" stop-color="#7E7566" />
+      <stop offset="90%" stop-color="#3A3631" />
+      <stop offset="100%" stop-color="#171615" />
+    </radialGradient>`
+  );
+
+  svg = svg.replace(
+    /<linearGradient id="warm-albedo"[\s\S]*?<\/linearGradient>/i,
+    `<linearGradient id="warm-albedo" x1="15%" y1="15%" x2="85%" y2="85%">
+      <stop offset="0%" stop-color="#E5C07B" stop-opacity="0.32" />
+      <stop offset="48%" stop-color="#F2EDE3" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#8A6D3B" stop-opacity="0.24" />
+    </linearGradient>`
+  );
+
+  svg = svg.replace(
+    /<radialGradient id="mare-dark"[\s\S]*?<\/radialGradient>/i,
+    `<radialGradient id="mare-dark" cx="45%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="${mareCol1}" stop-opacity="0.62" />
+      <stop offset="65%" stop-color="${mareCol2}" stop-opacity="0.40" />
+      <stop offset="100%" stop-color="#4A453D" stop-opacity="0" />
+    </radialGradient>`
+  );
+
+  svg = svg.replace(
+    /<radialGradient id="mare-deep"[\s\S]*?<\/radialGradient>/i,
+    `<radialGradient id="mare-deep" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="${mareCol1}" stop-opacity="0.68" />
+      <stop offset="70%" stop-color="${mareCol2}" stop-opacity="0.36" />
+      <stop offset="100%" stop-color="#3A3631" stop-opacity="0" />
+    </radialGradient>`
+  );
+
+  svg = svg.replace(
+    /<radialGradient id="terminator-shadow"[\s\S]*?<\/radialGradient>/i,
+    `<radialGradient id="terminator-shadow" cx="28%" cy="30%" r="72%" fx="22%" fy="24%">
+      <stop offset="0%" stop-color="${voidCol}" stop-opacity="0" />
+      <stop offset="50%" stop-color="${voidCol}" stop-opacity="0" />
+      <stop offset="66%" stop-color="${voidCol}" stop-opacity="0.52" />
+      <stop offset="78%" stop-color="${voidCol}" stop-opacity="0.86" />
+      <stop offset="92%" stop-color="${voidDeep}" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#1A1610" stop-opacity="0.88" />
+    </radialGradient>`
+  );
+
+  svg = svg.replace(
+    /<linearGradient id="sunlit-limb"[\s\S]*?<\/linearGradient>/i,
+    `<linearGradient id="sunlit-limb" x1="0%" y1="0%" x2="75%" y2="75%">
+      <stop offset="0%" stop-color="#F2EDE3" stop-opacity="0.95" />
+      <stop offset="35%" stop-color="#E5C07B" stop-opacity="0.65" />
+      <stop offset="65%" stop-color="#E5C07B" stop-opacity="0" />
+    </linearGradient>`
+  );
+
+  svg = svg.replace(
+    /<linearGradient id="earthshine-limb"[\s\S]*?<\/linearGradient>/i,
+    `<linearGradient id="earthshine-limb" x1="100%" y1="100%" x2="25%" y2="25%">
+      <stop offset="0%" stop-color="#E5C07B" stop-opacity="0.55" />
+      <stop offset="28%" stop-color="#C8A96E" stop-opacity="0.22" />
+      <stop offset="55%" stop-color="#C8A96E" stop-opacity="0" />
+    </linearGradient>`
+  );
+
+  svg = svg.replace(
+    /<linearGradient id="crater-pit"[\s\S]*?<\/linearGradient>/i,
+    `<linearGradient id="crater-pit" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141311" stop-opacity="0.78" />
+      <stop offset="45%" stop-color="#575046" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#F2EDE3" stop-opacity="0.75" />
+    </linearGradient>`
+  );
+
+  svg = svg.replace(
+    /<linearGradient id="crater-rim-light"[\s\S]*?<\/linearGradient>/i,
+    `<linearGradient id="crater-rim-light" x1="100%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#F2EDE3" stop-opacity="0.9" />
+      <stop offset="50%" stop-color="#E5C07B" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#1E1D1A" stop-opacity="0.7" />
+    </linearGradient>`
+  );
+
+  svg = svg.replace(
+    /<linearGradient id="ring-cyan"[\s\S]*?<\/linearGradient>/i,
+    `<linearGradient id="ring-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F2EDE3" stop-opacity="0.78" />
+      <stop offset="50%" stop-color="#E5C07B" stop-opacity="0.32" />
+      <stop offset="100%" stop-color="#F2EDE3" stop-opacity="0.62" />
+    </linearGradient>`
+  );
+
+  svg = svg.replace(
+    /<linearGradient id="ring-gold"[\s\S]*?<\/linearGradient>/i,
+    `<linearGradient id="ring-gold" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E5C07B" stop-opacity="0.85" />
+      <stop offset="50%" stop-color="#F2EDE3" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#E5C07B" stop-opacity="0.62" />
+    </linearGradient>`
+  );
+
+  // Inject copperplate hatching pattern into <defs>
+  svg = svg.replace(
+    /<\/defs>/i,
+    `  <!-- Copperplate Engraving Hatching Pattern -->
+    <pattern id="obs-copper-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#1E1D1A" stroke-width="0.9" stroke-opacity="0.42" />
+      <line x1="4" y1="0" x2="4" y2="8" stroke="#F2EDE3" stroke-width="0.45" stroke-opacity="0.16" />
+    </pattern>
+    <pattern id="obs-terminator-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(-42)">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#E5C07B" stroke-width="0.55" stroke-opacity="0.22" />
+    </pattern>
+  </defs>`
+  );
+
+  // 3. Replace remaining modern cyan/slate hex codes with Observatory Bone & Brass
+  svg = svg
+    .replace(/#38bdf8/gi, '#E5C07B')
+    .replace(/#bae6fd/gi, '#F2EDE3')
+    .replace(/#e0f2fe/gi, '#F2EDE3')
+    .replace(/#0284c7/gi, '#C8A96E')
+    .replace(/#fcd34d/gi, '#E5C07B')
+    .replace(/#fef3c7/gi, '#F2EDE3')
+    .replace(/#f8fafc/gi, '#F2EDE3')
+    .replace(/#e2e8f0/gi, '#E6DEC8')
+    .replace(/#94a3b8/gi, '#C8A96E')
+    .replace(/#334155/gi, '#1B1A17')
+    .replace(/#ffffff/gi, '#F2EDE3');
+
+  // 4. Enhance astrolabe geometry stroke widths & add engraved degree scale feel
+  svg = svg.replace(/<g id="celestial-geometry">[\s\S]*?<\/g>\s*(?=<!-- 4\. LUNAR CORONA)/i, (geo) => {
+    return geo
+      .replace(/stroke-width="0\.5"/g, 'stroke-width="0.9"')
+      .replace(/stroke-width="0\.6"/g, 'stroke-width="1.0"')
+      .replace(/stroke-width="0\.75"/g, 'stroke-width="1.15"')
+      .replace(/stroke-width="0\.8"/g, 'stroke-width="1.2"')
+      .replace(/opacity="0\.28"/g, 'opacity="0.48"')
+      .replace(/opacity="0\.35"/g, 'opacity="0.55"')
+      .replace(/opacity="0\.4"/g, 'opacity="0.58"')
+      .replace(/opacity="0\.45"/g, 'opacity="0.64"');
+  });
+
+  // 5. Add engraved selenographic meridian/parallel graticule & copperplate contour lines inside #moon-sphere
+  const selenographicGraticule = `
+    <!-- ENGRAVED SELENOGRAPHIC GRATICULE & COPPERPLATE HATCHING -->
+    <g id="engraved-selenograph" opacity="0.62">
+      <!-- Copperplate diagonal line texture across the lunar globe -->
+      <circle cx="500" cy="500" r="260" fill="url(#obs-copper-hatch)" />
+      <!-- Selenographic Parallels (Latitude Arcs) -->
+      <g fill="none" stroke="#1E1D1A" stroke-width="0.75" stroke-dasharray="3 3" opacity="0.48">
+        <ellipse cx="500" cy="500" rx="260" ry="52" transform="rotate(-18 500 500)" />
+        <ellipse cx="500" cy="415" rx="242" ry="44" transform="rotate(-18 500 415)" />
+        <ellipse cx="500" cy="585" rx="242" ry="44" transform="rotate(-18 500 585)" />
+        <ellipse cx="500" cy="335" rx="195" ry="32" transform="rotate(-18 500 335)" />
+        <ellipse cx="500" cy="665" rx="195" ry="32" transform="rotate(-18 500 665)" />
+      </g>
+      <!-- Selenographic Meridians (Longitude Arcs) -->
+      <g fill="none" stroke="#1E1D1A" stroke-width="0.75" stroke-dasharray="4 3" opacity="0.45" transform="rotate(-18 500 500)">
+        <ellipse cx="500" cy="500" rx="55" ry="260" />
+        <ellipse cx="500" cy="500" rx="135" ry="260" />
+        <ellipse cx="500" cy="500" rx="208" ry="260" />
+        <line x1="500" y1="240" x2="500" y2="760" stroke-dasharray="none" stroke-width="0.65" />
+        <line x1="240" y1="500" x2="760" y2="500" stroke-dasharray="none" stroke-width="0.65" />
+      </g>
+      <!-- Gilded Selenographic Reference Ticks on Sunlit Hemisphere -->
+      <g fill="none" stroke="#E5C07B" stroke-width="0.7" stroke-dasharray="2 6" opacity="0.55" transform="rotate(-18 500 500)">
+        <ellipse cx="500" cy="500" rx="135" ry="260" />
+        <ellipse cx="500" cy="500" rx="260" ry="52" />
+      </g>
+    </g>`;
+
+  svg = svg.replace(
+    /<!-- IMPACT CRATERS \(3D Rims, Pits & Central Peaks\) -->/i,
+    `${selenographicGraticule}\n    <!-- IMPACT CRATERS (3D Rims, Pits & Central Peaks) -->`
+  );
+
+  // Add etched contour rims to Lunar Maria paths
+  svg = svg.replace(/<g id="lunar-maria"[^>]*>[\s\S]*?<\/g>/i, (maria) => {
+    return maria
+      .replace(/fill="url\(#mare-deep\)"/g, 'fill="url(#mare-deep)" stroke="#1E1D1A" stroke-width="1.2" stroke-dasharray="4 2"')
+      .replace(/fill="url\(#mare-dark\)"/g, 'fill="url(#mare-dark)" stroke="#1E1D1A" stroke-width="1.0" stroke-dasharray="3 3"');
+  });
+
+  // 6. Frame viewBox tightly around the 940px corona & astrolabe system
+  svg = svg.replace(/viewBox=["'][^"']*["']/, 'viewBox="30 30 940 940"');
+
+  return svg;
+}
+
 // ── Folio Plate Parser & Stripper ─────────────────────────────────────────
 function topLevelChildren(src) {
   const open = src.match(/<svg\b[^>]*>/);
@@ -405,10 +633,19 @@ for (const cfg of PLATES) {
   console.log(`✓ ${cfg.out.padEnd(28)} ${(r.bytes / 1024).toFixed(1)} KB (from ${cfg.src})`);
 }
 
-console.log('\n── Gemini Plates (Engraved & Colored) ──');
+console.log('\n── Gemini & Celestial Plates ──');
 for (const cfg of GEMINI_TARGETS) {
   const raw = readFileSync(join(SRC, cfg.src), 'utf8');
-  const outSvg = cfg.style === 'engraved' ? buildGeminiEngraved(raw, cfg) : buildGeminiColored(raw, cfg);
+  let outSvg;
+  if (cfg.style === 'moon-night') {
+    outSvg = buildMoonAstrolabe(raw, 'night');
+  } else if (cfg.style === 'moon-dusk') {
+    outSvg = buildMoonAstrolabe(raw, 'dusk');
+  } else if (cfg.style === 'engraved') {
+    outSvg = buildGeminiEngraved(raw, cfg);
+  } else {
+    outSvg = buildGeminiColored(raw, cfg);
+  }
   writeFileSync(join(OUT, cfg.out), outSvg);
   console.log(`✓ ${cfg.out.padEnd(28)} ${(outSvg.length / 1024).toFixed(1)} KB (${cfg.style}, from ${cfg.src})`);
 }
