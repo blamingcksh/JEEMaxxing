@@ -10,7 +10,7 @@
    Pure observation: it never touches switchTab or any app logic — a
    MutationObserver watches .view-section.active and overlay .active classes
    and writes two attributes on <html>:
-     · data-obs-screen  dashboard|vault|practice|mocks|settings|lunar|boot
+     · data-obs-screen  dashboard|vault|practice|mocks|settings|lunar
                         (CSS cross-fades the matching plate in, 1.2 s)
      · data-obs-focus   set while solving (any modal / practice stage open,
                         except the lunar overlays) — CSS dims the plate to 4%
@@ -25,8 +25,8 @@
 
   /* screen → anchor + plate list — the gemini library. Engraved plates run
      in Night mood, the polychrome PLATE-series in Dusk, mirroring the
-     dashboard's black-hole pair. Single-plate screens (settings, boot) run
-     their engraving in both moods. */
+     dashboard's black-hole pair. Single-plate screens (settings) run their
+     engraving in both moods. */
   var SCREENS = {
     dashboard: { anchor: 'left',   plates: [{ stem: 'v-sextant-night',     variant: 'night' },
                                             { stem: 'v-sextant-dusk',      variant: 'dusk'  }] },
@@ -39,8 +39,7 @@
     settings:  { anchor: 'left',   plates: [{ stem: 'ii-instrument-night', variant: 'night' },
                                             { stem: 'ii-instrument-dusk',  variant: 'dusk'  }] },
     lunar:     { anchor: 'centre', plates: [{ stem: 'iii-lunar-night',  variant: 'night' },
-                                            { stem: 'iii-lunar-dusk',   variant: 'dusk'  }] },
-    boot:      { anchor: 'centre', plates: [{ stem: 'v-armillary' }] }
+                                            { stem: 'iii-lunar-dusk',   variant: 'dusk'  }] }
   };
   var SECTION_TO_SCREEN = {
     'view-dashboard': 'dashboard',
@@ -107,7 +106,6 @@
   /* ── State derivation (pure reads) ──────────────────────────────────── */
   function currentScreen() {
     if (document.querySelector(LUNAR_SELECTORS)) return 'lunar';
-    if (document.querySelector('.bootseq')) return 'boot';
     var active = document.querySelector('.view-section.active');
     return (active && SECTION_TO_SCREEN[active.id]) || 'dashboard';
   }
@@ -157,7 +155,7 @@
      sits inside (or is) a tracked root, and childList records are skipped
      only when they are pure text churn (a tracked root is always an element,
      so text-only mutations can never surface or hide one). */
-  var RELEVANT = '.view-section, .modal-overlay, .bootseq, #tuckin-overlay, #nightguard-modal, .bridge-pickup-overlay';
+  var RELEVANT = '.view-section, .modal-overlay, #tuckin-overlay, #nightguard-modal, .bridge-pickup-overlay';
   function recordsRelevant(records) {
     for (var i = 0; i < records.length; i++) {
       var r = records[i];

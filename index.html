@@ -638,20 +638,6 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
      MODALS
 ════════════════════════════════════════════ -->
 
-<!-- Vibe Check (mood calibration) -->
-<div id="mood-modal" class="modal-overlay" onclick="closeModal(event, 'mood-modal')">
-    <div class="modal-content">
-        <button class="close-btn" onclick="closeModalStr('mood-modal')" aria-label="Close">✕</button>
-        <h2>Vibe Check</h2>
-        <p class="box-desc">How's the brain battery? Rate your current capacity.</p>
-        <div class="mood-container">
-            <span class="mood-emoji sad" onclick="calibrateMood('sad')" title="Fried — targets ×0.70">🥱</span>
-            <span class="mood-emoji neutral" onclick="calibrateMood('neutral')" title="Baseline — targets ×1.0">😐</span>
-            <span class="mood-emoji happy" onclick="calibrateMood('happy')" title="Locked — targets ×1.20">🔥</span>
-        </div>
-    </div>
-</div>
-
 <!-- Post-23:00 Night Guard Modal (Tier 3: uninterruptible, long-press 3s override) -->
 <div id="nightguard-modal" class="modal-overlay">
     <div class="modal-content nightguard-card">
@@ -1261,8 +1247,6 @@ window.clearMatrixFilters = function () {
      panel, lockdown overlays, toasts are all injected at runtime) -->
 <script type="module" src="./checkpoint.js"></script>
 <script type="module" src="./fx.js"></script>
-<!-- Daily Mood Check — soft pastel popup (self-wiring; shows once per day after the daily reset) -->
-<script type="module" src="./boot-sequence.js"></script>
 <script src="theme.js" defer></script>
 <!-- Observatory glyph sprite (emoji → line glyphs) + atmosphere runtime (sky, plates) -->
 <script src="glyphs.js" defer></script>

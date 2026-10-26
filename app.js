@@ -1238,50 +1238,14 @@ export function showPracticeSubview(id) {
     if (target) target.classList.add('active');
 }
 
-// ==================== MOOD & DASHBOARD ====================
-export async function calibrateMood(mood) {
-    if (mood === 'sad') AppState.moodMultiplier = 0.70;
-    else if (mood === 'happy') AppState.moodMultiplier = 1.20;
-    else AppState.moodMultiplier = 1.0;
-
-    // ── Sleep-debt mood penalty: apply the ceiling BEFORE deriving tonight's
-    // active targets, or the targets silently ignore the penalty even though
-    // the stored multiplier shows it (the old order computed targets first).
+function _resetMoodCapacity() {
+    AppState.moodMultiplier = 1.0;
     try {
         if (typeof NightGuard !== 'undefined') {
-            const _sdPenalty = NightGuard.getSleepDebtMoodPenalty();
-            if (_sdPenalty < 1.0) AppState.moodMultiplier = Math.min(AppState.moodMultiplier, _sdPenalty);
+            const penalty = NightGuard.getSleepDebtMoodPenalty();
+            if (penalty < 1.0) AppState.moodMultiplier = Math.min(AppState.moodMultiplier, penalty);
         }
     } catch (_) {}
-
-    // ── Deload Days: mood calibration to 1.0 overrides forced deload ──
-    try {
-        if (typeof DeloadEngine !== 'undefined' && AppState.moodMultiplier === 1.0) {
-            DeloadEngine.overrideForcedDeload(1.0);
-        }
-    } catch (_) {}
-
-    // ── Daily Directive: the mood/sleep capacity just changed — recompute the
-    // contract against it (replaces the old baseTargets × mood arithmetic). ──
-    try { await Directive.recalibrateCapacity(); } catch (_) {}
-
-    await idbSet('jeemax_mood_multiplier', AppState.moodMultiplier);
-    // NOTE: jeemax_last_calibrated_date is intentionally NO LONGER the daily
-    // rollover gate (that's jeemax_last_settled_date — see _readLastSettledDay).
-    // It is kept as a plain mood-prompt timestamp; do NOT key the counter reset
-    // off it again, or same-day reopens after skipping the vibe check will wipe
-    // today's solved/studySecs counters.
-    await idbSet('jeemax_last_calibrated_date', todayLocalKey());
-    await saveAllAsync();
-    await updateUI();
-    closeModal(null, 'mood-modal', true);
-    await renderGraph();
-    resetPomoUI();
-    const d = new Date();
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    document.getElementById('top-date').textContent =
-        `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-    try { window.dispatchEvent(new CustomEvent('jmax:mood-set')); } catch (_) {}
 }
 
 // ── Night-Guard Monitoring Loop ────────────────────────────────────────────
@@ -1488,8 +1452,8 @@ export async function updateUI() {
 
     persistDailyCountsFromSolved();
 
-    // ── Sleep-Debt mood penalty: 3+ consecutive sleep-debt days
-    // force a CEILING of 0.85 (never raises an already-lower mood).
+    // ── Sleep-Debt capacity penalty: 3+ consecutive sleep-debt days
+    // force a CEILING of 0.85.
     try {
         if (typeof NightGuard !== 'undefined') {
             const _sdPenalty = NightGuard.getSleepDebtMoodPenalty();
@@ -10711,15 +10675,10 @@ updateStreakVisualizer();
 // so a tab left open across midnight also resets the daily counts.
 //
 // ── Day-settlement sentinel (fixes same-day counter wipes) ────────────────
-// The daily reset used to be gated on `jeemax_last_calibrated_date`, which is
-// ONLY written when the user completes the vibe check. Skipping the daily
-// briefing left it stale, so a SAME-DAY reopen fired runNewDayCycle() and
-// zeroed today's solved + studySecs counters in IndexedDB. This dedicated key
-// records the last day the cycle ACTUALLY completed and is the boot gate
-// instead. For pre-fix installs it seeds from the daily-briefing guard
-// (jeemax_boot_seq_date) — that key is only ever written by runNewDayCycle's
-// maybeShow, i.e. it IS "the last day the cycle ran" — so the first post-fix
-// boot can't wipe a same-day session either.
+// This dedicated key records the last day the cycle ACTUALLY completed and is
+// the boot gate. For pre-fix installs it seeds from the legacy day guard
+// (jeemax_boot_seq_date) so the first post-fix boot can't wipe a same-day
+// session either.
 const LS_BRIEFING_GUARD = 'jeemax_boot_seq_date';
 
 async function _markDaySettled(todayStr) {
@@ -10786,9 +10745,7 @@ async function runNewDayCycle(todayStr) {
     // mid-cycle must not skip the next boot's cycle (re-running is idempotent:
     // settleDayCounters takes a max, and the counters are already zero).
     try { await _markDaySettled(todayStr); } catch (_) {}
-    // ── Daily Directive: compute the NEW day's contract (capacity uses the
-    // persisted mood until the briefing recalibrates it). Must run after
-    // settle() so the retired day is archived first. ──
+    _resetMoodCapacity();
     try { await Directive.ensureToday(); } catch (_) {}
     try {
         if (window.Bridge) {
@@ -10797,16 +10754,6 @@ async function runNewDayCycle(todayStr) {
         }
     } catch (_) {}
     updateUI();
-
-    // ── Daily Mood Check popup ──
-    // The pastel mood popup (boot-sequence.js) replaces the bare Vibe Check
-    // popup after the daily reset. Falls back to the Vibe Check modal if the
-    // module isn't ready, so calibration never drops.
-    if (window.BootSequence && typeof window.BootSequence.maybeShow === 'function') {
-        try { window.BootSequence.maybeShow(); } catch (_) { openModal('mood-modal'); }
-    } else {
-        openModal('mood-modal');
-    }
 }
 
 // Live midnight rollover watcher: an app left open across midnight resets the
@@ -10926,11 +10873,6 @@ async function initApp() {
     } catch (e) { console.warn('[TuckIn] configure error:', e); }
 
     try {
-        window.addEventListener('jmax:mood-set', () => {
-            if (window.Bridge && typeof window.Bridge.onMoodSet === 'function') {
-                window.Bridge.onMoodSet();
-            }
-        });
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 if (window.Bridge && typeof window.Bridge.renderBanner === 'function') window.Bridge.renderBanner();
@@ -10939,11 +10881,9 @@ async function initApp() {
         });
     } catch (_) {}
 
-    // Verify day rollover — gated on the LAST ACTUALLY-SETTLED day, NOT the
-    // mood-calibration date. The old gate (jeemax_last_calibrated_date) is
-    // only written when the user completes the vibe check; a same-day reopen
-    // after skipping the briefing left it stale and runNewDayCycle() wiped
-    // today's solved/studySecs counters in IndexedDB.
+    _resetMoodCapacity();
+
+    // Verify day rollover — gated on the last successfully settled day.
     // NOTE: the Directive boot below must stay AFTER this check — on a day
     // turn, runNewDayCycle settles (archives) the directive state, and an
     // ensureToday() that ran first would create an empty "today" that then
@@ -10957,7 +10897,7 @@ async function initApp() {
 
     // ── Daily Directive: compute (or restore) today's contract. This replaces
     // the old manual quota inputs + 24h lock — contracts are derived from the
-    // trailing ledger, mood/sleep capacity and Cortex due-pressure, then
+    // trailing ledger, sleep capacity and Cortex due-pressure, then
     // AppState.activeTargets is derived from the contract so every legacy
     // visual (heatmap, candles, streak) flows from v2 targets. Idempotent:
     // after a rollover, runNewDayCycle already created today's state. ──
@@ -11037,15 +10977,7 @@ async function initApp() {
         console.warn('[initApp] Drive init skipped:', err);
     }
 
-    // ── Daily Briefing: self-gated launch on EVERY boot ──
-    // maybeShow() checks jeemax_boot_seq_date internally, so this no-ops on
-    // same-day reopens. It used to be reachable ONLY from runNewDayCycle —
-    // meaning a briefing whose settle-marker landed before the overlay mounted
-    // (or whose guard key was cleared) could never appear on a settled day.
     try {
-        if (window.BootSequence && typeof window.BootSequence.maybeShow === 'function') {
-            window.BootSequence.maybeShow();
-        }
         if (window.Bridge && typeof window.Bridge.ensureBootPresented === 'function') {
             window.Bridge.ensureBootPresented();
         }
@@ -11473,7 +11405,6 @@ window.refreshBountyRail = refreshBountyRail;
 window.tryAssignDailyBounty = tryAssignDailyBounty;
 window.evaluateBountyOutcome = evaluateBountyOutcome;
 window.startBountySessionFromModal = startBountySessionFromModal;
-window.calibrateMood = calibrateMood;
 window.changeCount = changeCount;
 window.updateUI = updateUI;
 window.renderGraph = renderGraph;
@@ -11798,8 +11729,8 @@ window.executeUnifiedSync = executeUnifiedSync;
 window.toggleStopwatchMode = toggleStopwatchMode;
 window.toggleDynamicSubject = toggleDynamicSubject;
 window.changeStudySubject = changeStudySubject;
-// Unlock the pomodoro AudioContext inside a user gesture (the Daily Briefing
-// flow needs it to arm the timer from a click, not a timer callback).
+// Unlock the pomodoro AudioContext inside a user gesture so timer arming runs
+// from a click, not a timer callback.
 window.initAudioContext = initAudioContext;
 window.toggleImmersive = toggleImmersive;
 window.confirmTimerNotification = confirmTimerNotification;
@@ -11872,8 +11803,8 @@ window.bounty = AppState.bounty;
 
 // ── Forest sync fix: expose live state safely ─────────────────────────────
 window.AppState = AppState;
-// Expose mode tuning (used by the Daily Briefing mode-gate, e.g. the hardcore
-// per-day cap) so the flow can't drift from the engine's real constants.
+// Expose mode tuning (e.g. the hardcore per-day cap) so other flows can't
+// drift from the engine's real constants.
 window.MODE_TUNING = MODE_TUNING;
 window.solved = solved;
 

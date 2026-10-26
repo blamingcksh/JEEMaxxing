@@ -68,14 +68,6 @@ async function main() {
             await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForTimeout(2000);
 
-            // Dismiss boot sequence if present
-            for (let i = 0; i < 6; i++) {
-                const count = await page.locator('.bootseq').count();
-                if (!count) break;
-                await page.keyboard.press('Escape').catch(() => {});
-                await page.waitForTimeout(300);
-            }
-
             // Seed rich data matching baseline
             await page.evaluate(async () => {
                 const { AppState, saveAllAsync } = await import('./storage.js');

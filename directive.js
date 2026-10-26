@@ -7,7 +7,7 @@
    Design: docs/daily-directive-design.md
 
    Data inputs (all already tracked by the app):
-     - AppState.moodMultiplier        → capacity (includes Night Guard sleep debt)
+     - AppState.moodMultiplier        → capacity (neutral + Night Guard sleep debt)
      - AppState.elo / q.qElo          → difficulty multiplier
      - chapter weights (user>AI>static) → weight multiplier
      - AppState.chapterTheta          → headline quest selection
@@ -558,8 +558,8 @@ function _deriveLegacyTargets() {
     return total;
 }
 
-/** Recompute today's contract against the CURRENT capacity (mood/sleep) while
- *  preserving quest progress — used after morning mood calibration. */
+/** Recompute today's contract against the CURRENT sleep capacity while
+ *  preserving quest progress. */
 async function recalibrateCapacity() {
     if (!state) { await ensureToday(); return; }
     await _computeContract(true);

@@ -2092,7 +2092,6 @@ async function _doSaveAll() {
     entries.push(['jeemax_solved', solved]);
     entries.push(['jeemax_study_secs', studySecs]);
     entries.push(['jeemax_bounty', AppState.bounty]);
-    entries.push(['jeemax_mood_multiplier', AppState.moodMultiplier]);
     // ── Hydrate Cognitive MMR / Elo Matrix (subject + global meta-MMR) ──
     // rd: Glicko-lite rating deviation per subject (Elo v2) rides along so
     // uncertainty survives reloads instead of resetting to "young rating".
@@ -2224,7 +2223,7 @@ export async function loadDataAsync() {
     try {
         g = await idbGetMany([
             'jeemax_question_bank', 'jeemax_chapters', 'bounty_data',
-            'jeemax_solved', 'jeemax_study_secs', 'jeemax_mood_multiplier',
+            'jeemax_solved', 'jeemax_study_secs',
             'jeemax_elo', 'jeemax_elo_updated_at', 'jeemax_practice_mode', 'jeemax_hardcore_daily',
             'jeemax_calibration_log', 'jeemax_chapter_theta',
             'jeemax_chapter_weights_ai', 'jeemax_chapter_weights_user',
@@ -2265,7 +2264,6 @@ export async function loadDataAsync() {
     const savedBounty = g['bounty_data'];
     const s = g['jeemax_solved'];
     const secs = g['jeemax_study_secs'];
-    const mood = g['jeemax_mood_multiplier'];
     const savedElo = g['jeemax_elo'];
     const savedEloUpdatedAt = g['jeemax_elo_updated_at'];
     const savedMode = g['jeemax_practice_mode'];
@@ -2314,11 +2312,6 @@ export async function loadDataAsync() {
         studySecs.physics = Number(secs.physics) || 0;
         studySecs.chemistry = Number(secs.chemistry) || 0;
         studySecs.maths = Number(secs.maths) || 0;
-    }
-
-    if (mood !== null) {
-        const moodNum = parseFloat(mood);
-        AppState.moodMultiplier = isFinite(moodNum) ? moodNum : 1.0;
     }
 
     // ── Hydrate Cognitive MMR / Elo Matrix instantly with fallback defaults ──
@@ -2392,9 +2385,9 @@ export async function loadDataAsync() {
     // Hydrate active practice mode + hardcore daily counter (resets daily)
     if (savedMode && PRACTICE_MODES.includes(savedMode)) AppState.practiceFlowMode = savedMode;
     if (hcDaily && typeof hcDaily === 'object') {
-        // Local day key — every writer/gate (app.js todayLocalKey, boot-sequence)
-        // buckets by local date; a UTC key here reset the cap at 05:30 IST and
-        // granted a phantom extra quota before local midnight in UTC− zones.
+        // Local day key — every writer/gate buckets by local date; a UTC key
+        // here reset the cap at 05:30 IST and granted a phantom extra quota
+        // before local midnight in UTC− zones.
         const today = todayLocalKey();
         AppState.hardcoreDailyDate   = hcDaily.date || null;
         AppState.hardcoreDailyCount  = (hcDaily.date === today) ? (hcDaily.count || 0) : 0;

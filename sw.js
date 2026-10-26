@@ -160,7 +160,8 @@
 //        contained Stage A confidence ghost, full-height retention gauges with
 //        a single dash segment, restored QM edit affordance, Delete All copy.
 // v78 — Practice diagrams return to the original multiply blend + paper backing.
-const VERSION = 'jeemax-v78';
+// v79 — Removed the morning mood prompt; capacity resets to neutral daily.
+const VERSION = 'jeemax-v79';
 const SHELL = [
   './',
   './index.html',
@@ -201,7 +202,6 @@ const SHELL = [
   './deload.js',
   './lifeline.js',
   './nightguard.js',
-  './boot-sequence.js',
   './vendor/three/three.module.min.js',
   './icons/icon.svg',
   './icons/icon-192.png',
