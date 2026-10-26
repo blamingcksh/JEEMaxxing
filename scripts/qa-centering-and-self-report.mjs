@@ -75,7 +75,7 @@ await page.waitForTimeout(300);
 
 // Open practice modal via Grind button
 await page.evaluate(() => {
-    const btn = document.querySelector('#questions-grid-container .practice-single-btn');
+    const btn = document.querySelector('#questions-grid-container .question-card');
     if (btn) btn.click();
 });
 await page.waitForTimeout(500);
@@ -129,8 +129,8 @@ const selfReportButtons = await page.evaluate(() => {
         wrongText: wrongBtn ? wrongBtn.textContent : null
     };
 });
-assert(selfReportButtons.hasCorrect, 'Clean Lock button is visible and present: ' + selfReportButtons.correctText);
-assert(selfReportButtons.hasWrong, 'Skill Issue button is visible and present: ' + selfReportButtons.wrongText);
+assert(selfReportButtons.hasCorrect, 'VERIFIED button is visible and present: ' + selfReportButtons.correctText);
+assert(selfReportButtons.hasWrong, 'FAILED button is visible and present: ' + selfReportButtons.wrongText);
 
 // 3. Click backdrop / empty space — verify modal does NOT dismiss
 await page.mouse.click(100, 100);
@@ -141,7 +141,7 @@ const stillOpenAfterBackdropTap = await page.evaluate(() => {
 });
 assert(stillOpenAfterBackdropTap, 'Modal remains open after clicking on background paper');
 
-// 4. Click Clean Lock button
+// 4. Click VERIFIED button
 await page.evaluate(() => {
     const btn = document.getElementById('text-correct-btn');
     if (btn) btn.click();
@@ -156,7 +156,7 @@ const outcome = await page.evaluate(() => import('./storage.js').then(({ AppStat
         continueText: contBtn ? contBtn.textContent : null
     };
 }));
-assert(outcome.status === 'solved', 'Question marked solved upon Clean Lock');
+assert(outcome.status === 'solved', 'Question marked solved upon VERIFIED');
 assert(outcome.continueVisible, 'Next Question button visible in footer after self-reporting');
 
 // 5. Click top-right ✕ to close modal

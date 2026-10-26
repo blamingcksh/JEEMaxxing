@@ -91,7 +91,7 @@ await page.waitForTimeout(300);
 
 // Open practice modal
 await page.evaluate(() => {
-    const btn = document.querySelector('#questions-grid-container .practice-single-btn');
+    const btn = document.querySelector('#questions-grid-container .question-card');
     if (btn) btn.click();
 });
 await page.waitForTimeout(400);

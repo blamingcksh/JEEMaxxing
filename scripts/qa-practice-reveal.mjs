@@ -58,7 +58,7 @@ assert(seeded === 1, 'fixture seeded into the bank');
 await page.waitForTimeout(500);
 // step 3: open the practice modal via the real Grind button
 await page.evaluate(() => {
-    const btn = document.querySelector('#questions-grid-container .practice-single-btn');
+    const btn = document.querySelector('#questions-grid-container .question-card');
     if (btn) btn.click();
 });
 await page.waitForTimeout(400);

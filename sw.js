@@ -154,7 +154,13 @@
 //        atmosphere observer narrowed + rAF coalescing, fx AudioContext lazy
 //        for sound-off users, tracker conic ring → composited rotation, hidden
 //        HUDs release their backdrop blurs via visibility.
-const VERSION = 'jeemax-v75';
+// v76 — COGNITIVE-DENSITY GRADIENT: new styles-telemetry.css layer
+//        (Domain Zone, Question Matrix reticle, solver Stage A/B, Tier 1).
+// v77 — TELEMETRY POLISH: chapter-global QM resolved metrics under filters,
+//        contained Stage A confidence ghost, full-height retention gauges with
+//        a single dash segment, restored QM edit affordance, Delete All copy.
+// v78 — Practice diagrams return to the original multiply blend + paper backing.
+const VERSION = 'jeemax-v78';
 const SHELL = [
   './',
   './index.html',
@@ -179,6 +185,7 @@ const SHELL = [
   './checkpoint.js',
   './fx.js',
   './observatory.css',
+  './styles-telemetry.css',
   './atmosphere.js',
   './glyphs.js',
   './matrix.js',

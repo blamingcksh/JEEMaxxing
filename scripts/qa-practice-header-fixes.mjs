@@ -63,7 +63,7 @@ const unitTests = await page.evaluate(async () => {
 
     // Parentheses ( $V$ )
     const t3 = _pqDecorateText('Consider potential difference ( $V$ ) across terminal.');
-    results.t3_snug_parens = t3.includes('(<span class="param-highlight ph-nowrap ph-tight-l ph-tight-r">$V$</span>)') || t3.includes('(<span class="param-highlight ph-tight-l ph-tight-r');
+    results.t3_snug_parens = t3.includes('(<span class="math-inline">$V$</span>)');
 
     // Imperative goal detection
     const t4 = _pqDecorateText('A block of 2 kg slides down. Calculate the acceleration.');
@@ -130,7 +130,7 @@ await page.waitForTimeout(300);
 
 // Open practice modal
 await page.evaluate(() => {
-    const btn = document.querySelector('#questions-grid-container .practice-single-btn');
+    const btn = document.querySelector('#questions-grid-container .question-card');
     if (btn) btn.click();
 });
 await page.waitForTimeout(400);
@@ -200,7 +200,7 @@ const roastStyles = await page.evaluate(() => {
 assert(roastStyles && roastStyles.padding === '14px', 'Roast parchment backing patch padding is 14px (got: ' + (roastStyles ? roastStyles.padding : null) + ')');
 assert(roastStyles && roastStyles.bg === 'rgb(239, 228, 203)', 'Roast .pq-qa-media backing patch is #efe4cb (got: ' + (roastStyles ? roastStyles.bg : null) + ')');
 
-console.log('── 3. Post-Reveal Collapse and [CLEAN LOCK] Fix ──');
+console.log('── 3. Post-Reveal Collapse and [CALIBRATED] Fix ──');
 // Reveal the answer
 await page.evaluate(() => {
     const btn = document.getElementById('practice-submit-btn');
@@ -208,7 +208,7 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(300);
 
-// Click "Clean Lock ✅"
+// Click "VERIFIED"
 await page.evaluate(() => {
     const btn = document.getElementById('text-correct-btn');
     if (btn) btn.click();
@@ -222,7 +222,7 @@ const postReveal = await page.evaluate(() => {
     const contentPill = content ? content.querySelector('.elo-shift-chip') : null;
 
     // Check for redundant banner and keep-going
-    const cleanBanner = Array.from(content.querySelectorAll('.result-banner')).filter(b => b.textContent.includes('Clean lock'));
+    const cleanBanner = Array.from(content.querySelectorAll('.result-banner')).filter(b => /clean lock|marked correct/i.test(b.textContent));
     const keepGoing = content.querySelectorAll('.pm-keep-going');
     const revealRow = content.querySelector('.pq-reveal-row');
     const peepBtn = revealRow ? revealRow.querySelector('.show-solution-btn') : null;
@@ -243,14 +243,14 @@ const postReveal = await page.evaluate(() => {
     };
 });
 
-assert(postReveal.pillText.includes('[CLEAN LOCK]'), 'Elo pill displays [CLEAN LOCK] (got: ' + postReveal.pillText + ')');
-assert(!postReveal.pillText.includes('[SKILL ISSUE]'), 'Elo pill does NOT display [SKILL ISSUE]');
+assert(postReveal.pillText.includes('[CALIBRATED]'), 'Elo pill displays [CALIBRATED] (got: ' + postReveal.pillText + ')');
+assert(!postReveal.pillText.includes('[OFF-TARGET]'), 'Elo pill does NOT display [OFF-TARGET]');
 assert(postReveal.headerChipCount === 1, 'Exactly one header Elo chip rendered (got: ' + postReveal.headerChipCount + ')');
 assert(postReveal.contentChipCount === 0, 'Duplicate content chip removed (got: ' + postReveal.contentChipCount + ')');
 assert(!postReveal.hasRedundantCleanBanner, 'Redundant "Clean lock. Marked correct." banner removed');
 assert(!postReveal.hasKeepGoing, 'Redundant "10 more to today\'s target" line removed');
 assert(postReveal.hasRevealRow, 'Row 1 is .pq-reveal-row');
-assert(postReveal.hasPeepBtn, 'Peep Solution button rendered in reveal row');
+assert(postReveal.hasPeepBtn, 'REVIEW SOLUTION button rendered in reveal row');
 assert(postReveal.continueVisible && postReveal.continueText.includes('Next Question'), 'Row 2 footer contains "Next Question →"');
 assert(postReveal.streakDisplay === 'flex', 'Streak fire is visible post-reveal in Roast mode (got: ' + postReveal.streakDisplay + ')');
 
@@ -262,8 +262,8 @@ const streakLightRevealed = await page.evaluate(() => {
 });
 assert(streakLightRevealed === 'flex', 'Streak fire is visible post-reveal in Light mode (got: ' + streakLightRevealed + ')');
 
-console.log('── 4. Peep Solution Popup Above Practice Modal ──');
-// Click "Peep Solution" button
+console.log('── 4. REVIEW SOLUTION Popup Above Practice Modal ──');
+// Click "REVIEW SOLUTION" button
 await page.evaluate(() => {
     const btn = document.querySelector('.show-solution-btn');
     if (btn) btn.click();
@@ -292,7 +292,7 @@ const solutionModalMetrics = await page.evaluate(() => {
     };
 });
 
-assert(solutionModalMetrics.solActive, '#solution-modal is active after clicking Peep Solution');
+assert(solutionModalMetrics.solActive, '#solution-modal is active after clicking REVIEW SOLUTION');
 assert(solutionModalMetrics.solZIndex >= 6000, '#solution-modal z-index is >= 6000 (got: ' + solutionModalMetrics.solZIndex + ')');
 assert(solutionModalMetrics.solZIndex > solutionModalMetrics.pracZIndex, '#solution-modal z-index (' + solutionModalMetrics.solZIndex + ') > #practice-modal z-index (' + solutionModalMetrics.pracZIndex + ')');
 assert(solutionModalMetrics.hitInSolCard, 'Topmost clickable element at center is inside #solution-modal card, not obscured by practice modal');

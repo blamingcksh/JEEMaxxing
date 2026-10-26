@@ -66,11 +66,12 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <link rel="stylesheet" href="tuckin.css">
 <!-- ── iPad / coarse-pointer hardening layer (must stay LAST — see file header) ── -->
 <link rel="stylesheet" href="styles-dashboard.css">
-<link rel="stylesheet" href="styles-practice-fullscreen.css?v=8">
+<link rel="stylesheet" href="styles-practice-fullscreen.css?v=10">
 <link rel="stylesheet" href="styles-ipad.css">
 <!-- ── OBSERVATORY reskin — loaded LAST; overrides every visible surface
      while the legacy sheets keep working underneath (see observatory.css) ── -->
 <link rel="stylesheet" href="observatory.css">
+<link rel="stylesheet" href="styles-telemetry.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
 <body>
@@ -418,7 +419,12 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                             <span class="obs-specimen-plate-tag">OBS. 07 · CHLADNI RESONANCE</span>
                             <div class="obs-specimen-frame">
                                 <img src="atlas/specimen-phys-chladni.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                                <svg class="subject-ring" viewBox="0 0 100 100" aria-hidden="true">
+                                    <circle class="subject-ring-track" cx="50" cy="50" r="46"></circle>
+                                    <circle class="subject-ring-arc" cx="50" cy="50" r="46" pathLength="100"></circle>
+                                </svg>
                             </div>
+                            <span class="subject-tele-label">SUBJECT // PHYSICS</span>
                             <div class="subject-icon"><svg class="g"><use href="#g-physics"></use></svg></div>
                             <h3>Physics</h3>
                             <div class="subject-card-meta" id="subj-meta-physics">Loading…</div>
@@ -430,7 +436,12 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                             <span class="obs-specimen-plate-tag">OBS. 06 · CRYSTAL SYMMETRY</span>
                             <div class="obs-specimen-frame">
                                 <img src="atlas/specimen-chem-dendrite.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                                <svg class="subject-ring" viewBox="0 0 100 100" aria-hidden="true">
+                                    <circle class="subject-ring-track" cx="50" cy="50" r="46"></circle>
+                                    <circle class="subject-ring-arc" cx="50" cy="50" r="46" pathLength="100"></circle>
+                                </svg>
                             </div>
+                            <span class="subject-tele-label">SUBJECT // CHEMISTRY</span>
                             <div class="subject-icon"><svg class="g"><use href="#g-chemistry"></use></svg></div>
                             <h3>Chemistry</h3>
                             <div class="subject-card-meta" id="subj-meta-chemistry">Loading…</div>
@@ -442,7 +453,12 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                             <span class="obs-specimen-plate-tag">OBS. 05 · GOLDEN SPIRAL</span>
                             <div class="obs-specimen-frame">
                                 <img src="atlas/specimen-math-nautilus.svg" alt="" aria-hidden="true" loading="eager" decoding="async">
+                                <svg class="subject-ring" viewBox="0 0 100 100" aria-hidden="true">
+                                    <circle class="subject-ring-track" cx="50" cy="50" r="46"></circle>
+                                    <circle class="subject-ring-arc" cx="50" cy="50" r="46" pathLength="100"></circle>
+                                </svg>
                             </div>
+                            <span class="subject-tele-label">SUBJECT // MATHS</span>
                             <div class="subject-icon"><svg class="g"><use href="#g-maths"></use></svg></div>
                             <h3>Maths</h3>
                             <div class="subject-card-meta" id="subj-meta-maths">Loading…</div>
@@ -463,8 +479,12 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <!-- Subview: chapter list -->
             <div id="practice-chapters-view" class="practice-subview">
                 <div class="practice-header">
-                    <button class="btn btn-secondary" onclick="goToSubjects()">← Dip</button>
-                    <h2 id="chapters-subject-title">Chapters</h2>
+                    <button class="btn btn-secondary dz-back" onclick="goToSubjects()">← ARENA</button>
+                    <div class="dz-title-wrap">
+                        <span class="dz-kicker" id="chapters-subject-chip">DOMAIN // PHYSICS</span>
+                        <h2 id="chapters-subject-title" class="dz-title">Chapters</h2>
+                        <span class="dz-rule" aria-hidden="true"></span>
+                    </div>
                     <div class="chapter-actions" role="group" aria-label="Chapter actions">
                         <button class="btn btn-primary" onclick="openModal('add-chapter-modal')">+ New Chapter</button>
                         <button class="btn btn-mode-flow" onclick="openMultiChapterMode('flow')" title="Flow State across selected chapters"><svg class="g"><use href="#g-flow"></use></svg> Flow</button>
@@ -487,8 +507,8 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     <select id="question-filter" class="pomo-select filter-select" onchange="applyFilter()">
                         <option value="all">All</option>
                         <option value="unsolved">Untouched</option>
-                        <option value="solved">Clutched</option>
-                        <option value="wrong">Fumbled</option>
+                        <option value="solved">Verified</option>
+                        <option value="wrong">Flagged</option>
                     </select>
                     <div id="mode-buttons-row" class="mode-buttons-row" style="display:flex; gap:6px; margin-left:auto;"></div>
                 </div>
@@ -896,7 +916,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <div class="progress-bar"><div class="progress-fill" id="upload-progress"></div></div>
             <div id="upload-status-text" class="upload-status"></div>
             <div style="display:flex;gap:12px;margin-top:16px">
-                <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Nvm</button>
+                <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Discard</button>
                 <button class="btn btn-primary" onclick="startManualCrop()">Crop & Process</button>
             </div>
         </div>
@@ -921,7 +941,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <pre id="gem-dump-prompt-text" class="gem-map-instruction-text"></pre>
             </details>
             <div style="display:flex;gap:12px;margin-top:16px">
-                <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Nvm</button>
+                <button class="btn btn-secondary" onclick="closeModalStr('upload-modal')">Discard</button>
                 <button class="btn btn-primary" onclick="processGemTextDump()">Execute Ingestion Track →</button>
             </div>
         </div>
@@ -959,7 +979,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <div class="source-images-strip" id="source-strip"></div>
         <div class="segments-bar" id="segments-bar"></div>
         <div class="crop-buttons">
-            <button class="btn btn-danger" onclick="cancelCropSession()">Nuke All</button>
+            <button class="btn btn-danger" onclick="cancelCropSession()">Delete All</button>
             <button class="btn btn-secondary" id="crop-redraw" onclick="clearLastSegment()" style="display:none">Undo Last</button>
             <button class="btn btn-primary" id="crop-confirm-question" onclick="confirmMultiCropQuestion()">✓ Lock Question</button>
             <button class="btn btn-primary" id="crop-next-question" onclick="nextQuestionInSession()" style="display:none">Next Question ➔</button>
@@ -983,7 +1003,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <textarea id="answer-key-text" class="pomo-input" rows="3" placeholder="Or paste the answer key below (AI will figure it out)…"></textarea>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0">
             <button class="btn btn-secondary" onclick="processAnswerKeyFromText()">🤖 Map Answers via Text</button>
-            <button class="btn btn-secondary" onclick="closeModalStr('preview-modal')">Nvm</button>
+            <button class="btn btn-secondary" onclick="closeModalStr('preview-modal')">Discard</button>
             <button class="btn btn-success" onclick="saveAllQuestions()">Import All Questions</button>
         </div>
         <div id="extracted-questions-list"></div>
@@ -1017,10 +1037,17 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
     <!-- Centered 720px focus column -->
     <div class="pq-shell">
+        <aside id="pq-diag" class="pq-diag" aria-live="polite"></aside>
         <div class="pq-body">
             <main class="pq-card">
                 <div id="practice-modal-content"></div>
             </main>
+        </div>
+
+        <div class="pq-conf-ghost" id="pq-conf-ghost" role="group" aria-label="Pre-lock confidence">
+            <button type="button" data-conf="guess" aria-pressed="false">1 · GUESS</button>
+            <button type="button" data-conf="likely" aria-pressed="false">2 · LIKELY</button>
+            <button type="button" data-conf="sure" aria-pressed="false">3 · SURE</button>
         </div>
 
         <!-- Result & action strip (visible when answered / revealed) -->
@@ -1040,7 +1067,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     </div>
 
     <!-- Hold-to-reveal cue & circular fill indicator -->
-    <div class="pq-hold-hint" id="pq-hold-hint" aria-hidden="true">( Hold anywhere 0.8s to reveal )</div>
+    <div class="pq-hold-hint" id="pq-hold-hint" aria-hidden="true">HOLD 800MS // DECRYPT</div>
     <div class="pq-hold-ring-wrap" id="pq-hold-ring-wrap" aria-hidden="true">
         <svg class="pq-hold-ring" viewBox="0 0 52 52">
             <circle class="pq-hold-ring-bg" cx="26" cy="26" r="22" />
@@ -1099,7 +1126,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <div class="input-group"><label for="edit-options">Options (comma sep)</label><input id="edit-options" class="pomo-input" type="text"></div>
         <div class="input-group"><label for="edit-answer">Right Answer</label><input id="edit-answer" class="pomo-input" type="text"></div>
         <div style="display:flex;gap:12px;margin-top:16px">
-            <button class="btn btn-secondary" onclick="closeModalStr('edit-question-modal')">Nvm</button>
+            <button class="btn btn-secondary" onclick="closeModalStr('edit-question-modal')">Discard</button>
             <button class="btn btn-primary" onclick="saveEditQuestion()">Save</button>
         </div>
     </div>
@@ -1126,7 +1153,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <h2>New Chapter</h2>
         <input id="new-chapter-input" class="pomo-input" type="text" placeholder="e.g. Thermodynamics" style="margin-top:16px" aria-label="New chapter name">
         <div style="display:flex;gap:12px;margin-top:16px">
-            <button class="btn btn-secondary" onclick="closeModalStr('add-chapter-modal')">Nvm</button>
+            <button class="btn btn-secondary" onclick="closeModalStr('add-chapter-modal')">Discard</button>
             <button class="btn btn-primary" onclick="addChapter()">Create</button>
         </div>
     </div>

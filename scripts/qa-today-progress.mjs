@@ -89,7 +89,11 @@ const physPlus = page.locator('.compact-subject-card[data-subject="physics"] .tp
 const chemPlus = page.locator('.compact-subject-card[data-subject="chemistry"] .tp-step-btn').nth(1);
 for (let i = 0; i < 7; i++) await physPlus.click();
 await chemPlus.click();
-await page.waitForTimeout(700);
+await page.waitForFunction(
+    () => (document.getElementById('physics-bar') || {}).style?.width === '70%',
+    null,
+    { timeout: 3000 }
+).catch(() => {});
 
 const physCount = await page.locator('#physics-count').textContent();
 assert(physCount.trim() === '7', `physics counter hydrated (${physCount})`);
