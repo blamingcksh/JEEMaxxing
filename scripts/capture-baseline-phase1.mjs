@@ -69,14 +69,6 @@ async function main() {
             await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForTimeout(2000);
 
-            // Dismiss boot sequence if present
-            for (let i = 0; i < 6; i++) {
-                const count = await page.locator('.bootseq').count();
-                if (!count) break;
-                await page.keyboard.press('Escape').catch(() => {});
-                await page.waitForTimeout(300);
-            }
-
             // Seed realistic rich data for baseline audit
             await page.evaluate(async () => {
                 const { AppState, saveAllAsync } = await import('./storage.js');
@@ -208,18 +200,7 @@ async function main() {
         await dPage.waitForTimeout(600);
         await captureCDP(dPage, 'before_dashboard_scrolled.png');
 
-        // 3. Dashboard with Vibe Modal
-        await dPage.evaluate(() => {
-            const el = document.querySelector('.main-content');
-            if (el) el.scrollTop = 0;
-            window.openModal('mood-modal');
-        });
-        await dPage.waitForTimeout(500);
-        await captureCDP(dPage, 'before_dashboard_modal_vibe.png');
-        await dPage.evaluate(() => window.closeModalStr('mood-modal'));
-        await dPage.waitForTimeout(400);
-
-        // 4. Focus Mode (Pomodoro)
+        // 3. Focus Mode (Pomodoro)
         await dPage.evaluate(() => window.switchTab('pomodoro', document.querySelector('[data-tab="pomodoro"]')));
         await dPage.waitForTimeout(1000);
         await captureCDP(dPage, 'before_pomodoro.png');

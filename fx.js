@@ -153,7 +153,7 @@
     '.cpcc-save-btn, .cpcc-time-x, .show-solution-btn, .hide-toggle, .cp-abandon, ' +
     '.cp-grace-ignite, .cpcc-ignite-btn, .manual-sync-btn';
   // Sound + haptic only (no ripple): absolute buttons, tooltip hosts, emoji, nav, badges.
-  var SOUND_ONLY = '.nav-item, .badge, .mood-emoji, .close-btn, .sr-drawer-close, ' +
+  var SOUND_ONLY = '.nav-item, .badge, .close-btn, .sr-drawer-close, ' +
     '.cpcc-close, .delete-btn, .card-close-btn, .delete-chapter, .delete-segment-btn';
   var COMBINED = RIPPLE_HOSTS + ',' + SOUND_ONLY;
 

@@ -1,7 +1,7 @@
 /* ============================================================================
    bridge.js — Hemingway Bridge (zero-friction next-day re-entry)
    Stages tomorrow's first move at session close and surfaces a single-tap
-   pickup right after the daily mood check.
+   pickup right after the morning reset.
 
    Data model:
      - jeemax_bridge_v1   : current active bridge record
@@ -427,19 +427,6 @@ function onUnit() {
     }
 }
 
-/** Called when daily mood is calibrated */
-function onMoodSet() {
-    _load().then(() => {
-        const currentBday = getBridgeDay();
-        if (!_stats.days[currentBday]) _stats.days[currentBday] = {};
-        if (!_stats.days[currentBday].t0) {
-            _stats.days[currentBday].t0 = Date.now();
-        }
-        _save();
-        present();
-    });
-}
-
 /**
  * Present the morning pickup card.
  * Gated by: crossEligible AND not yet presented today.
@@ -610,7 +597,6 @@ export const Bridge = {
     pickup: pickUp,
     onSubmit,
     onUnit,
-    onMoodSet,
     present,
     ensureBootPresented,
     renderBanner,

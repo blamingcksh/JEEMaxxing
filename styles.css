@@ -3420,7 +3420,7 @@ select.pomo-select, select.pomo-input {
 .modal-overlay.active > * { transform: translateY(0) scale(1); }
 
 /* Pomodoro end-of-session notification must overlay every other modal —
-   practice, solution, crop, mood, calendar, etc. — but stay BELOW the
+   practice, solution, crop, calendar, etc. — but stay BELOW the
    Gallery Break burn-reveal (1000600) so the painting's ritual isn't
    interrupted mid-bloom. ID selector beats .modal-overlay's specificity. */
 #timer-notify-modal {
@@ -3508,20 +3508,6 @@ select.pomo-select, select.pomo-input {
     border-radius: 14px;
     box-shadow: 0 0 60px rgba(0, 0, 0, 0.85);
 }
-
-/* Mood calibration */
-.mood-container { display: flex; justify-content: center; gap: 22px; margin-top: 24px; }
-.mood-emoji {
-    font-size: 52px;
-    cursor: pointer;
-    filter: grayscale(100%) opacity(0.5);
-    transition: filter 0.25s, transform 0.25s;
-    padding: 14px;
-    border-radius: 50%;
-}
-.mood-emoji.sad:hover     { filter: grayscale(0%) drop-shadow(0 0 20px var(--glow-red));    transform: scale(1.12); }
-.mood-emoji.neutral:hover { filter: grayscale(0%) drop-shadow(0 0 20px var(--glow-yellow)); transform: scale(1.12); }
-.mood-emoji.happy:hover   { filter: grayscale(0%) drop-shadow(0 0 20px var(--glow-green));  transform: scale(1.12); }
 
 /* Calendar */
 .cal-header {
@@ -13370,54 +13356,6 @@ html[data-theme="sepia"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-valu
 }
 html[data-theme="sepia"] .vault-shell.vault-v2 .error-block[data-sr-status="scheduled"]::before { background: #7c4f16 !important; }
 html[data-theme="sepia"] .vault-shell.vault-v2 .error-block[data-sr-status="mastered"]::before { background: #6b5a44 !important; }
-
-/* ── 17 · Daily mood check — boot-sequence.js injects this pastel
-      pink/violet/blue modal into <head> AFTER styles.css, so it lands on
-      top of every theme. Under sepia it is a violet cloud on cream.
-      Scoped to (0,2,1) + !important to win over the injected sheet. ── */
-html[data-theme="sepia"] .bootseq {
-  background:
-    radial-gradient(900px 620px at 15% 0%, rgba(181,101,29,0.16), transparent 60%),
-    radial-gradient(820px 620px at 85% 100%, rgba(139,90,43,0.14), transparent 60%),
-    rgba(60, 44, 22, 0.55) !important;
-}
-html[data-theme="sepia"] .moodpop {
-  background: linear-gradient(170deg, #fffaf0 0%, #f6efdd 48%, #efe3c8 100%) !important;
-  box-shadow: 0 34px 90px rgba(60,44,22,0.5), inset 0 0 0 1.5px rgba(255,253,246,0.9) !important;
-}
-html[data-theme="sepia"] .moodpop::before { background: radial-gradient(ellipse at center, rgba(181,101,29,0.28), transparent 70%) !important; }
-html[data-theme="sepia"] .moodpop-title {
-  color: #7a4a20 !important;
-  background: none !important;
-  -webkit-text-fill-color: #7a4a20 !important;
-}
-html[data-theme="sepia"] .moodpop-sub { color: #6f5f4c !important; }
-html[data-theme="sepia"] .moodpop-opt {
-  background: rgba(255, 253, 246, 0.92) !important;
-  border-color: rgba(90, 64, 32, 0.30) !important;
-}
-html[data-theme="sepia"] .moodpop-opt.is-sad .moodpop-emoji { background: #efe3c8 !important; }
-html[data-theme="sepia"] .moodpop-opt.is-neutral .moodpop-emoji { background: #e9dec4 !important; }
-html[data-theme="sepia"] .moodpop-opt.is-happy .moodpop-emoji { background: #f6efdd !important; }
-html[data-theme="sepia"] .moodpop-opt.is-sad:hover    { border-color: #8b5a2b !important; box-shadow: 0 12px 28px rgba(90,64,32,0.22) !important; }
-html[data-theme="sepia"] .moodpop-opt.is-neutral:hover { border-color: #b5651d !important; box-shadow: 0 12px 28px rgba(90,64,32,0.22) !important; }
-html[data-theme="sepia"] .moodpop-opt.is-happy:hover   { border-color: #c99327 !important; box-shadow: 0 12px 28px rgba(90,64,32,0.22) !important; }
-html[data-theme="sepia"] .moodpop-label { color: #3d2f23 !important; }
-html[data-theme="sepia"] .moodpop-desc  { color: #6f5f4c !important; }
-html[data-theme="sepia"] .moodpop-key {
-  color: #7a4a20 !important;
-  border-color: rgba(139, 90, 43, 0.5) !important;
-  background: rgba(255, 253, 246, 0.7) !important;
-}
-html[data-theme="sepia"] .bootseq button:focus-visible { outline-color: #b5651d !important; }
-html[data-theme="sepia"] .moodpop-float.f1, html[data-theme="sepia"] .moodpop-float.f2,
-html[data-theme="sepia"] .moodpop-float.f3, html[data-theme="sepia"] .moodpop-float.f4,
-html[data-theme="sepia"] .moodpop-float.f5, html[data-theme="sepia"] .moodpop-float.f6 { color: #c99327 !important; }
-html[data-theme="sepia"] .moodpop-spark { color: #b5651d !important; }
-html[data-theme="sepia"] .moodpop-mascot {
-  background: radial-gradient(circle at 32% 26%, #fffdf6, #f6efdd 58%, #efe3c8) !important;
-  box-shadow: 0 12px 28px rgba(90,64,32,0.35), inset 0 0 0 2px rgba(255,253,246,0.95) !important;
-}
 
 /* ════════════════════════════════════════════════════════════════════════
    UI/UX POLISH SUITE — audited friction, hierarchy, and mobile layout fixes
