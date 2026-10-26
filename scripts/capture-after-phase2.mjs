@@ -230,7 +230,7 @@ async function main() {
 
         // 7. Practice - Solver modal
         await dPage.evaluate(() => {
-            const btn = document.querySelector('#questions-grid-container .practice-single-btn');
+            const btn = document.querySelector('#questions-grid-container .question-card');
             if (btn) btn.click();
         });
         await dPage.waitForTimeout(1000);

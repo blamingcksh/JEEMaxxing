@@ -263,7 +263,7 @@ async function main() {
 
         // 10. Practice - Solver modal
         await dPage.evaluate(() => {
-            const btn = document.querySelector('#questions-grid-container .practice-single-btn');
+            const btn = document.querySelector('#questions-grid-container .question-card');
             if (btn) btn.click();
         });
         await dPage.waitForTimeout(1000);
@@ -360,7 +360,7 @@ async function main() {
         await mPage.evaluate(() => window.openChapterDetail('Kinematics'));
         await mPage.waitForTimeout(800);
         await mPage.evaluate(() => {
-            const btn = document.querySelector('#questions-grid-container .practice-single-btn');
+            const btn = document.querySelector('#questions-grid-container .question-card');
             if (btn) btn.click();
         });
         await mPage.waitForTimeout(1000);

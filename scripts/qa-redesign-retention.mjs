@@ -159,6 +159,11 @@ const seeded = await page.evaluate(() => {
 console.log('  ·  ' + seeded);
 assert(String(seeded).startsWith('seeded'), 'ledger seeded + grid rendered');
 
+// The retention ledger lives on the Dashboard; make its host view visible
+// before asserting geometry (the app can boot on the practice tab).
+await page.evaluate(() => window.switchTab('dashboard', document.querySelector('.nav-item[data-tab="dashboard"]')));
+await page.waitForTimeout(700);
+
 // ── Card structure ──
 const card = page.locator('.dash-card-decay');
 assert(await card.isVisible(), 'retention card visible');
@@ -166,6 +171,12 @@ assert(await card.isVisible(), 'retention card visible');
 const rowCount = await page.evaluate(() =>
     document.querySelectorAll('#chapter-decay-grid [onclick], #chapter-decay-grid .rh-row, #chapter-decay-grid .decay-row').length);
 assert(rowCount > 0, `grid populated (${rowCount} chapter rows)`);
+
+const gaugeH = await page.evaluate(() => {
+    const svg = document.querySelector('#chapter-decay-grid .rh-gauge .ret-svg');
+    return svg ? svg.getBoundingClientRect().height : 0;
+});
+assert(gaugeH >= 10, `retention gauge renders at full height (${Math.round(gaugeH)}px)`);
 
 // Expand before counting: the grid collapses to 8 rows in risk order, and now
 // that coverage gates health, the chapters that can reach "ready" are exactly

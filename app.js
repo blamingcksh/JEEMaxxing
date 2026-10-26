@@ -104,6 +104,7 @@ import {
     updateMemoryOnReview,
     chapterMemoryStats,
     hasReviewRecord,
+    refineDifficultyAfterTag,
 } from './memory.js';
 
 // Cognitive Cortex v3 — brain-like scheduling layer (pure, zero-dep).
@@ -1434,6 +1435,21 @@ function updateQuickLaunchAndArena() {
                 const eloVal = (AppState.elo && typeof AppState.elo[sub] === 'number' && isFinite(AppState.elo[sub])) ? Math.round(AppState.elo[sub]) : 1200;
                 metaEl.textContent = `${chCount} chapters · ${qCount} questions · ${eloVal} ELO`;
             }
+            const subjectCard = document.querySelector(`.subject-col[data-subject="${sub}"] .subject-card`);
+            if (subjectCard) {
+                const chapterNames = (AppState.chapters && AppState.chapters[sub]) || [];
+                let healthSum = 0;
+                let healthN = 0;
+                chapterNames.forEach(ch => {
+                    try {
+                        const h = _getChapterHealth(sub, ch);
+                        if (Number.isFinite(h)) { healthSum += h; healthN++; }
+                    } catch (_) {}
+                });
+                const avgHealth = healthN ? Math.max(0, Math.min(100, healthSum / healthN)) : 0;
+                subjectCard.dataset.band = avgHealth >= 90 ? 'ready' : (avgHealth >= 80 ? 'fading' : 'critical');
+                subjectCard.style.setProperty('--ring-pct', avgHealth.toFixed(1));
+            }
             const dayCountEl = document.getElementById(`arena-day-count-${sub}`);
             if (dayCountEl) {
                 dayCountEl.textContent = String((solved && solved[sub]) || 0);
@@ -2214,8 +2230,7 @@ export function selectSubject(s) {
     AppState.currentSubject = s;
     renderChaptersList();
     showPracticeSubview('practice-chapters-view');
-    document.getElementById('chapters-subject-title').innerText =
-        `${s.toUpperCase()} - Domain Zone`;
+    document.getElementById('chapters-subject-title').innerText = 'Chapters';
 }
 
 export function goToSubjects() {
@@ -2303,11 +2318,23 @@ export function renderChaptersList() {
     if (_healed) saveAllAsync().catch(console.error);
     // One pass counting questions per normalized chapter name — the render
     // loop used to re-filter the whole bank per chapter tile.
-    const _countByCh = new Map();
+    const _statByCh = new Map();
     for (const q of (AppState.questionBank || [])) {
         if (q.subject !== AppState.currentSubject) continue;
         const _k = String(q.chapter || '').trim().toLowerCase();
-        _countByCh.set(_k, (_countByCh.get(_k) || 0) + 1);
+        const _stat = _statByCh.get(_k) || { count: 0, solved: 0, attempted: 0, correct: 0 };
+        _stat.count++;
+        if (q.status === 'solved') _stat.solved++;
+        const _first = _firstAttemptResult(q);
+        if (_first) {
+            _stat.attempted++;
+            if (_first === 'correct') _stat.correct++;
+        }
+        _statByCh.set(_k, _stat);
+    }
+    const _subjectChip = document.getElementById('chapters-subject-chip');
+    if (_subjectChip) {
+        _subjectChip.textContent = `DOMAIN // ${String(AppState.currentSubject || '').toUpperCase()}`;
     }
     let cont = document.getElementById('chapters-list-container');
     cont.innerHTML = '';
@@ -2332,19 +2359,25 @@ export function renderChaptersList() {
         div.className = 'chapter-item';
         // Mock-test chapters wear their label + badge so test uploads are
         // visibly grouped instead of masquerading as syllabus chapters.
-        const _mockBadge = isMockChapterName(ch) ? '<span class="mock-chapter-badge" title="Mock test chapter">🧪</span>' : '';
-        const qCount = _countByCh.get(String(ch || '').trim().toLowerCase()) || 0;
+        const _mockBadge = isMockChapterName(ch) ? '<span class="mock-chapter-badge" title="Mock test chapter">TEST</span>' : '';
+        const _stat = _statByCh.get(String(ch || '').trim().toLowerCase()) || { count: 0, solved: 0, attempted: 0, correct: 0 };
+        const qCount = _stat.count;
+        const hitPct = _stat.attempted > 0 ? Math.round((_stat.correct / _stat.attempted) * 100) : 0;
+        const doneFrac = qCount > 0 ? _stat.solved / qCount : 0;
         const countPill = `<span class="chapter-stat-pill">${qCount} Q</span>`;
         div.innerHTML =
             `<span class="chapter-item-title">${_mockBadge}${escapeHtml(ch)} ${countPill}</span>` +
-            `<span class="chapter-item-right"><span class="chapter-solve-hint">Solve →</span><span class="delete-chapter" onclick="event.stopPropagation(); deleteChapter('${escapeAttribute(ch)}')">🗑</span></span>`;
+            `<span class="chapter-reticle" aria-hidden="true">${_reticleSvg(hitPct, doneFrac, true)}</span>` +
+            `<span class="chapter-item-rate">${hitPct}% HIT</span>` +
+            `<span class="chapter-coverage">${_stat.solved}/${qCount} RESOLVED</span>` +
+            `<span class="chapter-item-right"><span class="delete-chapter" role="button" aria-label="Purge chapter ${escapeAttribute(ch)}" onclick="event.stopPropagation(); deleteChapter('${escapeAttribute(ch)}')">&times;</span></span>`;
         div.onclick = () => openChapterDetail(ch);
         cont.appendChild(div);
     });
 }
 
 export function deleteChapter(ch) {
-    if (confirm(`Nuke "${ch}"? This wipes everything inside.`)) {
+    if (confirm(`Purge "${ch}"? This removes every question inside.`)) {
         // Remove EVERY case-variant tile — the question wipe below matches via
         // _chaptersMatch (case-insensitive), so leaving a "modern physics"
         // twin behind produced an empty surviving tile.
@@ -3007,7 +3040,7 @@ export function finishAllQuestions() {
 }
 
 export function cancelCropSession() {
-    if (confirm('Nuke all crops? No going back.')) {
+    if (confirm('Delete all crops? No going back.')) {
         closeCropModal();
         cropSession = { sourceImages: [], currentQuestionIdx: 0, allQuestions: [], activeCrop: false, drawing: {}, canvasRefs: {}, ctxRefs: {}, imgRefs: {}, surgicalTargetIdx: null };
         AppState.extractedItems = [];
@@ -4936,6 +4969,27 @@ function _firstAttemptResult(q) {
     return null;
 }
 
+function _mmss(totalSecs) {
+    const secs = Math.max(0, Math.round(Number(totalSecs) || 0));
+    return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+}
+
+function _reticleSvg(hitPct, doneFrac, small = false) {
+    const hit = Math.max(0, Math.min(100, Number(hitPct) || 0));
+    const done = Math.max(0, Math.min(100, (Number(doneFrac) || 0) * 100));
+    let ticks = '';
+    for (let i = 0; i <= 50; i++) {
+        const x = (i * 2).toFixed(1);
+        const major = i % 5 === 0;
+        ticks += `<line class="ret-tick${major ? ' is-major' : ''}" x1="${x}" y1="${major ? 3 : 5}" x2="${x}" y2="11"></line>`;
+    }
+    return `<svg class="ret-svg${small ? ' ret-svg--sm' : ''}" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">` +
+        ticks +
+        `<line class="ret-fill" x1="0" y1="7" x2="${hit.toFixed(1)}" y2="7"></line>` +
+        `<path class="ret-done" d="M${done.toFixed(1)} 3 L${(done - 2).toFixed(1)} 7 M${done.toFixed(1)} 3 L${(done + 2).toFixed(1)} 7"></path>` +
+        `</svg>`;
+}
+
 export function showQuestionList() {
     // Establish a clean baseline filter configuration if the current filter
     // is falsy/unassigned. Without this, a stale or undefined currentFilter
@@ -4986,8 +5040,8 @@ export function showQuestionList() {
         const chLabel = AppState.currentChapter ? `${AppState.currentChapter} · ` : '';
         if (AppState.currentFilter === 'all') titleEl.textContent = chLabel + 'All Questions';
         else if (AppState.currentFilter === 'unsolved') titleEl.textContent = chLabel + 'Untouched';
-        else if (AppState.currentFilter === 'solved') titleEl.textContent = chLabel + 'Clutched';
-        else if (AppState.currentFilter === 'wrong') titleEl.textContent = chLabel + 'Fumbled';
+        else if (AppState.currentFilter === 'solved') titleEl.textContent = chLabel + 'Verified';
+        else if (AppState.currentFilter === 'wrong') titleEl.textContent = chLabel + 'Flagged';
     }
 
     const filterEl = document.getElementById('question-filter');
@@ -4997,8 +5051,7 @@ export function showQuestionList() {
         filterEl.disabled = !!(window.__pomodoro && window.__pomodoro.isRunning());
     }
 
-    const total = filteredQuestions.length;
-    const solvedCount = filteredQuestions.filter(q => q.status === 'solved').length;
+    const chapterSolved = chapterQuestions.filter(q => q.status === 'solved').length;
     // ── Accuracy is based on the FIRST attempt of each question ONLY.
     // Re-solving a question (from the error matrix or question practice) does
     // NOT change the accuracy — only the first attempt counts. The first-attempt
@@ -5021,13 +5074,14 @@ export function showQuestionList() {
     const statsRow = document.getElementById('stats-row');
     if (statsRow) {
         statsRow.style.display = 'flex';
-        const completion = total > 0 ? Math.round((solvedCount / chapterQuestions.length) * 100) : 0;
+        const completion = chapterQuestions.length > 0 ? chapterSolved / chapterQuestions.length : 0;
         statsRow.innerHTML = `
-            <div class="stat-box"><div class="stat-value">${accuracy}%</div><div class="stat-label">Hit Rate</div></div>
-            <div class="chapter-progress-bar">
-                <div class="chapter-progress-fill" style="width: ${completion}%;"></div>
+            <div class="qm-reticle-wrap">${_reticleSvg(accuracy, completion)}</div>
+            <div class="qm-readouts">
+                <span class="qm-readout"><b>${accuracy}<em>%</em></b>HIT RATE</span>
+                <span class="qm-readout"><b>${chapterSolved}/${chapterQuestions.length}</b>RESOLVED</span>
+                <span class="qm-readout"><b>${_mmss(avgTime)}</b>AVG</span>
             </div>
-            <div class="stat-box"><div class="stat-value">${avgTime}s</div><div class="stat-label">Avg Speed</div></div>
         `;
     }
 
@@ -5036,15 +5090,21 @@ export function showQuestionList() {
     container.innerHTML = '';
 
     filteredQuestions.forEach((q, idx) => {
-        let statusClass = q.status === 'solved' ? 'status-solved' : (q.status === 'error' ? 'status-unsolved' : (q.status === 'wrong' ? 'status-wrong' : 'status-unsolved'));
-        let statusText = q.status === 'solved' ? 'Clutched' : (q.status === 'error' ? 'Fumbled' : (q.status === 'wrong' ? 'Wrong' : 'Untouched'));
-        let timeDisplay = q.timeTaken ? `<div style="font-size:12px; color:#8a8ad3; margin-top:4px;">⏱ ${Math.floor(q.timeTaken / 60)}:${(q.timeTaken % 60).toString().padStart(2, '0')}</div>` : '';
+        const statusClass = q.status === 'solved' ? 'status-solved' : (q.status === 'error' ? 'status-failed' : (q.status === 'wrong' ? 'status-wrong' : 'status-unsolved'));
+        const statusText = q.status === 'solved' ? 'VERIFIED' : (q.status === 'error' ? 'FAILED' : (q.status === 'wrong' ? 'FLAGGED' : 'UNTOUCHED'));
+        let timeDisplay = '';
+        if (q.timeTaken) {
+            const _delta = timedQuestions.length >= 2 ? Math.round(q.timeTaken - avgTime) : null;
+            const _deltaTxt = _delta == null ? '' : ` <span class="${_delta <= 0 ? 'dt-fast' : 'dt-slow'}">(${_delta <= 0 ? '−' : '+'}${_mmss(Math.abs(_delta))} Δ)</span>`;
+            timeDisplay = `<div class="q-time">${_mmss(q.timeTaken)}${_deltaTxt}</div>`;
+        }
 
+        const _hasCardImage = !!((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId);
         let imgHtml = '';
 // Always render a lightweight placeholder; initPracticeLazyLoaders() swaps
 // in the real image (in-memory bank or Drive) only when the card nears the
 // viewport — keeps the DOM free of hundreds of embedded base64 blobs.
-if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
+if (_hasCardImage) {
     imgHtml = `<img data-drive-id="${q.driveImageId || ''}" data-qid="${q.id}" class="lazy-practice-img" decoding="async" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>" style="max-width:100%; border-radius:8px;">`;
 } else {
     // Elegant left-aligned text layout with a line clamp to keep card heights uniform on the grid sheet
@@ -5069,15 +5129,13 @@ if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
         let card = document.createElement('div');
         card.className = 'question-card';
         card.innerHTML = `
-            <div class="card-close-btn" onclick="event.stopPropagation(); deleteQuestion('${q.id}')" title="Yeet Question" style="position: absolute; top: 12px; right: 36px; cursor: pointer; font-size: 22px; color: #4a4a6a; z-index: 5; line-height: 0.8;">×</div>
-            <div class="three-dot" onclick="event.stopPropagation(); openEditQuestionModal('${q.id}')">⋮</div>
-            <div style="display:flex; justify-content:space-between;"><strong>Q ${idx + 1}</strong><span class="status-badge ${statusClass}">${statusText}</span></div>
-            <div class="question-preview-text">${imgHtml}</div>
+            <div class="card-close-btn" onclick="event.stopPropagation(); deleteQuestion('${q.id}')" title="Delete Question" style="position: absolute; top: 12px; right: 4px; cursor: pointer; font-size: 18px; color: #4a4a6a; z-index: 5; line-height: 0.8;">×</div>
+            <div class="qm-card-head"><span class="qm-card-id">Q ${String(idx + 1).padStart(2, '0')}</span><span class="qm-card-tools"><button type="button" class="qm-card-edit" aria-label="Edit question ${idx + 1}" onclick="event.stopPropagation(); openEditQuestionModal('${q.id}')">EDIT</button><span class="status-badge ${statusClass}">${statusText}</span></span></div>
+            <div class="question-preview-text${_hasCardImage ? '' : ' is-text'}">${imgHtml}</div>
             ${timeDisplay}
-            <button class="btn btn-primary practice-single-btn grind-btn" data-index="${idx}" style="width:100%; margin-top:12px;">Grind →</button>
         `;
         card.onclick = (e) => {
-            if (e.target.closest('.three-dot, .card-close-btn')) return;
+            if (e.target.closest('.card-close-btn, .qm-card-edit')) return;
             startPracticeWithQuestion(filteredQuestions, idx);
         };
         container.appendChild(card);
@@ -5092,14 +5150,6 @@ if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
         empty.innerHTML = `<div class="qge-icon">🔍</div><div class="qge-title">No ${AppState.currentFilter} questions here</div><div class="qge-sub">Change the filter above or grind through the rest of the chapter.</div>`;
         container.appendChild(empty);
     }
-
-    container.querySelectorAll('.practice-single-btn').forEach(btn => {
-        btn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            const index = parseInt(this.getAttribute('data-index'));
-            startPracticeWithQuestion(filteredQuestions, index);
-        });
-    });
 
     showPracticeSubview('practice-question-list-view');
     initPracticeLazyLoaders();
@@ -5318,6 +5368,11 @@ export function startPracticeWithQuestion(questions, index, opts = null) {
     AppState.practiceQuestions = questions;
     AppState.currentPracticeIndex = index;
     AppState.practiceSubmittedFlags = new Array(questions.length).fill(false);
+    AppState._pqHealthByIdx = {};
+    AppState._pqEloByIdx = {};
+    AppState._pqHealthBefore = null;
+    AppState._pqElo = null;
+    try { _pqResetConfidenceUI(); } catch (_) {}
     if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
     AppState.practiceSeconds = 0;
     AppState.practiceDisplayOffset = (opts && opts.displayOffsetSecs) ? Math.max(0, opts.displayOffsetSecs | 0) : 0;
@@ -5746,8 +5801,7 @@ export function _pqDecorateText(raw) {
             let res = parts.map(p => {
                 if (!p) return '';
                 if (p.startsWith('$') || p.startsWith('\\(') || p.startsWith('\\[')) {
-                    const isShortMath = p.length <= 28;
-                    return `<span class="param-highlight${isShortMath ? ' ph-nowrap' : ''}">${escapeHtml(p)}</span>`;
+                    return `<span class="math-inline">${escapeHtml(p)}</span>`;
                 }
                 let esc = escapeHtml(p);
                 // Units and short variable assignments: nowrap
@@ -5766,6 +5820,7 @@ export function _pqDecorateText(raw) {
             // Strip gaps before punctuation
             res = res.replace(/<\/span>\s+([.,;:!?)])/g, '</span>$1');
             res = res.replace(/(\()\s+<span class="param-highlight/g, '$1<span class="param-highlight');
+            res = res.replace(/(\()\s+<span class="math-inline"/g, '$1<span class="math-inline"');
 
             // Tighten padding against adjoining parenthesis or punctuation
             res = res.replace(/(\()<span class="param-highlight([^">]*)">/g, '$1<span class="param-highlight$2 ph-tight-l">');
@@ -5795,7 +5850,11 @@ export function _pqDecorateText(raw) {
                 const start = matches[k].index;
                 const end = (k + 1 < matches.length) ? matches[k + 1].index : sectionText.length;
                 const block = sectionText.slice(start, end);
-                res += `<span class="pq-subpart">${highlightPart(block)}</span>`;
+                const labeled = highlightPart(block).replace(
+                    /^(\s*)\(((?:i{1,3}|iv|[a-e]))\)(?=\s)/i,
+                    '$1<span class="pq-sub-label">($2)</span>'
+                );
+                res += `<span class="pq-subpart">${labeled}</span>`;
             }
             return res;
         };
@@ -5868,12 +5927,135 @@ function _pqSyncState() {
             if (submitted) {
                 hintEl.textContent = '';
             } else if (isFreeResponse) {
-                hintEl.textContent = '( Hold anywhere 0.8s to reveal )';
+                hintEl.textContent = 'HOLD 800MS // DECRYPT';
             } else {
-                hintEl.textContent = '( Hold lock-in pill 0.8s to submit )';
+                hintEl.textContent = 'HOLD 800MS // LOCK-IN';
             }
         }
     } catch (_) {}
+}
+
+const _PQ_GRADE_PERF = { 1: 1.5, 2: 3, 3: 4.5 };
+const _PQ_CONF_LEVEL = { '1': 'guess', '2': 'likely', '3': 'sure' };
+let _pqConfidenceBound = false;
+
+function _pqSetConfidence(level) {
+    if (!level || !['guess', 'likely', 'sure'].includes(level)) return;
+    window._pendingSolveConfidence = level;
+    document.querySelectorAll('#pq-conf-ghost [data-conf]').forEach(btn => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.conf === level));
+    });
+}
+
+function _pqResetConfidenceUI() {
+    window._pendingSolveConfidence = null;
+    document.querySelectorAll('#pq-conf-ghost [data-conf]').forEach(btn => {
+        btn.setAttribute('aria-pressed', 'false');
+    });
+}
+
+function _pqApplyGrade(grade) {
+    const g = Number(grade);
+    if (!_PQ_GRADE_PERF[g]) return;
+    const q = AppState.currentQ;
+    if (!q) return;
+    const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
+    if (!submitted || q.selfGrade) return;
+    const isFreeResponse = (q.type !== 'mcq' && q.type !== 'numeric');
+    q.selfGrade = { g, t: Date.now() };
+    q.frictionFlag = (g === 2);
+    if (isFreeResponse) {
+        const target = document.getElementById(g === 1 ? 'text-wrong-btn' : 'text-correct-btn');
+        if (!target) {
+            delete q.selfGrade;
+            delete q.frictionFlag;
+            return;
+        }
+        target.click();
+    }
+    try { refineDifficultyAfterTag(q, _PQ_GRADE_PERF[g]); } catch (_) {}
+    saveAllAsync().catch(console.error);
+    _pqRenderDiag();
+}
+
+function _pqBindConfidence() {
+    if (_pqConfidenceBound) return;
+    _pqConfidenceBound = true;
+
+    document.addEventListener('keydown', (e) => {
+        if (e.defaultPrevented || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
+        if (!/^[1-3]$/.test(e.key)) return;
+        const tag = (e.target && e.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+        const modal = document.getElementById('practice-modal');
+        if (!modal || !modal.classList.contains('active') || _pqChromeOverlayOpen()) return;
+        e.preventDefault();
+        if (modal.getAttribute('data-pq-state') === 'answered') _pqApplyGrade(Number(e.key));
+        else _pqSetConfidence(_PQ_CONF_LEVEL[e.key]);
+    });
+
+    document.addEventListener('click', (e) => {
+        const confBtn = e.target.closest('#pq-conf-ghost [data-conf]');
+        if (confBtn) {
+            const modal = document.getElementById('practice-modal');
+            if (modal && modal.classList.contains('active') && modal.getAttribute('data-pq-state') === 'solving') {
+                _pqSetConfidence(confBtn.dataset.conf);
+            }
+            return;
+        }
+        const gradeBtn = e.target.closest('#pq-diag [data-pq-grade]');
+        if (gradeBtn) _pqApplyGrade(Number(gradeBtn.dataset.pqGrade));
+    });
+}
+
+function _pqRenderDiag() {
+    const el = document.getElementById('pq-diag');
+    if (!el) return;
+    const q = AppState.currentQ;
+    const submitted = !!(q && AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
+    if (!q || !submitted) {
+        el.innerHTML = '';
+        return;
+    }
+    const idx = AppState.currentPracticeIndex;
+    const time = Math.max(0, Number(q.timeTaken) || 0);
+    const others = (AppState.questionBank || []).filter(x =>
+        x && x !== q &&
+        x.subject === q.subject &&
+        _chaptersMatch(x.chapter, q.chapter) &&
+        (Number(x.timeTaken) || 0) > 0
+    );
+    const avgTime = others.length
+        ? others.reduce((sum, x) => sum + (Number(x.timeTaken) || 0), 0) / others.length
+        : null;
+    const dt = avgTime == null ? null : Math.round(time - avgTime);
+    const timeTxt = _mmss(time) + (dt == null ? '' : ` (${dt <= 0 ? '−' : '+'}${_mmss(Math.abs(dt))} Δ)`);
+    const elo = (AppState._pqEloByIdx && AppState._pqEloByIdx[idx]) || null;
+    const delta = elo && Number.isFinite(Number(elo.deltaSubject)) ? Math.round(Number(elo.deltaSubject)) : null;
+    const eloTxt = delta == null ? 'PENDING' : `${delta >= 0 ? '+' : ''}${delta}`;
+    let after = null;
+    try { after = _getChapterHealth(q.subject, q.chapter); } catch (_) {}
+    const before = (AppState._pqHealthByIdx && Number.isFinite(AppState._pqHealthByIdx[idx]))
+        ? Math.round(AppState._pqHealthByIdx[idx]) : null;
+    const retTxt = before != null && after != null
+        ? `${before}% → ${Math.round(after)}%`
+        : (after != null ? `${Math.round(after)}%` : '—');
+    const grade = q.selfGrade && Number(q.selfGrade.g);
+    const gradeBtn = (g, label) =>
+        `<button type="button" data-pq-grade="${g}" class="${grade === g ? 'is-set' : ''}" aria-pressed="${grade === g}"><span class="t-num">[${g}]</span> ${label}</button>`;
+    el.innerHTML = `
+        <div class="pq-diag-kicker">DIAGNOSTIC AUDIT</div>
+        <div class="pq-diag-grid">
+            <span class="pq-diag-field"><i>TIME</i><b>${timeTxt}</b></span>
+            <span class="pq-diag-field"><i>ELO</i><b>${eloTxt}</b></span>
+            <span class="pq-diag-field"><i>RETENTION</i><b>${retTxt}</b></span>
+            <span class="pq-diag-field"><i>SELF GRADE</i><b>${grade ? `[${grade}]` : '—'}</b></span>
+        </div>
+        <div class="pq-diag-grade" role="group" aria-label="Process grade">
+            ${gradeBtn(1, 'CRITICAL FAIL')}
+            ${gradeBtn(2, 'FRICTION / SLOW')}
+            ${gradeBtn(3, 'CALIBRATED SOLVE')}
+        </div>`;
 }
 
 let _pqHoldBound = false;
@@ -5975,6 +6157,16 @@ export function renderPracticeQuestionModal() {
     if (!AppState.currentQ) return;
     AppState.selectedMcq = null;
     const submitted = AppState.practiceSubmittedFlags[AppState.currentPracticeIndex];
+    const _pqIdx = AppState.currentPracticeIndex;
+    AppState._pqHealthByIdx = AppState._pqHealthByIdx || {};
+    if (AppState._pqHealthByIdx[_pqIdx] == null) {
+        try { AppState._pqHealthByIdx[_pqIdx] = _getChapterHealth(AppState.currentQ.subject, AppState.currentQ.chapter); }
+        catch (_) { AppState._pqHealthByIdx[_pqIdx] = null; }
+    }
+    if (!submitted) {
+        _pqResetConfidenceUI();
+        if (AppState._pqEloByIdx) delete AppState._pqEloByIdx[_pqIdx];
+    }
     const container = document.getElementById('practice-modal-content');
     if (!container) return;
     container.scrollTop = 0;
@@ -6031,17 +6223,17 @@ export function renderPracticeQuestionModal() {
         const correctAns = answerMathHTML(AppState.currentQ.correctAnswer || 'N/A');
         html += `<div class="pq-reveal-row">`;
         if (AppState.currentQ.status === 'solved') {
-            html += `<div class="result-banner correct" style="flex:1;">✅ Clutched! The answer was: ${correctAns}</div>`;
+            html += `<div class="result-banner correct" style="flex:1;">VERIFIED · answer: ${correctAns}</div>`;
         }
         else if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') {
-            html += `<div class="result-banner wrong" style="flex:1;">❌ Fumbled. The answer was: ${correctAns}</div>`;
+            html += `<div class="result-banner wrong" style="flex:1;">FAILED · answer: ${correctAns}</div>`;
         }
         else {
-            html += `<div class="result-banner reveal" style="flex:1;">🔍 Answer revealed. It was: ${correctAns}<span class="pq-reveal-ask"> — were you right?</span></div>`;
+            html += `<div class="result-banner reveal" style="flex:1;">ANSWER REVEALED · ${correctAns}<span class="pq-reveal-ask"> — were you right?</span></div>`;
         }
         if (AppState.currentQ.solution && AppState.currentQ.solution.trim().length > 0) {
             html +=
-                `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">💡 Peep Solution</button>`;
+                `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
         }
         html += `</div></div>`;
         container.innerHTML = html;
@@ -6063,6 +6255,8 @@ export function renderPracticeQuestionModal() {
         try { _updatePracticeHUD(); } catch (_) {}
         try { _pqCancelChromeFade(); } catch (_) {}
         try { _pqSyncState(); } catch (_) {}
+        try { _pqBindConfidence(); } catch (_) {}
+        try { _pqRenderDiag(); } catch (_) {}
         try { _pqUpdatePace(); } catch (_) {}
         try { _pqBindHold(); } catch (_) {}
         return;
@@ -6108,6 +6302,8 @@ export function renderPracticeQuestionModal() {
     try { _updatePracticeHUD(); } catch (_) {}
     try { _pqArmChromeFade(); } catch (_) {}
     try { _pqSyncState(); } catch (_) {}
+    try { _pqBindConfidence(); } catch (_) {}
+    try { _pqRenderDiag(); } catch (_) {}
     try { _pqUpdatePace(); } catch (_) {}
     try { _pqBindHold(); } catch (_) {}
 }
@@ -7513,6 +7709,8 @@ function _hideModeContinueButton() {
 function _serveModeEntry(entry) {
     if (!entry || !entry.q) return;
     window._pendingSolveConfidence = null;   // fresh item → stale tap discarded
+    AppState._pqHealthByIdx = {};
+    AppState._pqEloByIdx = {};
     AppState.practiceQuestions = [entry.q];
     AppState.practiceSubmittedFlags = [!!entry.submitted];
     AppState.currentPracticeIndex = 0;
@@ -9123,6 +9321,10 @@ function renderEloMatrix() {
  */
 function injectEloShiftChip(eloResult, options = {}) {
     if (!eloResult) return;
+    if (AppState.currentPracticeIndex != null) {
+        AppState._pqEloByIdx = AppState._pqEloByIdx || {};
+        AppState._pqEloByIdx[AppState.currentPracticeIndex] = eloResult;
+    }
     const delta = eloResult.deltaSubject || 0;
     const sign = delta >= 0 ? '+' : '';
     const tier = getRankTierDetails(eloResult.newSubjectElo);
@@ -9139,7 +9341,7 @@ function injectEloShiftChip(eloResult, options = {}) {
         }
         headerSlot.innerHTML = '';
         const isClean = options.outcome ? (options.outcome === 'clean') : (delta >= 0);
-        const label = isClean ? 'CLEAN LOCK' : 'SKILL ISSUE';
+        const label = isClean ? 'CALIBRATED' : 'OFF-TARGET';
         const headerChip = document.createElement('div');
         headerChip.className = 'elo-header-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
         headerChip.title = `${subjLabel} rating ${sign}${Math.round(delta)} · Rank: ${tier.name} — a live skill estimate shaped by your solve speed, question difficulty and practice mode.`;
@@ -9171,6 +9373,7 @@ function injectEloShiftChip(eloResult, options = {}) {
             playSuperSound();
         } catch (_) { /* ignore celebration errors */ }
     }
+    try { _pqRenderDiag(); } catch (_) {}
 }
 
 /** Default qElo for a newly-created question = chapter running average, else 1200. */
@@ -9225,7 +9428,7 @@ function _enterSelfReportFlow() {
     //    without self-reporting. The easeFactor is hydrated (not nudged)
     //    here because the success/failure outcome is not yet known — the
     //    nudge is applied later by calculateEloMigration once the user
-    //    clicks "Clean Lock" / "Skill Issue" in addTextQuestionFollowUp().
+    //    clicks "VERIFIED" / "FAILED" in addTextQuestionFollowUp().
     AppState.currentQ.lastReviewedAt = new Date().toISOString();
     if (typeof AppState.currentQ.easeFactor !== 'number' || !isFinite(AppState.currentQ.easeFactor)) {
         AppState.currentQ.easeFactor = 2.5;
@@ -9466,12 +9669,15 @@ export function addTextQuestionFollowUp() {
     const btnContainer = document.createElement('div');
     btnContainer.style.cssText = "display:flex; gap:12px; margin-top:12px; align-items:center; justify-content:center; flex-wrap:nowrap;";
     btnContainer.innerHTML =
-        `<button class="btn btn-success" id="text-correct-btn" style="flex:1; max-width:170px;">Clean Lock ✅</button>
-         <button class="btn btn-danger" id="text-wrong-btn" style="flex:1; max-width:160px;">Skill Issue ❌</button>`;
+        `<button class="btn btn-success" id="text-correct-btn" style="flex:1; max-width:170px;">VERIFIED</button>
+         <button class="btn btn-danger" id="text-wrong-btn" style="flex:1; max-width:160px;">FAILED</button>`;
     container.appendChild(btnContainer);
 
     document.getElementById('text-correct-btn').onclick = () => {
         const wasAlreadySolved = (AppState.currentQ.status === 'solved');
+        const _wasSelfGraded = !!AppState.currentQ.selfGrade;
+        if (!AppState.currentQ.selfGrade) AppState.currentQ.selfGrade = { g: 3, t: Date.now() };
+        AppState.currentQ.frictionFlag = (AppState.currentQ.selfGrade.g === 2);
         const _modePerfTxt = (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard' && !AppState.bountyMode)
             ? { qElo: _safeQElo(AppState.currentQ), userElo: AppState.elo[_normalizeSubjectKey(AppState.currentQ.subject)] || 1200, targetSecs: Math.max(1, _eloTargetSeconds(AppState.currentQ)), secs: AppState._frozenTextQSeconds || AppState.practiceSeconds }
             : null;
@@ -9489,6 +9695,9 @@ export function addTextQuestionFollowUp() {
                 AppState.currentQ
             );
              } catch (_e) { console.error('Elo migration fault:', _e); }      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
+      if (!_wasSelfGraded && AppState.currentQ.selfGrade) {
+          try { refineDifficultyAfterTag(AppState.currentQ, _PQ_GRADE_PERF[AppState.currentQ.selfGrade.g]); } catch (_) {}
+      }
       stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
      saveAllAsync().catch(console.error);
      if (AppState.bountyMode) {
@@ -9516,9 +9725,13 @@ export function addTextQuestionFollowUp() {
         }
         document.getElementById('practice-submit-btn').style.display = 'none';
         try { _pqSyncState(); } catch (_) {}
+        try { _pqRenderDiag(); } catch (_) {}
     };
 
     document.getElementById('text-wrong-btn').onclick = () => {
+        const _wasSelfGraded = !!AppState.currentQ.selfGrade;
+        if (!AppState.currentQ.selfGrade) AppState.currentQ.selfGrade = { g: 1, t: Date.now() };
+        AppState.currentQ.frictionFlag = false;
         const _modePerfTxt = (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard' && !AppState.bountyMode)
             ? { qElo: _safeQElo(AppState.currentQ), userElo: AppState.elo[_normalizeSubjectKey(AppState.currentQ.subject)] || 1200, targetSecs: Math.max(1, _eloTargetSeconds(AppState.currentQ)), secs: AppState._frozenTextQSeconds || AppState.practiceSeconds }
             : null;
@@ -9536,6 +9749,9 @@ export function addTextQuestionFollowUp() {
                 AppState.currentQ
             );
              } catch (_e) { console.error('Elo migration fault:', _e); }      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
+      if (!_wasSelfGraded && AppState.currentQ.selfGrade) {
+          try { refineDifficultyAfterTag(AppState.currentQ, _PQ_GRADE_PERF[AppState.currentQ.selfGrade.g]); } catch (_) {}
+      }
       saveAllAsync().catch(console.error);
       if (AppState.bountyMode) {
           evaluateBountyOutcome(false);
@@ -9571,6 +9787,7 @@ export function addTextQuestionFollowUp() {
         }
         document.getElementById('practice-submit-btn').style.display = 'none';
         try { _pqSyncState(); } catch (_) {}
+        try { _pqRenderDiag(); } catch (_) {}
     };
 
     document.getElementById('practice-submit-btn').style.display = 'none';
@@ -9758,6 +9975,10 @@ export function closePracticeModal() {
     // Calibration hygiene: an un-consumed confidence tap belongs to a question
     // that was never submitted — never let it leak into the next solve.
     window._pendingSolveConfidence = null;
+    AppState._pqHealthByIdx = {};
+    AppState._pqEloByIdx = {};
+    AppState._pqHealthBefore = null;
+    AppState._pqElo = null;
     // A closed modal must not leak its run's navigation history into the next
     // session — without this, a standard session started right after closing a
     // Flow/Hardcore run could inherit stale back/forward stacks.
@@ -9773,7 +9994,7 @@ export function closePracticeModal() {
 }
 
 export async function deleteQuestion(id) {
-    if (confirm("Permanently yeet this question from local AND cloud storage? Gone forever. No undo.")) {
+    if (confirm("Permanently delete this question from local AND cloud storage? Gone forever. No undo.")) {
         let targetQ = AppState.questionBank.find(q => q.id.toString() === id.toString());
 
         if (targetQ && typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {

@@ -378,7 +378,10 @@ body:not(.immersive-active) .pq-qa-media {
 
 /* ── Distance-Readable Typography (60cm Desk Distance) ── */
 #practice-modal.pq-stage #latex-render {
+  font-family: var(--font-body) !important;
   font-size: 21px !important;
+  font-weight: 400 !important;
+  max-width: 65ch;
   line-height: 1.65 !important;
   letter-spacing: -0.01em !important;
   color: var(--pq-ink) !important;
@@ -391,48 +394,64 @@ body:not(.immersive-active) .pq-qa-media {
 }
 #practice-modal.pq-stage #latex-render .katex {
   color: var(--pq-ink) !important;
-  font-size: 1.05em;
+  font-size: 1.08em;
+}
+#sr-practice-overlay.pq-stage #sr-question-text .katex {
+  font-size: 1.08em;
 }
 
-/* Saccadic anchors: numbers, parameters, variables */
-.param-highlight {
-  background: var(--pq-hl);
+.math-inline {
   display: inline;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-  padding: 1px 5px;
-  border-radius: 4px;
-  line-height: inherit;
-  font-weight: 600;
+  white-space: nowrap;
   color: var(--pq-ink);
+}
+
+.param-highlight {
+  background: transparent;
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  line-height: inherit;
+  font-weight: 500;
+  color: inherit;
 }
 .param-highlight.ph-nowrap {
   white-space: nowrap;
 }
 .param-highlight.ph-tight-l {
-  padding-left: 1px;
+  padding-left: 0;
 }
 .param-highlight.ph-tight-r {
-  padding-right: 1px;
+  padding-right: 0;
 }
 
 /* Isolated target question goal line */
 .question-goal {
   margin-top: 24px;
-  padding-left: 14px;
-  border-left: 3px solid var(--pq-accent);
-  font-weight: 600;
+  padding-left: 12px;
+  border-left: 1px solid var(--pq-border);
+  font-weight: 500;
   color: var(--pq-ink);
   font-size: 21px;
   line-height: 1.65;
 }
-
 .pq-subpart {
   display: block;
   margin-top: 12px;
 }
 .question-goal .pq-subpart:first-child {
   margin-top: 0;
+}
+.pq-sub-label {
+  display: inline-block;
+  margin-right: .16em;
+  color: var(--pq-ink-soft);
+  font-family: var(--font-num);
+  font-size: .62em;
+  font-weight: 500;
+  letter-spacing: .16em;
+  vertical-align: .12em;
 }
 
 /* ── MCQ Options ── */
@@ -748,7 +767,7 @@ body.immersive-active #practice-modal.pq-stage .result-banner.reveal {
   color: inherit !important;
 }
 
-/* Self-report buttons (Clean Lock & Skill Issue) */
+/* Self-report buttons (VERIFIED & FAILED) */
 #practice-modal.pq-stage #text-correct-btn {
   background: #3d6b2f !important;
   color: #fff !important;
@@ -937,7 +956,9 @@ body.immersive-active #practice-modal[data-pq-state="answered"] .streak-visualiz
 
 /* Question Stage & Typography */
 #sr-practice-overlay.pq-stage #sr-question-text {
+  font-family: var(--font-body) !important;
   font-size: 21px !important;
+  font-weight: 400 !important;
   line-height: 1.65 !important;
   letter-spacing: -0.01em !important;
   color: var(--pq-ink) !important;
@@ -952,7 +973,7 @@ body.immersive-active #practice-modal[data-pq-state="answered"] .streak-visualiz
 }
 #sr-practice-overlay.pq-stage #sr-question-text .katex {
   color: var(--pq-ink) !important;
-  font-size: 1.05em;
+  font-size: 1.08em;
 }
 
 /* Media & Diagram Paper Blending */

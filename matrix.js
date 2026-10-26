@@ -848,7 +848,7 @@ export function openPracticeDrawer(qId) {
         </div>
 
         <!-- Bottom-Center hold hint -->
-        <div class="pq-hold-hint" id="sr-hold-hint" aria-hidden="true">${isFreeResponse ? '( Hold anywhere 0.8s to reveal )' : '( Hold lock-in pill 0.8s to submit )'}</div>
+        <div class="pq-hold-hint" id="sr-hold-hint" aria-hidden="true">${isFreeResponse ? 'HOLD 800MS // DECRYPT' : 'HOLD 800MS // LOCK-IN'}</div>
     `;
 
     document.body.appendChild(overlay);
@@ -1523,7 +1523,7 @@ function _applyResult(result, source, q) {
             : '';
         let solPeepBtn = '';
         if ((q.solution && q.solution.trim().length > 0) || (q.solutionImageUrl && q.solutionImageUrl.length > 100)) {
-            solPeepBtn = `<button class="pq-peep-btn" id="sr-peep-sol-btn" type="button" onclick="srOpenSolution()">💡 Peep Solution</button>` +
+            solPeepBtn = `<button class="pq-peep-btn" id="sr-peep-sol-btn" type="button" onclick="srOpenSolution()">REVIEW SOLUTION</button>` +
                 `<div class="sr-solution-display" id="sr-solution-display-zone" style="display:none;">` +
                 `<div class="sr-sol-heading">Solution</div>` +
                 (q.solution ? `<div class="sr-sol-body">${_esc(q.solution)}</div>` : '') +
@@ -1533,9 +1533,9 @@ function _applyResult(result, source, q) {
         if (result === 'correct') {
             const oh = document.body.classList.contains('overheat-active');
             const pendingDelta = (q && q.status !== 'solved') ? (oh ? 3 : 1) : (oh ? 2 : 0);
-            zone.innerHTML = `<div class="sr-result-banner correct">✅ Correct${suffix}</div>${_keepGoingHTML(q, pendingDelta)}${solImg}${solPeepBtn}`;
+            zone.innerHTML = `<div class="sr-result-banner correct">VERIFIED${suffix}</div>${_keepGoingHTML(q, pendingDelta)}${solImg}${solPeepBtn}`;
         } else {
-            zone.innerHTML = `<div class="sr-result-banner incorrect">❌ Incorrect${suffix}</div>${solImg}${solPeepBtn}`;
+            zone.innerHTML = `<div class="sr-result-banner incorrect">FAILED${suffix}</div>${solImg}${solPeepBtn}`;
         }
     }
 
@@ -3887,7 +3887,7 @@ export function renderChapterDecayGrid() {
                  data-chapter="${_esc(encodeURIComponent(ch.name || ''))}"
                  aria-label="${_esc(chDisplay)}: ${Math.round(h)} percent health"
                  title="${_esc(ch.title)}"
-><span class="rh-name"><span class="ch-full">${_esc(chDisplay)}</span><span class="ch-short" aria-hidden="true">${_esc(shortChapterName(ch.name))}</span></span><span class="rh-gauge" aria-hidden="true"><i class="rh-cov" style="width:${covPct}%"></i><i class="rh-line" style="width:${h.toFixed(1)}%"></i>${fc != null ? `<i class="rh-fc" style="left:${fc.toFixed(1)}%"></i>` : ''}<i class="rh-dot" style="left:${h.toFixed(1)}%"></i></span><span class="rh-val">${Math.round(h)}<em>%</em>${trend}</span><span class="rh-hz ${horizonCls}">${_esc(horizonTxt)}</span></div>`;
+><span class="rh-name"><span class="ch-full">${_esc(chDisplay)}</span><span class="ch-short" aria-hidden="true">${_esc(shortChapterName(ch.name))}</span></span><span class="rh-gauge" aria-hidden="true"><svg class="ret-svg" viewBox="0 0 100 14" preserveAspectRatio="none" focusable="false"><rect class="rh-cov" x="0" y="6" width="${covPct.toFixed(1)}" height="2.5"></rect><line class="rh-line ret-fill" x1="0" y1="7" x2="100" y2="7" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${(100 - h).toFixed(1)}"></line>${fc != null ? `<line class="rh-fc" x1="${fc.toFixed(1)}" y1="2" x2="${fc.toFixed(1)}" y2="14"></line>` : ''}</svg><i class="rh-dot" style="left:${h.toFixed(1)}%"></i></span><span class="rh-val">${Math.round(h)}<em>%</em>${trend}</span><span class="rh-hz ${horizonCls}">${_esc(horizonTxt)}</span></div>`;
     }).join('');
 
     // Commit this render's health as the NEXT baseline — but only once the
