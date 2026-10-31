@@ -424,8 +424,12 @@ try {
     });
     await start();
     await page.waitForSelector('#mario-recap');
-    const greyWrapHiddenStart = await page.evaluate(() => document.getElementById('mario-recap-wrap-grey')?.hidden);
-    ok(greyWrapHiddenStart === false, 'grey counter dot is visible when session has skipped questions');
+    const initialRunState = await page.evaluate(() => ({
+        greyWrapHidden: document.getElementById('mario-recap-wrap-grey')?.hidden,
+        initialFlag: document.getElementById('mario-recap')?.dataset.castleFlag,
+    }));
+    ok(initialRunState.greyWrapHidden === false, 'grey counter dot is visible when session has skipped questions');
+    ok(initialRunState.initialFlag === 'yellow', 'castle rooftop flag starts neutral yellow before Big Block settles', initialRunState.initialFlag);
     await page.waitForSelector('#mario-recap-pill.is-summary', { timeout: 10000 });
     const eloRun = await page.evaluate(() => {
         const overlay = document.getElementById('mario-recap');
@@ -441,6 +445,7 @@ try {
             megaOutcome: overlay.dataset.megaOutcome,
             megaPop: overlay.dataset.megaPop,
             finaleBranch: overlay.dataset.finaleBranch,
+            castleFlag: overlay.dataset.castleFlag,
         };
     });
     ok(JSON.stringify(eloRun.popHistory) === JSON.stringify(['+14', '−9', '+22']), 'each answered block pops its formatted Elo delta in order', JSON.stringify(eloRun.popHistory));
@@ -448,7 +453,7 @@ try {
     ok(eloRun.greyCount === 1, 'grey skipped block increments skipped counter to 1', String(eloRun.greyCount));
     ok(eloRun.summaryText === '3 solved · 2 correct · 1 fast · 1 wrong · 1 skipped · +27 Elo', 'summary pill includes skipped count and net Elo', eloRun.summaryText);
     ok(eloRun.eloClass.includes('is-pos') && eloRun.eloText === '+27 Elo', 'positive net Elo uses .mr-elo.is-pos styling', eloRun.eloClass + ' / ' + eloRun.eloText);
-    ok(eloRun.megaOutcome === 'green' && eloRun.megaPop === '+27' && eloRun.finaleBranch === 'princess', 'positive net Elo merges into green Big Block (+27) and triggers Princess finale', JSON.stringify(eloRun));
+    ok(eloRun.megaOutcome === 'green' && eloRun.megaPop === '+27' && eloRun.finaleBranch === 'princess' && eloRun.castleFlag === 'green', 'positive net Elo merges into green Big Block (+27), turns castle flag green, and triggers Princess finale', JSON.stringify(eloRun));
     await page.screenshot({ path: path.join(SHOTS, 'mario-recap-princess.png') });
     await page.mouse.click(20, 120);
     await waitGone(page);
@@ -460,15 +465,67 @@ try {
     });
     await start();
     await page.waitForSelector('#mario-recap-pill.is-summary', { timeout: 10000 });
+    await page.waitForTimeout(260);
     const negRun = await page.evaluate(() => {
         const overlay = document.getElementById('mario-recap');
         return {
             megaOutcome: overlay.dataset.megaOutcome,
             megaPop: overlay.dataset.megaPop,
             finaleBranch: overlay.dataset.finaleBranch,
+            castleFlag: overlay.dataset.castleFlag,
+            goombaVisible: overlay.dataset.goombaVisible,
+            chimneySmoke: Number(overlay.dataset.chimneySmoke || 0),
+            marioPose: overlay.dataset.marioPose,
         };
     });
-    ok(negRun.megaOutcome === 'red' && negRun.megaPop === '−15' && negRun.finaleBranch === 'closed', 'negative net Elo merges into red Big Block (−15) and keeps castle closed', JSON.stringify(negRun));
+    ok(
+        negRun.megaOutcome === 'red' &&
+        negRun.megaPop === '−15' &&
+        negRun.finaleBranch === 'negative' &&
+        negRun.castleFlag === 'red' &&
+        negRun.goombaVisible === 'true' &&
+        negRun.chimneySmoke > 0 &&
+        negRun.marioPose === 'slump',
+        'negative net Elo turns castle flag red, puffs chimney smoke, and peeks Goomba from doorway',
+        JSON.stringify(negRun)
+    );
+    await page.screenshot({ path: path.join(SHOTS, 'mario-recap-negative.png') });
+    await page.mouse.click(20, 120);
+    await waitGone(page);
+
+    await page.evaluate(() => {
+        window.SessionRecap.reset();
+        window.SessionRecap.recordSkip({ id: 'all-skip-1' });
+        window.SessionRecap.recordSkip({ id: 'all-skip-2' });
+        window.SessionRecap.recordSkip({ id: 'all-skip-3' });
+    });
+    await start();
+    await page.waitForSelector('#mario-recap-pill.is-summary', { timeout: 10000 });
+    await page.waitForFunction(() => Number(document.getElementById('mario-recap')?.dataset.marioSleepZs || 0) > 0, { timeout: 4000 });
+    const neutralRun = await page.evaluate(() => {
+        const overlay = document.getElementById('mario-recap');
+        return {
+            megaOutcome: overlay.dataset.megaOutcome,
+            megaPop: overlay.dataset.megaPop,
+            finaleBranch: overlay.dataset.finaleBranch,
+            castleFlag: overlay.dataset.castleFlag,
+            poseHistory: JSON.parse(overlay.dataset.marioPoseHistory || '[]'),
+            sleepPose: overlay.dataset.marioPose,
+            sleepZs: Number(overlay.dataset.marioSleepZs || 0),
+        };
+    });
+    ok(
+        neutralRun.megaOutcome === 'grey' &&
+        neutralRun.megaPop === 'SKIP' &&
+        neutralRun.finaleBranch === 'neutral' &&
+        neutralRun.castleFlag === 'grey' &&
+        JSON.stringify(neutralRun.poseHistory) === JSON.stringify(['shrug', 'sit1', 'sit2']) &&
+        neutralRun.sleepPose === 'sit2' &&
+        neutralRun.sleepZs > 0,
+        'all-skipped session turns castle flag grey and transitions Mario from shrug into sleeping sit with floating Zs',
+        JSON.stringify(neutralRun)
+    );
+    await page.screenshot({ path: path.join(SHOTS, 'mario-recap-neutral.png') });
     await page.mouse.click(20, 120);
     await waitGone(page);
 
@@ -609,14 +666,20 @@ try {
     ok(appSummary.lastPop === `+${appRecorded.netElo}`, 'app recap block pop matches the real subject Elo gain', appSummary.lastPop);
     ok(appSummary.zIndex === '2147483100', 'app recap sits above existing layers', appSummary.zIndex);
     ok(!appSummary.bodyLocked, 'app recap does not lock the underlying page');
-    await appPage.waitForTimeout(320);
+    await appPage.waitForTimeout(220);
     await appPage.screenshot({ path: path.join(SHOTS, 'mario-recap-app-night.png') });
     await appPage.evaluate(() => { document.documentElement.dataset.mode = 'dusk'; });
-    await appPage.waitForTimeout(220);
-    const duskBg = await appPage.evaluate(() => getComputedStyle(document.getElementById('mario-recap')).backgroundColor);
+    await appPage.waitForTimeout(120);
+    const duskBg = await appPage.evaluate(() => {
+        const el = document.getElementById('mario-recap');
+        return el ? getComputedStyle(el).backgroundColor : '';
+    });
     ok(duskBg === 'rgba(38, 42, 60, 0.24)', 'dusk mode retints the veil', duskBg);
     await appPage.screenshot({ path: path.join(SHOTS, 'mario-recap-app-dusk.png') });
-    await appPage.mouse.click(70, 70);
+    await appPage.evaluate(() => {
+        const el = document.getElementById('mario-recap');
+        if (el) el.click();
+    });
     await waitGone(appPage);
     ok(true, 'app recap dismisses cleanly');
 

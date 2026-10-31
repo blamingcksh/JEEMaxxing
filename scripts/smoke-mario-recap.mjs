@@ -89,21 +89,29 @@ eq(skSummary.netElo, 8, 'netElo sums +14 and -6 to +8');
 const posVerdict = resolveSessionVerdict({ total: 3, skipped: 1, hasElo: true, netElo: 18 });
 eq(posVerdict.megaOutcome, 'green', 'positive net Elo merges into green Big Block');
 eq(posVerdict.hasVictory, true, 'positive net Elo triggers Princess & Congratulations finale');
+eq(posVerdict.castleMood, 'positive', 'positive net Elo sets castleMood to positive');
+eq(posVerdict.flagColor, 'green', 'positive net Elo colors castle rooftop flag green');
 eq(posVerdict.popText, '+18', 'positive net Elo Big Block pops +18');
 
 const zeroVerdict = resolveSessionVerdict({ total: 2, skipped: 0, hasElo: true, netElo: 0 });
 eq(zeroVerdict.megaOutcome, 'green', 'zero net Elo with solved questions merges into green Big Block');
 eq(zeroVerdict.hasVictory, false, 'zero net Elo keeps castle door closed');
+eq(zeroVerdict.castleMood, 'neutral', 'zero net Elo sets castleMood to neutral');
+eq(zeroVerdict.flagColor, 'yellow', 'zero net Elo keeps castle rooftop flag neutral yellow');
 eq(zeroVerdict.popText, '±0', 'zero net Elo Big Block pops ±0');
 
 const negVerdict = resolveSessionVerdict({ total: 3, skipped: 0, hasElo: true, netElo: -12 });
 eq(negVerdict.megaOutcome, 'red', 'negative net Elo merges into red Big Block');
 eq(negVerdict.hasVictory, false, 'negative net Elo keeps castle door closed');
+eq(negVerdict.castleMood, 'negative', 'negative net Elo sets castleMood to negative');
+eq(negVerdict.flagColor, 'red', 'negative net Elo colors castle rooftop flag red');
 eq(negVerdict.popText, '−12', 'negative net Elo Big Block pops −12');
 
 const skipVerdict = resolveSessionVerdict({ total: 0, skipped: 3, hasElo: false, netElo: 0 });
 eq(skipVerdict.megaOutcome, 'grey', 'all-skipped session merges into grey Big Block');
 eq(skipVerdict.hasVictory, false, 'all-skipped session keeps castle door closed');
+eq(skipVerdict.castleMood, 'neutral', 'all-skipped session sets castleMood to neutral');
+eq(skipVerdict.flagColor, 'grey', 'all-skipped session colors castle rooftop flag grey');
 eq(skipVerdict.popText, 'SKIP', 'all-skipped Big Block pops SKIP');
 
 const source = readFileSync(join(root, 'mario-recap.js'), 'utf8');
@@ -128,6 +136,10 @@ ok(source.includes('spawnMegaEloPop'), 'scene spawns net Elo pop on Big Block hi
 ok(source.includes('drawMergingBlocks'), 'scene smoothly merges blocks into Big Block');
 ok(source.includes('drawCastle'), 'scene draws Mario Castle');
 ok(source.includes('PRINCESS_SPRITES'), 'scene includes Princess Peach sprites');
+ok(source.includes('GOOMBA_SPRITES'), 'scene includes Goomba sprites for net-negative payoff');
+ok(source.includes('SLEEP_Z_LARGE'), 'scene includes pixel sleep Z sprites for neutral/skip gag');
+ok(source.includes('spawnChimneySmoke'), 'scene spawns chimney dark smoke on negative runs');
+ok(source.includes('settleCastleFlag'), 'scene updates castle rooftop flag color when Big Block settles');
 ok(source.includes('playCongratulations'), 'sound engine includes Congratulations fanfare');
 ok(source.includes('playSomberEnd'), 'sound engine includes somber jingle for negative Elo');
 ok(html.includes('id="fx-mario-sound"'), 'config panel has Mario Recap Sounds toggle');
@@ -149,7 +161,7 @@ ok(source.includes('is-parchment'), 'recap supports a parchment veil');
 ok(app.includes('window.__jmaxAppToast || alert'), 'queue-cleared notice falls back to toast');
 ok(app.includes('window.SessionRecap = SessionRecap'), 'recap is exposed for QA and bridge code');
 ok(html.includes('href="mario-recap.css"'), 'index loads recap stylesheet');
-ok(sw.includes("'jeemax-v83'"), 'service worker version bumped');
+ok(sw.includes("'jeemax-v84'"), 'service worker version bumped');
 ok(sw.includes("'./mario-recap.js'"), 'recap engine is precached');
 ok(sw.includes("'./mario-recap.css'"), 'recap stylesheet is precached');
 
