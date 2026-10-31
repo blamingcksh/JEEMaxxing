@@ -68,6 +68,7 @@ import {
 import { Directive } from './directive.js';
 import './bridge.js';
 import './tuckin.js';
+import { SessionRecap } from './mario-recap.js';
 
 /** Stage full LU pricing context for the next solve unit logged through
  *  changeCount(). One-shot; silently ignored if the Directive isn't live. */
@@ -984,6 +985,10 @@ try {
                 e.preventDefault();
                 return;
             }
+        }
+        if (top.id === 'practice-modal') {
+            closePracticeModal();
+            return;
         }
         closeModalStr(top.id);
     }, false);
@@ -5327,6 +5332,7 @@ export function startPracticeWithQuestion(questions, index, opts = null) {
     }
     // Standard list entry — a mode left armed (e.g. ✕-closed mid-run) must not
     // leak its footer/nav state into this session.
+    SessionRecap.reset();
     AppState.practiceFlowMode = 'standard';
     _modeAdaptive.targetPwin = null;
     AppState.practiceQuestions = questions;
@@ -5415,6 +5421,7 @@ export function tryAssignDailyBounty(questionId) {
     window._bountyQuestion = q;
     window._bountyTimeLimit = AppState.bounty.timeLimit;
     AppState.bountyMode = true;
+    SessionRecap.reset();
 
     AppState.practiceQuestions = [q];
     AppState.currentPracticeIndex = 0;
@@ -5566,6 +5573,7 @@ function _armBountySession(q) {
     window._bountyQuestion = q;
     window._bountyTimeLimit = AppState.bounty.timeLimit;
     AppState.bountyMode = true;
+    SessionRecap.reset();
 
     AppState.practiceQuestions = [q];
     AppState.currentPracticeIndex = 0;
@@ -5884,7 +5892,7 @@ function _pqSyncState() {
             try { _ensureStreakLoop(); } catch (_) {}
         }
         const isFreeResponse = (!q || (q.type !== 'mcq' && q.type !== 'numeric'));
-        modal.classList.toggle('pq-is-free-response', isFreeResponse);
+        modal.classList.toggle('pq-is-free-response', (!q || q.type !== 'numeric'));
 
         const hintEl = document.getElementById('pq-hold-hint');
         if (hintEl) {
@@ -5928,7 +5936,7 @@ function _pqApplyGrade(grade) {
     const isFreeResponse = (q.type !== 'mcq' && q.type !== 'numeric');
     q.selfGrade = { g, t: Date.now() };
     q.frictionFlag = (g === 2);
-    if (isFreeResponse) {
+    if (isFreeResponse || document.getElementById('text-correct-btn') || document.getElementById('text-wrong-btn')) {
         const target = document.getElementById(g === 1 ? 'text-wrong-btn' : 'text-correct-btn');
         if (!target) {
             delete q.selfGrade;
@@ -6073,7 +6081,7 @@ function _pqBindHold() {
             return;
         }
 
-        if (!isFreeResponse && !isSubmitBtn) {
+        if ((!q || q.type !== 'numeric') === false && !isSubmitBtn) {
             return;
         }
 
@@ -6130,6 +6138,8 @@ export function renderPracticeQuestionModal() {
     if (!submitted) {
         _pqResetConfidenceUI();
         if (AppState._pqEloByIdx) delete AppState._pqEloByIdx[_pqIdx];
+        const _cBtn = document.getElementById('practice-continue-btn');
+        if (_cBtn) _cBtn.style.display = 'none';
     }
     const container = document.getElementById('practice-modal-content');
     if (!container) return;
@@ -6243,12 +6253,14 @@ export function renderPracticeQuestionModal() {
         html += `</div>`;
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
         document.getElementById('practice-submit-btn').innerText = 'Lock In Answer';
+        if (AppState.currentQ.type === 'mcq') document.getElementById('practice-submit-btn').style.display = 'none';
 
     } else if (AppState.currentQ.type === 'numeric') {
         html +=
             `<div class="input-group" style="margin-top:16px;"><label>Numeric answer:</label><input type="number" step="any" id="numeric-answer-input" class="pomo-input" placeholder="0.00"></div>`;
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
         document.getElementById('practice-submit-btn').innerText = 'Lock In Answer';
+        if (AppState.currentQ.type === 'mcq') document.getElementById('practice-submit-btn').style.display = 'none';
     } else {
         document.getElementById('practice-submit-btn').style.display = 'inline-block';
         document.getElementById('practice-submit-btn').innerText = 'Reveal Answer';
@@ -7115,6 +7127,27 @@ function _eloTargetSeconds(q) {
     return mins * 60;
 }
 
+function _noteSessionSkip(q) {
+    if (!q || AppState.bountyMode) return;
+    try { SessionRecap.recordSkip(q); } catch (_) {}
+}
+
+function _noteSessionElo(q, eloResult) {
+    if (!q || !eloResult || AppState.bountyMode) return;
+    try { SessionRecap.noteElo(q, eloResult.deltaSubject); } catch (_) {}
+}
+
+function _recordSessionRecap(q, correct, secs) {
+    if (!q || AppState.bountyMode) return;
+    try {
+        SessionRecap.record(q, {
+            correct: !!correct,
+            secs: Number(secs) || 0,
+            targetSecs: Number(_eloTargetSeconds(q)) || 0,
+        });
+    } catch (_) {}
+}
+
 /**
  * Canonical ELO reward for a trusted-qElo solve. Returns the integer
  * subject-ELO delta and the integer qElo drift. Math is symmetric and
@@ -7527,6 +7560,11 @@ function openSkipPopover() {
     if (!AppState.practiceFlowMode || AppState.practiceFlowMode === 'standard') return;
     _injectSkipStyles();
     _dismissSkipPopover();
+    if (AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) {
+        _modeAdvance();
+        return;
+    }
+    _dismissSkipPopover();
     const btn = document.getElementById('practice-skip-btn');
     const pop = document.createElement('div');
     pop.id = 'skip-popover';
@@ -7589,6 +7627,7 @@ function skipQuestion(reason) {
 
     _modeAdjustTargetForSkip(reason);
     _modeSeenIds.add(q);
+    _noteSessionSkip(q);
     saveAllAsync().catch(console.error);
 
     _showSkipUndoToast(() => {
@@ -7649,15 +7688,20 @@ function _renderModeFooter() {
     if (modal) modal.setAttribute('data-practice-mode', inMode ? AppState.practiceFlowMode : 'standard');
     if (prev) prev.style.display = inMode ? 'none' : '';
     if (next) next.style.display = inMode ? 'none' : '';
-    if (skip) skip.style.display = inMode ? '' : 'none';
+    if (skip) { skip.style.display = inMode ? '' : 'none'; skip.title = 'Skip (Why?)'; }
     if (cont) cont.style.display = 'none';
 }
 
 function _showModeContinueButton() {
+    const _contBtn = document.getElementById('practice-continue-btn');
+    if (_contBtn) _contBtn.style.display = 'none';
+    const _skipBtn = document.getElementById('practice-skip-btn');
+    if (_skipBtn) { _skipBtn.style.display = ''; _skipBtn.title = 'Next Question'; }
+    if (false) {
     const cont = document.getElementById('practice-continue-btn');
     if (cont) cont.style.display = '';
     const skip = document.getElementById('practice-skip-btn');
-    if (skip) skip.style.display = 'none';
+    if (skip) skip.style.display = 'none'; }
 }
 
 function _hideModeContinueButton() {
@@ -7665,7 +7709,7 @@ function _hideModeContinueButton() {
     if (cont) cont.style.display = 'none';
     if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') {
         const skip = document.getElementById('practice-skip-btn');
-        if (skip) skip.style.display = '';
+        if (skip) { skip.style.display = ''; skip.title = 'Skip (Why?)'; }
     }
 }
 
@@ -7744,6 +7788,7 @@ window.__ensureLockinSetup = _ensureLockinSetup;
 /** Set the active practice mode and persist it. */
 function _setPracticeMode(mode) {
     if (!PRACTICE_MODES.includes(mode)) return;
+    SessionRecap.reset();
     AppState.practiceFlowMode = mode;
     // Fresh run — drop any navigation history left over from a previous mode
     // and reset the adaptive throttle to the mode's sweet spot.
@@ -7808,6 +7853,7 @@ function _setPracticeMode(mode) {
 
 /** Exit practice mode back to standard filter-by-status. */
 function _exitPracticeMode() {
+    SessionRecap.reset();
     AppState.practiceFlowMode = 'standard';
     _modeAdaptive.targetPwin = null;
     if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
@@ -9430,7 +9476,7 @@ export function practiceSubmit() {
             ).map(el => decodeOption(el.dataset.option));
 
             if (selectedOptions.length === 0) {
-                alert("Pick at least one option. You can't skip this.");
+                _enterSelfReportFlow();
                 return;
             }
 
@@ -9462,7 +9508,7 @@ export function practiceSubmit() {
 
         } else {
             if (!AppState.selectedMcq) {
-                alert("Select an answer. No cop-outs.");
+                _enterSelfReportFlow();
                 return;
             }
 
@@ -9537,6 +9583,8 @@ export function practiceSubmit() {
         AppState.currentQ.status = 'wrong';
     }
 
+    _recordSessionRecap(AppState.currentQ, isCorrect, AppState.practiceSeconds);
+
     // ── Adaptive-mode perf snapshot (captured BEFORE qElo/Elo mutate) ──
     const _modePerf = (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard' && !AppState.bountyMode)
         ? {
@@ -9585,6 +9633,7 @@ export function practiceSubmit() {
 
     // ── Elo shift chip (injected AFTER the modal re-render so it survives) ──
     if (_eloResult) {
+        _noteSessionElo(AppState.currentQ, _eloResult);
         try { injectEloShiftChip(_eloResult, { outcome: isCorrect ? 'clean' : 'skill' }); } catch (_) { /* ignore */ }
     }
     // Refresh the dashboard MMR matrix so the new rating is visible immediately.
@@ -9648,6 +9697,7 @@ export function addTextQuestionFollowUp() {
         // Lock first-attempt result — only the first attempt counts for accuracy.
         if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'correct';
         AppState.currentQ.status = 'solved';
+        _recordSessionRecap(AppState.currentQ, true, AppState._frozenTextQSeconds || AppState.practiceSeconds);
         // ── Cognitive MMR: Elo Migration (text self-report: correct) ──
         let _eloRes = null;
         try {
@@ -9674,7 +9724,7 @@ export function addTextQuestionFollowUp() {
         }
         btnContainer.remove();
         container.querySelector('.pq-reveal-ask')?.remove();
-        if (_eloRes) { try { injectEloShiftChip(_eloRes, { outcome: 'clean' }); } catch (_) { /* ignore */ } }
+        if (_eloRes) { _noteSessionElo(AppState.currentQ, _eloRes); try { injectEloShiftChip(_eloRes, { outcome: 'clean' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
         if (_modePerfTxt) {
             _modeNextTargetPwin(AppState.practiceFlowMode, { correct: true, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
@@ -9702,6 +9752,7 @@ export function addTextQuestionFollowUp() {
         // Lock first-attempt result — only the first attempt counts for accuracy.
         if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'incorrect';
         AppState.currentQ.status = 'wrong';
+        _recordSessionRecap(AppState.currentQ, false, AppState._frozenTextQSeconds || AppState.practiceSeconds);
         // ── Cognitive MMR: Elo Migration (text self-report: wrong) ──
         let _eloRes = null;
         try {
@@ -9723,7 +9774,7 @@ export function addTextQuestionFollowUp() {
         }
         btnContainer.remove();
         container.querySelector('.pq-reveal-ask')?.remove();
-        if (_eloRes) { try { injectEloShiftChip(_eloRes, { outcome: 'skill' }); } catch (_) { /* ignore */ } }
+        if (_eloRes) { _noteSessionElo(AppState.currentQ, _eloRes); try { injectEloShiftChip(_eloRes, { outcome: 'skill' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
         const logBtn = document.createElement('button');
         logBtn.className = 'btn btn-danger';
@@ -9823,6 +9874,9 @@ export function practiceNext() {
     // (_modeAdvance) and the Skip action — there is no Next in mode. Guard
     // against stray calls (legacy hooks) so they can't double-advance.
     if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
+    if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) {
+        _noteSessionSkip(AppState.practiceQuestions[AppState.currentPracticeIndex]);
+    }
     if (AppState.currentPracticeIndex + 1 < AppState.practiceQuestions.length) {
         AppState.currentPracticeIndex++;
         AppState.practiceSeconds = 0;
@@ -9843,8 +9897,10 @@ export function practiceNext() {
     } else {
         if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
         AppState.practiceTimer = null;
-        closePracticeModal();
-        alert("Queue completely cleared! Flawless run. Take a breath, then load up the next block.");
+        const recap = closePracticeModal();
+        const notifyCleared = () => (window.__jmaxAppToast || alert)("Queue completely cleared! Flawless run. Take a breath, then load up the next block.");
+        if (recap && typeof recap.then === 'function') recap.then(notifyCleared);
+        else notifyCleared();
         showQuestionList();
     }
 }
@@ -9853,6 +9909,9 @@ export function practicePrev() {
     // Flow / Hardcore mode: no Prev — review happens on the result screen only.
     if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
     if (AppState.currentPracticeIndex > 0) {
+        if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) {
+            _noteSessionSkip(AppState.practiceQuestions[AppState.currentPracticeIndex]);
+        }
         AppState.currentPracticeIndex--;
         AppState.practiceSeconds = 0;
         updatePracticeTimerDisplay();
@@ -9920,7 +9979,19 @@ export function closePracticeModal() {
     } catch (_) {}
     AppState.practiceDisplayOffset = 0;
 
+    let recapTone = 'night';
+    try {
+        const practiceStage = document.getElementById('practice-modal');
+        if (practiceStage && practiceStage.classList.contains('active') && practiceStage.classList.contains('pq-stage') && !document.body.classList.contains('immersive-active')) {
+            recapTone = 'parchment';
+        }
+    } catch (_) {}
+
     closeModalStr('practice-modal');
+    let recapPromise = null;
+    if (!AppState.bountyMode) {
+        try { recapPromise = SessionRecap.play({ tone: recapTone }); } catch (_) {}
+    }
     const modalEl = document.getElementById('practice-modal');
     if (modalEl) {
         modalEl.classList.remove('pq-has-media');
@@ -9955,6 +10026,7 @@ export function closePracticeModal() {
             window.TuckIn.renderDoor();
         }
     } catch (_) {}
+    return recapPromise;
 }
 
 export async function deleteQuestion(id) {
@@ -11686,6 +11758,7 @@ window.practiceSubmit = practiceSubmit;
 window.practiceNext = practiceNext;
 window.practicePrev = practicePrev;
 window.closePracticeModal = closePracticeModal;
+window.SessionRecap = SessionRecap;
 window.showSolutionPopup = showSolutionPopup;
 window.confirmErrorLog = confirmErrorLog;
 window.removeErrorLog = removeErrorLog;

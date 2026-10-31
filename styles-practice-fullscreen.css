@@ -725,6 +725,12 @@ body:not(.immersive-active) .pq-qa-media {
 }
 
 /* ── Result Banners & Feedback ── */
+#practice-modal[data-practice-mode="flow"] #practice-continue-btn,
+#practice-modal[data-practice-mode="hardcore"] #practice-continue-btn,
+#practice-modal[data-practice-mode="flow"] #practice-next-btn,
+#practice-modal[data-practice-mode="hardcore"] #practice-next-btn {
+  display: none !important;
+}
 #practice-modal.pq-stage .result-banner {
   border-radius: 12px;
   padding: 12px 16px;
