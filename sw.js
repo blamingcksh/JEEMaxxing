@@ -171,7 +171,10 @@
 //        grey skipped blocks + muted dud sound, net Elo & skipped count in summary pill.
 // v83 — RECAP FINALE: all blocks smoothly merge into a Big Block (green/red/grey),
 //        pop net Elo on hit, and transition to the Mario Castle + Princess Peach finale.
-const VERSION = 'jeemax-v83';
+// v84 — RECAP CASTLE PAYOFFS & FLAG: neutral/all-skipped shrug-to-sleep idle with
+//        floating pixel Z's, net-negative peeking Goomba + rooftop chimney dark smoke,
+//        and outcome-reactive castle rooftop flag (green/red/grey/yellow on Big Block settle).
+const VERSION = 'jeemax-v84';
 const SHELL = [
   './',
   './index.html',

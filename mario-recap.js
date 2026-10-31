@@ -109,6 +109,96 @@ const MARIO_SPRITES = {
         "...HHHh....HHHh.",
         "..hhhh......hhhh",
         "................"
+    ],
+    idle: [
+        ".....rRRRRR.....",
+        "....rRRRRWWWR...",
+        "....HHHSSESH....",
+        "...HSHSSSESSSS..",
+        "...HSHHSSSHsSS..",
+        "...HHSSSSHHHH...",
+        ".....sSSSSSS....",
+        "....rRRBRRR.....",
+        "...rRRRBRRBRR...",
+        "...rRRBBBBBRR...",
+        "...WWBYBBBYBWW..",
+        "...WgBBBBBBBgW..",
+        "....bBBBBBBBB...",
+        "....bBBB.bBBB...",
+        "...HHHh...HHHh..",
+        "...hhhh...hhhh.."
+    ],
+    shrug: [
+        ".....rRRRRR.....",
+        "....rRRRRWWWR...",
+        "....HHHSSESH....",
+        "...HSHSSSESSSS..",
+        "...HSHHSSSHsSS..",
+        "...HHSSSSHHHH...",
+        "..WW.sSSSSSS.WW.",
+        ".WWgrRRRBRRRrgWW",
+        "..g..rRBRRBR..g.",
+        "....rRRBBBBBR...",
+        ".....BYBBBYB....",
+        "....bBBBBBBBB...",
+        "....bBBBBBBBB...",
+        "....bBBB.bBBB...",
+        "...HHHh...HHHh..",
+        "...hhhh...hhhh.."
+    ],
+    sit1: [
+        "................",
+        "................",
+        ".....rRRRRR.....",
+        "....rRRRRWWWR...",
+        "....HHHSSESH....",
+        "...HSHSSSESSSS..",
+        "...HSHHSSSHsSS..",
+        "...HHSSSSHHHH...",
+        ".....sSSSSSS....",
+        "....rRRBRRR.....",
+        "...rRRRBBBBBR...",
+        "...WWBYBBBYBW...",
+        "...WgBBBBBBBB...",
+        "....bBBBBBBBBHh.",
+        "....bbbbBBBBHHhh",
+        ".....hhhh..hhhh."
+    ],
+    sit2: [
+        "................",
+        "................",
+        "................",
+        ".....rRRRRR.....",
+        "....rRRRRWWWR...",
+        "....rRRRRRRRRr..",
+        "...HSHsSSsSSSS..",
+        "...HSHHSSSHsSS..",
+        "...HHSSSSHHHH...",
+        "....rRRBRRR.....",
+        "...rRRRBBBBBR...",
+        "...WWBYBBBYBW...",
+        "...WgBBBBBBBB...",
+        "....bBBBBBBBBHh.",
+        "....bbbbBBBBHHhh",
+        ".....hhhh..hhhh."
+    ],
+    slump: [
+        "................",
+        ".....rRRRRR.....",
+        "....rRRRRWWWR...",
+        "....rRRRRRRRRr..",
+        "...HSHSSsESSSS..",
+        "...HSHHSSSHsSS..",
+        "...HHSSSSHHHH...",
+        ".....sSSSSSS....",
+        "....rRRBRRR.....",
+        "...rRRRBRRBRR...",
+        "...rRRBBBBBRR...",
+        "...WWBYBBBYBWW..",
+        "...WgBBBBBBBgW..",
+        "....bBBB.bBBB...",
+        "...HHHh...HHHh..",
+        "...hhhh...hhhh.."
     ]
 };
 
@@ -209,6 +299,80 @@ const HEART_MATRIX = [
 const HEART_PALETTE = {
     'R': '#fb7185',
     'W': '#ffe4e6'
+};
+
+const SLEEP_Z_SMALL = [
+    "ZZZZZ",
+    "...ZK",
+    "..ZK.",
+    ".ZK..",
+    "ZZZZZ"
+];
+
+const SLEEP_Z_LARGE = [
+    "ZZZZZZ.",
+    "zzzzZZK",
+    "....ZZK",
+    "...ZZK.",
+    "..ZZK..",
+    ".ZZzzzz",
+    "ZZZZZZK"
+];
+
+const SLEEP_Z_PALETTE = {
+    'Z': '#e2e8f0',
+    'z': '#94a3b8',
+    'K': '#0f172a'
+};
+
+const GOOMBA_PALETTE = {
+    'K': '#1e1b4b',
+    'M': '#92400e',
+    'm': '#78350f',
+    'L': '#b45309',
+    'S': '#fde68a',
+    's': '#f59e0b',
+    'W': '#ffffff',
+    'F': '#292524'
+};
+
+const GOOMBA_SPRITES = {
+    walk1: [
+        ".....KKKKKK.....",
+        "...KKLMMMMMKK...",
+        "..KLLMMMMMMMMK..",
+        ".KLMMMMMMMMMMMK.",
+        ".KMMKKMMMMKKMMK.",
+        "KMMMWKKKKKKWMMMK",
+        "KMMMWKMMMMKWMMMK",
+        "KmmWWWWMMWWWWmmK",
+        ".KmmmmMMMMMMMMK.",
+        "..KKKKSSSSKKKK..",
+        "....KSSSSSSK....",
+        "....KSSSSssK....",
+        "...FFKssssKFF...",
+        "..FFFFKKKKKFF...",
+        "..FFFF.....FF...",
+        "................"
+    ],
+    walk2: [
+        ".....KKKKKK.....",
+        "...KKLMMMMMKK...",
+        "..KLLMMMMMMMMK..",
+        ".KLMMMMMMMMMMMK.",
+        ".KMMKKMMMMKKMMK.",
+        "KMMMWKKKKKKWMMMK",
+        "KMMMWKMMMMKWMMMK",
+        "KmmWWWWMMWWWWmmK",
+        ".KmmmmMMMMMMMMK.",
+        "..KKKKSSSSKKKK..",
+        "....KSSSSSSK....",
+        "....KssSSSSK....",
+        "...FFKssssKFF...",
+        "...FFKKKKKFFFF..",
+        "...FF.....FFFF..",
+        "................"
+    ]
 };
 
 const MUSHROOM_PALETTE = {
@@ -470,23 +634,31 @@ export function resolveSessionVerdict(summary = {}) {
         return {
             megaOutcome: 'grey',
             hasVictory: false,
+            castleMood: 'neutral',
+            flagColor: 'grey',
             popText: 'SKIP',
             popColor: '#94a3b8'
         };
     }
     if (summary.hasElo) {
         const net = Math.round(Number(summary.netElo) || 0);
+        const castleMood = net > 0 ? 'positive' : net < 0 ? 'negative' : 'neutral';
         return {
             megaOutcome: net >= 0 ? 'green' : 'red',
             hasVictory: net > 0,
+            castleMood,
+            flagColor: net > 0 ? 'green' : net < 0 ? 'red' : 'yellow',
             popText: formatEloDelta(net),
             popColor: eloDeltaColor(net)
         };
     }
     const netScore = (Number(summary.correct) || 0) - (Number(summary.red) || 0);
+    const castleMood = netScore > 0 ? 'positive' : netScore < 0 ? 'negative' : 'neutral';
     return {
         megaOutcome: netScore >= 0 ? 'green' : 'red',
         hasVictory: netScore > 0,
+        castleMood,
+        flagColor: netScore > 0 ? 'green' : netScore < 0 ? 'red' : (total > 0 ? 'yellow' : 'grey'),
         popText: total > 0 ? formatEloDelta(netScore) : 'SKIP',
         popColor: eloDeltaColor(netScore)
     };
@@ -902,6 +1074,33 @@ class RetroSoundEngine {
             }
         } catch (_) {}
     }
+
+    playGoombaPeek() {
+        const ctx = this.getCtx();
+        if (!ctx) return;
+        const v = this.vol();
+        if (v <= 0) return;
+        try {
+            const now = ctx.currentTime;
+            const notes = [
+                { f: 196.00, t: 0.06, d: 0.08 },
+                { f: 146.83, t: 0.15, d: 0.11 }
+            ];
+            for (const n of notes) {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'square';
+                const start = now + n.t;
+                osc.frequency.setValueAtTime(n.f, start);
+                gain.gain.setValueAtTime(0.045 * v, start);
+                gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.005 * v), start + n.d);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(start);
+                osc.stop(start + n.d + 0.01);
+            }
+        } catch (_) {}
+    }
 }
 
 class MarioRecapScene {
@@ -955,6 +1154,10 @@ class MarioRecapScene {
             vy: 0,
             facing: 1,
             state: 'RUNNING',
+            pose: 'run',
+            idleTimer: 0,
+            zSpawnTimer: 0,
+            zCount: 0,
             animTimer: 0,
             animFrame: 0,
             targetBlockIndex: 0,
@@ -991,7 +1194,11 @@ class MarioRecapScene {
             width: 44,
             height: 44,
             doorGlow: 0,
-            flagRaise: 0
+            flagRaise: 0.45,
+            flagSettled: false,
+            flagColor: 'yellow',
+            flagWaveTimer: 0,
+            smokeTimer: 0
         };
 
         this.princess = {
@@ -1006,14 +1213,29 @@ class MarioRecapScene {
             scaleY: 1
         };
 
+        this.goomba = {
+            x: castleX + 14,
+            targetX: castleX + 3,
+            y: 0,
+            vy: 0,
+            visible: false,
+            alpha: 0,
+            animTimer: 0,
+            scaleX: 1,
+            scaleY: 1
+        };
+
         this.blocks = [];
         this.coins = [];
         this.mushrooms = [];
         this.particles = [];
         this.hearts = [];
+        this.sleepZs = [];
+        this.smokePuffs = [];
         this.floatingTexts = [];
         this.eloPops = [];
         this.popHistory = [];
+        this.poseHistory = [];
         this.shockwaves = [];
         this.impactFlashes = [];
         this.marioTrails = [];
@@ -1082,6 +1304,7 @@ class MarioRecapScene {
         this.hudGreyWrap = el.querySelector('#mario-recap-wrap-grey');
         this.hudGrey = el.querySelector('#mario-recap-count-grey');
         if (this.hudGreyWrap) this.hudGreyWrap.hidden = !(this.summary.skipped > 0);
+        el.dataset.castleFlag = this.castle.flagColor;
     }
 
     resize() {
@@ -1356,18 +1579,27 @@ class MarioRecapScene {
         }
 
         if (this.finale.phase === 'CASTLE_APPROACH') {
+            this.settleCastleFlag();
             this.mario.state = 'RUNNING';
             this.mario.x += 1.65 * fdt;
             this.mario.y = 0;
             this.mario.animTimer += fdt * 0.26;
             this.mario.animFrame = Math.floor(this.mario.animTimer) % 3;
+            this.castle.flagRaise = Math.min(1, this.castle.flagRaise + 0.05 * fdt);
+            this.castle.flagWaveTimer += fdt * 0.16;
 
-            if (this.verdict.hasVictory) {
+            if (this.verdict.castleMood === 'positive') {
                 this.princess.visible = true;
                 this.princess.alpha = Math.min(1, this.princess.alpha + 0.065 * fdt);
                 this.princess.x += (this.princess.targetX - this.princess.x) * Math.min(1, 0.14 * fdt);
                 this.princess.animTimer += fdt * 0.22;
                 this.castle.doorGlow = Math.min(1, this.castle.doorGlow + 0.06 * fdt);
+            } else if (this.verdict.castleMood === 'negative') {
+                this.goomba.visible = true;
+                this.goomba.alpha = Math.min(1, this.goomba.alpha + 0.065 * fdt);
+                this.goomba.x += (this.goomba.targetX - this.goomba.x) * Math.min(1, 0.13 * fdt);
+                this.goomba.animTimer += fdt * 0.20;
+                this.tickChimneySmoke(fdt);
             }
 
             if (this.mario.x >= this.finale.marioMeetX) {
@@ -1375,11 +1607,12 @@ class MarioRecapScene {
                 this.finale.phase = 'CASTLE_MEET';
                 this.finale.timer = 0;
 
-                if (this.verdict.hasVictory) {
+                if (this.verdict.castleMood === 'positive') {
                     this.princess.visible = true;
                     this.princess.alpha = 1;
                     this.princess.x = this.princess.targetX;
                     this.mario.state = 'JUMPING';
+                    this.setMarioPose('idle');
                     this.mario.vy = -3.05;
                     this.mario.scaleX = 0.82;
                     this.mario.scaleY = 1.22;
@@ -1388,45 +1621,189 @@ class MarioRecapScene {
                     this.princess.scaleY = 1.15;
                     this.spawnCelebrationHearts();
                     this.sfx.playCongratulations();
-                } else {
+                } else if (this.verdict.castleMood === 'negative') {
                     this.mario.state = 'FINISHED';
+                    this.setMarioPose('slump');
                     this.mario.scaleX = 1.12;
                     this.mario.scaleY = 0.88;
-                    this.sfx.playSomberEnd(this.verdict.megaOutcome === 'red');
+                    this.goomba.visible = true;
+                    this.goomba.alpha = 1;
+                    this.goomba.x = this.goomba.targetX;
+                    this.goomba.vy = -1.65;
+                    this.goomba.scaleX = 0.86;
+                    this.goomba.scaleY = 1.16;
+                    this.spawnChimneySmoke(true);
+                    this.sfx.playSomberEnd(true);
+                    this.sfx.playGoombaPeek();
+                } else {
+                    this.mario.state = 'FINISHED';
+                    this.setMarioPose('shrug');
+                    this.mario.idleTimer = 0;
+                    this.mario.zSpawnTimer = 0;
+                    this.mario.scaleX = 0.90;
+                    this.mario.scaleY = 1.10;
+                    this.sfx.playSomberEnd(false);
                 }
             }
             return;
         }
 
-        if (this.finale.phase === 'CASTLE_MEET') {
-            if (this.mario.y < 0 || this.mario.vy !== 0) {
-                this.mario.y += this.mario.vy * fdt;
-                this.mario.vy += 0.22 * fdt;
-                if (this.mario.y >= 0) {
-                    this.mario.y = 0;
-                    this.mario.vy = 0;
-                    this.mario.state = 'FINISHED';
-                    this.mario.scaleX = 1.18;
-                    this.mario.scaleY = 0.84;
-                }
-            }
-            if (this.verdict.hasVictory) {
-                this.castle.flagRaise = Math.min(1, this.castle.flagRaise + 0.055 * fdt);
-                if (this.princess.y < 0 || this.princess.vy !== 0) {
-                    this.princess.y += this.princess.vy * fdt;
-                    this.princess.vy += 0.19 * fdt;
-                    if (this.princess.y >= 0) {
-                        this.princess.y = 0;
-                        this.princess.vy = 0;
-                        this.princess.scaleX = 1.14;
-                        this.princess.scaleY = 0.88;
-                    }
-                }
-            }
-            if (this.finale.timer >= 20 && !this.run.finished) {
+        if (this.finale.phase === 'CASTLE_MEET' || this.finale.phase === 'DONE') {
+            this.updateCastleTail(fdt);
+            if (this.finale.phase === 'CASTLE_MEET' && this.finale.timer >= 20 && !this.run.finished) {
                 this.finale.phase = 'DONE';
                 this.finishRun();
             }
+        }
+    }
+
+    updateCastleTail(fdt) {
+        this.castle.flagRaise = Math.min(1, this.castle.flagRaise + 0.055 * fdt);
+        this.castle.flagWaveTimer += fdt * 0.16;
+
+        if (this.mario.y < 0 || this.mario.vy !== 0) {
+            this.mario.y += this.mario.vy * fdt;
+            this.mario.vy += 0.22 * fdt;
+            if (this.mario.y >= 0) {
+                this.mario.y = 0;
+                this.mario.vy = 0;
+                this.mario.state = 'FINISHED';
+                this.setMarioPose('idle');
+                this.mario.scaleX = 1.18;
+                this.mario.scaleY = 0.84;
+            }
+        }
+
+        if (this.verdict.castleMood === 'positive') {
+            if (this.princess.y < 0 || this.princess.vy !== 0) {
+                this.princess.y += this.princess.vy * fdt;
+                this.princess.vy += 0.19 * fdt;
+                if (this.princess.y >= 0) {
+                    this.princess.y = 0;
+                    this.princess.vy = 0;
+                    this.princess.scaleX = 1.14;
+                    this.princess.scaleY = 0.88;
+                }
+            }
+            return;
+        }
+
+        if (this.verdict.castleMood === 'negative') {
+            if (this.goomba.y < 0 || this.goomba.vy !== 0) {
+                this.goomba.y += this.goomba.vy * fdt;
+                this.goomba.vy += 0.20 * fdt;
+                if (this.goomba.y >= 0) {
+                    this.goomba.y = 0;
+                    this.goomba.vy = 0;
+                    this.goomba.scaleX = 1.16;
+                    this.goomba.scaleY = 0.86;
+                }
+            }
+            this.goomba.animTimer += fdt * 0.16;
+            this.tickChimneySmoke(fdt);
+            return;
+        }
+
+        // Neutral / all-skipped: shrug -> sit -> sleep Z's
+        const prevIdle = this.mario.idleTimer;
+        this.mario.idleTimer += fdt;
+        const curIdle = this.mario.idleTimer;
+
+        if (curIdle < 46) {
+            this.setMarioPose('shrug');
+            if (prevIdle < 20 && curIdle >= 20) {
+                this.mario.scaleX = 0.93;
+                this.mario.scaleY = 1.07;
+            }
+        } else if (curIdle < 74) {
+            if (prevIdle < 46) {
+                this.mario.scaleX = 1.14;
+                this.mario.scaleY = 0.88;
+            }
+            this.setMarioPose('sit1');
+        } else {
+            if (prevIdle < 74) {
+                this.setMarioPose('sit2');
+                this.mario.zSpawnTimer = 0;
+                this.spawnSleepZ();
+            } else {
+                this.setMarioPose('sit2');
+            }
+            const sleepTicks = curIdle - 74;
+            this.mario.scaleY = 1 + Math.sin(sleepTicks * 0.08) * 0.025;
+            this.mario.zSpawnTimer += fdt;
+            if (this.mario.zSpawnTimer >= 36) {
+                this.mario.zSpawnTimer -= 36;
+                this.spawnSleepZ();
+            }
+        }
+    }
+
+    setMarioPose(pose) {
+        this.mario.pose = pose;
+        if (this.poseHistory[this.poseHistory.length - 1] !== pose) {
+            this.poseHistory.push(pose);
+        }
+        if (this.overlay) {
+            this.overlay.dataset.marioPose = pose;
+            this.overlay.dataset.marioPoseHistory = JSON.stringify(this.poseHistory);
+        }
+    }
+
+    settleCastleFlag() {
+        if (this.castle.flagSettled) return;
+        this.castle.flagSettled = true;
+        this.castle.flagColor = this.verdict.flagColor || 'yellow';
+        if (this.overlay) {
+            this.overlay.dataset.castleFlag = this.castle.flagColor;
+        }
+    }
+
+    spawnSleepZ() {
+        const large = (this.mario.zCount % 2) === 1;
+        this.mario.zCount++;
+        this.sleepZs.push({
+            x: this.mario.x + 11,
+            y: -14,
+            vy: -0.24,
+            age: 0,
+            phase: this.mario.zCount * 1.3,
+            large,
+            life: 1.0
+        });
+        if (this.overlay) {
+            this.overlay.dataset.marioSleepZs = String(this.mario.zCount);
+        }
+    }
+
+    tickChimneySmoke(fdt) {
+        this.castle.smokeTimer += fdt;
+        if (this.castle.smokeTimer >= 15) {
+            this.castle.smokeTimer -= 15;
+            this.spawnChimneySmoke(false);
+        }
+    }
+
+    spawnChimneySmoke(burst = false) {
+        const colors = ['#1e293b', '#334155', '#475569'];
+        const count = burst ? 3 : 1;
+        for (let i = 0; i < count; i++) {
+            this.smokePuffs.push({
+                x: this.castle.x + 31 + (i - (count - 1) * 0.5) * 1.6,
+                y: -45 - i * 2.2,
+                vx: 0.08 + (Math.random() - 0.3) * 0.08,
+                vy: -0.26 - Math.random() * 0.10,
+                age: i * 4,
+                phase: Math.random() * Math.PI * 2,
+                size: i % 2 === 0 ? 3 : 2,
+                color: colors[(this.smokePuffs.length + i) % colors.length],
+                life: 1.0
+            });
+        }
+        if (this.overlay) {
+            this.overlay.dataset.chimneySmoke = String(
+                Number(this.overlay.dataset.chimneySmoke || 0) + count
+            );
         }
     }
 
@@ -1453,6 +1830,7 @@ class MarioRecapScene {
                 if (mb.bumpOffset >= 0) {
                     mb.bumpOffset = 0;
                     mb.bumpVelocity = 0;
+                    if (mb.hit) this.settleCastleFlag();
                 }
             }
             mb.scaleX += (1 - mb.scaleX) * Math.min(1, 0.22 * dt);
@@ -1463,6 +1841,11 @@ class MarioRecapScene {
         if (this.princess.visible) {
             this.princess.scaleX += (1 - this.princess.scaleX) * Math.min(1, 0.22 * dt);
             this.princess.scaleY += (1 - this.princess.scaleY) * Math.min(1, 0.22 * dt);
+        }
+
+        if (this.goomba.visible) {
+            this.goomba.scaleX += (1 - this.goomba.scaleX) * Math.min(1, 0.22 * dt);
+            this.goomba.scaleY += (1 - this.goomba.scaleY) * Math.min(1, 0.22 * dt);
         }
 
         for (let i = this.coins.length - 1; i >= 0; i--) {
@@ -1560,6 +1943,24 @@ class MarioRecapScene {
             if (h.life <= 0) this.hearts.splice(i, 1);
         }
 
+        for (let i = this.sleepZs.length - 1; i >= 0; i--) {
+            const z = this.sleepZs[i];
+            z.x += Math.sin(z.age * 0.12 + z.phase) * 0.14 * dt;
+            z.y += z.vy * dt;
+            z.age += dt;
+            z.life -= 0.015 * dt;
+            if (z.life <= 0) this.sleepZs.splice(i, 1);
+        }
+
+        for (let i = this.smokePuffs.length - 1; i >= 0; i--) {
+            const sp = this.smokePuffs[i];
+            sp.x += (sp.vx + Math.sin(sp.age * 0.11 + sp.phase) * 0.12) * dt;
+            sp.y += sp.vy * dt;
+            sp.age += dt;
+            sp.life -= 0.016 * dt;
+            if (sp.life <= 0) this.smokePuffs.splice(i, 1);
+        }
+
         for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
             const ft = this.floatingTexts[i];
             ft.y -= 0.45 * dt;
@@ -1632,7 +2033,9 @@ class MarioRecapScene {
         if (this.overlay) {
             this.overlay.dataset.megaPop = text;
             this.overlay.dataset.megaOutcome = this.verdict.megaOutcome;
-            this.overlay.dataset.finaleBranch = this.verdict.hasVictory ? 'princess' : 'closed';
+            this.overlay.dataset.finaleBranch = this.verdict.castleMood === 'positive'
+                ? 'princess'
+                : this.verdict.castleMood;
         }
     }
 
@@ -2082,22 +2485,42 @@ class MarioRecapScene {
 
         ctx.save();
 
-        // Flagpole & victory pennant on top of upper tower
+        // Flagpole & outcome-reactive pennant on top of upper tower
         const poleX = sx + 22 * P;
         const poleTopY = sy - 54 * P;
         const poleBottomY = sy - 38 * P;
+        const flagPalettes = {
+            yellow: { fill: '#facc15', light: '#fef08a', finial: '#facc15' },
+            green: { fill: '#34d399', light: '#a7f3d0', finial: '#34d399' },
+            red: { fill: '#f43f5e', light: '#fecdd3', finial: '#fb7185' },
+            grey: { fill: '#94a3b8', light: '#cbd5e1', finial: '#94a3b8' }
+        };
+        const fp = flagPalettes[c.flagColor] || flagPalettes.yellow;
+
         ctx.fillStyle = '#e2e8f0';
         ctx.fillRect(poleX, poleTopY, P, poleBottomY - poleTopY);
-        ctx.fillStyle = '#facc15';
+        ctx.fillStyle = fp.finial;
         ctx.fillRect(poleX - P, poleTopY - P, 3 * P, 2 * P);
 
         if (c.flagRaise > 0.02) {
             const flagY = poleBottomY - Math.round(c.flagRaise * 11 * P) - 5 * P;
-            ctx.fillStyle = '#34d399';
-            ctx.fillRect(poleX + P, flagY, 8 * P, 5 * P);
-            ctx.fillStyle = '#a7f3d0';
+            const wave = c.flagSettled ? (Math.floor(c.flagWaveTimer) % 2) : 0;
+            ctx.fillStyle = fp.fill;
+            ctx.fillRect(poleX + P, flagY, 6 * P, 5 * P);
+            ctx.fillRect(poleX + 7 * P, flagY + wave * P, 2 * P, 4 * P);
+            ctx.fillStyle = fp.light;
             ctx.fillRect(poleX + 2 * P, flagY + P, 4 * P, 2 * P);
         }
+
+        // Rooftop brick chimney on right shoulder of upper tower
+        const chimX = sx + 30 * P;
+        const chimY = sy - 44 * P;
+        ctx.fillStyle = border;
+        ctx.fillRect(chimX - P, chimY - P, 6 * P, 7 * P);
+        ctx.fillStyle = brickDark;
+        ctx.fillRect(chimX, chimY, 4 * P, 6 * P);
+        ctx.fillStyle = brickBase;
+        ctx.fillRect(chimX - P, chimY - P, 6 * P, 2 * P);
 
         // Upper tower (26w x 16h, from x+9 to x+35, y-38 to y-22)
         const upX = sx + 9 * P;
@@ -2169,13 +2592,17 @@ class MarioRecapScene {
             ctx.fillRect(doorX + P, doorY + 2 * P, doorW - 2 * P, doorH - 2 * P);
             ctx.restore();
         } else if (!this.verdict.hasVictory) {
-            // Closed portcullis grate bars when net Elo <= 0
+            // Closed or half-raised portcullis grate bars when net Elo <= 0
+            const liftCells = this.goomba.visible ? Math.round(this.goomba.alpha * 7) : 0;
+            const grateH = Math.max(3, (doorH / P) - 2 - liftCells) * P;
             ctx.fillStyle = '#475569';
             for (let bar = 2; bar <= 9; bar += 3) {
-                ctx.fillRect(doorX + bar * P, doorY + 2 * P, P, doorH - 2 * P);
+                ctx.fillRect(doorX + bar * P, doorY + 2 * P, P, grateH);
             }
-            ctx.fillRect(doorX, doorY + 6 * P, doorW, P);
-            ctx.fillRect(doorX, doorY + 11 * P, doorW, P);
+            if (grateH >= 5 * P) {
+                ctx.fillRect(doorX, doorY + 2 * P + Math.min(4 * P, grateH - P), doorW, P);
+            }
+            ctx.fillRect(doorX, doorY + 2 * P + grateH - P, doorW, P);
         }
 
         ctx.restore();
@@ -2203,6 +2630,22 @@ class MarioRecapScene {
         }
 
         this.drawCastle();
+
+        for (const sp of this.smokePuffs) {
+            const sx = this.worldToScreenX(sp.x);
+            if (sx < -this.pixel * 8 || sx > this.width + this.pixel * 8) continue;
+            const sy = this.worldToScreenY(sp.y);
+            const P = this.pixel;
+            const sz = sp.size * P;
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, Math.min(0.85, sp.life * 0.85));
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(sx - P, sy - P, sz + 2 * P, sz + 2 * P);
+            ctx.fillStyle = sp.color;
+            ctx.fillRect(sx, sy, sz, sz);
+            ctx.fillRect(sx + P, sy - P, Math.max(P, sz - P), Math.max(P, sz - P));
+            ctx.restore();
+        }
 
         for (const m of this.mushrooms) {
             if (!this.isVisibleX(m.x, 24)) continue;
@@ -2306,10 +2749,29 @@ class MarioRecapScene {
             });
         }
 
+        if (this.goomba.visible) {
+            if (this.overlay) this.overlay.dataset.goombaVisible = 'true';
+            const gSprite = Math.floor(this.goomba.animTimer) % 2 === 0
+                ? GOOMBA_SPRITES.walk1
+                : GOOMBA_SPRITES.walk2;
+            this.drawSpriteMatrix(gSprite, GOOMBA_PALETTE, this.goomba.x, this.goomba.y, this.pixel, {
+                scaleX: this.goomba.scaleX,
+                scaleY: this.goomba.scaleY,
+                alpha: this.goomba.alpha
+            });
+        }
+
         let marioMatrix = MARIO_SPRITES.run1;
         if (this.mario.state === 'JUMPING') {
             marioMatrix = this.mario.vy < 0.25 ? MARIO_SPRITES.jump : MARIO_SPRITES.fall;
-        } else if (this.mario.state !== 'FINISHED') {
+        } else if (this.mario.state === 'FINISHED') {
+            if (this.overlay) this.overlay.dataset.marioPose = this.mario.pose;
+            if (this.mario.pose === 'shrug') marioMatrix = MARIO_SPRITES.shrug;
+            else if (this.mario.pose === 'sit1') marioMatrix = MARIO_SPRITES.sit1;
+            else if (this.mario.pose === 'sit2') marioMatrix = MARIO_SPRITES.sit2;
+            else if (this.mario.pose === 'slump') marioMatrix = MARIO_SPRITES.slump;
+            else marioMatrix = MARIO_SPRITES.idle;
+        } else {
             if (this.mario.animFrame === 0) marioMatrix = MARIO_SPRITES.run1;
             else if (this.mario.animFrame === 1) marioMatrix = MARIO_SPRITES.run2;
             else marioMatrix = MARIO_SPRITES.run3;
@@ -2326,6 +2788,18 @@ class MarioRecapScene {
             this.drawSpriteMatrix(HEART_MATRIX, HEART_PALETTE, h.x, h.y, this.pixel, {
                 alpha: clamp(h.life, 0, 1)
             });
+        }
+
+        for (const z of this.sleepZs) {
+            if (!this.isVisibleX(z.x, 12)) continue;
+            this.drawSpriteMatrix(
+                z.large ? SLEEP_Z_LARGE : SLEEP_Z_SMALL,
+                SLEEP_Z_PALETTE,
+                z.x,
+                z.y,
+                this.pixel,
+                { alpha: clamp(z.life, 0, 1) }
+            );
         }
 
         for (const p of this.particles) {
@@ -2537,14 +3011,29 @@ class MarioRecapScene {
         this.mario.vy = 0;
         this.mario.state = 'FINISHED';
         this.run.cameraX = this.megaBlock.x + 48;
+        this.settleCastleFlag();
+        this.castle.flagRaise = 1;
 
-        if (this.verdict.hasVictory) {
+        if (this.verdict.castleMood === 'positive') {
+            this.setMarioPose('idle');
             this.princess.visible = true;
             this.princess.alpha = 1;
             this.princess.x = this.princess.targetX;
             this.princess.y = 0;
             this.castle.doorGlow = 1;
-            this.castle.flagRaise = 1;
+        } else if (this.verdict.castleMood === 'negative') {
+            this.setMarioPose('slump');
+            this.goomba.visible = true;
+            this.goomba.alpha = 1;
+            this.goomba.x = this.goomba.targetX;
+            this.goomba.y = 0;
+            if (!this.smokePuffs.length) this.spawnChimneySmoke(true);
+        } else {
+            this.setMarioPose('shrug');
+            this.setMarioPose('sit1');
+            this.setMarioPose('sit2');
+            this.mario.idleTimer = 80;
+            if (!this.sleepZs.length) this.spawnSleepZ();
         }
 
         const pops = [];
@@ -2563,7 +3052,10 @@ class MarioRecapScene {
         if (this.overlay) {
             this.overlay.dataset.megaPop = this.verdict.popText;
             this.overlay.dataset.megaOutcome = this.verdict.megaOutcome;
-            this.overlay.dataset.finaleBranch = this.verdict.hasVictory ? 'princess' : 'closed';
+            this.overlay.dataset.finaleBranch = this.verdict.castleMood === 'positive'
+                ? 'princess'
+                : this.verdict.castleMood;
+            this.overlay.dataset.castleFlag = this.castle.flagColor;
         }
     }
 
