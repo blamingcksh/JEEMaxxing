@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node scripts/dev-server.mjs",
     "dev": "node scripts/dev-server.mjs",
-    "smoke": "node scripts/smoke-answer-resolve.mjs && node scripts/smoke-pomo-config.mjs && node scripts/smoke-practice-nav.mjs && node scripts/smoke-report-engine.mjs && node scripts/smoke-bridge.mjs && node scripts/smoke-tuckin.mjs",
+    "smoke": "node scripts/smoke-answer-resolve.mjs && node scripts/smoke-pomo-config.mjs && node scripts/smoke-practice-nav.mjs && node scripts/smoke-report-engine.mjs && node scripts/smoke-bridge.mjs && node scripts/smoke-tuckin.mjs && node scripts/smoke-mario-recap.mjs",
     "smoke:memory": "node scripts/smoke-memory-model.mjs",
     "smoke:weights": "node scripts/smoke-chapter-weight.mjs",
     "qa": "node scripts/qa-today-progress.mjs",

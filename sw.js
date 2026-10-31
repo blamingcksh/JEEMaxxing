@@ -161,7 +161,17 @@
 //        a single dash segment, restored QM edit affordance, Delete All copy.
 // v78 — Practice diagrams return to the original multiply blend + paper backing.
 // v79 — Removed the morning mood prompt; capacity resets to neutral daily.
-const VERSION = 'jeemax-v79';
+// v80 — SESSION RECAP: mario-recap.js/.css join the shell precache. Answered
+//        practice questions become a side-scrolling pixel block run (green
+//        correct, purple under target time, red wrong) before the stage closes.
+// v81 — NATIVE RECAP PASS: translucent blurred veil, quieter compact run,
+//        single live-count/summary pill, tap/Esc skip, 5s auto-fade, synchronous
+//        trigger, sound engine removed. app.js/mario-recap.js/.css changed.
+// v82 — RECAP ELO POPS + SKIPPED BLOCKS: per-block Elo delta pop (+N / −N / ±0),
+//        grey skipped blocks + muted dud sound, net Elo & skipped count in summary pill.
+// v83 — RECAP FINALE: all blocks smoothly merge into a Big Block (green/red/grey),
+//        pop net Elo on hit, and transition to the Mario Castle + Princess Peach finale.
+const VERSION = 'jeemax-v83';
 const SHELL = [
   './',
   './index.html',
@@ -174,11 +184,13 @@ const SHELL = [
   './directive.css',
   './bridge.css',
   './tuckin.css',
+  './mario-recap.css',
   './app.js',
   './storage.js',
   './directive.js',
   './bridge.js',
   './tuckin.js',
+  './mario-recap.js',
   './memory.js',
   './chapter-weights.js',
   './mock.js',

@@ -1,0 +1,1886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Mario HD-2D Pixel Art Block Showcase</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #06060a;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .pixel-font {
+            font-family: 'Press Start 2P', monospace;
+        }
+        canvas {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* OLED Glassmorphic Arcade Panels */
+        .arcade-panel {
+            background: rgba(10, 11, 18, 0.86);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 14px 36px -6px rgba(0, 0, 0, 0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+        }
+        .pixel-badge {
+            box-shadow: inset -2px -2px 0px rgba(0,0,0,0.45), inset 2px 2px 0px rgba(255,255,255,0.3);
+        }
+        .arcade-btn {
+            transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 3px 0 #090a10;
+        }
+        .arcade-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #090a10;
+        }
+        /* Optional Retro CRT Scanline & Phosphor Overlay */
+        .crt-overlay {
+            background: 
+                linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.38) 50%), 
+                radial-gradient(circle at center, transparent 62%, rgba(0, 0, 0, 0.65) 100%);
+            background-size: 100% 4px, 100% 100%;
+            pointer-events: none;
+        }
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            height: 6px;
+            border-radius: 3px;
+            background: #1e2236;
+            border: 1px solid #323854;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 3px;
+            background: #fbbf24;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: inset -2px -2px 0px #b45309, inset 2px 2px 0px #fef08a;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between relative">
+
+    <!-- Optional CRT Scanline Post-Processing Layer -->
+    <div id="crtLayer" class="crt-overlay fixed inset-0 z-30 hidden"></div>
+
+    <!-- Top Retro OLED Pixel HUD -->
+    <header class="w-full z-20 px-4 pt-3.5 pointer-events-none flex flex-wrap items-center justify-between gap-3 max-w-7xl mx-auto">
+        <!-- Score, Streak & Total Blocks -->
+        <div class="arcade-panel px-4 py-2.5 rounded-2xl pointer-events-auto flex items-center gap-4 sm:gap-5">
+            <div>
+                <div class="text-[9px] text-amber-400 pixel-font tracking-wider mb-1">MARIO SCORE</div>
+                <div id="hudScore" class="text-base sm:text-xl text-white pixel-font tracking-widest">000000</div>
+            </div>
+            <div class="h-8 w-[1px] bg-slate-800"></div>
+            <div>
+                <div class="text-[9px] text-cyan-400 pixel-font tracking-wider mb-1">STREAK</div>
+                <div id="hudStreak" class="text-xs sm:text-base text-cyan-300 pixel-font">x0</div>
+            </div>
+            <div class="h-8 w-[1px] bg-slate-800 hidden sm:block"></div>
+            <div class="hidden sm:block">
+                <div class="text-[9px] text-slate-400 pixel-font tracking-wider mb-1">HIT COUNT</div>
+                <div id="hudTotalBlocks" class="text-xs sm:text-base text-slate-200 pixel-font">0</div>
+            </div>
+        </div>
+
+        <!-- Block Outcome Counters (Green Coin/Jackpot, Purple Shroom, Red Nova) -->
+        <div class="arcade-panel px-4 py-2.5 rounded-2xl pointer-events-auto flex items-center gap-4 sm:gap-6">
+            <!-- Green Counter -->
+            <div class="flex items-center gap-2.5" title="Green Blocks (Spinning Coin + 25% Multi-Coin Jackpot)">
+                <span class="w-6 h-6 rounded-md bg-emerald-500 pixel-badge flex items-center justify-center text-[11px] font-bold text-emerald-950 pixel-font shadow-[0_0_12px_rgba(16,185,129,0.5)]">$</span>
+                <div>
+                    <div class="text-[9px] text-emerald-400 font-bold uppercase tracking-wider">Green Coin</div>
+                    <div class="flex items-baseline gap-1.5">
+                        <span id="hudGreenCount" class="text-xs sm:text-sm pixel-font text-white">0</span>
+                        <span id="hudJackpotBadge" class="text-[9px] text-amber-300 font-mono hidden">★0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Purple Counter -->
+            <div class="flex items-center gap-2.5" title="Purple Blocks (Hopping & Blinking Super Mushroom)">
+                <span class="w-6 h-6 rounded-md bg-purple-500 pixel-badge flex items-center justify-center text-[11px] font-bold text-purple-950 pixel-font shadow-[0_0_12px_rgba(168,85,247,0.5)]">M</span>
+                <div>
+                    <div class="text-[9px] text-purple-400 font-bold uppercase tracking-wider">Purple Shroom</div>
+                    <div id="hudPurpleCount" class="text-xs sm:text-sm pixel-font text-white">0</div>
+                </div>
+            </div>
+
+            <!-- Red Counter -->
+            <div class="flex items-center gap-2.5" title="Red Blocks (Crimson Shockwave Nova & Floor-Bouncing Embers)">
+                <span class="w-6 h-6 rounded-md bg-rose-600 pixel-badge flex items-center justify-center text-[11px] font-bold text-rose-950 pixel-font shadow-[0_0_12px_rgba(244,63,94,0.5)]">!</span>
+                <div>
+                    <div class="text-[9px] text-rose-400 font-bold uppercase tracking-wider">Red Nova</div>
+                    <div id="hudRedCount" class="text-xs sm:text-sm pixel-font text-white">0</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Interactive Pixel Canvas -->
+    <main class="absolute inset-0 z-10">
+        <canvas id="gameCanvas"></canvas>
+    </main>
+
+    <!-- Subtle Floating Helper Pill -->
+    <div id="helperBanner" class="z-20 pointer-events-none mx-auto mt-auto mb-2 px-3.5 py-1 rounded-full bg-slate-950/85 border border-slate-800/80 text-slate-400 text-[11px] flex items-center gap-2 shadow-lg">
+        <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+        <span id="helperText">Click any block to trigger it • Press [SPACE] or [A/D] anytime to take Manual Control!</span>
+    </div>
+
+    <!-- Bottom Controls Bar -->
+    <footer class="w-full z-20 px-4 pb-3.5 pointer-events-none max-w-7xl mx-auto">
+        <div class="arcade-panel p-2.5 sm:px-4 sm:py-3 rounded-2xl pointer-events-auto flex flex-wrap items-center justify-between gap-2.5">
+            
+            <!-- Left: Playback, Mode, Audio & Speed -->
+            <div class="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+                <button id="btnPlayPause" class="arcade-btn px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] pixel-font flex items-center gap-1.5">
+                    <span id="playPauseIcon">II</span>
+                    <span id="playPauseText">PAUSE</span>
+                </button>
+
+                <button id="btnControlMode" class="arcade-btn px-3 py-2 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white border border-indigo-400/40 font-semibold text-xs flex items-center gap-1.5" title="Switch between Infinite Auto-Runner and Keyboard Manual Control (A/D or Left/Right + Space/W/Up)">
+                    <span>🎮</span>
+                    <span id="controlModeText">Auto-Pilot</span>
+                </button>
+
+                <button id="btnAudio" class="arcade-btn px-2.5 py-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center gap-1.5" title="Toggle 16-Bit Chiptune Synth SFX">
+                    <span id="audioIcon">🔇</span>
+                    <span id="audioText">SFX: OFF</span>
+                </button>
+
+                <div class="flex items-center gap-2 bg-slate-900/90 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                    <label for="speedSlider" class="text-[11px] text-slate-400 font-medium">Speed</label>
+                    <input id="speedSlider" type="range" min="0.4" max="2.4" step="0.1" value="1.0" class="w-16 sm:w-20">
+                    <span id="speedValue" class="text-[11px] font-mono text-amber-400 w-8 text-right">1.0x</span>
+                </div>
+            </div>
+
+            <!-- Right: Next Block Color Mode, Visual FX Toggles & Reset -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex items-center bg-slate-900/95 p-1 rounded-xl border border-slate-800 text-xs">
+                    <span class="px-2 text-slate-400 font-medium hidden md:inline text-[11px]">Block:</span>
+                    <button data-force="RANDOM" class="force-btn px-2 py-1 rounded-lg bg-slate-700 text-white font-semibold transition text-[11px]">Random</button>
+                    <button data-force="GREEN" class="force-btn px-2 py-1 rounded-lg text-emerald-400 hover:bg-emerald-950/60 font-semibold transition text-[11px]">Green</button>
+                    <button data-force="JACKPOT" class="force-btn px-2 py-1 rounded-lg text-amber-300 hover:bg-amber-950/60 font-semibold transition text-[11px]" title="Force 3-Coin Green Jackpot!">Jackpot★</button>
+                    <button data-force="PURPLE" class="force-btn px-2 py-1 rounded-lg text-purple-400 hover:bg-purple-950/60 font-semibold transition text-[11px]">Purple</button>
+                    <button data-force="RED" class="force-btn px-2 py-1 rounded-lg text-rose-400 hover:bg-rose-950/60 font-semibold transition text-[11px]">Red</button>
+                </div>
+
+                <button id="btnCrtToggle" class="arcade-btn px-2.5 py-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium" title="Toggle Retro CRT Scanlines & Vignette">
+                    CRT: OFF
+                </button>
+
+                <button id="btnBgToggle" class="arcade-btn px-2.5 py-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium" title="Cycle Pure Contrast Backdrop">
+                    BG: OLED Void
+                </button>
+
+                <button id="btnReset" class="arcade-btn px-2.5 py-2 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-800/70 text-xs font-medium">
+                    Reset
+                </button>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        /********************************************************************
+         * 1. UPGRADED 16-BIT WEB AUDIO CHIPTUNE SYNTHESIZER
+         ********************************************************************/
+        class RetroSoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            toggle() {
+                this.init();
+                this.enabled = !this.enabled;
+                if (this.enabled) this.playCoin(0);
+                return this.enabled;
+            }
+
+            playJump() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(155, now);
+                osc.frequency.exponentialRampToValueAtTime(620, now + 0.15);
+                gain.gain.setValueAtTime(0.07, now);
+                gain.gain.linearRampToValueAtTime(0.008, now + 0.16);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.16);
+            }
+
+            playBump() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(165, now);
+                osc.frequency.exponentialRampToValueAtTime(48, now + 0.095);
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.095);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.095);
+            }
+
+            playCoin(pitchStep = 0) {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                // Escalate pitch slightly for multi-coin jackpot bursts
+                const multiplier = Math.pow(1.12, pitchStep);
+                osc.frequency.setValueAtTime(987.77 * multiplier, now);
+                osc.frequency.setValueAtTime(1318.51 * multiplier, now + 0.07);
+                gain.gain.setValueAtTime(0.085, now);
+                gain.gain.exponentialRampToValueAtTime(0.008, now + 0.35);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.35);
+            }
+
+            playMushroom() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Classic rich 16-bit power-up arpeggio
+                const notes = [330, 392, 659, 523, 587, 784, 659, 880];
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square';
+                    const start = now + idx * 0.042;
+                    osc.frequency.setValueAtTime(freq, start);
+                    gain.gain.setValueAtTime(0.065, start);
+                    gain.gain.exponentialRampToValueAtTime(0.008, start + 0.04);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(start);
+                    osc.stop(start + 0.041);
+                });
+            }
+
+            playRedNova() {
+                if (!this.enabled || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Punchy sub-bass drop + sawtooth pulse
+                const osc = this.ctx.createOscillator();
+                const sub = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                sub.type = 'triangle';
+
+                osc.frequency.setValueAtTime(240, now);
+                osc.frequency.exponentialRampToValueAtTime(55, now + 0.26);
+
+                sub.frequency.setValueAtTime(120, now);
+                sub.frequency.exponentialRampToValueAtTime(36, now + 0.26);
+
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.008, now + 0.26);
+
+                osc.connect(gain);
+                sub.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(now);
+                sub.start(now);
+                osc.stop(now + 0.26);
+                sub.stop(now + 0.26);
+            }
+        }
+
+        const sfx = new RetroSoundEngine();
+
+        /********************************************************************
+         * 2. 16-BIT PIXEL ART SPRITE MATRICES & PALETTES
+         ********************************************************************/
+        const PALETTE = {
+            'R': '#ff2a2a', // Bright Red Cap/Shirt
+            'r': '#b91c1c', // Dark Red Cap/Shirt Shading
+            'S': '#ffd1a3', // Skin Peach Highlight
+            's': '#e59866', // Skin Midtone/Shadow
+            'E': '#0f172a', // Expressive Dark Eye Pixel
+            'B': '#2563eb', // Vibrant Blue Overalls
+            'b': '#1d4ed8', // Deep Blue Overalls Shadow
+            'Y': '#fde047', // Gold Overall Strap Buttons
+            'H': '#6b3410', // Chestnut Brown Hair / Mustache / Boots
+            'h': '#3b1a0b', // Dark Brown Boot Sole & Hair Shadow
+            'W': '#ffffff', // Pure White Glove Highlight / Cap Emblem
+            'g': '#94a3b8'  // Glove & White Shading
+        };
+
+        // Detailed 16x16 SNES-Grade Mario Sprite Matrices
+        const MARIO_SPRITES = {
+            run1: [
+                ".....rRRRRR.....",
+                "....rRRRRWWWR...",
+                "....HHHSSESH....",
+                "...HSHSSSESSSS..",
+                "...HSHHSSSHsSS..",
+                "...HHSSSSHHHH...",
+                ".....sSSSSSS....",
+                "....rRBRRR......",
+                "...rRRBRRBRRR...",
+                "..rRRRBBBBBRRR..",
+                "..WWRBYBBBYBRWW.",
+                "..WgBBBBBBBBgW..",
+                "..ggBBBBBBBBgg..",
+                "....BBB..bbb....",
+                "...HHh....HHh...",
+                "..hhhh....hhhh.."
+            ],
+            run2: [
+                ".....rRRRRR.....",
+                "....rRRRRWWWR...",
+                "....HHHSSESH....",
+                "...HSHSSSESSSS..",
+                "...HSHHSSSHsSS..",
+                "...HHSSSSHHHH...",
+                ".....sSSSSSS....",
+                "...rRRRBRRR.....",
+                "..rRRRRBRRBRW...",
+                "..WWRRBBBBBRWW..",
+                "..Wg.BYBBBYB....",
+                ".....BBBBBBBB...",
+                "....bBBBBBBBBB..",
+                "...bBBB....bbb..",
+                "..HHHh......HHh.",
+                "..hhhh......hhhh"
+            ],
+            run3: [
+                ".....rRRRRR.....",
+                "....rRRRRWWWR...",
+                "....HHHSSESH....",
+                "...HSHSSSESSSS..",
+                "...HSHHSSSHsSS..",
+                "...HHSSSSHHHH...",
+                ".....sSSSSSS....",
+                ".....rRBRRR.....",
+                "....rRRBRRBR....",
+                "....rRBBBBBRR...",
+                "....WWYBBBYWW...",
+                "....WgBBBBBWg...",
+                ".....bBBBBBB....",
+                ".....bBBBBBB....",
+                "....HHHh.HHh....",
+                "....hhhh.hhhh..."
+            ],
+            jump: [
+                "...........WWW..",
+                ".....rRRRRRWWg..",
+                "....rRRRRWWWR...",
+                "....HHHSSESH....",
+                "...HSHSSSESSSS..",
+                "...HSHHSSSHsSS..",
+                "...HHSSSSHHHH...",
+                ".....sSSSSSSR...",
+                "...rRRRBRRRRR...",
+                "..rRRRRBRRBRR...",
+                ".WWgRRBBBBBR....",
+                ".gg..BYBBBYB....",
+                "....bBBBBBBBBB..",
+                "...bBBB....bbbb.",
+                "..HHHh......HHh.",
+                ".hhhh........hhh"
+            ],
+            fall: [
+                ".....rRRRRR.....",
+                "....rRRRRWWWR...",
+                "....HHHSSESH....",
+                "...HSHSSSESSSS..",
+                "...HSHHSSSHsSS..",
+                "...HHSSSSHHHH...",
+                "..WW.sSSSSSS.WW.",
+                ".WWgrRRRBRRRrgWW",
+                "..g.rRRBRRBRR.g.",
+                "....rRBBBBBRR...",
+                ".....BYBBBYB....",
+                "....bBBBBBBBB...",
+                "...bBBBB..BBBB..",
+                "...HHHh....HHHh.",
+                "..hhhh......hhhh",
+                "................"
+            ]
+        };
+
+        // 16x16 Super Mushroom Matrices (Open Eyes & Blinking Frame)
+        const MUSHROOM_PALETTE = {
+            'K': '#1e1b4b', // Deep Indigo Outline
+            'P': '#f43f5e', // Vibrant Crimson/Magenta Cap
+            'p': '#be123c', // Deep Cap Shadow
+            'h': '#fda4af', // Cap Specular Highlight
+            'W': '#ffffff', // Pure White Spots
+            'w': '#e2e8f0', // Spot Shading
+            'C': '#fef3c7', // Warm Cream Face/Stem
+            'c': '#f59e0b', // Stem Shading
+            'E': '#0f172a', // Dark Eyes
+            'L': '#ffffff'  // Eye Catchlight
+        };
+
+        const MUSHROOM_MATRIX_OPEN = [
+            ".....KKKKKK.....",
+            "...KKhPPPPPKK...",
+            "..KPhWWWWWWPPK..",
+            ".KPPWWWWWWWWPPK.",
+            ".KPWWWWWWWWWWPK.",
+            "KPPWWWWPPWWWWPPK",
+            "KPPWWwPPPPwWWPPK",
+            "KPPPPPPWWPPPPPPK",
+            "KppPPPWWWWPPPppK",
+            ".KpppPWWWWPpppK.",
+            ".KKKKPPPPPPKKKK.",
+            "...KCCCCCCCCK...",
+            "..KCCCLCCCLCCK..",
+            "..KCCCECCCECCK..",
+            "...KccccccccK...",
+            "....KKKKKKKK...."
+        ];
+
+        const MUSHROOM_MATRIX_BLINK = [
+            ".....KKKKKK.....",
+            "...KKhPPPPPKK...",
+            "..KPhWWWWWWPPK..",
+            ".KPPWWWWWWWWPPK.",
+            ".KPWWWWWWWWWWPK.",
+            "KPPWWWWPPWWWWPPK",
+            "KPPWWwPPPPwWWPPK",
+            "KPPPPPPWWPPPPPPK",
+            "KppPPPWWWWPPPppK",
+            ".KpppPWWWWPpppK.",
+            ".KKKKPPPPPPKKKK.",
+            "...KCCCCCCCCK...",
+            "..KCCCCCCCCCCK..",
+            "..KCCEECCEECCK..",
+            "...KccccccccK...",
+            "....KKKKKKKK...."
+        ];
+
+        // 4-Frame Spinning Pixel Coin Matrices (10x14)
+        const COIN_FRAMES = [
+            [
+                "...YYYY...",
+                "..YYYYYY..",
+                ".YYWWWWYY.",
+                ".YYWddWYY.",
+                ".YYWddWYY.",
+                ".YYWddWYY.",
+                ".YYWddWYY.",
+                ".YYWddWYY.",
+                ".YYWddWYY.",
+                ".YYWddWYY.",
+                ".YYWddWYY.",
+                ".YYddddYY.",
+                "..YYYYYY..",
+                "...dddd..."
+            ],
+            [
+                "...YYYY...",
+                "..YYYYYY..",
+                "..YYWWYY..",
+                "..YYWdYY..",
+                "..YYWdYY..",
+                "..YYWdYY..",
+                "..YYWdYY..",
+                "..YYWdYY..",
+                "..YYWdYY..",
+                "..YYWdYY..",
+                "..YYWdYY..",
+                "..YYddYY..",
+                "..YYYYYY..",
+                "...dddd..."
+            ],
+            [
+                "....YY....",
+                "....YY....",
+                "....WW....",
+                "....WY....",
+                "....WY....",
+                "....WY....",
+                "....WY....",
+                "....WY....",
+                "....WY....",
+                "....WY....",
+                "....WY....",
+                "....Yd....",
+                "....YY....",
+                "....dd...."
+            ],
+            [
+                "...YYYY...",
+                "..YYYYYY..",
+                "..YYYYYY..",
+                "..YYdWYY..",
+                "..YYdWYY..",
+                "..YYdWYY..",
+                "..YYdWYY..",
+                "..YYdWYY..",
+                "..YYdWYY..",
+                "..YYdWYY..",
+                "..YYdWYY..",
+                "..YYddYY..",
+                "..YYYYYY..",
+                "...dddd..."
+            ]
+        ];
+
+        const COIN_PALETTE = {
+            'Y': '#facc15',
+            'W': '#fef9c3',
+            'd': '#ca8a04'
+        };
+
+        // 16x16 Question Mark Overlay
+        const QUESTION_MARK_PIXELS = [
+            "................",
+            "................",
+            "................",
+            ".....WWWWWW.....",
+            "....WWddddWW....",
+            "....WWd..WWd....",
+            "........WWWd....",
+            ".......WWWd.....",
+            ".......WWd......",
+            "........dd......",
+            ".......WW.......",
+            ".......WWd......",
+            "........dd......",
+            "................",
+            "................",
+            "................"
+        ];
+
+        // HD-2D Block Color Themes & Dynamic Lighting Colors
+        const BLOCK_THEMES = {
+            MYSTERY: {
+                base: '#f59e0b',
+                pulseBase: ['#f59e0b', '#fbbf24', '#f59e0b', '#d97706'],
+                light: '#fef08a',
+                dark: '#b45309',
+                border: '#1e1b4b',
+                rivet: '#78350f',
+                glow: 'rgba(251, 191, 36, 0.30)',
+                lightHex: '#fbbf24',
+                rgb: [251, 191, 36]
+            },
+            GREEN: {
+                base: '#10b981',
+                light: '#a7f3d0',
+                dark: '#047857',
+                border: '#022c22',
+                rivet: '#064e3b',
+                innerSymbol: '#ecfdf5',
+                glow: 'rgba(16, 185, 129, 0.65)',
+                lightHex: '#10b981',
+                rgb: [16, 185, 129]
+            },
+            PURPLE: {
+                base: '#9333ea',
+                light: '#e9d5ff',
+                dark: '#6b21a8',
+                border: '#2e1065',
+                rivet: '#4c1d95',
+                innerSymbol: '#faf5ff',
+                glow: 'rgba(168, 85, 247, 0.65)',
+                lightHex: '#a855f7',
+                rgb: [168, 85, 247]
+            },
+            RED: {
+                base: '#e11d48',
+                light: '#fecdd3',
+                dark: '#9f1239',
+                border: '#4c0519',
+                rivet: '#881337',
+                innerSymbol: '#fff1f2',
+                glow: 'rgba(244, 63, 94, 0.72)',
+                lightHex: '#f43f5e',
+                rgb: [244, 63, 94]
+            }
+        };
+
+        /********************************************************************
+         * 3. WORLD CONFIGURATION, PHYSICS & JUICE STATE
+         ********************************************************************/
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let PIXEL = 4;
+        let FLOOR_Y = 0;
+
+        const BLOCK_SIZE = 16;
+        const BLOCK_SPACING = 52;
+        const JUMP_HEIGHT_GAP = 42;
+
+        let state = {
+            paused: false,
+            speed: 1.0,
+            controlMode: 'AUTO',    // 'AUTO' | 'MANUAL'
+            forceOutcome: 'RANDOM', // 'RANDOM' | 'GREEN' | 'JACKPOT' | 'PURPLE' | 'RED'
+            crtEnabled: false,
+            bgIndex: 0,
+            bgStyles: [
+                { name: 'OLED Void', color: '#06060a' },
+                { name: 'Dark Slate', color: '#0d0e15' },
+                { name: 'Classic Night', color: '#080b1a' }
+            ],
+            score: 0,
+            streak: 0,
+            counts: {
+                total: 0,
+                GREEN: 0,
+                JACKPOT: 0,
+                PURPLE: 0,
+                RED: 0
+            },
+            globalTick: 0,
+            cameraX: 0,
+            hitStopFrames: 0,       // Freeze-frame impact juice
+            shakeX: 0,
+            shakeY: 0,
+            shakeIntensity: 0
+        };
+
+        // Keyboard Input State for Manual Control Mode
+        const keys = {
+            left: false,
+            right: false,
+            jump: false
+        };
+
+        // Mario Entity with Squash-and-Stretch & Afterimage Trails
+        const mario = {
+            x: 0,
+            y: 0,
+            vx: 1.48,
+            vy: 0,
+            facing: 1,          // 1 = Right, -1 = Left
+            state: 'RUNNING',   // 'RUNNING' | 'JUMPING'
+            animTimer: 0,
+            animFrame: 0,
+            targetBlockIndex: 0,
+            hasHitCurrentBlock: false,
+            scaleX: 1.0,
+            scaleY: 1.0,
+            trailTimer: 0
+        };
+
+        // Dynamic Entity Collections
+        let blocks = [];
+        let coins = [];
+        let coinQueue = [];      // Delayed multi-coin launches for Green Jackpots
+        let mushrooms = [];
+        let particles = [];
+        let floatingTexts = [];
+        let shockwaves = [];
+        let impactFlashes = [];  // Crisp underside block impact slashes
+        let marioTrails = [];    // 16-bit motion afterimages
+
+        /********************************************************************
+         * 4. COORDINATE & PIXEL SPRITE RENDERING HELPERS
+         ********************************************************************/
+        function worldToScreenX(vx) {
+            return Math.floor((vx - state.cameraX) * PIXEL + canvas.width * 0.38 + state.shakeX);
+        }
+
+        function worldToScreenY(vy) {
+            return Math.floor(FLOOR_Y + vy * PIXEL + state.shakeY);
+        }
+
+        // Supports Squash & Stretch, Horizontal Flip, and Alpha Afterimages
+        function drawSpriteMatrix(matrix, palette, vx, vy, scale = PIXEL, options = {}) {
+            const {
+                flipX = false,
+                scaleX = 1.0,
+                scaleY = 1.0,
+                alpha = 1.0,
+                tintColor = null
+            } = options;
+
+            const rows = matrix.length;
+            const cols = matrix[0].length;
+            const spriteWidthPx = cols * scale;
+            const spriteHeightPx = rows * scale;
+
+            // Anchor squash-and-stretch at bottom-center of sprite
+            const baseScreenX = worldToScreenX(vx) + spriteWidthPx * 0.5;
+            const baseScreenY = worldToScreenY(vy) + spriteHeightPx;
+
+            ctx.save();
+            if (alpha < 1.0) ctx.globalAlpha = alpha;
+            ctx.translate(baseScreenX, baseScreenY);
+            ctx.scale((flipX ? -1 : 1) * scaleX, scaleY);
+            ctx.translate(-spriteWidthPx * 0.5, -spriteHeightPx);
+
+            for (let r = 0; r < rows; r++) {
+                const row = matrix[r];
+                for (let c = 0; c < cols; c++) {
+                    const ch = row[c];
+                    if (ch !== '.' && palette[ch]) {
+                        ctx.fillStyle = tintColor || palette[ch];
+                        ctx.fillRect(c * scale, r * scale, scale, scale);
+                    }
+                }
+            }
+            ctx.restore();
+        }
+
+        /********************************************************************
+         * 5. BLOCK GENERATION, HIT-STOP, JACKPOT COINS & NOVA EFFECTS
+         ********************************************************************/
+        function ensureBlocksExist() {
+            const minNeededIdx = Math.floor((state.cameraX - 180) / BLOCK_SPACING);
+            const maxNeededIdx = Math.max(mario.targetBlockIndex + 10, Math.floor((state.cameraX + 260) / BLOCK_SPACING));
+
+            const existingIndices = new Set(blocks.map(b => b.index));
+
+            for (let idx = Math.max(0, minNeededIdx); idx <= maxNeededIdx; idx++) {
+                if (!existingIndices.has(idx)) {
+                    blocks.push({
+                        index: idx,
+                        x: idx * BLOCK_SPACING,
+                        baseY: -JUMP_HEIGHT_GAP - BLOCK_SIZE,
+                        bumpOffset: 0,
+                        bumpVelocity: 0,
+                        scaleX: 1.0,
+                        scaleY: 1.0,
+                        status: 'MYSTERY',
+                        isJackpot: false,
+                        hitTime: 0,
+                        glowIntensity: 0
+                    });
+                }
+            }
+
+            blocks.sort((a, b) => a.index - b.index);
+
+            // Prune very distant blocks behind camera
+            if (blocks.length > 36) {
+                const cutoffX = state.cameraX - 240;
+                blocks = blocks.filter(b => b.x > cutoffX);
+                mushrooms = mushrooms.filter(m => m.x > cutoffX);
+            }
+        }
+
+        function chooseOutcome() {
+            if (state.forceOutcome === 'JACKPOT') {
+                return { status: 'GREEN', jackpot: true };
+            }
+            if (state.forceOutcome !== 'RANDOM') {
+                return { status: state.forceOutcome, jackpot: false };
+            }
+            const r = Math.random();
+            if (r < 0.38) {
+                // 28% of Green Blocks trigger a 3-Coin Jackpot Burst!
+                return { status: 'GREEN', jackpot: Math.random() < 0.28 };
+            }
+            if (r < 0.72) {
+                return { status: 'PURPLE', jackpot: false };
+            }
+            return { status: 'RED', jackpot: false };
+        }
+
+        function launchSingleCoin(blockCenterX, blockTopY, pitchStep = 0, bonusPoints = 100, isJackpotFinal = false) {
+            state.score += bonusPoints;
+            sfx.playCoin(pitchStep);
+
+            coins.push({
+                x: blockCenterX - 5 + (Math.random() - 0.5) * (pitchStep * 2.5),
+                y: blockTopY - 6,
+                vx: (Math.random() - 0.5) * (pitchStep * 0.45),
+                vy: -2.85 - pitchStep * 0.22,
+                gravity: 0.13,
+                frameTimer: 0,
+                frameIndex: 0,
+                bonusText: isJackpotFinal ? `+${bonusPoints} JACKPOT!` : `+${bonusPoints}`,
+                textColor: isJackpotFinal ? '#fef08a' : '#fde047'
+            });
+
+            spawnPixelParticles(
+                blockCenterX,
+                blockTopY + 2,
+                ['#10b981', '#6ee7b7', '#fde047', '#ffffff'],
+                isJackpotFinal ? 18 : 10,
+                isJackpotFinal ? 2.2 : 1.6,
+                false
+            );
+            updateHUD();
+        }
+
+        function triggerBlockHit(block, forcedColor = null, isPhysicalHit = true) {
+            // 1. Snappy Bounce & Squash-Stretch on Block
+            block.bumpVelocity = -2.5;
+            block.scaleX = 1.22;
+            block.scaleY = 0.80;
+            block.hitTime = state.globalTick;
+            block.glowIntensity = 1.3;
+
+            // 2. Hit-Stop & Micro Camera Shake
+            if (isPhysicalHit) {
+                state.hitStopFrames = 3;
+                state.shakeIntensity = 4.5;
+            } else {
+                state.shakeIntensity = 2.5;
+            }
+
+            // 3. Determine Outcome (Green, Green Jackpot, Purple, or Red)
+            let outcomeObj;
+            if (forcedColor === 'JACKPOT') {
+                outcomeObj = { status: 'GREEN', jackpot: true };
+            } else if (forcedColor) {
+                outcomeObj = { status: forcedColor, jackpot: false };
+            } else {
+                outcomeObj = chooseOutcome();
+            }
+
+            const outcome = outcomeObj.status;
+            block.status = outcome;
+            block.isJackpot = outcomeObj.jackpot;
+
+            // Update Streak & Counters
+            state.counts.total++;
+            state.streak++;
+            state.counts[outcome]++;
+            if (outcomeObj.jackpot) state.counts.JACKPOT++;
+            sfx.playBump();
+
+            const blockCenterX = block.x + BLOCK_SIZE / 2;
+            const blockTopY = block.baseY;
+            const blockBottomY = block.baseY + BLOCK_SIZE;
+
+            // 4. Crisp Underside Impact Spark Flash
+            impactFlashes.push({
+                x: blockCenterX,
+                y: blockBottomY,
+                width: BLOCK_SIZE * 1.4,
+                life: 1.0,
+                color: BLOCK_THEMES[outcome].light
+            });
+
+            // Remove any prior mushroom on this block if re-hit
+            mushrooms = mushrooms.filter(m => m.blockIndex !== block.index);
+
+            if (outcome === 'GREEN') {
+                // Launch first coin immediately
+                launchSingleCoin(blockCenterX, blockTopY, 0, 100, false);
+
+                // If Jackpot, queue 2 rapid follow-up coins with escalating rewards!
+                if (outcomeObj.jackpot) {
+                    coinQueue.push({
+                        delayTicks: 7,
+                        x: blockCenterX,
+                        y: blockTopY,
+                        pitchStep: 1,
+                        points: 200,
+                        isFinal: false,
+                        blockRef: block
+                    });
+                    coinQueue.push({
+                        delayTicks: 14,
+                        x: blockCenterX,
+                        y: blockTopY,
+                        pitchStep: 2,
+                        points: 500,
+                        isFinal: true,
+                        blockRef: block
+                    });
+                }
+
+            } else if (outcome === 'PURPLE') {
+                // PURPLE BLOCK -> Hopping, Blinking Super Mushroom Showcase
+                state.score += 300;
+                sfx.playMushroom();
+
+                mushrooms.push({
+                    blockIndex: block.index,
+                    x: block.x,
+                    baseY: blockTopY - BLOCK_SIZE - 1,
+                    riseProgress: 0,
+                    hopOffset: 0,
+                    hopVy: 0,
+                    hasHopped: false,
+                    scaleX: 1.0,
+                    scaleY: 1.0,
+                    bobAngle: 0,
+                    blinkTimer: Math.random() * 60
+                });
+
+                spawnPixelParticles(blockCenterX, blockTopY + 2, ['#a855f7', '#e9d5ff', '#f43f5e', '#fde047'], 16, 1.8, false);
+
+                floatingTexts.push({
+                    x: blockCenterX,
+                    y: blockTopY - 14,
+                    text: '1UP SHROOM!',
+                    color: '#e9d5ff',
+                    life: 1.15
+                });
+
+            } else if (outcome === 'RED') {
+                // RED BLOCK -> Crimson Shockwave Nova + Floor-Bouncing Lava Embers
+                state.score += 50;
+                sfx.playRedNova();
+                state.shakeIntensity = Math.max(state.shakeIntensity, 6.5);
+
+                // Primary & Secondary Expanding Pixel Shockwaves
+                shockwaves.push({
+                    x: blockCenterX,
+                    y: block.baseY + BLOCK_SIZE / 2,
+                    size: BLOCK_SIZE * 0.8,
+                    speed: 2.1,
+                    alpha: 1.0,
+                    color: '#fb7185'
+                });
+                shockwaves.push({
+                    x: blockCenterX,
+                    y: block.baseY + BLOCK_SIZE / 2,
+                    size: BLOCK_SIZE * 0.4,
+                    speed: 1.35,
+                    alpha: 0.85,
+                    color: '#fde047'
+                });
+
+                // Physics-driven ember pixels that fall with gravity and bounce off the floor line!
+                spawnPixelParticles(
+                    blockCenterX,
+                    block.baseY + BLOCK_SIZE / 2,
+                    ['#f43f5e', '#fb7185', '#fb923c', '#fde047', '#ffffff'],
+                    28,
+                    2.6,
+                    true // Enable gravity & floor bounce
+                );
+            }
+
+            updateHUD();
+        }
+
+        function spawnPixelParticles(vx, vy, colors, count, speedScale = 1.5, bouncesOnFloor = false) {
+            for (let i = 0; i < count; i++) {
+                const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.45;
+                const spd = (0.55 + Math.random() * 1.45) * speedScale;
+                particles.push({
+                    x: vx + (Math.random() - 0.5) * 6,
+                    y: vy + (Math.random() - 0.5) * 6,
+                    vx: Math.cos(angle) * spd,
+                    vy: Math.sin(angle) * spd - (bouncesOnFloor ? 0.8 : 0.35),
+                    gravity: bouncesOnFloor ? 0.14 : 0.02,
+                    bounces: bouncesOnFloor,
+                    size: Math.random() > 0.35 ? 2 : 1,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    life: 1.0,
+                    decay: bouncesOnFloor ? (0.012 + Math.random() * 0.012) : (0.022 + Math.random() * 0.02)
+                });
+            }
+        }
+
+        function spawnFootDust(vx, vy, count = 6) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: vx + 7 + (Math.random() - 0.5) * 6,
+                    y: vy - 1,
+                    vx: (Math.random() - 0.5) * 1.4,
+                    vy: -Math.random() * 0.9 - 0.2,
+                    gravity: 0.03,
+                    bounces: false,
+                    size: Math.random() > 0.5 ? 2 : 1,
+                    color: '#94a3b8',
+                    life: 0.85,
+                    decay: 0.04
+                });
+            }
+        }
+
+        /********************************************************************
+         * 6. HD-2D DYNAMIC LIGHTING & BLOCK RENDERING
+         ********************************************************************/
+        function drawDynamicBlockLight(block) {
+            const theme = BLOCK_THEMES[block.status];
+            const centerX = worldToScreenX(block.x + BLOCK_SIZE / 2);
+            const centerY = worldToScreenY(block.baseY + block.bumpOffset + BLOCK_SIZE / 2);
+            const floorY = worldToScreenY(0);
+
+            const isHit = block.status !== 'MYSTERY';
+            const baseRadius = (isHit ? 48 : 30) * PIXEL;
+            const [r, g, b] = theme.rgb;
+            const alphaBoost = isHit ? 0.22 + block.glowIntensity * 0.15 : 0.10;
+
+            // 1. Radial Bloom Aura Around the Block
+            const grad = ctx.createRadialGradient(centerX, centerY, PIXEL * 2, centerX, centerY, baseRadius);
+            grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${Math.min(0.55, alphaBoost)})`);
+            grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${Math.min(0.22, alphaBoost * 0.45)})`);
+            grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+            ctx.save();
+            ctx.fillStyle = grad;
+            ctx.fillRect(centerX - baseRadius, centerY - baseRadius, baseRadius * 2, baseRadius * 2);
+
+            // 2. Real-Time Colored Reflection Pool on the Pixel Floor Directly Below Block
+            const poolWidth = (isHit ? 34 : 20) * PIXEL;
+            const poolGrad = ctx.createLinearGradient(centerX - poolWidth, floorY, centerX + poolWidth, floorY);
+            const poolAlpha = isHit ? 0.75 : 0.28;
+            poolGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`);
+            poolGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${poolAlpha})`);
+            poolGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+            ctx.fillStyle = poolGrad;
+            ctx.fillRect(centerX - poolWidth, floorY - PIXEL, poolWidth * 2, PIXEL * 3);
+            ctx.restore();
+        }
+
+        function drawBlock(block) {
+            const theme = BLOCK_THEMES[block.status];
+            const vx = block.x;
+            const vy = block.baseY + block.bumpOffset;
+
+            const P = PIXEL;
+            const blockPx = BLOCK_SIZE * P;
+            const centerX = worldToScreenX(vx) + blockPx * 0.5;
+            const centerY = worldToScreenY(vy) + blockPx * 0.5;
+
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.scale(block.scaleX, block.scaleY);
+            ctx.translate(-blockPx * 0.5, -blockPx * 0.5);
+
+            // Animated base color for Mystery Block
+            let mainFill = theme.base;
+            if (block.status === 'MYSTERY') {
+                const pulseIdx = Math.floor(state.globalTick / 12) % theme.pulseBase.length;
+                mainFill = theme.pulseBase[pulseIdx];
+            }
+
+            // 1. Dark Outer Pixel Border (16x16 with clipped 1px corners)
+            ctx.fillStyle = theme.border;
+            ctx.fillRect(P, 0, 14 * P, 16 * P);
+            ctx.fillRect(0, P, 16 * P, 14 * P);
+
+            // 2. Main Interior Face (14x14)
+            ctx.fillStyle = mainFill;
+            ctx.fillRect(P, P, 14 * P, 14 * P);
+
+            // 3. Diagonal Specular Shimmer Wave across Mystery Blocks
+            if (block.status === 'MYSTERY') {
+                const shimmerPhase = Math.floor(state.globalTick * 0.35 + block.index * 5) % 40;
+                if (shimmerPhase < 16) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+                    for (let r = 2; r < 14; r++) {
+                        for (let c = 2; c < 14; c++) {
+                            if (r + c === shimmerPhase + 4 || r + c === shimmerPhase + 5) {
+                                ctx.fillRect(c * P, r * P, P, P);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Top & Left 16-bit Pixel Bevel Highlight
+            ctx.fillStyle = theme.light;
+            ctx.fillRect(P, P, 13 * P, P);
+            ctx.fillRect(P, 2 * P, P, 12 * P);
+
+            // 5. Bottom & Right Pixel Bevel Shadow
+            ctx.fillStyle = theme.dark;
+            ctx.fillRect(2 * P, 14 * P, 13 * P, P);
+            ctx.fillRect(14 * P, 2 * P, P, 13 * P);
+
+            // 6. Four Corner Rivets
+            ctx.fillStyle = theme.rivet;
+            ctx.fillRect(2 * P, 2 * P, P, P);
+            ctx.fillRect(13 * P, 2 * P, P, P);
+            ctx.fillRect(2 * P, 13 * P, P, P);
+            ctx.fillRect(13 * P, 13 * P, P, P);
+
+            // 7. Question Mark (if MYSTERY) or Faceted Gem Core (if Green/Purple/Red)
+            if (block.status === 'MYSTERY') {
+                for (let r = 0; r < 16; r++) {
+                    const row = QUESTION_MARK_PIXELS[r];
+                    for (let c = 0; c < 16; c++) {
+                        const ch = row[c];
+                        if (ch === 'W') {
+                            ctx.fillStyle = '#fffbeb';
+                            ctx.fillRect(c * P, r * P, P, P);
+                        } else if (ch === 'd') {
+                            ctx.fillStyle = '#78350f';
+                            ctx.fillRect(c * P, r * P, P, P);
+                        }
+                    }
+                }
+            } else {
+                // Faceted glowing inner core
+                ctx.fillStyle = theme.dark;
+                ctx.fillRect(4 * P, 4 * P, 8 * P, 8 * P);
+                ctx.fillStyle = theme.light;
+                ctx.fillRect(5 * P, 5 * P, 6 * P, 6 * P);
+                ctx.fillStyle = theme.innerSymbol;
+                ctx.fillRect(6 * P, 6 * P, 4 * P, 4 * P);
+
+                // Extra golden crown pixel dot if this Green block hit a Jackpot
+                if (block.isJackpot) {
+                    ctx.fillStyle = '#fde047';
+                    ctx.fillRect(7 * P, 7 * P, 2 * P, 2 * P);
+                }
+            }
+
+            ctx.restore();
+        }
+
+        /********************************************************************
+         * 7. CORE SIMULATION UPDATE LOOP (AUTO-PILOT, MANUAL & PHYSICS)
+         ********************************************************************/
+        function updateSimulation() {
+            if (state.paused) return;
+
+            // Decay Screen Shake
+            if (state.shakeIntensity > 0.05) {
+                state.shakeX = (Math.random() - 0.5) * state.shakeIntensity * PIXEL * 0.45;
+                state.shakeY = (Math.random() - 0.5) * state.shakeIntensity * PIXEL * 0.45;
+                state.shakeIntensity *= 0.72;
+            } else {
+                state.shakeX = 0;
+                state.shakeY = 0;
+                state.shakeIntensity = 0;
+            }
+
+            // Handle 3-Frame Impact Hit-Stop Freeze
+            if (state.hitStopFrames > 0) {
+                state.hitStopFrames--;
+                return;
+            }
+
+            const dt = state.speed;
+            state.globalTick += dt;
+
+            ensureBlocksExist();
+
+            // Spring-lerp Mario's squash-and-stretch back to (1, 1)
+            mario.scaleX += (1.0 - mario.scaleX) * Math.min(1, 0.25 * dt);
+            mario.scaleY += (1.0 - mario.scaleY) * Math.min(1, 0.25 * dt);
+
+            // Spawn subtle 16-bit afterimage trail when jumping or running fast
+            mario.trailTimer += dt;
+            if ((mario.state === 'JUMPING' || state.speed > 1.25) && mario.trailTimer >= 2.2) {
+                mario.trailTimer = 0;
+                marioTrails.push({
+                    x: mario.x,
+                    y: mario.y - 16,
+                    facing: mario.facing,
+                    scaleX: mario.scaleX,
+                    scaleY: mario.scaleY,
+                    sprite: mario.state === 'JUMPING' ? (mario.vy < 0 ? MARIO_SPRITES.jump : MARIO_SPRITES.fall) : MARIO_SPRITES.run2,
+                    alpha: 0.34
+                });
+            }
+
+            // Update Mario Movement (AUTO-PILOT vs MANUAL CONTROL)
+            if (state.controlMode === 'AUTO') {
+                const targetBlock = blocks.find(b => b.index === mario.targetBlockIndex);
+                mario.facing = 1;
+
+                if (mario.state === 'RUNNING') {
+                    mario.x += mario.vx * dt;
+                    mario.y = 0;
+                    mario.animTimer += dt * 0.25;
+                    mario.animFrame = Math.floor(mario.animTimer) % 3;
+
+                    if (targetBlock) {
+                        const jumpTriggerX = targetBlock.x - 4;
+                        if (mario.x >= jumpTriggerX) {
+                            mario.state = 'JUMPING';
+                            mario.vy = -3.48;
+                            mario.hasHitCurrentBlock = false;
+                            // Takeoff stretch!
+                            mario.scaleX = 0.78;
+                            mario.scaleY = 1.26;
+                            spawnFootDust(mario.x, 0, 7);
+                            sfx.playJump();
+                        }
+                    }
+                } else if (mario.state === 'JUMPING') {
+                    mario.x += (mario.vx * 0.58) * dt;
+                    mario.y += mario.vy * dt;
+                    mario.vy += 0.225 * dt;
+
+                    const headTopY = mario.y - 16;
+                    if (targetBlock && !mario.hasHitCurrentBlock) {
+                        const blockBottomY = targetBlock.baseY + BLOCK_SIZE;
+                        if (headTopY <= blockBottomY && mario.vy < 0) {
+                            mario.y = blockBottomY + 16;
+                            mario.vy = 0.68;
+                            mario.hasHitCurrentBlock = true;
+                            // Impact squash!
+                            mario.scaleX = 1.24;
+                            mario.scaleY = 0.78;
+                            triggerBlockHit(targetBlock, null, true);
+                        }
+                    }
+
+                    if (mario.y >= 0 && mario.vy > 0) {
+                        mario.y = 0;
+                        mario.vy = 0;
+                        mario.state = 'RUNNING';
+                        mario.targetBlockIndex++;
+                        // Landing squash!
+                        mario.scaleX = 1.26;
+                        mario.scaleY = 0.75;
+                        spawnFootDust(mario.x, 0, 6);
+                    }
+                }
+            } else {
+                // MANUAL KEYBOARD CONTROL MODE
+                let moveDir = 0;
+                if (keys.left) moveDir -= 1;
+                if (keys.right) moveDir += 1;
+
+                if (moveDir !== 0) {
+                    mario.facing = moveDir;
+                    mario.x += moveDir * mario.vx * 1.15 * dt;
+                    mario.animTimer += dt * 0.26;
+                    mario.animFrame = Math.floor(mario.animTimer) % 3;
+                } else {
+                    mario.animFrame = 0;
+                }
+
+                if (mario.state === 'RUNNING' && keys.jump) {
+                    mario.state = 'JUMPING';
+                    mario.vy = -3.55;
+                    mario.scaleX = 0.78;
+                    mario.scaleY = 1.26;
+                    spawnFootDust(mario.x, 0, 7);
+                    sfx.playJump();
+                }
+
+                if (mario.state === 'JUMPING') {
+                    mario.y += mario.vy * dt;
+                    mario.vy += 0.225 * dt;
+
+                    // Check collision against ANY block directly above Mario's head
+                    const headTopY = mario.y - 16;
+                    const marioCenter = mario.x + 8;
+                    if (mario.vy < 0) {
+                        for (const b of blocks) {
+                            const blockBottomY = b.baseY + BLOCK_SIZE;
+                            if (
+                                marioCenter >= b.x - 2 &&
+                                marioCenter <= b.x + BLOCK_SIZE + 2 &&
+                                headTopY <= blockBottomY &&
+                                headTopY >= blockBottomY - 8
+                            ) {
+                                mario.y = blockBottomY + 16;
+                                mario.vy = 0.7;
+                                mario.scaleX = 1.24;
+                                mario.scaleY = 0.78;
+                                triggerBlockHit(b, null, true);
+                                break;
+                            }
+                        }
+                    }
+
+                    if (mario.y >= 0 && mario.vy > 0) {
+                        mario.y = 0;
+                        mario.vy = 0;
+                        mario.state = 'RUNNING';
+                        mario.scaleX = 1.26;
+                        mario.scaleY = 0.75;
+                        spawnFootDust(mario.x, 0, 6);
+                    }
+                }
+
+                // Keep auto-pilot target index synced ahead of Mario in case user switches back to Auto-Pilot
+                mario.targetBlockIndex = Math.max(0, Math.ceil((mario.x + 12) / BLOCK_SPACING));
+            }
+
+            // Smooth Camera Tracking
+            const desiredCamX = mario.x;
+            state.cameraX += (desiredCamX - state.cameraX) * Math.min(1, 0.15 * dt);
+
+            // Process Queued Jackpot Multi-Coin Bursts
+            for (let i = coinQueue.length - 1; i >= 0; i--) {
+                const q = coinQueue[i];
+                q.delayTicks -= dt;
+                if (q.delayTicks <= 0) {
+                    if (q.blockRef) {
+                        q.blockRef.bumpVelocity = -1.7;
+                        q.blockRef.scaleX = 1.15;
+                        q.blockRef.scaleY = 0.86;
+                    }
+                    launchSingleCoin(q.x, q.y, q.pitchStep, q.points, q.isFinal);
+                    coinQueue.splice(i, 1);
+                }
+            }
+
+            // Update Block Bounce & Squash-Stretch
+            for (const b of blocks) {
+                if (b.bumpOffset !== 0 || b.bumpVelocity !== 0) {
+                    b.bumpOffset += b.bumpVelocity * dt;
+                    b.bumpVelocity += 0.38 * dt;
+                    if (b.bumpOffset >= 0) {
+                        b.bumpOffset = 0;
+                        b.bumpVelocity = 0;
+                    }
+                }
+                b.scaleX += (1.0 - b.scaleX) * Math.min(1, 0.25 * dt);
+                b.scaleY += (1.0 - b.scaleY) * Math.min(1, 0.25 * dt);
+                if (b.glowIntensity > 0) {
+                    b.glowIntensity = Math.max(0, b.glowIntensity - 0.022 * dt);
+                }
+            }
+
+            // Update Spinning Coins
+            for (let i = coins.length - 1; i >= 0; i--) {
+                const c = coins[i];
+                c.x += (c.vx || 0) * dt;
+                c.y += c.vy * dt;
+                c.vy += c.gravity * dt;
+                c.frameTimer += dt * 0.48;
+                c.frameIndex = Math.floor(c.frameTimer) % COIN_FRAMES.length;
+
+                if (c.vy >= 0.45) {
+                    spawnPixelParticles(c.x + 5, c.y + 7, ['#fde047', '#facc15', '#ffffff', '#10b981'], 14, 1.5, false);
+                    floatingTexts.push({
+                        x: c.x + 5,
+                        y: c.y,
+                        text: c.bonusText || '+100',
+                        color: c.textColor || '#fde047',
+                        life: 1.05
+                    });
+                    coins.splice(i, 1);
+                }
+            }
+
+            // Update Hopping & Blinking Super Mushrooms Over Purple Blocks
+            for (const m of mushrooms) {
+                if (m.riseProgress < 1) {
+                    m.riseProgress = Math.min(1, m.riseProgress + 0.055 * dt);
+                    if (m.riseProgress >= 1 && !m.hasHopped) {
+                        // Pop out with a joyful little hop!
+                        m.hasHopped = true;
+                        m.hopVy = -1.65;
+                        m.scaleX = 0.85;
+                        m.scaleY = 1.18;
+                    }
+                } else {
+                    // Hop physics & landing squash
+                    if (m.hopOffset < 0 || m.hopVy !== 0) {
+                        m.hopOffset += m.hopVy * dt;
+                        m.hopVy += 0.18 * dt;
+                        if (m.hopOffset >= 0) {
+                            m.hopOffset = 0;
+                            m.hopVy = 0;
+                            m.scaleX = 1.22;
+                            m.scaleY = 0.80;
+                        }
+                    } else {
+                        m.bobAngle += 0.09 * dt;
+                    }
+                }
+
+                m.scaleX += (1.0 - m.scaleX) * Math.min(1, 0.22 * dt);
+                m.scaleY += (1.0 - m.scaleY) * Math.min(1, 0.22 * dt);
+                m.blinkTimer = (m.blinkTimer + dt) % 110;
+
+                // Floating purple spore particles
+                if (Math.random() < 0.09 * dt) {
+                    particles.push({
+                        x: m.x + 3 + Math.random() * 10,
+                        y: m.baseY + 8,
+                        vx: (Math.random() - 0.5) * 0.35,
+                        vy: -0.45 - Math.random() * 0.4,
+                        gravity: 0,
+                        bounces: false,
+                        size: 1,
+                        color: Math.random() > 0.5 ? '#e9d5ff' : '#fda4af',
+                        life: 0.9,
+                        decay: 0.028
+                    });
+                }
+            }
+
+            // Update Red Block Shockwaves
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.size += (sw.speed || 1.6) * dt;
+                sw.alpha -= 0.042 * dt;
+                if (sw.alpha <= 0) shockwaves.splice(i, 1);
+            }
+
+            // Update Underside Impact Flashes
+            for (let i = impactFlashes.length - 1; i >= 0; i--) {
+                const fl = impactFlashes[i];
+                fl.life -= 0.14 * dt;
+                if (fl.life <= 0) impactFlashes.splice(i, 1);
+            }
+
+            // Update Mario Afterimage Trails
+            for (let i = marioTrails.length - 1; i >= 0; i--) {
+                const tr = marioTrails[i];
+                tr.alpha -= 0.045 * dt;
+                if (tr.alpha <= 0) marioTrails.splice(i, 1);
+            }
+
+            // Update Particles (Including Floor-Bouncing Red Nova Embers)
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                if (p.gravity) p.vy += p.gravity * dt;
+
+                // Bounce off the floor line (y = 0)
+                if (p.bounces && p.y >= -1 && p.vy > 0) {
+                    p.y = -1;
+                    p.vy = -p.vy * 0.58;
+                    p.vx *= 0.85;
+                }
+
+                p.life -= p.decay * dt;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            // Update Floating Pixel Score Texts
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y -= 0.45 * dt;
+                ft.life -= 0.02 * dt;
+                if (ft.life <= 0) floatingTexts.splice(i, 1);
+            }
+        }
+
+        /********************************************************************
+         * 8. HD-2D RENDER PIPELINE
+         ********************************************************************/
+        function renderScene() {
+            // 1. Pure Contrast OLED Backdrop Fill
+            ctx.fillStyle = state.bgStyles[state.bgIndex].color;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Minimalist Pixel Floor Line & Scrolling Sub-Ticks
+            const floorScreenY = worldToScreenY(0);
+            ctx.fillStyle = '#191d2e';
+            ctx.fillRect(0, floorScreenY, canvas.width, PIXEL);
+
+            const dashSpacing = 16;
+            const startWorldX = Math.floor((state.cameraX - canvas.width / PIXEL) / dashSpacing) * dashSpacing;
+            const endWorldX = state.cameraX + (canvas.width / PIXEL) + dashSpacing;
+            ctx.fillStyle = '#282e49';
+            for (let wx = startWorldX; wx < endWorldX; wx += dashSpacing) {
+                const sx = worldToScreenX(wx);
+                ctx.fillRect(sx, floorScreenY + PIXEL * 2, PIXEL * 3, PIXEL);
+            }
+
+            // 3. Dynamic 2D Radial Block Lighting & Floor Reflection Pools
+            for (const b of blocks) {
+                drawDynamicBlockLight(b);
+            }
+
+            // 4. Hopping & Blinking Super Mushrooms Over Purple Blocks
+            for (const m of mushrooms) {
+                const parentBlock = blocks.find(b => b.index === m.blockIndex);
+                const blockBump = parentBlock ? parentBlock.bumpOffset : 0;
+
+                const emergeOffset = (1 - m.riseProgress) * (BLOCK_SIZE - 2);
+                const bobOffset = (m.riseProgress >= 1 && m.hopOffset === 0) ? Math.sin(m.bobAngle) * 1.6 : 0;
+                const drawY = m.baseY + emergeOffset + m.hopOffset + bobOffset + blockBump;
+
+                // Blink eyes every ~110 frames
+                const isBlinking = m.blinkTimer > 98;
+                const shroomMatrix = isBlinking ? MUSHROOM_MATRIX_BLINK : MUSHROOM_MATRIX_OPEN;
+
+                ctx.save();
+                if (m.riseProgress < 1 && parentBlock) {
+                    const clipBottomY = worldToScreenY(parentBlock.baseY + blockBump);
+                    ctx.beginPath();
+                    ctx.rect(0, 0, canvas.width, clipBottomY);
+                    ctx.clip();
+                }
+                drawSpriteMatrix(shroomMatrix, MUSHROOM_PALETTE, m.x, drawY, PIXEL, {
+                    scaleX: m.scaleX,
+                    scaleY: m.scaleY
+                });
+                ctx.restore();
+            }
+
+            // 5. Spinning Golden Coins Above Green Blocks
+            for (const c of coins) {
+                const frameMatrix = COIN_FRAMES[c.frameIndex];
+                drawSpriteMatrix(frameMatrix, COIN_PALETTE, c.x, c.y, PIXEL);
+            }
+
+            // 6. Red Block Expanding Pixel Shockwave Rings
+            for (const sw of shockwaves) {
+                const sx = worldToScreenX(sw.x - sw.size / 2);
+                const sy = worldToScreenY(sw.y - sw.size / 2);
+                const pxSize = Math.floor(sw.size * PIXEL);
+
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, sw.alpha);
+                ctx.strokeStyle = sw.color || '#fb7185';
+                ctx.lineWidth = PIXEL * 1.5;
+                ctx.strokeRect(sx, sy, pxSize, pxSize);
+                ctx.restore();
+            }
+
+            // 7. Mystery Blocks & Transformed Colored Blocks
+            for (const b of blocks) {
+                drawBlock(b);
+            }
+
+            // 8. Crisp Underside Impact Spark Slashes
+            for (const fl of impactFlashes) {
+                const sx = worldToScreenX(fl.x - (fl.width * fl.life) / 2);
+                const sy = worldToScreenY(fl.y);
+                const wPx = Math.floor(fl.width * fl.life * PIXEL);
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, fl.life);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(sx, sy - PIXEL, wPx, PIXEL * 2);
+                ctx.fillStyle = fl.color;
+                ctx.fillRect(sx - PIXEL * 2, sy, wPx + PIXEL * 4, PIXEL);
+                ctx.restore();
+            }
+
+            // 9. Mario 16-Bit Motion Afterimages
+            for (const tr of marioTrails) {
+                drawSpriteMatrix(tr.sprite, PALETTE, tr.x, tr.y, PIXEL, {
+                    flipX: tr.facing === -1,
+                    scaleX: tr.scaleX,
+                    scaleY: tr.scaleY,
+                    alpha: tr.alpha * 0.55,
+                    tintColor: '#38bdf8'
+                });
+            }
+
+            // 10. Super Mario 16-Bit Sprite with Squash-and-Stretch & Dynamic Overhead Rim Glow
+            let marioMatrix = MARIO_SPRITES.run1;
+            if (mario.state === 'JUMPING') {
+                marioMatrix = mario.vy < 0.25 ? MARIO_SPRITES.jump : MARIO_SPRITES.fall;
+            } else {
+                if (mario.animFrame === 0) marioMatrix = MARIO_SPRITES.run1;
+                else if (mario.animFrame === 1) marioMatrix = MARIO_SPRITES.run2;
+                else marioMatrix = MARIO_SPRITES.run3;
+            }
+
+            drawSpriteMatrix(marioMatrix, PALETTE, mario.x, mario.y - 16, PIXEL, {
+                flipX: mario.facing === -1,
+                scaleX: mario.scaleX,
+                scaleY: mario.scaleY
+            });
+
+            // Dynamic Overhead Rim Highlight on Mario when jumping near a glowing block
+            if (mario.y < -6) {
+                const nearestBlock = blocks.find(b => Math.abs((b.x + 8) - (mario.x + 8)) < 20);
+                if (nearestBlock) {
+                    const theme = BLOCK_THEMES[nearestBlock.status];
+                    const proximityAlpha = Math.min(0.38, Math.abs(mario.y) / 48 * 0.35);
+                    drawSpriteMatrix(marioMatrix, PALETTE, mario.x, mario.y - 16, PIXEL, {
+                        flipX: mario.facing === -1,
+                        scaleX: mario.scaleX,
+                        scaleY: mario.scaleY,
+                        alpha: proximityAlpha,
+                        tintColor: theme.lightHex
+                    });
+                }
+            }
+
+            // 11. Crisp Square Pixel Particles & Bouncing Lava Embers
+            for (const p of particles) {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.life);
+                ctx.fillStyle = p.color;
+                const sx = worldToScreenX(p.x);
+                const sy = worldToScreenY(p.y);
+                ctx.fillRect(sx, sy, p.size * PIXEL, p.size * PIXEL);
+                ctx.restore();
+            }
+
+            // 12. Floating Pixel Score Callouts (+100, +500 JACKPOT!, 1UP SHROOM!)
+            for (const ft of floatingTexts) {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, Math.min(1, ft.life));
+                ctx.font = `${Math.max(10, PIXEL * 2.8)}px "Press Start 2P", monospace`;
+                ctx.textAlign = 'center';
+                const sx = worldToScreenX(ft.x);
+                const sy = worldToScreenY(ft.y);
+                ctx.fillStyle = '#000000';
+                ctx.fillText(ft.text, sx + PIXEL, sy + PIXEL);
+                ctx.fillStyle = ft.color;
+                ctx.fillText(ft.text, sx, sy);
+                ctx.restore();
+            }
+        }
+
+        /********************************************************************
+         * 9. HUD, KEYBOARD INPUT & INTERACTIVE CONTROLS
+         ********************************************************************/
+        const hudScore = document.getElementById('hudScore');
+        const hudStreak = document.getElementById('hudStreak');
+        const hudTotalBlocks = document.getElementById('hudTotalBlocks');
+        const hudGreenCount = document.getElementById('hudGreenCount');
+        const hudJackpotBadge = document.getElementById('hudJackpotBadge');
+        const hudPurpleCount = document.getElementById('hudPurpleCount');
+        const hudRedCount = document.getElementById('hudRedCount');
+        const controlModeText = document.getElementById('controlModeText');
+        const helperText = document.getElementById('helperText');
+
+        function updateHUD() {
+            hudScore.textContent = String(state.score).padStart(6, '0');
+            hudStreak.textContent = `x${state.streak}`;
+            hudTotalBlocks.textContent = state.counts.total;
+            hudGreenCount.textContent = state.counts.GREEN;
+            if (state.counts.JACKPOT > 0) {
+                hudJackpotBadge.classList.remove('hidden');
+                hudJackpotBadge.textContent = `★${state.counts.JACKPOT}`;
+            } else {
+                hudJackpotBadge.classList.add('hidden');
+            }
+            hudPurpleCount.textContent = state.counts.PURPLE;
+            hudRedCount.textContent = state.counts.RED;
+        }
+
+        function setControlMode(mode) {
+            state.controlMode = mode;
+            if (mode === 'MANUAL') {
+                controlModeText.textContent = 'Manual Keys';
+                helperText.textContent = 'MANUAL MODE: Hold [A/D] or [Left/Right] to Run • [SPACE / W / Up] to Jump • Click Auto-Pilot to resume!';
+            } else {
+                controlModeText.textContent = 'Auto-Pilot';
+                helperText.textContent = 'Click any block to trigger it • Press [SPACE] or [A/D] anytime to take Manual Control!';
+                mario.targetBlockIndex = Math.max(0, Math.ceil((mario.x - 4) / BLOCK_SPACING));
+            }
+        }
+
+        // Toggle Auto-Pilot vs Manual Mode Button
+        document.getElementById('btnControlMode').addEventListener('click', () => {
+            setControlMode(state.controlMode === 'AUTO' ? 'MANUAL' : 'AUTO');
+        });
+
+        // Keyboard Listeners for Instant Manual Override or Jump
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+                keys.left = true;
+                if (state.controlMode === 'AUTO') setControlMode('MANUAL');
+            }
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+                keys.right = true;
+                if (state.controlMode === 'AUTO') setControlMode('MANUAL');
+            }
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+                keys.jump = true;
+                if (state.controlMode === 'AUTO' && mario.state === 'RUNNING') {
+                    // Allow instant manual jump even in Auto-Pilot
+                    mario.state = 'JUMPING';
+                    mario.vy = -3.5;
+                    mario.hasHitCurrentBlock = false;
+                    mario.scaleX = 0.78;
+                    mario.scaleY = 1.26;
+                    spawnFootDust(mario.x, 0, 7);
+                    sfx.playJump();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') keys.jump = false;
+        });
+
+        // Play / Pause Button
+        const btnPlayPause = document.getElementById('btnPlayPause');
+        const playPauseIcon = document.getElementById('playPauseIcon');
+        const playPauseText = document.getElementById('playPauseText');
+
+        btnPlayPause.addEventListener('click', () => {
+            state.paused = !state.paused;
+            if (state.paused) {
+                playPauseIcon.textContent = '▶';
+                playPauseText.textContent = 'PLAY';
+                btnPlayPause.classList.replace('bg-amber-500', 'bg-emerald-500');
+                btnPlayPause.classList.replace('hover:bg-amber-400', 'hover:bg-emerald-400');
+            } else {
+                playPauseIcon.textContent = 'II';
+                playPauseText.textContent = 'PAUSE';
+                btnPlayPause.classList.replace('bg-emerald-500', 'bg-amber-500');
+                btnPlayPause.classList.replace('hover:bg-emerald-400', 'hover:bg-amber-400');
+            }
+        });
+
+        // Audio Toggle Button
+        const btnAudio = document.getElementById('btnAudio');
+        const audioIcon = document.getElementById('audioIcon');
+        const audioText = document.getElementById('audioText');
+
+        btnAudio.addEventListener('click', () => {
+            const on = sfx.toggle();
+            audioIcon.textContent = on ? '🔊' : '🔇';
+            audioText.textContent = on ? 'SFX: ON' : 'SFX: OFF';
+            btnAudio.classList.toggle('border-amber-500', on);
+            btnAudio.classList.toggle('text-amber-300', on);
+        });
+
+        // Speed Slider
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        speedSlider.addEventListener('input', (e) => {
+            state.speed = parseFloat(e.target.value);
+            speedValue.textContent = state.speed.toFixed(1) + 'x';
+        });
+
+        // Force Outcome Buttons (Random / Green / Jackpot / Purple / Red)
+        const forceBtns = document.querySelectorAll('.force-btn');
+        forceBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                state.forceOutcome = btn.getAttribute('data-force');
+                forceBtns.forEach(b => b.classList.remove('bg-slate-700', 'text-white'));
+                btn.classList.add('bg-slate-700', 'text-white');
+            });
+        });
+
+        // CRT Scanline Post-Processing Toggle
+        const btnCrtToggle = document.getElementById('btnCrtToggle');
+        const crtLayer = document.getElementById('crtLayer');
+        btnCrtToggle.addEventListener('click', () => {
+            state.crtEnabled = !state.crtEnabled;
+            crtLayer.classList.toggle('hidden', !state.crtEnabled);
+            btnCrtToggle.textContent = state.crtEnabled ? 'CRT: ON' : 'CRT: OFF';
+            btnCrtToggle.classList.toggle('border-cyan-500', state.crtEnabled);
+            btnCrtToggle.classList.toggle('text-cyan-300', state.crtEnabled);
+        });
+
+        // Pure Contrast Backdrop Toggle
+        const btnBgToggle = document.getElementById('btnBgToggle');
+        btnBgToggle.addEventListener('click', () => {
+            state.bgIndex = (state.bgIndex + 1) % state.bgStyles.length;
+            const currentBg = state.bgStyles[state.bgIndex];
+            btnBgToggle.textContent = `BG: ${currentBg.name}`;
+            document.documentElement.style.setProperty('--bg-color', currentBg.color);
+        });
+
+        // Reset Button
+        document.getElementById('btnReset').addEventListener('click', () => {
+            mario.x = -24;
+            mario.y = 0;
+            mario.vy = 0;
+            mario.facing = 1;
+            mario.state = 'RUNNING';
+            mario.targetBlockIndex = 0;
+            mario.scaleX = 1;
+            mario.scaleY = 1;
+            state.cameraX = mario.x;
+            state.score = 0;
+            state.streak = 0;
+            state.counts = { total: 0, GREEN: 0, JACKPOT: 0, PURPLE: 0, RED: 0 };
+            blocks = [];
+            coins = [];
+            coinQueue = [];
+            mushrooms = [];
+            particles = [];
+            floatingTexts = [];
+            shockwaves = [];
+            impactFlashes = [];
+            marioTrails = [];
+            setControlMode('AUTO');
+            ensureBlocksExist();
+            updateHUD();
+        });
+
+        // Interactive Canvas Click: Click any Mystery Block to trigger or cycle its color!
+        canvas.addEventListener('pointerdown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            for (const b of blocks) {
+                const sx = worldToScreenX(b.x);
+                const sy = worldToScreenY(b.baseY + b.bumpOffset);
+                const sizePx = BLOCK_SIZE * PIXEL;
+
+                if (
+                    clickX >= sx - 10 &&
+                    clickX <= sx + sizePx + 10 &&
+                    clickY >= sy - 10 &&
+                    clickY <= sy + sizePx + 10
+                ) {
+                    const order = ['GREEN', 'PURPLE', 'RED'];
+                    let nextColor = null;
+                    if (state.forceOutcome !== 'RANDOM') {
+                        nextColor = state.forceOutcome;
+                    } else if (b.status !== 'MYSTERY') {
+                        nextColor = order[(order.indexOf(b.status) + 1) % order.length];
+                    }
+                    triggerBlockHit(b, nextColor, false);
+                    break;
+                }
+            }
+        });
+
+        /********************************************************************
+         * 10. RESPONSIVE CANVAS RESIZING & ANIMATION LOOP START
+         ********************************************************************/
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const minDim = Math.min(canvas.width, canvas.height);
+            PIXEL = Math.max(3, Math.min(6, Math.floor(minDim / 135)));
+            FLOOR_Y = Math.floor(canvas.height * 0.68);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function animateLoop() {
+            updateSimulation();
+            renderScene();
+            requestAnimationFrame(animateLoop);
+        }
+
+        window.onload = function () {
+            resizeCanvas();
+            mario.x = -24;
+            state.cameraX = mario.x;
+            ensureBlocksExist();
+            updateHUD();
+            animateLoop();
+        };
+    </script>
+</body>
+</html>

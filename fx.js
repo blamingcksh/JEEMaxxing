@@ -11,7 +11,7 @@
   window.__fxInit = true;
 
   var LS = 'jeemax_fx_prefs';
-  var DEFAULT = { sound: true, hover: false, effects: true, haptics: true, volume: 0.7 };
+  var DEFAULT = { sound: true, marioSound: true, hover: false, effects: true, haptics: true, volume: 0.7 };
 
   // ── prefs ────────────────────────────────────────────────────────────────
   function load() {
@@ -32,6 +32,7 @@
   var prefs = load();
 
   function wantSound()      { return !!prefs.sound; }
+  function wantMarioSound() { return prefs.marioSound !== false; }
   function wantHoverSound() { return !!prefs.sound && !!prefs.hover; }
   function wantEffects()    { return !!prefs.effects; }
   function wantHaptic()     { return !!prefs.haptics; }
@@ -57,7 +58,7 @@
   // never construct the context at all — a live AudioContext pins an audio
   // hardware session (measurable battery cost on mobile) while producing
   // nothing; enabling sound later lazily builds it on the first tone.
-  function unlock() { if (!prefs.sound) return; var c = ctx(); if (c && c.state === 'suspended') { try { c.resume(); } catch (e) {} } }
+  function unlock() { if (!prefs.sound && !wantMarioSound()) return; var c = ctx(); if (c && c.state === 'suspended') { try { c.resume(); } catch (e) {} } }
   document.addEventListener('pointerdown', unlock, { passive: true });
   document.addEventListener('keydown', unlock, { passive: true });
 
@@ -113,7 +114,8 @@
     blip:    function () { tone({ type: 'sine',     f: 1200,       dur: 0.03, g: 0.05 }); },
     tick:    function () { tone({ type: 'triangle', f: 900,        dur: 0.03, g: 0.07 }); },
     hover:   function () { tone({ type: 'sine',     f: 1500,       dur: 0.02, g: 0.025 }); },
-    success: function () { var f = [523, 659, 783]; for (var i = 0; i < f.length; i++) tone({ type: 'sine', f: f[i], dur: 0.12, g: 0.12, at: i * 0.07 }); }
+    success: function () { var f = [523, 659, 783]; for (var i = 0; i < f.length; i++) tone({ type: 'sine', f: f[i], dur: 0.12, g: 0.12, at: i * 0.07 }); },
+    marioCoin: function () { tone({ type: 'square', f: 987.77, dur: 0.07, g: 0.085, at: 0 }); tone({ type: 'square', f: 1318.51, dur: 0.28, g: 0.085, at: 0.07 }); }
   };
   function sound(name) { if (!prefs.sound) return; var fn = SFX[name]; if (fn) { try { fn(); } catch (e) {} } }
   function haptic(p) { if (!prefs.haptics) return; if (navigator && navigator.vibrate) { try { navigator.vibrate(p); } catch (e) {} } }
@@ -246,7 +248,8 @@
     el.addEventListener('change', function () {
       prefs[key] = el.checked; save(); applyBody();
       haptic([6]);
-      if (prefs.sound) sound(key === 'sound' ? 'confirm' : 'toggle');
+      if (key === 'marioSound') { if (prefs.marioSound) { try { SFX.marioCoin(); } catch (e) {} } }
+      else if (prefs.sound) sound(key === 'sound' ? 'confirm' : 'toggle');
     });
   }
   function wireRange(id, key) {
@@ -260,6 +263,7 @@
 
   function wireSettings() {
     wireBool('fx-sound', 'sound');
+    wireBool('fx-mario-sound', 'marioSound');
     wireBool('fx-effects', 'effects');
     wireBool('fx-haptics', 'haptics');
     wireBool('fx-hover', 'hover');
@@ -304,9 +308,12 @@
     haptic: haptic,
     ripple: ripple,
     wantSound: wantSound,
+    wantMarioSound: wantMarioSound,
     wantHoverSound: wantHoverSound,
     wantEffects: wantEffects,
     wantHaptic: wantHaptic,
-    setPref: function (k, v) { prefs[k] = v; save(); applyBody(); }
+    ctx: ctx,
+    vol: vol,
+    setPref: function (k, v) { prefs[k] = v; save(); applyBody(); var idMap = { sound: 'fx-sound', marioSound: 'fx-mario-sound', effects: 'fx-effects', haptics: 'fx-haptics', hover: 'fx-hover' }; if (idMap[k]) { var el = document.getElementById(idMap[k]); if (el) el.checked = !!prefs[k]; } }
   };
 })();

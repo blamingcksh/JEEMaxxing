@@ -288,6 +288,38 @@ console.log('── Flow vs Hardcore serve DIFFERENT questions (hardcore floor) 
     ok(hardPick !== flowPick, 'Flow and Hardcore do NOT serve the same question (' + flowPick + ' vs ' + hardPick + ')');
 }
 
+console.log('── Flow/Hardcore: top-left Skip advances after answer, Continue btn stays hidden, MCQ submit btn hidden ──');
+{
+    seedBank(0, 'physics', 'Thermo', 0, 1200);
+    AppState.questionBank = [mk('m0', 1200), mk('m1', 1250), mk('m2', 1300)];
+    globalThis.startFlowPractice();
+    const firstId = currentId();
+    ok(document.getElementById('practice-submit-btn').style.display === 'none', 'MCQ hides #practice-submit-btn (hold-to-reveal only)');
+    ok(document.getElementById('practice-continue-btn').style.display === 'none', '#practice-continue-btn hidden while solving in Flow');
+    ok(document.getElementById('practice-skip-btn').style.display === '', '#practice-skip-btn visible while solving in Flow');
+
+    // Holding screen without selecting an MCQ option enters self-report reveal flow
+    appMod.practiceSubmit();
+    ok(currentSubmitted() === true, 'MCQ hold-submit without selection reveals answer');
+    ok(document.getElementById('practice-continue-btn').style.display === 'none', '#practice-continue-btn stays hidden after reveal in Flow');
+    ok(document.getElementById('practice-skip-btn').style.display === '', '#practice-skip-btn stays visible after reveal in Flow');
+
+    // Clicking top-left ⏭ (openSkipPopover) when already answered advances directly to next question
+    globalThis.openSkipPopover();
+    const secondId = currentId();
+    ok(secondId !== firstId, 'Top-left ⏭ advances directly to next question when current is answered');
+    ok(currentSubmitted() === false, 'New question starts unanswered');
+
+    // Selecting an MCQ option and holding screen grades the option and keeps Continue hidden + Skip visible
+    AppState.selectedMcq = 'A';
+    appMod.practiceSubmit();
+    ok(currentSubmitted() === true, 'MCQ hold-submit with selection grades answer');
+    ok(document.getElementById('practice-continue-btn').style.display === 'none', '#practice-continue-btn stays hidden after graded MCQ in Flow');
+    ok(document.getElementById('practice-skip-btn').style.display === '', '#practice-skip-btn stays visible after graded MCQ in Flow');
+    globalThis.openSkipPopover();
+    ok(currentId() !== secondId, 'Top-left ⏭ advances after graded MCQ in Flow');
+}
+
 console.log('\nAll practice-nav assertions passed (' + passed + ' checks).');
 // Boot machinery (KaTeX watchdog, coalesced-save timers, …) keeps the event
 // loop alive in a stub environment — exit explicitly. Failures above throw
