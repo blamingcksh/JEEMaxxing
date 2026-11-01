@@ -1017,13 +1017,17 @@ class RetroSoundEngine {
         } catch (_) {}
     }
 
-    playMegaHit(outcome, comboStep = 0) {
+    playMegaHit(outcome, comboStep = 0, coinCount = 2) {
         const ratio = comboRatio(comboStep);
         this.playBump(ratio);
         if (outcome === 'green') {
-            this.playCoin(0, ratio);
-            this.playCoin(2, ratio);
-            if (comboStep >= 3) this.playCoin(0, ratio * 2, 0.09);
+            const count = Math.max(2, coinCount | 0);
+            for (let i = 0; i < count; i++) {
+                this.playCoin(i, ratio, i * 0.058);
+            }
+            if (comboStep >= 3) {
+                this.playCoin(0, ratio * 2, count * 0.058 + 0.03);
+            }
         } else if (outcome === 'red') {
             this.playRedNova();
         } else {
@@ -1896,6 +1900,13 @@ class MarioRecapScene {
 
         for (let i = this.coins.length - 1; i >= 0; i--) {
             const c = this.coins[i];
+            if (c.delay > 0) {
+                c.delay -= dt;
+                if (c.delay <= 0 && c.reBump && this.megaBlock.visible) {
+                    this.megaBlock.bumpVelocity = Math.min(this.megaBlock.bumpVelocity, -1.35);
+                }
+                continue;
+            }
             c.x += c.vx * dt;
             c.y += c.vy * dt;
             c.vy += c.gravity * dt;
@@ -2087,14 +2098,15 @@ class MarioRecapScene {
 
     beginMegaAnticipation() {
         if (this.destroyed || this.run.finished) return;
-        const ms = effectsOn() ? megaAnticipationMs(this.run.combo) : 0;
-        if (ms <= 0) {
+        const baseMs = effectsOn() ? megaAnticipationMs(this.run.combo) : 0;
+        if (baseMs <= 0) {
             this.triggerMegaBlockHit();
             return;
         }
-        this.run.anticipationMs = ms;
+        const jitter = (Math.random() - 0.5) * 36;
+        this.run.anticipationMs = clamp(Math.round(baseMs + jitter), 180, 250);
         if (this.overlay) {
-            this.overlay.dataset.megaAnticipation = String(Math.round(ms));
+            this.overlay.dataset.megaAnticipation = String(Math.round(baseMs));
         }
     }
 
@@ -2106,6 +2118,9 @@ class MarioRecapScene {
         const bottomY = mb.baseY + MEGA_BLOCK_SIZE;
         const ratio = comboRatio(this.run.combo);
         const boosted = effectsOn();
+        const coinCount = outcome === 'green'
+            ? (this.verdict.hasVictory && Math.random() < 0.2 ? 5 : (Math.random() < 0.5 ? 3 : 2))
+            : 0;
 
         mb.hit = true;
         mb.status = outcome;
@@ -2117,7 +2132,7 @@ class MarioRecapScene {
         const shakePx = outcome === 'green' || outcome === 'red' ? MEGA_SHAKE_PX : 1.5;
         this.run.hitStopFrames = 2;
         this.run.shakeIntensity = (boosted ? shakePx : 1.0) / (0.225 * this.pixel);
-        this.sfx.playMegaHit(outcome, this.run.combo);
+        this.sfx.playMegaHit(outcome, this.run.combo, coinCount);
 
         const theme = BLOCK_THEMES[outcome] || BLOCK_THEMES.green;
         this.impactFlashes.push({
@@ -2138,8 +2153,10 @@ class MarioRecapScene {
         });
 
         if (outcome === 'green') {
-            this.launchSingleCoin(centerX - 8, topY, ratio);
-            this.launchSingleCoin(centerX + 8, topY, ratio);
+            const offsets = [-8, 8, 0, -11, 11];
+            for (let i = 0; i < coinCount; i++) {
+                this.launchSingleCoin(centerX + offsets[i % offsets.length], topY, ratio, true, i * 3.5);
+            }
             this.spawnPixelParticles(centerX, topY + 6, ['#10b981', '#6ee7b7', '#fde047', '#ffffff'], boosted ? 40 : 22, 2.0, false);
         } else if (outcome === 'red') {
             this.spawnPixelParticles(centerX, topY + 12, ['#f43f5e', '#fb7185', '#fb923c', '#fde047'], boosted ? 46 : 26, 2.4, true);
@@ -2295,8 +2312,8 @@ class MarioRecapScene {
         this.updateHud();
     }
 
-    launchSingleCoin(blockCenterX, blockTopY, ratio = 1) {
-        this.sfx.playCoin(0, ratio);
+    launchSingleCoin(blockCenterX, blockTopY, ratio = 1, silent = false, delayTicks = 0) {
+        if (!silent) this.sfx.playCoin(0, ratio);
         this.coins.push({
             x: blockCenterX - 5,
             y: blockTopY - 6,
@@ -2304,7 +2321,9 @@ class MarioRecapScene {
             vy: -2.85,
             gravity: 0.13,
             frameTimer: 0,
-            frameIndex: 0
+            frameIndex: 0,
+            delay: delayTicks,
+            reBump: delayTicks > 0
         });
         this.spawnPixelParticles(blockCenterX, blockTopY + 2, ['#10b981', '#6ee7b7', '#fde047', '#ffffff'], 10, 1.6, false);
     }
@@ -2747,6 +2766,7 @@ class MarioRecapScene {
         }
 
         for (const c of this.coins) {
+            if (c.delay > 0) continue;
             if (this.isVisibleX(c.x, 14)) {
                 this.drawSpriteMatrix(COIN_FRAMES[c.frameIndex], COIN_PALETTE, c.x, c.y, this.pixel);
             }
