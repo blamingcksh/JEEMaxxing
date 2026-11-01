@@ -933,13 +933,13 @@ export function openModal(id) {
         // Own the user's attention while a solve is on stage (P0-1 gate).
         SessionFocus.acquire('practice');
         try { document.body.classList.add('pq-active'); } catch (_) {}
-        // Default to Roast (warm dark coffee) on open; moon toggles to Parchment (warm light paper)
+        // Default to Parchment (warm light paper) on open; moon toggles to Roast (warm dark coffee)
         try {
-            document.body.classList.add('immersive-active');
+            document.body.classList.remove('immersive-active');
             if (typeof _syncImmersiveBtn === 'function') _syncImmersiveBtn();
             else {
                 const _mb = document.getElementById('immersive-focus-btn');
-                if (_mb && _mb.classList.contains('pq-corner-moon')) { _mb.textContent = '◑'; _mb.style.color = '#d4a017'; }
+                if (_mb && _mb.classList.contains('pq-corner-moon')) { _mb.textContent = '☾'; _mb.style.color = ''; }
             }
         } catch (_) {}
         try { _pqBindHold(); } catch (_) {}

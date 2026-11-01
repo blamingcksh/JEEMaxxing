@@ -45,6 +45,9 @@ import {
 // handshake (directive.js must not import this module — no cycle).
 import { Directive } from './directive.js';
 
+// Mario recap — same singleton the Arena stage uses. Zero-dependency module.
+import { SessionRecap } from './mario-recap.js';
+
 // Memory Kernel v2 — canonical pure implementation (imported directly; the
 // kernel has zero dependencies so this cannot form a cycle).
 import {
@@ -649,17 +652,25 @@ function _srUpdatePace() {
 export function srPracticePrev() {
     const qInfo = _getActiveVaultQueue(_drawerState.qId);
     if (qInfo.prevId) {
+        _srNoteSkipIfUnlogged();
         openPracticeDrawer(qInfo.prevId);
     }
 }
 
 export function srPracticeNext() {
     const qInfo = _getActiveVaultQueue(_drawerState.qId);
+    _srNoteSkipIfUnlogged();
     if (qInfo.nextId) {
         openPracticeDrawer(qInfo.nextId);
     } else {
         closePracticeDrawer();
     }
+}
+
+// recordSkip() is a no-op if the card was already logged, so this is safe to call unconditionally.
+function _srNoteSkipIfUnlogged() {
+    if (AppState.bountyMode) return;
+    try { const q = _currentDrawerQuestion(); if (q) SessionRecap.recordSkip(q); } catch (_) {}
 }
 
 export function submitPracticeLogAndNext() {
@@ -705,8 +716,15 @@ export function openPracticeDrawer(qId) {
     if (!q) return;
     qId = String(q.id);
 
+    // Fresh open vs. in-session navigation (prev / next / Log & Next).
+    const _wasOpen = !!document.getElementById('sr-practice-overlay');
+    const _keepRoast = _wasOpen && document.body.classList.contains('immersive-active');
+
     // Close any existing drawer
-    closePracticeDrawer();
+    closePracticeDrawer({ recap: false });
+
+    // New Vault session → fresh Mario ledger.
+    if (!_wasOpen && !AppState.bountyMode) { try { SessionRecap.reset(); } catch (_) {} }
 
     _drawerState.qId = qId;
     _drawerState.targetTimeMins = q.targetTimeMins || 5;
@@ -747,7 +765,8 @@ export function openPracticeDrawer(qId) {
     SessionFocus.acquire('vault-drawer');
     try {
         document.body.classList.add('pq-active');
-        document.body.classList.add('immersive-active');
+        // Parchment by default; only carry Roast over if the user toggled it this session.
+        document.body.classList.toggle('immersive-active', _keepRoast);
     } catch (_) {}
     const isRoast = typeof document !== 'undefined' && document.body.classList.contains('immersive-active');
 
@@ -877,7 +896,10 @@ export function openPracticeDrawer(qId) {
     _postRenderDrawer(q);
 }
 
-export function closePracticeDrawer() {
+export function closePracticeDrawer(opts) {
+    const _overlayWas = document.getElementById('sr-practice-overlay');
+    // Tone must be read BEFORE immersive-active is removed (same rule as closePracticeModal).
+    const _recapTone = document.body.classList.contains('immersive-active') ? 'night' : 'parchment';
     SessionFocus.release('vault-drawer');
     try {
         document.body.classList.remove('pq-active');
@@ -905,6 +927,10 @@ export function closePracticeDrawer() {
     _resetDrawerState();
     const overlay = document.getElementById('sr-practice-overlay');
     if (overlay) overlay.remove();
+
+    if (_overlayWas && !(opts && opts.recap === false) && !AppState.bountyMode) {
+        try { return SessionRecap.play({ tone: _recapTone }); } catch (_) {}
+    }
 }
 
 // ── Practice drawer: helpers ───────────────────────────────────────────────
@@ -2444,6 +2470,19 @@ export function submitPracticeLog(opts) {
             _drawerState.confidence = null;   // consumed — never leaks to next log
         }
     } catch (_) { /* honesty adjustment must never block the log */ }
+
+    // ── Mario recap: one entry per logged Vault card (skipped for Bounty, as in the Arena) ──
+    if (!AppState.bountyMode) {
+        try {
+            const _secs = Math.max(0, Math.round((_drawerState.frozenTimeMins || timeSpent || 0) * 60));
+            SessionRecap.record(q, {
+                correct: _drawerState.result === 'correct',
+                secs: _secs,
+                targetSecs: Math.round((_drawerState.targetTimeMins || 5) * 60),
+            });
+            if (_drawerState.eloResult) SessionRecap.noteElo(q, _drawerState.eloResult.deltaSubject);
+        } catch (_) { /* recap must never block the log */ }
+    }
 
     // The bridge snapshot is CONSUMED: this log records the historyLog, the
     // schedule and the merge clock that the moment-of-truth write needed.

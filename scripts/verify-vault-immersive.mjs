@@ -168,6 +168,7 @@ const splitCheck = await page.evaluate(() => {
         mediaTop: mediaRect ? Math.round(mediaRect.top) : 0,
         zeroClippingTop: mediaRect ? mediaRect.top >= 30 : false,
         moonIcon: moonBtn ? moonBtn.textContent.trim() : '',
+        isImmersive: document.body.classList.contains('immersive-active'),
         moonBgTransparent: moonBg === 'rgba(0, 0, 0, 0)' || moonBg === 'transparent',
         prevBgTransparent: prevBg === 'rgba(0, 0, 0, 0)' || prevBg === 'transparent',
         hasHoldHint: !!holdHint,
@@ -187,14 +188,26 @@ if (!splitCheck.zeroClippingTop) {
 if (splitCheck.shellWidth < 880) {
     throw new Error('Expected 920px shell width in split view, got ' + splitCheck.shellWidth);
 }
-if (splitCheck.moonIcon !== '◑') {
-    throw new Error('Expected gold moon ◑ in Roast mode, got ' + splitCheck.moonIcon);
+if (splitCheck.moonIcon !== '☾' || splitCheck.isImmersive) {
+    throw new Error('Expected the Parchment moon ☾ with Roast off on open, got ' + JSON.stringify({ moonIcon: splitCheck.moonIcon, isImmersive: splitCheck.isImmersive }));
 }
 
-// Screenshot 1: Wave Optics Split-View in Roast Mode
+// Screenshot 1: Wave Optics Split-View in Parchment Mode
 const shotSplitPath = path.join(ARTIFACT_DIR, 'vault_stage_split_view.png');
 await page.screenshot({ path: shotSplitPath });
 console.log('✓ Screenshot saved:', shotSplitPath);
+
+// Moon toggle: Parchment → Roast. Roast is kept through Log & Next so the
+// in-session theme carry-over can be asserted below.
+await page.click('#sr-moon-btn');
+await page.waitForTimeout(250);
+const roastToggle = await page.evaluate(() => ({
+    isImmersive: document.body.classList.contains('immersive-active'),
+    moonIcon: (document.getElementById('sr-moon-btn') || {}).textContent?.trim() || '',
+}));
+if (!roastToggle.isImmersive || roastToggle.moonIcon !== '◑') {
+    throw new Error('Expected Roast (gold ◑) after one moon tap, got ' + JSON.stringify(roastToggle));
+}
 
 // Test Hold anywhere (on background) 0.8s to reveal answer
 console.log('Testing 0.8s hold anywhere on stage to reveal answer...');
@@ -256,6 +269,30 @@ const debugInfo = await page.evaluate(() => {
 });
 console.log('DEBUG INFO after Log & Next:', JSON.stringify(debugInfo, null, 2));
 
+// The moon toggle made on the previous card must survive ‹ / › navigation.
+if (debugInfo.overlayExists) {
+    const carriedTheme = await page.evaluate(() => ({
+        isImmersive: document.body.classList.contains('immersive-active'),
+        moonIcon: (document.getElementById('sr-moon-btn') || {}).textContent?.trim() || '',
+    }));
+    if (!carriedTheme.isImmersive || carriedTheme.moonIcon !== '◑') {
+        throw new Error('Expected Roast to carry into the next card, got ' + JSON.stringify(carriedTheme));
+    }
+    console.log('✓ Roast theme carried into the next card');
+
+    // Back to Parchment for the rest of the run.
+    await page.click('#sr-moon-btn');
+    await page.waitForTimeout(250);
+    const parchmentToggle = await page.evaluate(() => ({
+        isImmersive: document.body.classList.contains('immersive-active'),
+        moonIcon: (document.getElementById('sr-moon-btn') || {}).textContent?.trim() || '',
+    }));
+    if (parchmentToggle.isImmersive || parchmentToggle.moonIcon !== '☾') {
+        throw new Error('Expected Parchment (☾) after the second moon tap, got ' + JSON.stringify(parchmentToggle));
+    }
+    console.log('✓ Moon toggled back to Parchment');
+}
+
 // =========================================================================
 // TEST 2 & 3: Progress through remaining cards in queue (MCQ & Numeric)
 // =========================================================================
@@ -304,16 +341,16 @@ async function handleNextCard() {
         await page.screenshot({ path: shotNumericPath });
         console.log('✓ Screenshot saved:', shotNumericPath);
 
-        // Toggle Moon button (Roast -> Parchment)
-        console.log('Toggling theme to Parchment with #sr-moon-btn...');
+        // Toggle Moon button (Parchment -> Roast)
+        console.log('Toggling theme to Roast with #sr-moon-btn...');
         await page.click('#sr-moon-btn');
         await page.waitForTimeout(300);
 
-        const shotParchmentPath = path.join(ARTIFACT_DIR, 'vault_stage_parchment.png');
-        await page.screenshot({ path: shotParchmentPath });
-        console.log('✓ Screenshot saved:', shotParchmentPath);
+        const shotRoastPath = path.join(ARTIFACT_DIR, 'vault_stage_roast.png');
+        await page.screenshot({ path: shotRoastPath });
+        console.log('✓ Screenshot saved:', shotRoastPath);
 
-        // Toggle back to Roast mode
+        // Toggle back to Parchment mode
         await page.click('#sr-moon-btn');
         await page.waitForTimeout(200);
 
