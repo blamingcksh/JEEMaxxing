@@ -128,6 +128,39 @@ try {
         window.__recapPromise = window.SessionRecap.play().then(() => { window.__recapDone = true; });
     });
 
+    const measureMegaGap = () => page.evaluate(() => new Promise((resolve) => {
+        const startedAt = performance.now();
+        let anticipationAt = 0;
+        const tick = () => {
+            const overlay = document.getElementById('mario-recap');
+            if (!overlay) {
+                resolve({ gap: -1 });
+                return;
+            }
+            const now = performance.now();
+            if (!anticipationAt && overlay.dataset.megaAnticipation) anticipationAt = now;
+            if (anticipationAt && overlay.dataset.megaPop) {
+                resolve({
+                    gap: Math.round(now - anticipationAt),
+                    anticipationMs: Number(overlay.dataset.megaAnticipation),
+                    pop: overlay.dataset.megaPop,
+                });
+                return;
+            }
+            if (now - startedAt > 20000) {
+                resolve({ gap: -2 });
+                return;
+            }
+            requestAnimationFrame(tick);
+        };
+        tick();
+    }));
+
+    const skipToSummaryIfPlaying = () => page.evaluate(() => {
+        const el = document.getElementById('mario-recap');
+        if (el && !el.querySelector('#mario-recap-pill.is-summary')) el.click();
+    });
+
     console.log('-- Mario recap browser QA --');
 
     const summary = await seed([
@@ -529,6 +562,98 @@ try {
     await page.mouse.click(20, 120);
     await waitGone(page);
 
+    // Combo pitch escalation: green, purple, green, red, green, skip, green
+    await page.evaluate(() => {
+        window.SessionRecap.reset();
+        window.SessionRecap.record({ id: 'combo-1' }, { correct: true, secs: 120, targetSecs: 90 });
+        window.SessionRecap.record({ id: 'combo-2' }, { correct: true, secs: 20, targetSecs: 90 });
+        window.SessionRecap.record({ id: 'combo-3' }, { correct: true, secs: 120, targetSecs: 90 });
+        window.SessionRecap.record({ id: 'combo-4' }, { correct: false, secs: 40, targetSecs: 90 });
+        window.SessionRecap.record({ id: 'combo-5' }, { correct: true, secs: 120, targetSecs: 90 });
+        window.SessionRecap.recordSkip({ id: 'combo-6' });
+        window.SessionRecap.record({ id: 'combo-7' }, { correct: true, secs: 120, targetSecs: 90 });
+    });
+    await start();
+    await page.waitForSelector('#mario-recap');
+    await page.waitForFunction(() => {
+        const el = document.getElementById('mario-recap');
+        return !!el && JSON.parse(el.dataset.comboPitches || '[]').length >= 5;
+    }, { timeout: 15000 });
+    const comboPitches = await page.evaluate(() => {
+        const el = document.getElementById('mario-recap');
+        return JSON.parse(el.dataset.comboPitches || '[]');
+    });
+    ok(
+        JSON.stringify(comboPitches) === JSON.stringify([0, 2, 4, 0, 2]),
+        'combo pitches climb the scale, reset on a wrong block, and hold across a skip',
+        JSON.stringify(comboPitches)
+    );
+    await skipToSummaryIfPlaying();
+    await page.waitForSelector('#mario-recap-pill.is-summary');
+    await page.mouse.click(20, 120);
+    await waitGone(page);
+
+    // Anticipation beat at 1x
+    await seed(Array.from({ length: 7 }, (_, i) => ({
+        id: 'anticipation-1x-' + i,
+        correct: true,
+        secs: 120,
+        targetSecs: 90,
+    })));
+    await start();
+    await page.waitForSelector('#mario-recap');
+    const gap1x = await measureMegaGap();
+    ok(gap1x.gap >= 170 && gap1x.gap <= 300, 'mega block holds a real-time anticipation beat at 1x', JSON.stringify(gap1x));
+    ok(gap1x.anticipationMs >= 180 && gap1x.anticipationMs <= 250, '1x anticipation duration stays inside 180-250ms', JSON.stringify(gap1x));
+    await page.waitForSelector('#mario-recap-pill.is-summary', { timeout: 15000 });
+    await page.mouse.click(20, 120);
+    await waitGone(page);
+
+    // Anticipation beat at 3x
+    await seed(Array.from({ length: 24 }, (_, i) => ({
+        id: 'anticipation-3x-' + i,
+        correct: true,
+        secs: 120,
+        targetSecs: 90,
+    })));
+    await start();
+    await page.waitForSelector('#mario-recap');
+    const gap3x = await measureMegaGap();
+    ok(gap3x.gap >= 170 && gap3x.gap <= 300, 'mega block anticipation stays wall-clock timed at 3x', JSON.stringify(gap3x));
+    ok(gap3x.anticipationMs === 228, 'long streak caps the anticipation at 228ms', JSON.stringify(gap3x));
+    await page.waitForSelector('#mario-recap-pill.is-summary', { timeout: 20000 });
+    await page.mouse.click(20, 120);
+    await waitGone(page);
+
+    // Skipping during the freeze must not fire the mega payoff
+    await seed(Array.from({ length: 7 }, (_, i) => ({
+        id: 'anticipation-skip-' + i,
+        correct: true,
+        secs: 120,
+        targetSecs: 90,
+    })));
+    await start();
+    await page.waitForSelector('#mario-recap');
+    await page.waitForFunction(() => {
+        const el = document.getElementById('mario-recap');
+        return !!el && !!el.dataset.megaAnticipation && !el.dataset.megaPop;
+    }, { timeout: 15000 });
+    await page.evaluate(() => document.getElementById('mario-recap').click());
+    await page.waitForSelector('#mario-recap-pill.is-summary');
+    await page.waitForTimeout(320);
+    const skipFreeze = await page.evaluate(() => {
+        const el = document.getElementById('mario-recap');
+        return {
+            megaPop: el.dataset.megaPop,
+            megaAnticipation: el.dataset.megaAnticipation,
+            summary: document.getElementById('mario-recap-summary').textContent,
+        };
+    });
+    ok(skipFreeze.megaPop === undefined, 'skipping during the freeze never spawns the mega payoff', JSON.stringify(skipFreeze));
+    ok(skipFreeze.summary.length > 0, 'skipping during the freeze lands on the summary', JSON.stringify(skipFreeze));
+    await page.mouse.click(20, 120);
+    await waitGone(page);
+
     const noResults = await page.evaluate(() => {
         window.SessionRecap.reset();
         return window.SessionRecap.play();
@@ -653,7 +778,12 @@ try {
     ok(appSync, 'real closePracticeModal launches the recap synchronously');
     await appPage.waitForSelector('#mario-recap', { timeout: 5000 });
     await appPage.waitForTimeout(300);
-    await appPage.mouse.click(70, 70);
+    // Skip to the summary unless the run already finished on its own — a click
+    // on a visible summary dismisses it instead, which races with short runs.
+    await appPage.evaluate(() => {
+        const el = document.getElementById('mario-recap');
+        if (el && !el.querySelector('#mario-recap-pill.is-summary')) el.click();
+    });
     await appPage.waitForSelector('#mario-recap-pill.is-summary');
     const appSummary = await appPage.evaluate(() => ({
         text: document.getElementById('mario-recap-summary').textContent,
@@ -670,11 +800,11 @@ try {
     await appPage.screenshot({ path: path.join(SHOTS, 'mario-recap-app-night.png') });
     await appPage.evaluate(() => { document.documentElement.dataset.mode = 'dusk'; });
     await appPage.waitForTimeout(120);
-    const duskBg = await appPage.evaluate(() => {
+    const duskState = await appPage.evaluate(() => {
         const el = document.getElementById('mario-recap');
-        return el ? getComputedStyle(el).backgroundColor : '';
+        return { exists: !!el, bg: el ? getComputedStyle(el).backgroundColor : '', parchment: !!(el && el.classList.contains('is-parchment')) };
     });
-    ok(duskBg === 'rgba(38, 42, 60, 0.24)', 'dusk mode retints the veil', duskBg);
+    ok(duskState.bg === 'rgba(38, 42, 60, 0.24)', 'dusk mode retints the veil', JSON.stringify(duskState));
     await appPage.screenshot({ path: path.join(SHOTS, 'mario-recap-app-dusk.png') });
     await appPage.evaluate(() => {
         const el = document.getElementById('mario-recap');

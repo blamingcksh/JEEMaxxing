@@ -174,7 +174,11 @@
 // v84 — RECAP CASTLE PAYOFFS & FLAG: neutral/all-skipped shrug-to-sleep idle with
 //        floating pixel Z's, net-negative peeking Goomba + rooftop chimney dark smoke,
 //        and outcome-reactive castle rooftop flag (green/red/grey/yellow on Big Block settle).
-const VERSION = 'jeemax-v84';
+// v85 — MATRIX RECAP + PARCHMENT DEFAULT: the Vault SR drawer feeds the same
+//        SessionRecap ledger and plays the Mario run on close (grey skips on ‹ / ›),
+//        and both stages now open in Parchment with the moon toggling to Roast.
+//        app.js/matrix.js changed.
+const VERSION = 'jeemax-v85';
 const SHELL = [
   './',
   './index.html',

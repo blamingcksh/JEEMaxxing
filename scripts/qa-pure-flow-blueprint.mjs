@@ -2,7 +2,7 @@
 // Covers:
 // 1. Clock/Top Island removal: .pq-top is gone, #question-timer is sr-hidden.
 // 2. 720px centered focus column: max-width <= 720px.
-// 3. Exactly 2 warm skins: Roast (#1b130d) with moon ON, Parchment (#F3EFE6) with moon OFF.
+// 3. Exactly 2 warm skins: Parchment (#F3EFE6) by default with moon OFF, Roast (#1b130d) with moon ON.
 // 4. Diagram blend: mix-blend-mode multiply, clip-path inset(4px).
 // 5. Saccadic anchors: .param-highlight and isolated .question-goal.
 // 6. Hold-to-reveal gesture on free response.
@@ -103,7 +103,11 @@ const layoutCheck = await page.evaluate(() => {
     const paceLine = document.getElementById('pq-pace');
     const shell = document.querySelector('.pq-shell');
     const shellWidth = shell ? shell.getBoundingClientRect().width : 0;
-    const timerRect = timerEl ? timerEl.getBoundingClientRect() : null;
+    // The timer lives in the visually hidden .pq-sr-bridge. Measure the bridge,
+    // not the span: Parchment (the default skin) shows the span itself while
+    // Roast hides it, but the bridge is 1px in both skins.
+    const timerBridge = timerEl ? timerEl.closest('.pq-sr-bridge') : null;
+    const timerRect = timerBridge ? timerBridge.getBoundingClientRect() : null;
 
     return {
         topIslandPresent: !!topIsland,
@@ -146,21 +150,6 @@ assert(diagramCheck && diagramCheck.mixBlendMode === 'multiply', 'Diagram has mi
 assert(diagramCheck && diagramCheck.clipPath.includes('inset(4px)'), 'Diagram has 4px inner clip-path');
 
 // 4. Check Roast & Parchment skins
-const roastColors = await page.evaluate(() => {
-    const modal = document.getElementById('practice-modal');
-    return {
-        isImmersive: document.body.classList.contains('immersive-active'),
-        bg: window.getComputedStyle(modal).backgroundColor
-    };
-});
-assert(roastColors.isImmersive, 'Default stage opens in Roast (moon ON)');
-// rgb(27, 19, 13) is #1b130d
-assert(roastColors.bg === 'rgb(27, 19, 13)', 'Roast background is warm coffee #1b130d (got: ' + roastColors.bg + ')');
-
-// Toggle to Parchment
-await page.evaluate(() => window.toggleImmersive());
-await page.waitForTimeout(450);
-
 const parchmentColors = await page.evaluate(() => {
     const modal = document.getElementById('practice-modal');
     return {
@@ -168,9 +157,28 @@ const parchmentColors = await page.evaluate(() => {
         bg: window.getComputedStyle(modal).backgroundColor
     };
 });
-assert(!parchmentColors.isImmersive, 'Moon button toggles to Parchment (moon OFF)');
+assert(!parchmentColors.isImmersive, 'Default stage opens in Parchment (moon OFF)');
 // rgb(243, 239, 230) is #F3EFE6
 assert(parchmentColors.bg === 'rgb(243, 239, 230)', 'Parchment background is warm aged paper #F3EFE6 (got: ' + parchmentColors.bg + ')');
+
+// Toggle to Roast
+await page.evaluate(() => window.toggleImmersive());
+await page.waitForTimeout(450);
+
+const roastColors = await page.evaluate(() => {
+    const modal = document.getElementById('practice-modal');
+    return {
+        isImmersive: document.body.classList.contains('immersive-active'),
+        bg: window.getComputedStyle(modal).backgroundColor
+    };
+});
+assert(roastColors.isImmersive, 'Moon button toggles to Roast (moon ON)');
+// rgb(27, 19, 13) is #1b130d
+assert(roastColors.bg === 'rgb(27, 19, 13)', 'Roast background is warm coffee #1b130d (got: ' + roastColors.bg + ')');
+
+// Back to Parchment for the remaining checks.
+await page.evaluate(() => window.toggleImmersive());
+await page.waitForTimeout(450);
 
 // 5. Test Hold-to-reveal gesture on free response
 // Before hold, state is 'solving'

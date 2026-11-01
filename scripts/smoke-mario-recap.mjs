@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { classify, resolveSessionVerdict, SessionRecap } from '../mario-recap.js';
+import {
+    classify,
+    comboRatio,
+    comboSemitones,
+    megaAnticipationMs,
+    resolveSessionVerdict,
+    SessionRecap,
+} from '../mario-recap.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let failures = 0;
@@ -28,6 +35,22 @@ eq(classify({ correct: true, secs: 0, targetSecs: 120 }), 'green', 'zero solve t
 eq(classify({ correct: true, secs: 12 }), 'green', 'missing target time is green');
 eq(classify({ correct: true, secs: -4, targetSecs: 90 }), 'green', 'negative solve time is green');
 eq(classify({ correct: true, secs: 12, targetSecs: 0 }), 'green', 'zero target time is green');
+
+eq(
+    JSON.stringify(Array.from({ length: 10 }, (_, step) => comboSemitones(step))),
+    JSON.stringify([0, 2, 4, 5, 7, 9, 11, 12, 12, 12]),
+    'combo semitones climb the major scale and cap at one octave'
+);
+eq(comboRatio(7), 2, 'seventh combo step is exactly one octave up');
+eq(comboRatio(-1), 1, 'negative combo step falls back to the base pitch');
+eq(comboRatio(NaN), 1, 'invalid combo step falls back to the base pitch');
+eq(megaAnticipationMs(0), 180, 'mega anticipation starts at 180ms');
+eq(megaAnticipationMs(8), 228, 'mega anticipation peaks at 228ms with eight combo steps');
+eq(megaAnticipationMs(99), 228, 'mega anticipation caps after eight combo steps');
+ok(
+    Array.from({ length: 20 }, (_, combo) => megaAnticipationMs(combo)).every((ms) => ms >= 180 && ms <= 250),
+    'mega anticipation always stays inside 180-250ms'
+);
 
 SessionRecap.reset();
 const q1 = { id: 'q1' };
@@ -117,6 +140,7 @@ eq(skipVerdict.popText, 'SKIP', 'all-skipped Big Block pops SKIP');
 const source = readFileSync(join(root, 'mario-recap.js'), 'utf8');
 const css = readFileSync(join(root, 'mario-recap.css'), 'utf8');
 const app = readFileSync(join(root, 'app.js'), 'utf8');
+const matrix = readFileSync(join(root, 'matrix.js'), 'utf8');
 const html = readFileSync(join(root, 'index.html'), 'utf8');
 const sw = readFileSync(join(root, 'sw.js'), 'utf8');
 
@@ -149,6 +173,7 @@ ok(css.includes('backdrop-filter'), 'overlay blurs the app behind it');
 ok(css.includes('.mr-count.is-grey'), 'stylesheet styles grey skipped counter');
 ok(css.includes('.mr-elo.is-pos'), 'stylesheet styles net Elo badge');
 ok(app.includes("from './mario-recap.js'"), 'app imports recap engine');
+ok(matrix.includes("from './mario-recap.js'"), 'matrix imports recap engine');
 ok(app.includes('SessionRecap.reset()'), 'app resets per run');
 ok(app.includes('_recordSessionRecap(AppState.currentQ'), 'app records graded answers');
 ok(app.includes('_noteSessionElo(AppState.currentQ'), 'app records Elo deltas for recap blocks');
@@ -157,11 +182,17 @@ ok(app.includes('SessionRecap.play({ tone: recapTone })'), 'app plays recap on c
 ok(/closeModalStr\('practice-modal'\);[\s\S]{0,180}SessionRecap\.play\(\{ tone/.test(app), 'recap starts synchronously after the stage closes');
 ok(!/setTimeout\([^)]*SessionRecap\.play/.test(app), 'recap start is not deferred');
 ok(app.includes("recapTone = 'parchment'"), 'app carries the parchment stage into the recap');
+ok(/export function submitPracticeLog\(opts\) \{[\s\S]*?SessionRecap\.record\(q, \{/.test(matrix), 'matrix records logged Vault cards in submitPracticeLog');
+ok(/SessionRecap\.noteElo\(q, _drawerState\.eloResult\.deltaSubject\)/.test(matrix), 'matrix records the logged Elo delta');
+ok(matrix.includes('SessionRecap.recordSkip(q)'), 'matrix records skipped Vault cards');
+ok(matrix.includes('SessionRecap.play({ tone: _recapTone })'), 'matrix plays recap when the drawer closes');
+ok(matrix.includes('closePracticeDrawer({ recap: false })'), 'matrix suppresses the recap during in-session navigation');
+ok(matrix.includes("const _recapTone = document.body.classList.contains('immersive-active') ? 'night' : 'parchment'"), 'matrix carries the stage tone into the recap');
 ok(source.includes('is-parchment'), 'recap supports a parchment veil');
 ok(app.includes('window.__jmaxAppToast || alert'), 'queue-cleared notice falls back to toast');
 ok(app.includes('window.SessionRecap = SessionRecap'), 'recap is exposed for QA and bridge code');
 ok(html.includes('href="mario-recap.css"'), 'index loads recap stylesheet');
-ok(sw.includes("'jeemax-v84'"), 'service worker version bumped');
+ok(sw.includes("'jeemax-v85'"), 'service worker version bumped');
 ok(sw.includes("'./mario-recap.js'"), 'recap engine is precached');
 ok(sw.includes("'./mario-recap.css'"), 'recap stylesheet is precached');
 
