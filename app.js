@@ -5453,6 +5453,8 @@ export function startPracticeWithQuestion(questions, index, opts = null) {
     AppState.practiceSubmittedFlags = new Array(questions.length).fill(false);
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
+    AppState._pqAttemptSnapByIdx = {};
+    AppState._pqKeyUpdatedByIdx = {};
     AppState._pqHealthBefore = null;
     AppState._pqElo = null;
     try { _pqResetConfidenceUI(); } catch (_) {}
@@ -5535,6 +5537,8 @@ export function tryAssignDailyBounty(questionId) {
     window._bountyTimeLimit = AppState.bounty.timeLimit;
     AppState.bountyMode = true;
     SessionRecap.reset();
+    AppState._pqAttemptSnapByIdx = {};
+    AppState._pqKeyUpdatedByIdx = {};
 
     AppState.practiceQuestions = [q];
     AppState.currentPracticeIndex = 0;
@@ -5687,6 +5691,8 @@ function _armBountySession(q) {
     window._bountyTimeLimit = AppState.bounty.timeLimit;
     AppState.bountyMode = true;
     SessionRecap.reset();
+    AppState._pqAttemptSnapByIdx = {};
+    AppState._pqKeyUpdatedByIdx = {};
 
     AppState.practiceQuestions = [q];
     AppState.currentPracticeIndex = 0;
@@ -6143,6 +6149,542 @@ function _pqRenderDiag() {
         </div>`;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+//  FIX ANSWER KEY & OVERRIDE RESULT
+//  Snapshot the pre-attempt world so an erroneous key / misreported outcome
+//  can be corrected exactly once — ELO, Memory Kernel v2, streak, solved
+//  counters, Session Recap and Vault state all roll back before re-pricing.
+// ════════════════════════════════════════════════════════════════════════════
+
+const _PQ_SNAPSHOT_FIELDS = [
+    'status', 'firstAttemptResult', 'qElo', 'qEloSource', 'solveCount',
+    'lastSolvedAt', 'isAnomaly', 'difficulty', 'difficultyLabel', 'growSeconds',
+    'plantCumStudy', 'oak', 'stability', 'difficultyD', 'reps', 'lapses',
+    'lastReviewedAt', 'easeFactor', 'errorReason', 'srUpdatedAt',
+    '_fastSuspectAt', '_lifelineAssisted',
+];
+
+const _PQ_BANK_SYNC_FIELDS = _PQ_SNAPSHOT_FIELDS.concat([
+    'correctAnswer', 'selfGrade', 'frictionFlag', 'timeTaken',
+]);
+
+let _pqOverrideBound = false;
+let _pqOverrideIdx = null;
+let _pqOverrideKey = null;
+let _pqOverrideOutcome = null;
+
+function _pqThetaKeyFor(q, safeSubject) {
+    if (!safeSubject || !q || !q.chapter) return null;
+    return safeSubject + '::' + String(q.chapter).trim().toLowerCase();
+}
+
+function _pqCaptureAttemptSnapshot(q, idx, userSelectedOption) {
+    if (!q || idx == null) return null;
+    AppState._pqAttemptSnapByIdx = AppState._pqAttemptSnapByIdx || {};
+    const existing = AppState._pqAttemptSnapByIdx[idx];
+    if (existing && (existing.qId == null || q.id == null || String(existing.qId) === String(q.id))) {
+        return existing;
+    }
+    const safeSubject = normSubjKeyStrict(q.subject);
+    const ns = _normalizeSubjectKey(q.subject);
+    const thetaKey = _pqThetaKeyFor(q, safeSubject);
+    let thetaNode = null;
+    try {
+        const node = thetaKey && AppState.chapterTheta && AppState.chapterTheta[thetaKey];
+        if (node && isFinite(node.e)) thetaNode = { e: node.e, n: node.n };
+    } catch (_) {}
+    const preQ = {};
+    for (const key of _PQ_SNAPSHOT_FIELDS) preQ[key] = q[key];
+    const snap = {
+        qId: q.id != null ? q.id : null,
+        userSelectedOption: userSelectedOption == null ? null : String(userSelectedOption),
+        preElo: {
+            subjElo: safeSubject ? AppState.elo[safeSubject] : undefined,
+            globalElo: AppState.elo.global,
+            rdSubj: (safeSubject && AppState.elo.rd) ? AppState.elo.rd[safeSubject] : undefined,
+            hardcoreDailyCount: AppState.hardcoreDailyCount,
+            hardcoreDailyDate: AppState.hardcoreDailyDate,
+            calibrationLogLen: Array.isArray(AppState.calibrationLog) ? AppState.calibrationLog.length : 0,
+            pendingConfidence: window._pendingSolveConfidence || null,
+            chapterThetaNode: thetaNode,
+        },
+        thetaKey,
+        preQ,
+        preStreak: Number(AppState.practiceCorrectStreak) || 0,
+        preSolvedCount: (ns && solved) ? (Number(solved[ns]) || 0) : 0,
+        chapterHealthBefore: (AppState._pqHealthByIdx && Number.isFinite(AppState._pqHealthByIdx[idx]))
+            ? Number(AppState._pqHealthByIdx[idx])
+            : (() => { try { return _getChapterHealth(q.subject, q.chapter); } catch (_) { return null; } })(),
+        // The legacy R_perf path logs CNS windows; the calibrated fast path does
+        // not. Remember which one priced this attempt so rollback pops exactly
+        // one entry (and never an older, unrelated solve).
+        cnsLogged: !!(safeSubject && !_isQuestionEloCalibrated(q)),
+        isCorrect: null,
+        eloDelta: 0,
+        solvedDeltaApplied: 0,
+    };
+    AppState._pqAttemptSnapByIdx[idx] = snap;
+    return snap;
+}
+
+function _pqFinishAttemptSnapshot(q, idx, isCorrect, eloResult, solvedDelta) {
+    const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
+    if (!snap || !q) return;
+    snap.isCorrect = !!isCorrect;
+    if (eloResult && Number.isFinite(Number(eloResult.deltaSubject))) {
+        snap.eloDelta = Number(eloResult.deltaSubject);
+    }
+    if (solvedDelta != null && Number.isFinite(Number(solvedDelta))) {
+        snap.solvedDeltaApplied = Math.max(0, Number(solvedDelta) | 0);
+    }
+}
+
+function _pqBumpSolvedDelta(delta) {
+    const idx = AppState.currentPracticeIndex;
+    const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
+    if (!snap) return;
+    const d = Number(delta);
+    if (!Number.isFinite(d) || d === 0) return;
+    snap.solvedDeltaApplied = Math.max(0, (Number(snap.solvedDeltaApplied) || 0) + d);
+}
+
+function _pqKeyDisplay(q) {
+    if (!q) return '';
+    if (q.type === 'mcq') {
+        try {
+            const letters = resolveMcqCorrectLetters(q);
+            if (letters && letters.length) return letters.join(', ');
+        } catch (_) {}
+    }
+    const raw = q.correctAnswer;
+    return Array.isArray(raw) ? raw.join(', ') : String(raw == null ? '' : raw);
+}
+
+function _pqParseNumeric(raw) {
+    const s = String(raw == null ? '' : raw).trim().replace(/,/g, '');
+    if (!s) return NaN;
+    const direct = Number(s);
+    if (Number.isFinite(direct)) return direct;
+    const frac = s.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)$/);
+    if (frac) {
+        const den = Number(frac[2]);
+        if (den !== 0) return Number(frac[1]) / den;
+    }
+    return NaN;
+}
+
+function _pqKeyMatchesUser(key, user, q) {
+    if (user == null || key == null) return false;
+    const normLetters = (v) => String(v || '')
+        .toUpperCase()
+        .split(/[^A-Z]+/)
+        .filter(Boolean)
+        .sort()
+        .join(',');
+    if (q && q.type === 'mcq') return normLetters(key) === normLetters(user);
+    const a = _pqParseNumeric(key);
+    const b = _pqParseNumeric(user);
+    if (Number.isFinite(a) && Number.isFinite(b)) return Math.abs(a - b) < 1e-6;
+    return String(key).trim().toLowerCase() === String(user).trim().toLowerCase();
+}
+
+function _pqBuildOverrideBarHTML(q, idx) {
+    const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
+    if (!snap) return '';
+    const isMcq = q.type === 'mcq' && (q.options || []).length > 0;
+    let initialKey = '';
+    let keyControls = '';
+    if (isMcq) {
+        let letters = [];
+        try { letters = resolveMcqCorrectLetters(q); } catch (_) {}
+        initialKey = letters.join(',');
+        const count = Math.max(1, Math.min(4, (q.options || []).length));
+        let pills = '';
+        for (let i = 0; i < count; i++) {
+            const letter = String.fromCharCode(65 + i);
+            const on = letters.indexOf(letter) >= 0;
+            pills += `<button type="button" class="pq-override-opt${on ? ' is-selected' : ''}" data-key="${letter}" aria-pressed="${on}">${letter}</button>`;
+        }
+        keyControls = `<div class="pq-override-pills">${pills}</div>`;
+    } else {
+        initialKey = q.correctAnswer == null ? '' : (Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : String(q.correctAnswer));
+        keyControls = `<input id="pq-override-key-input" class="pq-override-input" type="text" inputmode="${q.type === 'numeric' ? 'decimal' : 'text'}" value="${escapeAttribute(initialKey)}" autocomplete="off" spellcheck="false" aria-label="True answer key">`;
+    }
+    const outcome = q.status === 'solved' ? 'correct' : 'wrong';
+    return `<div class="pq-override-bar" id="pq-override-bar" data-initial-key="${escapeAttribute(initialKey)}" hidden>
+        <div class="pq-override-group">
+            <span class="pq-override-label">TRUE KEY</span>
+            ${keyControls}
+        </div>
+        <div class="pq-override-group">
+            <span class="pq-override-label">MY RESULT</span>
+            <div class="pq-override-pills">
+                <button type="button" class="pq-override-outcome${outcome === 'correct' ? ' is-selected' : ''}" data-override-outcome="correct" aria-pressed="${outcome === 'correct'}">ACTUALLY CORRECT</button>
+                <button type="button" class="pq-override-outcome${outcome === 'wrong' ? ' is-selected' : ''}" data-override-outcome="wrong" aria-pressed="${outcome === 'wrong'}">ACTUALLY WRONG</button>
+            </div>
+        </div>
+        <div class="pq-override-actions">
+            <button type="button" class="pq-override-save" id="pq-override-save">SAVE &amp; RECALIBRATE</button>
+            <button type="button" class="pq-override-cancel" id="pq-override-cancel">CANCEL</button>
+        </div>
+    </div>`;
+}
+
+function _pqBuildRevealZoneHTML(q, idx) {
+    const correctAns = answerMathHTML(q.correctAnswer || 'N/A');
+    const graded = (q.status === 'solved' || q.status === 'wrong' || q.status === 'error');
+    const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
+    const updatedKey = AppState._pqKeyUpdatedByIdx && AppState._pqKeyUpdatedByIdx[idx];
+    let html = `<div class="pq-reveal-row">`;
+    if (q.status === 'solved') {
+        html += `<div class="result-banner correct" style="flex:1;">PASSED · answer: ${correctAns}</div>`;
+    } else if (q.status === 'wrong' || q.status === 'error') {
+        html += `<div class="result-banner wrong" style="flex:1;">FAILED · answer: ${correctAns}</div>`;
+    } else {
+        html += `<div class="result-banner reveal" style="flex:1;">ANSWER REVEALED · ${correctAns}<span class="pq-reveal-ask"> — were you right?</span></div>`;
+    }
+    if (q.solution && String(q.solution).trim().length > 0) {
+        html += `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
+    }
+    if (q.status === 'wrong' || q.status === 'error') {
+        if (q.status === 'error' && q.errorReason) {
+            html += `<button class="btn btn-danger pq-vault-btn" type="button" disabled title="Already logged to the Vault">LOGGED TO VAULT</button>`;
+        } else {
+            html += `<button class="btn btn-danger pq-vault-btn" type="button">SEND TO THE VAULT (LOG ERROR)</button>`;
+        }
+    }
+    if (graded && snap) {
+        html += `<button class="btn pq-fix-key-btn" id="pq-fix-key-btn" type="button" aria-expanded="false" aria-controls="pq-override-bar">FIX KEY / OVERRIDE</button>`;
+    }
+    if (updatedKey) {
+        html += `<span class="pq-key-updated-badge">KEY UPDATED → ${escapeHtml(updatedKey)}</span>`;
+    }
+    html += `</div>`;
+    if (graded && snap) html += _pqBuildOverrideBarHTML(q, idx);
+    return html;
+}
+
+function _pqToggleOverrideBar(idx) {
+    const bar = document.getElementById('pq-override-bar');
+    if (!bar) return;
+    const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
+    if (!snap) return;
+    if (_pqOverrideIdx === idx && !bar.hidden) {
+        _pqCloseOverrideBar();
+        return;
+    }
+    const q = AppState.currentQ;
+    if (!q) return;
+    _pqOverrideIdx = idx;
+    const isMcq = q.type === 'mcq' && (q.options || []).length > 0;
+    if (isMcq) {
+        let letters = [];
+        try { letters = resolveMcqCorrectLetters(q); } catch (_) {}
+        _pqOverrideKey = letters.join(',');
+    } else {
+        _pqOverrideKey = q.correctAnswer == null ? '' : (Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : String(q.correctAnswer));
+    }
+    _pqOverrideOutcome = q.status === 'solved' ? 'correct' : 'wrong';
+    bar.hidden = false;
+    const fixBtn = document.getElementById('pq-fix-key-btn');
+    if (fixBtn) {
+        fixBtn.setAttribute('aria-expanded', 'true');
+        fixBtn.textContent = 'CLOSE CORRECTION';
+    }
+    _pqSyncOverrideBarUI();
+}
+
+function _pqCloseOverrideBar() {
+    const bar = document.getElementById('pq-override-bar');
+    if (bar) bar.hidden = true;
+    _pqOverrideIdx = null;
+    _pqOverrideKey = null;
+    _pqOverrideOutcome = null;
+    const fixBtn = document.getElementById('pq-fix-key-btn');
+    if (fixBtn) {
+        fixBtn.setAttribute('aria-expanded', 'false');
+        fixBtn.textContent = 'FIX KEY / OVERRIDE';
+    }
+}
+
+function _pqSyncOverrideBarUI() {
+    const bar = document.getElementById('pq-override-bar');
+    if (!bar) return;
+    const selected = String(_pqOverrideKey || '')
+        .toUpperCase()
+        .split(/[^A-Z]+/)
+        .filter(Boolean);
+    bar.querySelectorAll('.pq-override-opt').forEach(btn => {
+        const on = selected.indexOf(String(btn.dataset.key || '').toUpperCase()) >= 0;
+        btn.classList.toggle('is-selected', on);
+        btn.setAttribute('aria-pressed', String(on));
+    });
+    bar.querySelectorAll('[data-override-outcome]').forEach(btn => {
+        const on = btn.dataset.overrideOutcome === _pqOverrideOutcome;
+        btn.classList.toggle('is-selected', on);
+        btn.setAttribute('aria-pressed', String(on));
+    });
+}
+
+function _pqAutoInferOverrideOutcome() {
+    const idx = _pqOverrideIdx;
+    if (idx == null) return;
+    const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
+    if (!snap || snap.userSelectedOption == null || snap.userSelectedOption === '') return;
+    _pqOverrideOutcome = _pqKeyMatchesUser(_pqOverrideKey, snap.userSelectedOption, AppState.currentQ)
+        ? 'correct' : 'wrong';
+}
+
+function _pqBindOverrideEvents() {
+    if (_pqOverrideBound) return;
+    _pqOverrideBound = true;
+    document.addEventListener('click', (e) => {
+        const target = e.target;
+        if (!target || !target.closest) return;
+        const fixBtn = target.closest('.pq-fix-key-btn');
+        if (fixBtn) {
+            _pqToggleOverrideBar(AppState.currentPracticeIndex);
+            return;
+        }
+        const keyBtn = target.closest('#pq-override-bar .pq-override-opt');
+        if (keyBtn) {
+            const clicked = String(keyBtn.dataset.key || '').toUpperCase();
+            const q = AppState.currentQ;
+            const multi = !!(q && Array.isArray(q.correctAnswer));
+            const letters = String(_pqOverrideKey || '')
+                .toUpperCase()
+                .split(/[^A-Z]+/)
+                .filter(Boolean);
+            if (multi) {
+                const next = letters.includes(clicked)
+                    ? letters.filter(l => l !== clicked)
+                    : letters.concat(clicked);
+                _pqOverrideKey = next.join(',');
+            } else {
+                _pqOverrideKey = clicked;
+            }
+            _pqAutoInferOverrideOutcome();
+            _pqSyncOverrideBarUI();
+            return;
+        }
+        const outcomeBtn = target.closest('#pq-override-bar [data-override-outcome]');
+        if (outcomeBtn) {
+            _pqOverrideOutcome = outcomeBtn.dataset.overrideOutcome || null;
+            _pqSyncOverrideBarUI();
+            return;
+        }
+        if (target.closest('#pq-override-save')) {
+            _pqCommitKeyOverride();
+            return;
+        }
+        if (target.closest('#pq-override-cancel')) {
+            _pqCloseOverrideBar();
+            return;
+        }
+        const vaultBtn = target.closest('.pq-vault-btn');
+        if (vaultBtn && !vaultBtn.disabled) {
+            AppState.pendingWrongQ = AppState.currentQ;
+            openModal('error-reason-modal');
+        }
+    });
+    document.addEventListener('input', (e) => {
+        if (e.target && e.target.id === 'pq-override-key-input') {
+            _pqOverrideKey = e.target.value;
+            _pqAutoInferOverrideOutcome();
+            _pqSyncOverrideBarUI();
+        }
+    });
+}
+
+function _pqApplyQuestionSnapshot(q, preQ) {
+    if (!q || !preQ) return;
+    for (const key of _PQ_SNAPSHOT_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(preQ, key) && preQ[key] !== undefined) {
+            q[key] = preQ[key];
+        } else {
+            delete q[key];
+        }
+    }
+}
+
+function _pqBankRecordFor(q) {
+    if (!q || q.id == null) return null;
+    const bank = AppState.questionBank || [];
+    for (const row of bank) {
+        if (row && row.id != null && String(row.id) === String(q.id)) return row;
+    }
+    return null;
+}
+
+function _pqSyncQuestionToBank(q) {
+    const bank = _pqBankRecordFor(q);
+    if (!bank || bank === q) return;
+    for (const key of _PQ_BANK_SYNC_FIELDS) {
+        if (q[key] === undefined) delete bank[key];
+        else bank[key] = q[key];
+    }
+}
+
+function _pqRestoreAttemptImpact(snap, q) {
+    if (!snap || !q) return;
+    const safeSubject = normSubjKeyStrict(q.subject);
+    if (safeSubject && snap.preElo) {
+        if (snap.preElo.subjElo === undefined) delete AppState.elo[safeSubject];
+        else AppState.elo[safeSubject] = snap.preElo.subjElo;
+        if (snap.preElo.globalElo !== undefined) AppState.elo.global = snap.preElo.globalElo;
+        try {
+            if (!AppState.elo.rd || typeof AppState.elo.rd !== 'object') AppState.elo.rd = {};
+            if (snap.preElo.rdSubj === undefined) delete AppState.elo.rd[safeSubject];
+            else AppState.elo.rd[safeSubject] = snap.preElo.rdSubj;
+        } catch (_) {}
+        if (snap.thetaKey) {
+            if (!AppState.chapterTheta || typeof AppState.chapterTheta !== 'object') AppState.chapterTheta = {};
+            if (snap.preElo.chapterThetaNode) AppState.chapterTheta[snap.thetaKey] = { ...snap.preElo.chapterThetaNode };
+            else delete AppState.chapterTheta[snap.thetaKey];
+        }
+        AppState.hardcoreDailyCount = snap.preElo.hardcoreDailyCount;
+        AppState.hardcoreDailyDate = snap.preElo.hardcoreDailyDate;
+        if (Array.isArray(AppState.calibrationLog) && Number.isFinite(Number(snap.preElo.calibrationLogLen))) {
+            const len = Math.max(0, Number(snap.preElo.calibrationLogLen) | 0);
+            if (AppState.calibrationLog.length > len) {
+                AppState.calibrationLog = AppState.calibrationLog.slice(0, len);
+            }
+        }
+        window._pendingSolveConfidence = snap.preElo.pendingConfidence || null;
+    }
+    if (snap.cnsLogged && safeSubject) {
+        try { CNSLoad.popLastSolve(safeSubject); } catch (_) {}
+    }
+    _pqApplyQuestionSnapshot(q, snap.preQ);
+    if (snap.solvedDeltaApplied > 0) {
+        try { changeCount(q.subject, -snap.solvedDeltaApplied); } catch (_) {}
+        snap.solvedDeltaApplied = 0;
+    }
+}
+
+function _pqCommitKeyOverride() {
+    const idx = AppState.currentPracticeIndex;
+    const q = AppState.currentQ;
+    if (!q) return;
+    const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
+    if (!snap) return;
+    const isMcq = q.type === 'mcq' && (q.options || []).length > 0;
+    let newKey = '';
+    if (isMcq) {
+        const letters = String(_pqOverrideKey || '')
+            .toUpperCase()
+            .split(/[^A-Z]+/)
+            .filter(Boolean)
+            .filter(l => {
+                const i = l.charCodeAt(0) - 65;
+                return i >= 0 && i < (q.options || []).length;
+            });
+        if (!letters.length) {
+            alert('Pick the true option letter first.');
+            return;
+        }
+        newKey = Array.from(new Set(letters)).sort().join(',');
+    } else {
+        newKey = String(_pqOverrideKey == null ? '' : _pqOverrideKey).trim();
+        if (!newKey) {
+            alert('Type the true answer key first.');
+            return;
+        }
+    }
+    const prevIsCorrect = q.status === 'solved';
+    const selectedOutcome = _pqOverrideOutcome || (prevIsCorrect ? 'correct' : 'wrong');
+    const newIsCorrect = selectedOutcome === 'correct';
+    // Multi-answer questions store correctAnswer as an ARRAY of full option
+    // strings; keep that shape so multi grading (isMulti checks) keeps
+    // working after the correction, storing bare letters instead.
+    const wasMulti = isMcq && Array.isArray(q.correctAnswer);
+
+    q.correctAnswer = wasMulti ? newKey.split(',') : newKey;
+    const newKeyLabel = _pqKeyDisplay(q);
+    AppState._pqKeyUpdatedByIdx = AppState._pqKeyUpdatedByIdx || {};
+    AppState._pqKeyUpdatedByIdx[idx] = newKeyLabel;
+
+    if (prevIsCorrect === newIsCorrect) {
+        _pqCloseOverrideBar();
+        _pqSyncQuestionToBank(q);
+        saveAllAsync().catch(console.error);
+        try { renderPracticeQuestionModal(); } catch (_) {}
+        if (AppState._pqEloByIdx && AppState._pqEloByIdx[idx]) {
+            try { injectEloShiftChip(AppState._pqEloByIdx[idx], { outcome: prevIsCorrect ? 'clean' : 'skill' }); } catch (_) {}
+        } else {
+            try { _pqRenderDiag(); } catch (_) {}
+        }
+        return;
+    }
+
+    // ── 1. Revert the previous attempt's impact ──
+    _pqRestoreAttemptImpact(snap, q);
+
+    // ── 2. Apply the corrected attempt impact ──
+    q.status = newIsCorrect ? 'solved' : 'wrong';
+    if (!snap.preQ || !snap.preQ.firstAttemptResult) {
+        q.firstAttemptResult = newIsCorrect ? 'correct' : 'incorrect';
+    }
+    let appliedSolvedDelta = 0;
+    if (!AppState.bountyMode && newIsCorrect && (!snap.preQ || snap.preQ.status !== 'solved')) {
+        try { _directiveMarkSolve(q, true, (Number(q.timeTaken) || 0) / 60); } catch (_) {}
+        changeCount(q.subject, 1);
+        appliedSolvedDelta = 1;
+    }
+    AppState.practiceCorrectStreak = newIsCorrect ? ((Number(snap.preStreak) || 0) + 1) : 0;
+
+    let newEloResult = null;
+    try {
+        newEloResult = calculateEloMigration(
+            q.subject,
+            Number(q.timeTaken) || 0,
+            newIsCorrect ? 1 : 0,
+            snap.chapterHealthBefore,
+            q
+        );
+    } catch (_eloErr) {
+        console.error('Elo migration fault (key override):', _eloErr);
+    }
+    if (newEloResult) applyDifficulty(q, q.subject, newEloResult);
+    if (newIsCorrect) stampPlantCum(q, q.subject);
+    if (q.selfGrade && _PQ_GRADE_PERF[q.selfGrade.g]) {
+        try { refineDifficultyAfterTag(q, _PQ_GRADE_PERF[q.selfGrade.g]); } catch (_) {}
+        q.frictionFlag = (q.selfGrade.g === 2);
+    }
+    q.srUpdatedAt = Date.now();
+    if (newEloResult) {
+        AppState._pqEloByIdx = AppState._pqEloByIdx || {};
+        AppState._pqEloByIdx[idx] = newEloResult;
+        snap.eloDelta = newEloResult.deltaSubject;
+    }
+    snap.isCorrect = newIsCorrect;
+    snap.solvedDeltaApplied = appliedSolvedDelta;
+    try {
+        SessionRecap.updateRecord(q, {
+            correct: newIsCorrect,
+            secs: q.timeTaken,
+            targetSecs: _eloTargetSeconds(q),
+            eloDelta: newEloResult ? newEloResult.deltaSubject : 0,
+        });
+    } catch (_) {}
+    _pqSyncQuestionToBank(q);
+    saveAllAsync().catch(console.error);
+
+    // ── 3. Live UI ──
+    try { _invalidateMatrixCtx(); } catch (_) {}
+    try { if (newIsCorrect) renderErrorMatrixFromBank(); } catch (_) {}
+    try { if (newIsCorrect) renderChapterDecayGrid(); } catch (_) {}
+    try { renderEloMatrix(); } catch (_) {}
+    _pqCloseOverrideBar();
+    try { renderPracticeQuestionModal(); } catch (_) {}
+    if (newEloResult) {
+        try { injectEloShiftChip(newEloResult, { outcome: newIsCorrect ? 'clean' : 'skill' }); } catch (_) {}
+    } else {
+        try { _pqRenderDiag(); } catch (_) {}
+    }
+    try { updateStreakVisualizer(); } catch (_) {}
+}
+
 let _pqHoldBound = false;
 let _pqHoldTimer = null;
 let _pqHoldRingTimer = null;
@@ -6307,22 +6849,8 @@ export function renderPracticeQuestionModal() {
     }
 
     if (submitted) {
-        const correctAns = answerMathHTML(AppState.currentQ.correctAnswer || 'N/A');
-        html += `<div class="pq-reveal-row">`;
-        if (AppState.currentQ.status === 'solved') {
-            html += `<div class="result-banner correct" style="flex:1;">VERIFIED · answer: ${correctAns}</div>`;
-        }
-        else if (AppState.currentQ.status === 'wrong' || AppState.currentQ.status === 'error') {
-            html += `<div class="result-banner wrong" style="flex:1;">FAILED · answer: ${correctAns}</div>`;
-        }
-        else {
-            html += `<div class="result-banner reveal" style="flex:1;">ANSWER REVEALED · ${correctAns}<span class="pq-reveal-ask"> — were you right?</span></div>`;
-        }
-        if (AppState.currentQ.solution && AppState.currentQ.solution.trim().length > 0) {
-            html +=
-                `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
-        }
-        html += `</div></div>`;
+        html += _pqBuildRevealZoneHTML(AppState.currentQ, _pqIdx);
+        html += `</div>`;
         container.innerHTML = html;
         // Hydrate LaTeX synchronously (the observer is a backup). Clear any
         // stale render stamp so a re-render is never skipped.
@@ -6343,6 +6871,7 @@ export function renderPracticeQuestionModal() {
         try { _pqCancelChromeFade(); } catch (_) {}
         try { _pqSyncState(); } catch (_) {}
         try { _pqBindConfidence(); } catch (_) {}
+        try { _pqBindOverrideEvents(); } catch (_) {}
         try { _pqRenderDiag(); } catch (_) {}
         try { _pqUpdatePace(); } catch (_) {}
         try { _pqBindHold(); } catch (_) {}
@@ -7832,6 +8361,8 @@ function _serveModeEntry(entry) {
     window._pendingSolveConfidence = null;   // fresh item → stale tap discarded
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
+    AppState._pqAttemptSnapByIdx = {};
+    AppState._pqKeyUpdatedByIdx = {};
     AppState.practiceQuestions = [entry.q];
     AppState.practiceSubmittedFlags = [!!entry.submitted];
     AppState.currentPracticeIndex = 0;
@@ -8035,6 +8566,8 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
     AppState.practiceSubmittedFlags = AppState.practiceQuestions.map(() => false);
     AppState.currentPracticeIndex = 0;
     AppState.practiceSeconds = 0;
+    AppState._pqAttemptSnapByIdx = {};
+    AppState._pqKeyUpdatedByIdx = {};
 }
 
 /**
@@ -9532,7 +10065,8 @@ window._getChapterHealth = _getChapterHealth;
  * Reveal + self-report flow shared by text/subjective questions and any
  * numeric question whose stored answer can't be parsed (ungradeable).
  */
-function _enterSelfReportFlow() {
+function _enterSelfReportFlow(userSelectedOption) {
+    _pqCaptureAttemptSnapshot(AppState.currentQ, AppState.currentPracticeIndex, userSelectedOption == null ? null : userSelectedOption);
     // ── Freeze the timer NOW — the time spent deciding correct/wrong after
     //    seeing the answer should NOT inflate the ELO temporal divergence calc.
     AppState._frozenTextQSeconds = AppState.practiceSeconds;
@@ -9573,6 +10107,7 @@ export function practiceSubmit() {
     // Graded score for the Elo engine — null ⇒ binary (isCorrect ? 1 : 0).
     // Only the multi-select branch computes a fractional JEE-style score.
     let gradedScore = null;
+    let _pqSolvedDeltaApplied = 0;
 
     // ── Guard parity with renderPracticeQuestionModal: an 'mcq' question with
     //    NO options (e.g. legacy rows misclassified during ingestion) is
@@ -9658,7 +10193,7 @@ export function practiceSubmit() {
         // (the old code fell through to the graded path and marked it WRONG).
         if (!isFinite(correctNum)) {
             alert("This question's stored answer isn't numeric — grade yourself below.");
-            _enterSelfReportFlow();
+            _enterSelfReportFlow(userNum.toString());
             return;
         }
         userAns = userNum.toString();
@@ -9674,6 +10209,7 @@ export function practiceSubmit() {
 
     AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
     AppState.currentQ.timeTaken = AppState.practiceSeconds;
+    _pqCaptureAttemptSnapshot(AppState.currentQ, AppState.currentPracticeIndex, userAns || null);
     // ⏱ Converge practice time into the daily/subjective study counters.
     // Runs exactly once — the flag above is already true, so the guard at
     // the top of practiceSubmit() blocks any re-entry from double-counting.
@@ -9691,6 +10227,7 @@ export function practiceSubmit() {
         if (!wasAlreadySolved && !AppState.bountyMode) {
             _directiveMarkSolve(AppState.currentQ, true);
             changeCount(AppState.currentQ.subject, 1);
+            _pqSolvedDeltaApplied = 1;
         }
     } else {
         AppState.currentQ.status = 'wrong';
@@ -9725,6 +10262,7 @@ export function practiceSubmit() {
  }
  if (_eloResult) applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloResult);
  if (AppState.currentQ && AppState.currentQ.status === 'solved') stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
+ _pqFinishAttemptSnapshot(AppState.currentQ, AppState.currentPracticeIndex, isCorrect, _eloResult, _pqSolvedDeltaApplied);
  saveAllAsync().catch(console.error);
 
     // ── Stop the practice-question timer ──
@@ -9771,22 +10309,6 @@ export function practiceSubmit() {
             contBtn.style.display = '';
         }
     }
-
-    if (!isCorrect) {
-        setTimeout(() => {
-            const row = document.querySelector('#practice-modal-content .pq-reveal-row') || document.getElementById('practice-modal-content');
-            if (row) {
-                const btn = document.createElement('button');
-                btn.className = 'btn btn-danger';
-                btn.innerText = 'Send to the Vault (Log Error)';
-                btn.onclick = () => {
-                    AppState.pendingWrongQ = AppState.currentQ;
-                    openModal('error-reason-modal');
-                };
-                row.appendChild(btn);
-            }
-        }, 50);
-    }
 }
 
 export function addTextQuestionFollowUp() {
@@ -9826,17 +10348,21 @@ export function addTextQuestionFollowUp() {
           try { refineDifficultyAfterTag(AppState.currentQ, _PQ_GRADE_PERF[AppState.currentQ.selfGrade.g]); } catch (_) {}
       }
       stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
-     saveAllAsync().catch(console.error);
-     if (AppState.bountyMode) {
-         evaluateBountyOutcome(true);
+      _pqFinishAttemptSnapshot(AppState.currentQ, AppState.currentPracticeIndex, true, _eloRes, 0);
+      if (AppState.bountyMode) {
+          saveAllAsync().catch(console.error);
+          evaluateBountyOutcome(true);
             return;
         }
         if (!wasAlreadySolved) {
             _directiveMarkSolve(AppState.currentQ, true);
             changeCount(AppState.currentQ.subject, 1);
+            _pqBumpSolvedDelta(1);
         }
+        saveAllAsync().catch(console.error);
         btnContainer.remove();
         container.querySelector('.pq-reveal-ask')?.remove();
+        renderPracticeQuestionModal();
         if (_eloRes) { _noteSessionElo(AppState.currentQ, _eloRes); try { injectEloShiftChip(_eloRes, { outcome: 'clean' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
         if (_modePerfTxt) {
@@ -9850,7 +10376,6 @@ export function addTextQuestionFollowUp() {
                 contBtn.style.display = '';
             }
         }
-        document.getElementById('practice-submit-btn').style.display = 'none';
         try { _pqSyncState(); } catch (_) {}
         try { _pqRenderDiag(); } catch (_) {}
     };
@@ -9880,6 +10405,7 @@ export function addTextQuestionFollowUp() {
       if (!_wasSelfGraded && AppState.currentQ.selfGrade) {
           try { refineDifficultyAfterTag(AppState.currentQ, _PQ_GRADE_PERF[AppState.currentQ.selfGrade.g]); } catch (_) {}
       }
+      _pqFinishAttemptSnapshot(AppState.currentQ, AppState.currentPracticeIndex, false, _eloRes, 0);
       saveAllAsync().catch(console.error);
       if (AppState.bountyMode) {
           evaluateBountyOutcome(false);
@@ -9887,21 +10413,9 @@ export function addTextQuestionFollowUp() {
         }
         btnContainer.remove();
         container.querySelector('.pq-reveal-ask')?.remove();
+        renderPracticeQuestionModal();
         if (_eloRes) { _noteSessionElo(AppState.currentQ, _eloRes); try { injectEloShiftChip(_eloRes, { outcome: 'skill' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
-        const logBtn = document.createElement('button');
-        logBtn.className = 'btn btn-danger';
-        logBtn.innerText = 'Send to the Vault (Log Error)';
-        logBtn.onclick = () => {
-            AppState.pendingWrongQ = AppState.currentQ;
-            openModal('error-reason-modal');
-        };
-        const revealRow = container.querySelector('.pq-reveal-row');
-        if (revealRow) {
-            revealRow.appendChild(logBtn);
-        } else {
-            container.appendChild(logBtn);
-        }
         if (_modePerfTxt) {
             _modeNextTargetPwin(AppState.practiceFlowMode, { correct: false, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
             _showModeContinueButton();
@@ -9913,7 +10427,6 @@ export function addTextQuestionFollowUp() {
                 contBtn.style.display = '';
             }
         }
-        document.getElementById('practice-submit-btn').style.display = 'none';
         try { _pqSyncState(); } catch (_) {}
         try { _pqRenderDiag(); } catch (_) {}
     };
@@ -10125,6 +10638,8 @@ export function closePracticeModal() {
     window._pendingSolveConfidence = null;
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
+    AppState._pqAttemptSnapByIdx = {};
+    AppState._pqKeyUpdatedByIdx = {};
     AppState._pqHealthBefore = null;
     AppState._pqElo = null;
     // A closed modal must not leak its run's navigation history into the next
@@ -10765,6 +11280,7 @@ export function deactivateOverheat() {
                 showNormalGlow();
             } else if (overheatActive && !overheatUsed) {
                 changeCount(AppState.currentQ.subject, 2);
+                _pqBumpSolvedDelta(2);
                 showSupercharged();
                 overheatUsed = true;
                 deactivateOverheat();
