@@ -1785,10 +1785,19 @@ export function cleanAndParseJson(rawText) {
     } catch (initialError) {
         try {
             // Fallback for genuinely invalid JSON: pre-escape macro starts
-            // (so `\underbrace` etc. survive), then double every bare
-            // backslash that isn't part of a valid JSON escape.
-            const multiEscaped = preEscape(sanitized).replace(/\\([^"\\\/bfnrtu])/g, '\\\\$1');
-            return JSON.parse(multiEscaped);
+            // (so `\underbrace` etc. survive), then normalize CONTIGUOUS
+            // backslash runs as a whole. The old single-slash regex matched
+            // only the second slash of a valid pair (`\\iff` → `\\\iff`) and
+            // turned valid JSON into invalid JSON. Even-length runs are
+            // already validly paired (`\\iff`, `\\{`, `\\}`, `\\\\`), so they
+            // pass through; only an ODD run whose trailing slash does not
+            // begin a valid JSON escape gets one extra slash.
+            const normalizeBackslashRuns = (s) => preEscape(s).replace(/(\\+)([\s\S])/g, (match, slashes, next) => {
+                if (slashes.length % 2 === 0) return match;
+                if (/^["\\\/bfnrtu]$/.test(next)) return match;
+                return slashes + '\\' + next;
+            });
+            return JSON.parse(normalizeBackslashRuns(sanitized));
         } catch (secondaryError) {
             throw new Error("Unable to parse JSON: " + secondaryError.message);
         }
@@ -1836,6 +1845,11 @@ export function repairLatex(s) {
         // already-doubled `\\` (real row breaks) is never touched.
         .replace(/(^|[^\\])\\(?=[\s\d-])/g, (m, pre) => pre + '\\\\')
         .replace(/\\n(?=[A-Z])/g, '\n')
+        // Surviving double-backslash artifacts before macro names / braces
+        // (`\\frac`, `\\{`, `\\}`) are normalized to a single backslash. Real
+        // row breaks (`\\ `, `\\[4pt]`, `\\\n`) are untouched because their
+        // next character is not a letter or brace.
+        .replace(/\\\\(?=[a-zA-Z{}])/g, '\\')
         // KaTeX has no align/equation/eqnarray/gather environments — Gemini
         // dumps love them, and KaTeX renders the env name as red raw source.
         // Normalize to the supported `aligned` (idempotent: after one pass the
@@ -2210,7 +2224,12 @@ function _repairQuestionBank() {
         }
         if (Array.isArray(q.options)) {
             for (let i = 0; i < q.options.length; i++) {
-                if (typeof q.options[i] === 'string') q.options[i] = repairLatex(q.options[i]);
+                if (typeof q.options[i] === 'string') {
+                    // Self-heal legacy imports that stored the raw Gem option
+                    // marker ("A) ...", "B. ..."): the UI already renders its
+                    // own letter badge, so keep only the option body.
+                    q.options[i] = repairLatex(q.options[i].replace(/^\(?[A-Da-d][)\.]\s+/, '').trim());
+                }
             }
         }
     }

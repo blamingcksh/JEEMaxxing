@@ -3418,6 +3418,69 @@ function _questionDedupeKey(subject, chapter, q) {
     return null;
 }
 
+// Gems emit their own option markers ("A) ", "(B) ", "C. "); the app renders
+// its own letter badge, so legacy rows stored the raw marker and rendered a
+// duplicated "A) A) ..." label. Strip it everywhere a newer copy is merged.
+function _stripOptionLetterPrefix(s) {
+    return String(s).replace(/^\(?[A-Da-d][)\.]\s+/, '').trim();
+}
+
+// A banked question is heal-able when the freshly parsed copy carries data the
+// stored row lost: truncated/missing options, a type that was downgraded to
+// text because the options array came out empty, raw option markers, or a
+// missing solution/hint. Healing never replaces the row (id + solve history
+// survive) — it only fills the damaged fields in place.
+function _questionNeedsHealing(existing, incoming) {
+    const exOpts = Array.isArray(existing.options) ? existing.options : [];
+    const inOpts = Array.isArray(incoming.options) ? incoming.options : [];
+    const hasBrokenLatex = (s) => typeof s === 'string' && /\\\\(?=[a-zA-Z{}])/.test(s);
+    if (exOpts.length < inOpts.length) return true;
+    if (existing.type !== 'mcq' && incoming.type === 'mcq' && inOpts.length > 0) return true;
+    if (exOpts.some(o => typeof o === 'string' && /^\(?[A-Da-d][)\.]\s+/.test(o))) return true;
+    if (exOpts.some(hasBrokenLatex)) return true;
+    if (!existing.solution && incoming.solution) return true;
+    if (!existing.hint && incoming.hint) return true;
+    if (hasBrokenLatex(existing.solution) || hasBrokenLatex(existing.hint)) return true;
+    return false;
+}
+
+function _healQuestionInPlace(existing, incoming) {
+    const exOpts = Array.isArray(existing.options) ? existing.options : [];
+    const inOpts = Array.isArray(incoming.options) ? incoming.options : [];
+    // Never shrink an option list that is longer than the incoming parse —
+    // only fill gaps / replace a broken shorter list. When the incoming copy
+    // has nothing to add, repair the stored strings in place instead.
+    if (inOpts.length > 0 && (inOpts.length >= exOpts.length || exOpts.some(o => typeof o === 'string' && /^\(?[A-Da-d][)\.]\s+/.test(o)))) {
+        existing.options = inOpts.slice();
+    } else if (exOpts.length > 0) {
+        existing.options = exOpts.map(o => (typeof o === 'string' ? repairLatex(_stripOptionLetterPrefix(o)) : o));
+    }
+    // Never let an empty/broken incoming parse downgrade a working MCQ.
+    if (incoming.type && (incoming.type !== 'text' || inOpts.length > 0 || existing.type !== 'mcq')) {
+        existing.type = incoming.type;
+    }
+    if (Array.isArray(incoming.correctAnswer) ? incoming.correctAnswer.length > 0 : (incoming.correctAnswer !== '' && incoming.correctAnswer != null)) {
+        existing.correctAnswer = Array.isArray(incoming.correctAnswer)
+            ? incoming.correctAnswer.slice() : incoming.correctAnswer;
+    }
+    if (incoming.solution) existing.solution = incoming.solution;
+    else if (typeof existing.solution === 'string' && existing.solution) existing.solution = repairLatex(existing.solution);
+    if (incoming.hint) existing.hint = incoming.hint;
+    else if (typeof existing.hint === 'string' && existing.hint) existing.hint = repairLatex(existing.hint);
+    if (typeof incoming.qElo === 'number' && isFinite(incoming.qElo)) {
+        existing.qElo = incoming.qElo;
+        if (incoming.qEloSource) existing.qEloSource = incoming.qEloSource;
+        if (incoming.qEloStampedBy) existing.qEloStampedBy = incoming.qEloStampedBy;
+        if (incoming.qEloStampedAt) existing.qEloStampedAt = incoming.qEloStampedAt;
+    }
+    if (typeof incoming.targetTimeMins === 'number' && incoming.targetTimeMins > 0) {
+        existing.targetTimeMins = incoming.targetTimeMins;
+    }
+    if (Array.isArray(incoming.tags) && incoming.tags.length) existing.tags = incoming.tags.slice();
+    if (incoming.difficulty) existing.difficulty = incoming.difficulty;
+    return existing;
+}
+
 export function saveAllQuestions() {
     // ── Guards: no buffer → nothing to do; already saving → swallow the
     // re-entrant click (double-click protection). ──
@@ -3435,14 +3498,25 @@ export function saveAllQuestions() {
     // inside the batch itself.
     const seenKeys = new Set();
     const dupeOriginByKey = new Map();
+    // Full row lookup (not just key membership) so a re-import can repair the
+    // stored duplicate in place instead of blindly skipping it. Without this,
+    // the exact dump that created truncated options / option-prefix rows could
+    // never self-heal: every re-paste matched its own damaged copy and was
+    // counted as "duplicate skipped".
+    const existingByKey = new Map();
     for (const existing of AppState.questionBank) {
         const k = _questionDedupeKey(existing.subject, existing.chapter, existing);
-        if (k && !seenKeys.has(k)) {
-            seenKeys.add(k);
-            dupeOriginByKey.set(k, { subject: existing.subject, chapter: existing.chapter });
+        if (k) {
+            if (!existingByKey.has(k)) existingByKey.set(k, existing);
+            if (!seenKeys.has(k)) {
+                seenKeys.add(k);
+                dupeOriginByKey.set(k, { subject: existing.subject, chapter: existing.chapter });
+            }
         }
     }
     let skippedDupes = 0;
+    let healedCount = 0;
+    let healedCurrentChapter = false;
     // ── Mock Mode: resolve the paper's chapter label ONCE per batch. While
     // a mock panel is open for filling, every committed question files under
     // `Mock: <paper>` instead of inheriting a stale chapter (or null, which
@@ -3545,10 +3619,22 @@ export function saveAllQuestions() {
             stampBatchSuspiciousStdev: !!q.stampBatchSuspiciousStdev,
             difficulty: q.difficulty || null,
         };
-        // ── Dedupe: skip exact duplicates already in the bank or earlier in
-        // this batch (same subject+chapter+text / image fingerprint). ──
+        // ── Dedupe: heal a damaged banked copy in place, otherwise skip exact
+        // duplicates already in the bank or earlier in this batch (same
+        // subject+text / image fingerprint). ──
         const _dk = _questionDedupeKey(newQ.subject, newQ.chapter, newQ);
         if (_dk) {
+            const _existingCopy = existingByKey.get(_dk);
+            if (_existingCopy && _questionNeedsHealing(_existingCopy, newQ)) {
+                _healQuestionInPlace(_existingCopy, newQ);
+                healedCount++;
+                if (_existingCopy.subject === AppState.currentSubject &&
+                    _existingCopy.chapter === AppState.currentChapter) {
+                    healedCurrentChapter = true;
+                }
+                _invalidateMatrixCtx();
+                continue;
+            }
             if (seenKeys.has(_dk)) {
                 skippedDupes++;
                 // Remember where the first copy lives so the import alert can
@@ -3607,6 +3693,14 @@ export function saveAllQuestions() {
         showQuestionList();
         console.log('[saveAllQuestions] Auto-navigated to fresh-imported chapter:',
             firstNew.subject, '/', firstNew.chapter);
+    } else if (importedCount > 0 || healedCurrentChapter) {
+        // Importing (or repairing a duplicate) into the chapter that is
+        // already open must re-render it too — the old code only refreshed on
+        // a subject/chapter CHANGE, so in-place imports left the stale grid
+        // (and healed rows kept showing their truncated options) on screen.
+        renderChaptersList();
+        _renderModeButtonsIntoChapterDetail();
+        showQuestionList();
     }
     // ── Bug 2 fix: tear down the preview modal + upload modal synchronously
     // and wipe the text-track terminal so the next batch starts clean. ──
@@ -3633,13 +3727,17 @@ export function saveAllQuestions() {
         const origins = Array.from(originSet).slice(0, 4);
         dupSummary = ` (${skippedDupes} duplicate${skippedDupes > 1 ? 's' : ''} skipped — already in ${origins.join(', ')}${originSet.size > 4 ? ` +${originSet.size - 4} more` : ''})`;
     }
+    let healSummary = '';
+    if (healedCount > 0) {
+        healSummary = ` ♻️ Repaired ${healedCount} duplicate${healedCount > 1 ? 's' : ''} in place.`;
+    }
     // Final import summary as non-blocking toast [AUDIT P2]: the bank view
     // already re-rendered beneath it — a blocking alert here interrupted the
     // exact moment the user should be scanning their fresh questions.
     if (typeof window.__jmaxAppToast === 'function') {
-        window.__jmaxAppToast(`✅ Imported ${importedCount} fresh problems.${dupSummary}`);
+        window.__jmaxAppToast(`✅ Imported ${importedCount} fresh problems.${healSummary}${dupSummary}`);
     } else {
-        alert(`Successfully imported ${importedCount} fresh problems into the local engine.${dupSummary} Let's see how you handle them.`);
+        alert(`Successfully imported ${importedCount} fresh problems into the local engine.${healSummary}${dupSummary} Let's see how you handle them.`);
     }
     } finally {
         _saveAllQuestionsInFlight = false;
@@ -3819,7 +3917,14 @@ function sanitizeGemTextDump(rawInput) {
         if (stringContent === "extractedText" || stringContent === "options" || stringContent === "correctAnswer" || stringContent === "type" || stringContent === "solution" || stringContent === "mcq" || stringContent === "numeric" || stringContent === "text") {
             return match;
         }
-        let fixedContent = stringContent.replace(/\\+/g, '\\\\').replace(/\\\\"/g, '\\"');
+        // Normalize each backslash run independently: an even-length run is
+        // already validly paired (`\\\\` row break, `\\frac`) and MUST be
+        // preserved — the old blanket `/\\+/g → '\\\\'` flattened 4-slash row
+        // breaks to 2, which `_fixBackslashRuns` then halved to a single `\`.
+        // Only odd runs get one extra slash so the trailing slash is escaped.
+        let fixedContent = stringContent
+            .replace(/\\+/g, (run) => (run.length % 2 === 0 ? run : run + '\\'))
+            .replace(/\\\\"/g, '\\"');
         return `"${fixedContent}"`;
     });
 
@@ -3875,7 +3980,7 @@ function _repairLatexParsed(s) {
     // breaks, then run the deterministic repair (unicode map, `\n` healing,
     // KaTeX-unsupported align/equation env normalization).
     if (typeof s !== 'string') return s;
-    return repairLatex(s.replace(/\\\\(?=[a-zA-Z{])/g, '\\'));
+    return repairLatex(s.replace(/\\\\(?=[a-zA-Z{}])/g, '\\'));
 }
 
 function _compileDumpObject(obj) {
@@ -4036,19 +4141,25 @@ export async function processGemTextDump() {
             const leadingMeta = segments[i - 1].substring(segments[i - 1].lastIndexOf('{'));
             const metadata = leadingMeta + segment.substring(textEndIndex);
 
-            // 2. Extract options array contents
+            // 2. Extract options array contents. The matcher must be
+            // quote-aware: `[\s\S]*?` stopped at the first `]` INSIDE a LaTeX
+            // interval (`\right]`, `[-1, 1]`), truncating the array and
+            // leaving Q7/Q10/Q14/Q18 with 0-2 options. This consumes any
+            // non-quote/non-`]` gap OR a full quoted string (escapes included)
+            // before accepting the closing `]`, so brackets inside option
+            // text can never terminate the array.
             let options = [];
-            const optionsMatch = metadata.match(/"options"\s*:\s*\[([\s\S]*?)\]/i);
+            const optionsMatch = metadata.match(/"options"\s*:\s*\[((?:[^\]"]|"(?:[^"\\]|\\.)*")*)\]/i);
             if (optionsMatch && optionsMatch[1]) {
-                // Collect individual string tokens within option boundaries
-                const optMatches = optionsMatch[1].match(/"([\s\S]*?)"/g);
+                // Collect individual string tokens within option boundaries.
+                const optMatches = optionsMatch[1].match(/"((?:[^"\\]|\\.)*)"/g);
                 if (optMatches) {
                     options = optMatches.map(o => {
-                        // Strip outer quotes
-                        let rawOpt = o.substring(1, o.length - 1);
-                        // FIX: Convert literal \n or \\n traps into real newlines, then collapse backslashes
-                        return repairLatex(_fixBackslashRuns(rawOpt));
-                    });
+                        // Strip outer quotes, unescape JSON's `\"`, then
+                        // normalize LaTeX exactly like the real-JSON path.
+                        let rawOpt = o.substring(1, o.length - 1).replace(/\\"/g, '"');
+                        return _stripOptionLetterPrefix(_repairLatexParsed(_fixBackslashRuns(rawOpt)));
+                    }).filter(Boolean);
                 }
             }
 
@@ -4115,7 +4226,9 @@ export async function processGemTextDump() {
                 return Number.isFinite(v) ? v : undefined;
             }
             function _extractStringArrayField(meta, key) {
-                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*\\[([\\s\\S]*?)\\]', 'i'));
+                // Quote-aware array scan: a `]` inside a quoted element (e.g.
+                // a LaTeX interval in a tag) must not close the array early.
+                const m = meta.match(new RegExp('"' + key + '"\\s*:\\s*\\[((?:[^\\]"]|"(?:[^"\\\\]|\\\\.)*")*)\\]', 'i'));
                 if (!m) return undefined;
                 const inner = m[1];
                 const strMatches = inner.match(/"((?:[^"\\\\]|\\\\.)*)"/g);
@@ -5627,7 +5740,7 @@ export function answerMathHTML(raw) {
     // JSON extraction can leave doubled backslashes ("\\frac") in stored answers;
     // collapse runs to a single backslash so KaTeX sees valid LaTeX instead of
     // parsing "\\" as a line-break and rendering "frac" character-by-character.
-    s = s.replace(/\\+n/g, '\n').replace(/\\\\(?=[a-zA-Z{])/g, '\\');
+    s = s.replace(/\\+n/g, '\n').replace(/\\\\(?=[a-zA-Z{}])/g, '\\');
     const esc = escapeHtml(s);
     if (/\$|\\\(|\\\[/.test(s)) return esc;                       // delimited — watchdog hydrates as-is
     if (/\\[a-zA-Z]{2,}/.test(s) || /[\^_][{}0-9a-zA-Z]/.test(s)) return '$' + esc + '$'; // bare LaTeX — wrap
