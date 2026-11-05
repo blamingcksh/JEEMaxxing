@@ -753,6 +753,25 @@ export const SessionRecap = {
         return true;
     },
 
+    /**
+     * Re-price an existing attempt in place. Used by the Fix Answer Key &
+     * Override Result flow: the item already exists in this session's recap,
+     * so flipping its outcome must update (not duplicate or skip) the entry.
+     */
+    updateRecord(q, result) {
+        if (!q || !result) return false;
+        const key = itemKey(q);
+        const existing = this._byKey.get(key);
+        if (!existing) return this.record(q, result);
+        existing.outcome = classify(result);
+        if (Number.isFinite(Number(result.secs))) existing.secs = Number(result.secs);
+        if (Number.isFinite(Number(result.targetSecs))) existing.targetSecs = Number(result.targetSecs);
+        if (result.eloDelta !== undefined && result.eloDelta !== null && Number.isFinite(Number(result.eloDelta))) {
+            existing.eloDelta = Math.round(Number(result.eloDelta));
+        }
+        return true;
+    },
+
     noteElo(q, delta) {
         if (!q) return false;
         const num = Number(delta);

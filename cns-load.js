@@ -445,6 +445,24 @@ export function logSolve(subject, correct, timeTaken, chapterAvgTime) {
  *
  * @returns {boolean} true if the ×0.20 band should be allowed
  */
+/**
+ * Remove the most recent solve from the rolling accuracy/τ windows.
+ *
+ * Used when an attempt outcome is rolled back and re-priced (Fix Answer Key &
+ * Override Result): the previous logSolve entry belongs to the OLD outcome and
+ * must be popped before calculateEloMigration logs the corrected one, or the
+ * windows would double-count the same attempt.
+ */
+export function popLastSolve(subject) {
+    if (!_state) _load();
+    const ns = _normalizeSubjectKey(subject);
+    const sub = _state && _state[ns];
+    if (!sub) return;
+    if (Array.isArray(sub.accLog) && sub.accLog.length > 0) sub.accLog.pop();
+    if (Array.isArray(sub.tauLog) && sub.tauLog.length > 0) sub.tauLog.pop();
+    _save();
+}
+
 export function isCns09Allowed(subject) {
     if (!_state) _load();
     const ns = _normalizeSubjectKey(subject);
@@ -548,6 +566,7 @@ init();
 export const CNSLoad = {
     computeCnsLoad,
     logSolve,
+    popLastSolve,
     onPomodoroQuit,
     getLastCnsReading,
     getMaxCnsReading,
