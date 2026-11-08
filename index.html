@@ -74,6 +74,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
      while the legacy sheets keep working underneath (see observatory.css) ── -->
 <link rel="stylesheet" href="observatory.css">
 <link rel="stylesheet" href="styles-telemetry.css">
+<link rel="stylesheet" href="styles-modes.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
 <body>
@@ -491,11 +492,12 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         <span class="dz-rule" aria-hidden="true"></span>
                     </div>
                     <div class="chapter-actions" role="group" aria-label="Chapter actions">
+                        <button class="mode-text-btn" id="chapters-mode-flow" onclick="openMultiChapterMode('flow')" title="Flow State · P(WIN) 75–85%">Flow <span class="mode-count" id="chapters-flow-count">0</span></button>
+                        <button class="mode-text-btn" id="chapters-mode-hardcore" onclick="openMultiChapterMode('hardcore')" title="Hardcore Crucible · ELO ≥ 1800">Hardcore <span class="mode-count" id="chapters-hc-count">0</span></button>
                         <button class="btn btn-primary" onclick="openModal('add-chapter-modal')">+ New Chapter</button>
-                        <button class="btn btn-mode-flow" onclick="openMultiChapterMode('flow')" title="Flow State across selected chapters"><svg class="g"><use href="#g-flow"></use></svg> Flow</button>
-                        <button class="btn btn-mode-hardcore" onclick="openMultiChapterMode('hardcore')" title="Hardcore across selected chapters"><svg class="g"><use href="#g-hardcore"></use></svg> Hardcore</button>
                     </div>
                 </div>
+
                 <div class="chapter-list" id="chapters-list-container"></div>
             </div>
 
@@ -675,33 +677,31 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     </style>
 </div>
 
-<!-- ═══════════════ LOCK-IN RITUAL CHAMBER (pomodoro.js) ═══════════════
-     Mode-reactive setup for Flow / Hardcore. [data-lockin-mode="flow"|"hardcore"]
-     drives the entire skin. pomodoro.js hydrates the presets, custom steppers,
-     live proportional session timeline, wall-clock finish time, today's chain
-     pips and the escrow contract on every open. -->
+<!-- ═══════════════ LOCK-IN (pomodoro.js) ═══════════════
+     Minimal setup column. [data-lockin-mode="flow"|"hardcore"] is hydrated
+     by pomodoro.js along with the title, launch label and timeline. -->
 <div id="lockin-setup-modal" class="modal-overlay lockin-modal" data-lockin-mode="flow">
     <div class="lockin-card" role="dialog" aria-modal="true" aria-labelledby="lockin-title">
-        <button class="close-btn" type="button" onclick="lockinClose()" aria-label="Close">✕</button>
-        <p class="lockin-kicker" id="lockin-kicker">// FLOW STATE LOCK-IN · P(WIN) 75–85% · ×1.5 ELO</p>
-        <h2 class="lockin-title" id="lockin-title">Sign the Pact</h2>
-        <p class="lockin-sub">Time is held in escrow until the block completes. Quitting early voids the block.</p>
+        <div class="lockin-head">
+            <h2 class="lockin-title" id="lockin-title">Sign the Pact</h2>
+            <button class="close-btn" type="button" onclick="lockinClose()" aria-label="Close">✕</button>
+        </div>
 
         <div class="lockin-presets" id="lockin-presets" role="group" aria-label="Duration presets">
             <button type="button" class="lockin-preset" data-grind="25" data-chill="5" onclick="lockinPreset(25,5)">
-                <span class="lp-top">25 / 5</span><span class="lp-name">Quick Strike</span><span class="lp-sub">High-velocity sprint</span>
+                <span>25/5</span>
             </button>
             <button type="button" class="lockin-preset active" data-grind="50" data-chill="10" onclick="lockinPreset(50,10)">
-                <span class="lp-top">50 / 10</span><span class="lp-name">Deep Zone</span><span class="lp-sub">Optimal cognitive block</span>
+                <span>50/10</span>
             </button>
             <button type="button" class="lockin-preset" data-grind="90" data-chill="15" onclick="lockinPreset(90,15)">
-                <span class="lp-top">90 / 15</span><span class="lp-name">Monk Mode</span><span class="lp-sub">Endurance immersion</span>
+                <span>90/15</span>
             </button>
         </div>
 
         <div class="lockin-steppers">
             <div class="ls-field">
-                <label for="lockin-grind">Grind (min)</label>
+                <label for="lockin-grind">Grind</label>
                 <div class="ls-row">
                     <button type="button" class="ls-btn" onclick="lockinStep('grind',-5)" aria-label="Decrease grind">−</button>
                     <input id="lockin-grind" class="ls-input" type="number" min="5" max="180" value="50" oninput="lockinRefresh()">
@@ -709,7 +709,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 </div>
             </div>
             <div class="ls-field">
-                <label for="lockin-chill">Rest (min)</label>
+                <label for="lockin-chill">Rest</label>
                 <div class="ls-row">
                     <button type="button" class="ls-btn" onclick="lockinStep('chill',-1)" aria-label="Decrease rest">−</button>
                     <input id="lockin-chill" class="ls-input" type="number" min="1" max="60" value="10" oninput="lockinRefresh()">
@@ -729,21 +729,14 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <div class="lockin-timeline">
             <div class="lt-track" id="lockin-timeline-track"></div>
             <div class="lt-meta">
-                <span class="lt-finish" id="lockin-finish-time">Finishes at --:--</span>
                 <span class="lt-total" id="lockin-total-time"></span>
+                <span class="lt-finish" id="lockin-finish-time">Finishes at --:--</span>
             </div>
         </div>
 
-        <div class="lockin-stakes">
-            <div class="lks-chain">
-                <span class="lks-label">Today's chain</span>
-                <span class="chain-pips" id="lockin-chain-pips" aria-hidden="true"></span>
-                <span class="lks-chain-n" id="lockin-chain-n">0</span>
-            </div>
-            <p class="lks-rule">⏳ <b>Escrow:</b> time is banked only when the block completes. Quitting early voids this block.</p>
-        </div>
+        <p class="lockin-rule">Time is banked only when a block completes.</p>
 
-        <button type="button" class="lockin-launch" id="lockin-launch" onclick="lockinConfirm()">Lock In &amp; Enter Arena →</button>
+        <button type="button" class="lockin-launch" id="lockin-launch" onclick="lockinConfirm()">Lock in</button>
     </div>
 </div>
 
@@ -767,7 +760,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     </div>
     <div class="lbh-actions">
         <button type="button" class="lbh-btn" onclick="addLockinRest(2)">+2m Rest</button>
-        <button type="button" class="lbh-btn" onclick="skipLockinRest()">Skip Rest ⏭</button>
+        <button type="button" class="lbh-btn" onclick="skipLockinRest()">Skip Rest →</button>
         <button type="button" class="lbh-btn lbh-end" onclick="endLockinSession()">End Session</button>
     </div>
 </div>
@@ -1125,15 +1118,18 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 </div>
 
 <!-- Multi-chapter mode picker -->
-<div id="multi-chapter-mode-modal" class="modal-overlay" onclick="closeModal(event, 'multi-chapter-mode-modal')">
-    <div class="modal-content multi-chapter-modal">
-        <button class="close-btn" onclick="closeModalStr('multi-chapter-mode-modal')" aria-label="Close">✕</button>
-        <h2 id="multi-chapter-mode-title">Select chapters</h2>
-        <p class="box-desc">Choose the chapters this run should draw questions from.</p>
+<div id="multi-chapter-mode-modal" class="modal-overlay" data-mode="flow" onclick="closeModal(event, 'multi-chapter-mode-modal')">
+    <div class="modal-content multi-chapter-modal" role="dialog" aria-modal="true" aria-labelledby="multi-chapter-mode-title">
+        <div class="mc-head">
+            <h2 id="multi-chapter-mode-title">Flow</h2>
+            <button class="close-btn" onclick="closeModalStr('multi-chapter-mode-modal')" aria-label="Close">✕</button>
+        </div>
+        <p class="mc-sub">Choose chapters.</p>
         <div id="multi-chapter-options" class="multi-chapter-options"></div>
         <div class="multi-chapter-footer">
+            <span class="mc-summary" id="multi-chapter-summary">0 questions</span>
             <button class="btn btn-secondary" onclick="closeModalStr('multi-chapter-mode-modal')">Cancel</button>
-            <button id="multi-chapter-start" class="btn btn-primary" onclick="startMultiChapterMode()">Start</button>
+            <button id="multi-chapter-start" class="mc-launch-btn" onclick="startMultiChapterMode()">Begin</button>
         </div>
     </div>
 </div>

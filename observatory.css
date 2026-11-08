@@ -1918,16 +1918,7 @@ html[data-theme="observatory"] .chapter-card {
   border: 1px solid var(--obs-hair) !important;
   border-radius: 6px !important;
 }
-html[data-theme="observatory"] .btn-mode-flow {
-  background: rgba(229,192,123,0.12) !important;
-  border: 1px solid var(--obs-ink) !important;
-  color: var(--obs-bone) !important;
-}
-html[data-theme="observatory"] .btn-mode-hardcore {
-  background: rgba(224,122,82,0.12) !important;
-  border: 1px solid #E07A52 !important;
-  color: var(--obs-bone) !important;
-}
+/* Mode buttons superseded by styles-modes.css */
 
 /* ── §E6 · Mocks Studio & Weak-Points Autopsy ── */
 html[data-theme="observatory"] .mk-head {

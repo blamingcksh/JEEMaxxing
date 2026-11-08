@@ -188,7 +188,11 @@
 // v97 - HARDCORE RECAP FINALE: Hardcore wins feature the Big Castle + fireworks
 //        finale; Hardcore losses replace the Goomba with Bowser firing a fire
 //        shot across the courtyard to hit Mario. mario-recap.js/app.js changed.
-const VERSION = 'jeemax-v97';
+// v98 - MODE RITUAL REDESIGN: Flow State & Hardcore authentic Observatory-native
+//        ritual across Chapters deck, multi-chapter scope picker, lock-in chamber,
+//        and clean question-list controls. styles-modes.css joins shell precache.
+// v99 - MODE MINIMAL PASS: Flow/Hardcore chrome stripped to plain text + hairlines.
+const VERSION = 'jeemax-v99';
 
 const SHELL = [
   './',
@@ -219,6 +223,7 @@ const SHELL = [
   './fx.js',
   './observatory.css',
   './styles-telemetry.css',
+  './styles-modes.css',
   './atmosphere.js',
   './glyphs.js',
   './matrix.js',
