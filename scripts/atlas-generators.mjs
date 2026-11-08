@@ -546,8 +546,67 @@ function genSpecimenMathNautilus() {
     spiralPts.push(`${s === 0 ? 'M' : 'L'}${f(px, 1)} ${f(py, 1)}`);
   }
 
+  // Pole-aligned Golden Rectangle (W : H = φ : 1) whose clockwise Fibonacci pole lands on (ox, oy)
+  const W = 248;
+  const H = W / PHI; // ~153.27
+  const x0 = ox - 0.7236068 * W; // ~146.55
+  const y0 = oy - 0.7236068 * H; // ~197.09
+  const s1 = H;          // ~153.27 (left square)
+  const s2 = W - s1;     // ~94.73  (top-right square)
+  const s3 = s1 - s2;    // ~58.55  (bottom-right square)
+  const s4 = s2 - s3;    // ~36.18  (bottom-mid square)
+  const s5 = s3 - s4;    // ~22.36  (top-mid square)
+  const xS1 = x0 + s1;
+  const yS2 = y0 + s2;
+  const xS3 = x0 + W - s3;
+  const yS4 = y0 + H - s4;
+  const xS5 = xS1 + s5;
+
+  // Quarter-turn circular Fibonacci construction arcs inside S1..S4
+  const fibArcs = [
+    `M${f(x0)} ${f(y0 + H)} A${f(s1)} ${f(s1)} 0 0 1 ${f(xS1)} ${f(y0)}`,
+    `M${f(xS1)} ${f(y0)} A${f(s2)} ${f(s2)} 0 0 1 ${f(x0 + W)} ${f(yS2)}`,
+    `M${f(x0 + W)} ${f(yS2)} A${f(s3)} ${f(s3)} 0 0 1 ${f(xS3)} ${f(y0 + H)}`,
+    `M${f(xS3)} ${f(y0 + H)} A${f(s4)} ${f(s4)} 0 0 1 ${f(xS1)} ${f(yS4)}`,
+  ].join(' ');
+
+  // 12 equiangular polar rays from (ox, oy)
+  const polarRays = [];
+  for (let k = 0; k < 12; k++) {
+    const a = (k * Math.PI) / 6;
+    polarRays.push(`<line x1="${f(ox + 11 * Math.cos(a))}" y1="${f(oy + 11 * Math.sin(a))}" x2="${f(ox + 260 * Math.cos(a))}" y2="${f(oy + 260 * Math.sin(a))}"/>`);
+  }
+
+  // Iso-radial blueprint rings (r = 55, 89, 144) + orthogonal axis ticks around (ox, oy)
+  const isoRadii = [55, 89, 144];
+  const isoTicks = [];
+  for (const r of isoRadii) {
+    for (let d = 0; d < 4; d++) {
+      const a = (d * Math.PI) / 2;
+      const tx = ox + r * Math.cos(a), ty = oy + r * Math.sin(a);
+      const nx = -Math.sin(a) * 3.8, ny = Math.cos(a) * 3.8;
+      isoTicks.push(`M${f(tx - nx)} ${f(ty - ny)}L${f(tx + nx)} ${f(ty + ny)}`);
+    }
+  }
+
+  // Quarter-turn spiral intersection vertex nodes & equiangular tangent indicator
+  const vertexNodes = [];
+  for (let m = 2; m <= 7; m++) {
+    const th = m * (Math.PI / 2);
+    const [vx, vy, vr] = sp(th);
+    if (vr > 14 && Math.hypot(vx - bx, vy - by) < 194) {
+      vertexNodes.push(`<circle cx="${f(vx)}" cy="${f(vy)}" r="2.1" fill="#080B12" fill-opacity="0.7" stroke="#8FBFE0" stroke-width="0.75" stroke-opacity="0.48"/>`);
+    }
+  }
+  const [tx0, ty0] = sp(2.25 * Math.PI);
+  const tAngle = 2.25 * Math.PI + Math.atan2(1, B);
+  const tangLine = `M${f(tx0 - 18 * Math.cos(tAngle))} ${f(ty0 - 18 * Math.sin(tAngle))}L${f(tx0 + 22 * Math.cos(tAngle))} ${f(ty0 + 22 * Math.sin(tAngle))}`;
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">
   ${baseDefs(uid, `
+    <clipPath id="${uid}-clip">
+      <circle cx="${bx}" cy="${by}" r="202"/>
+    </clipPath>
     <linearGradient id="${uid}-pearl-a" x1="15%" y1="10%" x2="85%" y2="90%">
       <stop offset="0%" stop-color="#3B3021" stop-opacity="0.94"/>
       <stop offset="50%" stop-color="#1A1614" stop-opacity="0.92"/>
@@ -574,25 +633,65 @@ function genSpecimenMathNautilus() {
   ${cardinalCrosshairs(bx, by, 208, 266, '#E5C07B', 0.55)}
   ${starField(bx, by, 228, 276, 20, 505, ['#E5C07B', '#F2EDE3'])}
 
-  <!-- Inscribed Fibonacci Golden Rectangles & Conic Hyperbola Construction Grid -->
-  <g fill="none" stroke="#E5C07B" stroke-opacity="0.28">
-    <circle cx="${bx}" cy="${by}" r="184" stroke-width="0.75" stroke-dasharray="3 4"/>
-    <circle cx="${ox}" cy="${oy}" r="142" stroke-width="0.7"/>
-    <circle cx="${ox}" cy="${oy}" r="88" stroke="#FAF0DC" stroke-width="0.65" stroke-opacity="0.24"/>
-    <rect x="164" y="216" width="272" height="168" stroke-width="0.8" stroke-dasharray="4 3"/>
-    <line x1="332" y1="216" x2="332" y2="384" stroke-width="0.7"/>
-    <line x1="164" y1="320" x2="332" y2="320" stroke-width="0.7"/>
-    <line x1="164" y1="216" x2="436" y2="384" stroke-width="0.65" stroke-opacity="0.22"/>
-    <line x1="164" y1="384" x2="436" y2="216" stroke-width="0.65" stroke-opacity="0.22"/>
-    <path d="M126 184 Q300 302 474 184" stroke-width="0.85"/>
-    <path d="M126 416 Q300 298 474 416" stroke-width="0.85"/>
-    <line x1="${ox}" y1="100" x2="${ox}" y2="500" stroke-width="0.65"/>
-    <line x1="100" y1="${oy}" x2="500" y2="${oy}" stroke-width="0.65"/>
+  <!-- Base Mathematical Blueprint Layer (under shell, clipped to r=202) -->
+  <g clip-path="url(#${uid}-clip)" fill="none">
+    <circle cx="${bx}" cy="${by}" r="186" stroke="#E5C07B" stroke-width="0.65" stroke-opacity="0.22" stroke-dasharray="3 4"/>
+    <g stroke="#E5C07B" stroke-width="0.65" stroke-opacity="0.16" stroke-dasharray="2 4">
+      ${polarRays.join('')}
+    </g>
+    <g stroke="#E5C07B" stroke-opacity="0.26">
+      <rect x="${f(x0)}" y="${f(y0)}" width="${f(W)}" height="${f(H)}" stroke-width="0.8" stroke-dasharray="4 3"/>
+      <line x1="${f(xS1)}" y1="${f(y0)}" x2="${f(xS1)}" y2="${f(y0 + H)}" stroke-width="0.75"/>
+      <line x1="${f(xS1)}" y1="${f(yS2)}" x2="${f(x0 + W)}" y2="${f(yS2)}" stroke-width="0.75"/>
+      <line x1="${f(xS3)}" y1="${f(yS2)}" x2="${f(xS3)}" y2="${f(y0 + H)}" stroke-width="0.7"/>
+      <line x1="${f(xS1)}" y1="${f(yS4)}" x2="${f(xS3)}" y2="${f(yS4)}" stroke-width="0.65"/>
+      <line x1="${f(xS5)}" y1="${f(yS2)}" x2="${f(xS5)}" y2="${f(yS4)}" stroke-width="0.6"/>
+      <line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x0 + W)}" y2="${f(y0 + H)}" stroke-width="0.65" stroke-dasharray="2.5 3.5" stroke-opacity="0.22"/>
+      <line x1="${f(xS1)}" y1="${f(y0 + H)}" x2="${f(x0 + W)}" y2="${f(y0)}" stroke-width="0.65" stroke-dasharray="2.5 3.5" stroke-opacity="0.22"/>
+    </g>
+    <path d="${fibArcs}" stroke="#8FBFE0" stroke-width="0.75" stroke-opacity="0.22" stroke-dasharray="2.5 3.5"/>
+    <!-- Bottom Inside-Rim φ Proportion Scale Chord -->
+    <g stroke="#E5C07B" stroke-opacity="0.28" stroke-width="0.75">
+      <line x1="186" y1="442" x2="414" y2="442"/>
+      <path d="M186 437v10M326.9 436v12M414 437v10M239.8 439v6M273.1 439v6M360.2 439v6"/>
+      <circle cx="326.9" cy="442" r="1.6" fill="#080B12" stroke="#8FBFE0" stroke-width="0.7" stroke-opacity="0.5"/>
+    </g>
   </g>
 
   <!-- Sculpted Golden Nautilus Shell -->
   <g>
     ${chambers.join('')}
+  </g>
+
+  <!-- Ghost Blueprint Overlay (ultra-faint across dark chambers, below glowing outer spiral rim) -->
+  <g clip-path="url(#${uid}-clip)" fill="none">
+    <!-- Polar iso-radius circles & cross-ticks centered on (ox, oy) -->
+    <g stroke="#F2EDE3" stroke-width="0.6" stroke-opacity="0.16" stroke-dasharray="3 5">
+      <circle cx="${ox}" cy="${oy}" r="55"/>
+      <circle cx="${ox}" cy="${oy}" r="89"/>
+      <circle cx="${ox}" cy="${oy}" r="144"/>
+    </g>
+    <path d="${isoTicks.join('')}" stroke="#F2EDE3" stroke-width="0.65" stroke-opacity="0.24"/>
+    <!-- Orthogonal polar axes through (ox, oy) -->
+    <line x1="${ox}" y1="98" x2="${ox}" y2="502" stroke="#E5C07B" stroke-width="0.65" stroke-opacity="0.20" stroke-dasharray="4 4"/>
+    <line x1="98" y1="${oy}" x2="502" y2="${oy}" stroke="#E5C07B" stroke-width="0.65" stroke-opacity="0.20" stroke-dasharray="4 4"/>
+    <!-- Faint subdivision & diagonal pass-through over dark chamber bodies -->
+    <g stroke="#8FBFE0" stroke-width="0.6" stroke-opacity="0.16" stroke-dasharray="2 3.5">
+      <rect x="${f(x0)}" y="${f(y0)}" width="${f(W)}" height="${f(H)}"/>
+      <line x1="${f(xS1)}" y1="${f(y0)}" x2="${f(xS1)}" y2="${f(y0 + H)}"/>
+      <line x1="${f(xS1)}" y1="${f(yS2)}" x2="${f(x0 + W)}" y2="${f(yS2)}"/>
+      <line x1="${f(xS3)}" y1="${f(yS2)}" x2="${f(xS3)}" y2="${f(y0 + H)}"/>
+      <line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x0 + W)}" y2="${f(y0 + H)}"/>
+      <line x1="${f(xS1)}" y1="${f(y0 + H)}" x2="${f(x0 + W)}" y2="${f(y0)}"/>
+      <path d="${fibArcs}"/>
+    </g>
+    <!-- Equiangular pitch-angle tangent line & 90deg spiral vertex rings -->
+    <path d="${tangLine}" stroke="#8FBFE0" stroke-width="0.7" stroke-opacity="0.32" stroke-dasharray="2 2"/>
+    ${vertexNodes.join('')}
+  </g>
+
+  <!-- Glowing Outer Spiral Spline -->
+  <g>
     <path d="${spiralPts.join('')}" fill="none" stroke="url(#${uid}-brass)" stroke-width="2.8" stroke-linecap="round" filter="url(#${uid}-softglow)"/>
     <path d="${spiralPts.join('')}" fill="none" stroke="#FAF0DC" stroke-width="1.05" stroke-opacity="0.90" stroke-linecap="round"/>
   </g>
