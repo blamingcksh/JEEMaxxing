@@ -1450,10 +1450,6 @@ try { _syncPopControls(); } catch (_) {}
 // ═══════════════════════════════════════════════════════════════════════════
 
 const LOCKIN_MODES = ['flow', 'hardcore'];
-const LOCKIN_KICKERS = {
-    flow: '// FLOW STATE LOCK-IN · P(WIN) 75–85% · ×1.5 ELO',
-    hardcore: '// OVERCLOCK CRUCIBLE · P(WIN) 35–50% · 1.8× WIN × 1.5× DEEP WORK',
-};
 
 /** Live Lock-In session state (also handed to app.js on confirm / resume). */
 export const lockinSession = {
@@ -1520,14 +1516,16 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
 
     const modal = document.getElementById('lockin-setup-modal');
     if (modal && typeof modal.setAttribute === 'function') modal.setAttribute('data-lockin-mode', mode);
-    const kicker = document.getElementById('lockin-kicker');
-    if (kicker) kicker.textContent = LOCKIN_KICKERS[mode] || LOCKIN_KICKERS.flow;
     const title = document.getElementById('lockin-title');
     if (title) title.textContent = mode === 'hardcore' ? 'Enter the Crucible' : 'Sign the Pact';
 
+    const launchBtn = document.getElementById('lockin-launch');
+    if (launchBtn) {
+        launchBtn.textContent = mode === 'hardcore' ? 'Ignite' : 'Lock in';
+    }
+
     _syncLockinPresetActive();
     _renderLockinTimeline();
-    _renderLockinChain();
     if (modal) {
         modal.style.display = 'flex';
         modal.classList.add('active');
@@ -1634,19 +1632,6 @@ function _renderLockinTimeline() {
         try { label = end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (_) {}
         fin.textContent = 'Finishes at ' + label;
     }
-}
-
-function _renderLockinChain() {
-    const pips = document.getElementById('lockin-chain-pips');
-    if (pips) {
-        const n = focusLedger.chain;
-        const slots = Math.max(5, n, Math.min(focusLedger.best, 10));
-        let html = '';
-        for (let i = 0; i < slots; i++) html += `<span class="chain-pip${i < n ? ' lit' : ''}${i === n - 1 ? ' tip' : ''}"></span>`;
-        pips.innerHTML = html;
-    }
-    const cn = document.getElementById('lockin-chain-n');
-    if (cn) cn.textContent = String(focusLedger.chain);
 }
 
 // ── Study / break phase machine ───────────────────────────────────────────
@@ -1928,7 +1913,7 @@ function _updateLockinBreakHud() {
     if (timeEl) timeEl.textContent = formatTime(Math.max(0, _lockinLeftSecs));
     const nextEl = document.getElementById('lbh-next');
     if (nextEl) {
-        const icon = lockinSession.mode === 'hardcore' ? '⚡ Hardcore' : '🎯 Flow State';
+        const icon = lockinSession.mode === 'hardcore' ? 'Hardcore' : 'Flow State';
         const chap = lockinSession.chapter ? ` (${lockinSession.chapter})` : '';
         nextEl.textContent = `Next: Round ${lockinSession.currentSession + 1}/${lockinSession.totalSessions} · ${icon}${chap}`;
     }
@@ -1993,7 +1978,7 @@ export function showLockinBreach() {
 export function showLockinComplete() {
     _setNotifyVariant('complete');
     $('notify-icon').textContent = '🎉';
-    $('notify-title').textContent = '🏁 Lock-In Cycle Complete';
+    $('notify-title').textContent = 'Lock-In Cycle Complete';
     $('notify-message').textContent = 'Every block sealed. Time banked, chain grown. Take the win — you earned the rest.';
     const receipt = $('notify-receipt');
     if (receipt) {

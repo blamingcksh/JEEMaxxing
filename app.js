@@ -2218,29 +2218,75 @@ let _multiChapterMode = null;
 export function openMultiChapterMode(mode) {
     if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return;
     _multiChapterMode = mode;
+
+    const modal = document.getElementById('multi-chapter-mode-modal');
+    if (modal) modal.setAttribute('data-mode', mode);
+
+    const title = document.getElementById('multi-chapter-mode-title');
+    if (title) {
+        title.textContent = mode === 'hardcore' ? 'Hardcore' : 'Flow';
+    }
+
     const subject = AppState.currentSubject;
     const chapters = AppState.chapters[subject] || [];
     const options = document.getElementById('multi-chapter-options');
-    const title = document.getElementById('multi-chapter-mode-title');
     if (!options) return;
-    if (title) title.textContent = `${mode === 'flow' ? '🎯 Flow State' : '⚡ Hardcore'} · Select chapters`;
     options.innerHTML = '';
-    chapters.forEach((chapter, index) => {
+
+    if (!chapters.length) {
+        options.innerHTML = '<p class="box-desc">No chapters in this domain yet. Add a chapter first.</p>';
+        window.updateMultiChapterSummary();
+        openModal('multi-chapter-mode-modal');
+        return;
+    }
+
+    let firstEligibleChecked = false;
+    chapters.forEach((chapter) => {
+        const snap = _modeSnapshot(mode, [chapter]);
+        const isEligible = snap.count > 0;
+        const shouldCheck = isEligible && !firstEligibleChecked;
+        if (shouldCheck) firstEligibleChecked = true;
+
         const label = document.createElement('label');
-        label.className = 'multi-chapter-option';
-        label.innerHTML = `<input type="checkbox" value="${escapeAttribute(chapter)}"${index === 0 ? ' checked' : ''}> <span>${escapeHtml(chapter)}</span>`;
+        label.className = `multi-chapter-option${snap.count === 0 ? ' is-empty' : ''}${shouldCheck ? ' is-selected' : ''}`;
+        label.innerHTML = `
+            <input type="checkbox" value="${escapeAttribute(chapter)}"${shouldCheck ? ' checked' : ''} onchange="window.updateMultiChapterSummary(this)">
+            <span class="mco-name">${escapeHtml(chapter)}</span>
+            <span class="mco-count">${snap.count}</span>
+        `;
         options.appendChild(label);
     });
-    if (!chapters.length) {
-        options.innerHTML = '<p class="box-desc">No chapters yet. Add a chapter first.</p>';
-        const start = document.getElementById('multi-chapter-start');
-        if (start) start.disabled = true;
-    } else {
-        const start = document.getElementById('multi-chapter-start');
-        if (start) start.disabled = false;
+
+    if (!firstEligibleChecked && options.querySelector('input[type="checkbox"]')) {
+        const firstInput = options.querySelector('input[type="checkbox"]');
+        firstInput.checked = true;
+        if (firstInput.parentElement) firstInput.parentElement.classList.add('is-selected');
     }
+
+    window.updateMultiChapterSummary();
     openModal('multi-chapter-mode-modal');
 }
+
+window.updateMultiChapterSummary = function(changedInput) {
+    if (changedInput && changedInput.parentElement) {
+        changedInput.parentElement.classList.toggle('is-selected', !!changedInput.checked);
+    }
+    const mode = _multiChapterMode || 'flow';
+    const checked = Array.from(document.querySelectorAll('#multi-chapter-options input[type="checkbox"]:checked'));
+    const chNames = checked.map(inp => inp.value);
+    const chCount = chNames.length;
+    const snap = _modeSnapshot(mode, chNames);
+    const qCount = snap.count;
+
+    const summaryEl = document.getElementById('multi-chapter-summary');
+    if (summaryEl) {
+        summaryEl.textContent = `${qCount} question${qCount === 1 ? '' : 's'}`;
+    }
+    const startBtn = document.getElementById('multi-chapter-start');
+    if (startBtn) {
+        startBtn.disabled = chCount === 0 || qCount === 0;
+    }
+};
 
 export function startMultiChapterMode() {
     const options = document.querySelectorAll('#multi-chapter-options input[type="checkbox"]:checked');
@@ -2303,6 +2349,16 @@ export function renderChaptersList() {
     if (_subjectChip) {
         _subjectChip.textContent = `DOMAIN // ${String(AppState.currentSubject || '').toUpperCase()}`;
     }
+
+    // Header counts: live eligible numbers beside Flow / Hardcore.
+    try {
+        const flowSnap = _modeSnapshot('flow');
+        const hcSnap = _modeSnapshot('hardcore');
+        const flowCount = document.getElementById('chapters-flow-count');
+        if (flowCount) flowCount.textContent = String(flowSnap.count);
+        const hcCount = document.getElementById('chapters-hc-count');
+        if (hcCount) hcCount.textContent = String(hcSnap.count);
+    } catch (_) {}
     let cont = document.getElementById('chapters-list-container');
     cont.innerHTML = '';
     // ── Ghost review row: pre-label-era uploads with no chapter render
@@ -5097,7 +5153,7 @@ export function showQuestionList() {
         if (container) {
             const empty = document.createElement('div');
             empty.className = 'questions-grid-empty';
-            empty.innerHTML = `<div class="qge-icon">🗂</div><div class="qge-title">No questions in this chapter yet</div><div class="qge-sub">Tap <strong>📸 Feed</strong> to paste or upload questions into <strong>${escapeHtml(AppState.currentChapter || 'this chapter')}</strong>.</div>`;
+            empty.innerHTML = `<div class="qge-icon"><svg class="g" style="width:28px;height:28px;" aria-hidden="true"><use href="#g-archive"></use></svg></div><div class="qge-title">No questions in this chapter yet</div><div class="qge-sub">Tap <strong>Feed</strong> to paste or upload questions into <strong>${escapeHtml(AppState.currentChapter || 'this chapter')}</strong>.</div>`;
             container.appendChild(empty);
         }
         showPracticeSubview('practice-question-list-view');
@@ -8396,6 +8452,35 @@ function _serveModeEntry(entry) {
 }
 
 /**
+ * Live eligibility & volume snapshot for ritual modes across a subject or chapter set.
+ */
+function _modeSnapshot(mode, chapterNames) {
+    const subject = _normalizeSubjectKey(AppState.currentSubject);
+    const names = Array.isArray(chapterNames) && chapterNames.length ? chapterNames : null;
+    const cfg = MODE_TUNING[mode] || {};
+    let totalEligible = 0;
+    let bossCount = 0;
+    for (const q of (AppState.questionBank || [])) {
+        if (q.subject !== subject) continue;
+        if (names && !names.some(ch => _chaptersMatch(q.chapter, ch))) continue;
+        if (!_isUnexecutedModeQuestion(q)) continue;
+        if (typeof q.qElo !== 'number' || !isFinite(q.qElo) || q.isAnomaly || q.modeRetired) continue;
+        totalEligible++;
+        if (q.qElo >= 1800) bossCount++;
+    }
+    const wins = AppState.hardcoreDailyDate === todayLocalKey() ? (AppState.hardcoreDailyCount || 0) : 0;
+    return {
+        total: totalEligible,
+        boss: bossCount,
+        count: mode === 'hardcore' && cfg.minQeloFloor ? (bossCount || totalEligible) : totalEligible,
+        dailyWins: wins,
+        dailyCap: MODE_TUNING.hardcore.capPerDay || 8
+    };
+}
+window.__modeSnapshot = _modeSnapshot;
+window.__getModePoolCount = (m, chs) => _modeSnapshot(m, Array.isArray(chs) ? chs : (chs ? [chs] : null)).count;
+
+/**
  * Pre-flight for a Lock-In entry. Hardcore's daily cap and the "is there at
  * least one mode-eligible question" probe both gate the Ritual Chamber so the
  * user never signs a pact that cannot be started.
@@ -8585,123 +8670,71 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
 }
 
 /**
- * Inject the two big glowing mode buttons into the chapter-detail view.
+ * Inject plain text mode actions into the question-list header.
  * Idempotent — safe to call multiple times.
  */
 function _renderModeButtonsIntoChapterDetail() {
     const row = document.getElementById('mode-buttons-row');
     if (!row) return;
 
-    // ── Inject compact header-mode stylesheet once ────────────────────────
-    if (!document.getElementById('mode-button-style')) {
-        const style = document.createElement('style');
-        style.id = 'mode-button-style';
-        style.textContent = `
-@keyframes mode-glow-flow { 0%,100%{box-shadow:0 0 0 0 rgba(0,200,255,.3);} 50%{box-shadow:0 0 8px 2px rgba(0,200,255,.3);} }
-@keyframes mode-glow-hc   { 0%,100%{box-shadow:0 0 0 0 rgba(255,70,70,.35);} 50%{box-shadow:0 0 10px 2px rgba(255,60,60,.35);} }
-@keyframes mode-glow-active-flow { 0%,100%{box-shadow:0 0 6px 1px rgba(0,220,255,.45);} 50%{box-shadow:0 0 14px 3px rgba(0,220,255,.55);} }
-@keyframes mode-glow-active-hc   { 0%,100%{box-shadow:0 0 8px 2px rgba(255,50,50,.5);} 50%{box-shadow:0 0 16px 4px rgba(255,40,40,.6);} }
-@keyframes mode-check-in { 0%{transform:scale(0);opacity:0;} 60%{transform:scale(1.2);opacity:1;} 100%{transform:scale(1);opacity:1;} }
-@keyframes mode-ripple { 0%{transform:scale(0);opacity:.5;} 100%{transform:scale(4);opacity:0;} }
+    const sel = AppState.currentChapterSelection;
+    const ch = AppState.currentChapter;
+    const targetChapters = Array.isArray(sel) && sel.length ? sel : (ch ? [ch] : null);
+    const flowSnap = _modeSnapshot('flow', targetChapters);
+    const hcSnap = _modeSnapshot('hardcore', targetChapters);
 
-/* Compact header pill — shared base */
-.mode-pill {
-  position:relative; overflow:hidden;
-  font-family:'Orbitron',sans-serif; font-size:10px; font-weight:700;
-  letter-spacing:.4px; padding:5px 11px; border-radius:999px;
-  cursor:pointer; color:#fff; border:1px solid transparent;
-  background:rgba(255,255,255,.04);
-  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 2px 10px rgba(0,0,0,.35);
-  transition:transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, opacity .3s ease;
-  white-space:nowrap; line-height:1;
-}
-.mode-pill:hover { transform:scale(1.06); }
-.mode-pill:active { transform:scale(.94); transition:transform .08s ease; }
-
-/* Feed pill */
-.mode-pill-feed {
-  border-color:rgba(255,255,255,.12);
-  background:rgba(255,255,255,.06);
-}
-.mode-pill-feed:hover { border-color:rgba(255,255,255,.3); box-shadow:0 0 14px rgba(255,255,255,.08); }
-
-/* Flow pill */
-.mode-pill-flow {
-  border-color:rgba(0,200,255,.2);
-  animation:mode-glow-flow 2.8s ease-in-out infinite;
-}
-.mode-pill-flow:hover { border-color:rgba(0,200,255,.45); }
-
-/* Hardcore pill */
-.mode-pill-hc {
-  border-color:rgba(255,70,70,.22);
-  animation:mode-glow-hc 2s ease-in-out infinite;
-}
-.mode-pill-hc:hover { border-color:rgba(255,70,70,.5); }
-
-/* Test pill — mock-test chapters for this subject */
-.mode-pill-test {
-  border-color:rgba(167,139,250,.25);
-  background:rgba(167,139,250,.07);
-}
-.mode-pill-test:hover { border-color:rgba(167,139,250,.55); box-shadow:0 0 14px rgba(167,139,250,.12); }
-
-/* Active states */
-        `;
-        document.head.appendChild(style);
+    // If controls already exist, refresh the live eligible counters
+    const flowCountEl = document.getElementById('btn-mode-flow-count');
+    const hcCountEl = document.getElementById('btn-mode-hc-count');
+    if (flowCountEl && hcCountEl) {
+        flowCountEl.textContent = String(flowSnap.count);
+        hcCountEl.textContent = String(hcSnap.count);
+        return;
     }
 
-    // ── Already built — just refresh the badge state ──────────────────────
-    if (document.getElementById('btn-mode-feed')) { _renderModeBadge(); _ensureTestPill(row); return; }
+    row.innerHTML = '';
 
-    // ── Feed Question pill ─────────────────────────────────────────────────
     const feed = document.createElement('button');
     feed.id = 'btn-mode-feed';
-    feed.className = 'mode-pill mode-pill-feed';
-    feed.textContent = '📸 Feed';
+    feed.className = 'mode-text-btn';
     feed.title = 'Upload or paste questions';
+    feed.textContent = 'Feed';
     feed.onclick = () => openModal('upload-modal');
     row.appendChild(feed);
 
-    // ── Flow State pill ────────────────────────────────────────────────────
+    const test = document.createElement('button');
+    test.id = 'btn-mode-test';
+    test.className = 'mode-text-btn';
+    test.title = "Open this subject's mock-test chapters";
+    test.textContent = 'Test';
+    test.onclick = () => openMockTestChapter();
+    row.appendChild(test);
+
     const flow = document.createElement('button');
     flow.id = 'btn-mode-flow';
-    flow.className = 'mode-pill mode-pill-flow';
-    flow.innerHTML = '🎯 Flow';
-    flow.title = 'Flow State · P_win ∈ [0.75, 0.85]';
-    flow.onclick = (e) => {
-        _playModeClickRipple(e, flow); _ensureLockinSetup('flow'); _playModeSound('flow');
-    };
-    flow.addEventListener('mouseenter', (e) => _spawnModeHoverParticles(e, flow, 'flow'));
+    flow.className = 'mode-text-btn';
+    flow.title = 'Flow State · P(WIN) 75–85%';
+    flow.innerHTML = 'Flow <span class="mode-count" id="btn-mode-flow-count">' + flowSnap.count + '</span>';
+    flow.onclick = () => { _ensureLockinSetup('flow'); _playModeSound('flow'); };
     row.appendChild(flow);
 
-    // ── Hardcore pill ──────────────────────────────────────────────────────
     const hardcore = document.createElement('button');
     hardcore.id = 'btn-mode-hardcore';
-    hardcore.className = 'mode-pill mode-pill-hc';
-    hardcore.innerHTML = '⚡ Hardcore';
-    hardcore.title = 'Hardcore / Overclock · P_win ∈ [0.35, 0.50]';
-    hardcore.onclick = (e) => {
-        _playModeClickRipple(e, hardcore); _ensureLockinSetup('hardcore'); _playModeSound('hardcore');
-    };
-    hardcore.addEventListener('mouseenter', (e) => _spawnModeHoverParticles(e, hardcore, 'hardcore'));
+    hardcore.className = 'mode-text-btn';
+    hardcore.title = 'Hardcore Crucible · ELO ≥ 1800';
+    hardcore.innerHTML = 'Hardcore <span class="mode-count" id="btn-mode-hc-count">' + hcSnap.count + '</span>';
+    hardcore.onclick = () => { _ensureLockinSetup('hardcore'); _playModeSound('hardcore'); };
     row.appendChild(hardcore);
-
-    _ensureTestPill(row);
-
-    _renderModeBadge();
 }
 
-/** 🧪 Test pill — jumps to this subject's mock-test chapters (`Mock: *`
- * tiles) with their proper labels. Idempotent: the header row persists
- * across chapter opens, so the pill is built once and only ensured after. */
+/** Test action — jumps to this subject's mock-test chapters (`Mock: *`
+ * tiles). Idempotent: the header row persists across chapter opens. */
 function _ensureTestPill(row) {
     if (!row || document.getElementById('btn-mode-test')) return;
     const test = document.createElement('button');
     test.id = 'btn-mode-test';
-    test.className = 'mode-pill mode-pill-test';
-    test.textContent = '🧪 Test';
+    test.className = 'mode-text-btn';
+    test.textContent = 'Test';
     test.title = "Open this subject's mock-test chapters";
     test.onclick = () => openMockTestChapter();
     row.appendChild(test);
@@ -10662,6 +10695,10 @@ export function closePracticeModal() {
     _clearModeHistory();
     if (document.getElementById('practice-question-list-view').classList.contains('active')) {
         showQuestionList();
+    }
+    const chView = document.getElementById('practice-chapters-view');
+    if (chView && chView.classList && chView.classList.contains('active')) {
+        renderChaptersList();
     }
     try {
         if (window.TuckIn && typeof window.TuckIn.renderDoor === 'function') {
