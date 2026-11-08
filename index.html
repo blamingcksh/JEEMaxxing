@@ -93,11 +93,14 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <div class="logo-container">
             <span class="logo-mark" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="9.5"/>
-                    <ellipse cx="12" cy="12" rx="9.5" ry="3.8" transform="rotate(-28 12 12)"/>
-                    <line x1="12" y1="2" x2="12" y2="4.5"/>
-                    <line x1="12" y1="19.5" x2="12" y2="22"/>
-                    <circle cx="12" cy="12" r="1.6" fill="currentColor"/>
+                    <circle cx="12" cy="12" r="9.6" stroke-width="1.15" opacity="0.88"/>
+                    <circle cx="12" cy="12" r="7.4" stroke-dasharray="1.1 2.5" stroke-width="0.9" opacity="0.48"/>
+                    <ellipse cx="12" cy="12" rx="9.8" ry="3.4" transform="rotate(-26 12 12)" stroke-width="1.3"/>
+                    <ellipse cx="12" cy="12" rx="7.2" ry="2.2" transform="rotate(26 12 12)" stroke-width="0.9" opacity="0.45"/>
+                    <circle cx="12" cy="12" r="3.4" stroke-width="1.25"/>
+                    <path d="M12 1.8v2.7M12 19.5v2.7M1.8 12h2.7M19.5 12h2.7" stroke-width="1.2" opacity="0.72"/>
+                    <circle cx="18.6" cy="7.6" r="0.9" fill="currentColor" stroke="none"/>
+                    <circle cx="12" cy="12" r="1.45" fill="currentColor" stroke="none"/>
                 </svg>
             </span>
             <span class="logo-text">JEEMaxxing</span>
@@ -106,25 +109,25 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
         <ul class="nav-menu" role="list">
             <li><a class="nav-item active" data-tab="practice" href="#practice" title="Arena (Alt+1)" onclick="switchTab('practice', this);return false;">
-                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.4C10.1 4.8 7.2 4.2 3.8 4.5V18c3.4-.3 6.3.3 8.2 1.9 1.9-1.6 4.8-2.2 8.2-1.9V4.5c-3.4-.3-6.3.3-8.2 1.9Z"/><path d="M12 6.4V19.9"/></svg></span>
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.2C9.9 4.5 7 3.9 3.6 4.3v13.8c3.4-.4 6.3.2 8.4 1.9 2.1-1.7 5-2.3 8.4-1.9V4.3c-3.4-.4-6.3.2-8.4 1.9Z"/><path d="M12 6.2V20"/><path d="M6.2 8.4h3.2M6.2 11.4h3.2M6.2 14.4h2.4" stroke-width="1.2" opacity="0.65"/><circle cx="16.3" cy="11.2" r="2.2" stroke-width="1.2" opacity="0.8"/></svg></span>
                 <span class="text-label">Grind Station</span></a></li>
             <li><a class="nav-item" data-tab="errors" href="#vault" title="The Vault (Alt+2)" onclick="switchTab('errors', this);return false;">
-                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 19 5.8V11c0 4.6-2.9 8.1-7 10-4.1-1.9-7-5.4-7-10V5.8Z"/></svg></span>
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 19.2 5.6v5.7c0 4.7-3 8.4-7.2 10.1-4.2-1.7-7.2-5.4-7.2-10.1V5.6Z"/><path d="M12 5.5 16.5 7.3v4c0 3.2-1.9 5.8-4.5 7.2-2.6-1.4-4.5-4-4.5-7.2v-4Z" stroke-width="1.1" opacity="0.55"/><path d="M12 9.2v4.6M9.7 11.5h4.6" stroke-width="1.35"/><circle cx="12" cy="11.5" r="1" fill="currentColor" stroke="none"/></svg></span>
                 <span class="text-label">The Vault</span></a></li>
             <li><a class="nav-item" data-tab="mocks" href="#mocks" title="Mocks (Alt+3)" onclick="switchTab('mocks', this);return false;">
-                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.25"/><path d="M12 7.5V12l3 2"/></svg></span>
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5h4M12 2.5v2"/><path d="M17.8 5.2l1.3-1.3"/><circle cx="12" cy="13.2" r="7.8"/><circle cx="12" cy="13.2" r="5.6" stroke-dasharray="1 2.4" stroke-width="1.2" opacity="0.6"/><path d="M12 9.4v3.8l2.7 1.6"/><circle cx="12" cy="13.2" r="1" fill="currentColor" stroke="none"/></svg></span>
                 <span class="text-label">Mocks</span></a></li>
             <li><a class="nav-item" data-tab="dashboard" href="#dashboard" title="Analysis Hub (Alt+4)" onclick="switchTab('dashboard', this);return false;">
-                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.75" y="3.75" width="7" height="7" rx="1.8"/><rect x="13.25" y="3.75" width="7" height="7" rx="1.8"/><rect x="3.75" y="13.25" width="7" height="7" rx="1.8"/><rect x="13.25" y="13.25" width="7" height="7" rx="1.8"/></svg></span>
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7.2" height="9.2" rx="1.7"/><rect x="13.3" y="3.5" width="7.2" height="5.6" rx="1.7"/><rect x="3.5" y="15.3" width="7.2" height="5.2" rx="1.7"/><rect x="13.3" y="11.7" width="7.2" height="8.8" rx="1.7"/><path d="M5.4 9.6 7 7.6 8.3 8.8 9.2 6.6" stroke-width="1.25" opacity="0.8"/><circle cx="16.9" cy="6.3" r="1.1" fill="currentColor" stroke="none" opacity="0.75"/></svg></span>
                 <span class="text-label">Analysis Hub</span></a></li>
             <li><a class="nav-item" data-tab="settings" href="#config" title="Config (Alt+5)" onclick="switchTab('settings', this);return false;">
-                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 5h-6.8"/><path d="M10.2 5H3"/><path d="M21 12h-8.8"/><path d="M8.2 12H3"/><path d="M21 19h-4.8"/><path d="M12.2 19H3"/><path d="M14.2 3v4"/><path d="M8.2 10v4"/><path d="M16.2 17v4"/></svg></span>
+                <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 5.5h8.2M15.7 5.5H20.5"/><circle cx="13.7" cy="5.5" r="2"/><path d="M3.5 12h2.8M10.3 12H20.5"/><circle cx="8.3" cy="12" r="2"/><path d="M3.5 18.5h10.2M17.7 18.5H20.5"/><circle cx="15.7" cy="18.5" r="2"/></svg></span>
                 <span class="text-label">Config</span></a></li>
         </ul>
 
         <!-- app.js injects #global-mmr-row into .user-profile -->
         <div class="user-profile">
-            <img id="display-pfp" class="pfp-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='64' height='64'><rect width='64' height='64' rx='32' fill='%230B0E16'/><circle cx='32' cy='32' r='28' fill='none' stroke='%23E5C07B' stroke-width='1' stroke-opacity='0.4'/><circle cx='32' cy='32' r='22' fill='none' stroke='%23E5C07B' stroke-width='0.75' stroke-dasharray='2 2'/><circle cx='32' cy='32' r='14' fill='none' stroke='%23E5C07B' stroke-width='1'/><ellipse cx='32' cy='32' rx='22' ry='9' transform='rotate(-28 32 32)' fill='none' stroke='%23E5C07B' stroke-width='0.75' stroke-opacity='0.6'/><line x1='32' y1='8' x2='32' y2='56' stroke='%23E5C07B' stroke-width='0.75' stroke-opacity='0.5'/><line x1='8' y1='32' x2='56' y2='32' stroke='%23E5C07B' stroke-width='0.75' stroke-opacity='0.5'/><circle cx='32' cy='32' r='2.5' fill='%23E5C07B'/></svg>" alt="Profile">
+            <img id="display-pfp" class="pfp-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='64' height='64'><defs><radialGradient id='g' cx='50%25' cy='45%25' r='60%25'><stop offset='0%25' stop-color='%23181D2B'/><stop offset='100%25' stop-color='%2307090E'/></radialGradient></defs><circle cx='32' cy='32' r='31' fill='url(%23g)' stroke='%23D4AF37' stroke-opacity='0.45' stroke-width='1.2'/><circle cx='32' cy='32' r='26' fill='none' stroke='%23E5C07B' stroke-opacity='0.35' stroke-width='0.9' stroke-dasharray='1.5 3.2'/><circle cx='32' cy='32' r='19' fill='none' stroke='%23E5C07B' stroke-opacity='0.75' stroke-width='1.1'/><circle cx='32' cy='26' r='11' fill='none' stroke='%237DD3FC' stroke-opacity='0.45' stroke-width='0.85'/><ellipse cx='32' cy='32' rx='24' ry='9.5' transform='rotate(-26 32 32)' fill='none' stroke='%23E5C07B' stroke-opacity='0.75' stroke-width='1'/><ellipse cx='32' cy='32' rx='24' ry='9.5' transform='rotate(26 32 32)' fill='none' stroke='%23E5C07B' stroke-opacity='0.3' stroke-width='0.8'/><path d='M32 4v8M32 52v8M4 32h8M52 32h8' stroke='%23E5C07B' stroke-opacity='0.65' stroke-width='1.1' stroke-linecap='round'/><circle cx='32' cy='32' r='4.2' fill='%2307090E' stroke='%23F3D999' stroke-width='1.3'/><circle cx='32' cy='32' r='1.8' fill='%23F3D999'/><circle cx='49' cy='22' r='1.5' fill='%237DD3FC'/></svg>" alt="Profile">
             <span class="username-txt" id="display-username">Grindset</span>
         </div>
 
@@ -152,7 +155,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                      title="Calibration Report · does your confidence match your accuracy? Rolling last 60 graded solves."><span class="calib-kicker">CALIBRATION</span><span class="calib-warmup">loading…</span></div>
                 <div class="header-actions">
                     <div class="badge sync-cluster" title="Cloud sync">
-                        <button class="manual-sync-btn" id="manual-sync-btn" onclick="executeUnifiedSync()" aria-label="Force cloud sync" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5A8.5 8.5 0 1 0 18 17.2"/><path d="M18.5 12.5 21 10l-3.4-.6"/></svg></button>
+                        <button class="manual-sync-btn" id="manual-sync-btn" onclick="executeUnifiedSync()" aria-label="Force cloud sync" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.4-4.8"/><path d="M4.2 3.8v3.6h3.6"/><path d="M4 13a8 8 0 0 0 14.4 4.8"/><path d="M19.8 20.2v-3.6h-3.6"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" opacity="0.65"/></svg></button>
                         <span class="val" id="sync-sub-text">Cloud Link</span>
                     </div>
                 </div>

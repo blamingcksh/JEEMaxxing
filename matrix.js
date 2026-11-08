@@ -1230,7 +1230,7 @@ function _renderQuestionMedia(q) {
     // Encoded SVG placeholder — must be URI-encoded: raw `<`, `>`, `#` in a
     // src attribute is fragile (browser re-parse differences) and a broken
     // placeholder leaves a permanent broken-image icon.
-    const placeholderSrc = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='300' height='180'><rect width='100%' height='100%' fill='#12121a'/><text x='50%' y='50%' fill='#444a6a' font-family='sans-serif' font-size='12' text-anchor='middle' dominant-baseline='middle'>Loading image…</text></svg>`)}`;
+    const placeholderSrc = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='300' height='180' viewBox='0 0 300 180'><rect width='300' height='180' rx='10' fill='#090B11'/><path d='M14 28V14h14M272 14h14v14M14 152v14h14M272 166h14v-14' fill='none' stroke='#E5C07B' stroke-opacity='0.45' stroke-width='1.4' stroke-linecap='round'/><circle cx='150' cy='80' r='28' fill='none' stroke='#E5C07B' stroke-opacity='0.28' stroke-width='1' stroke-dasharray='3 4'/><circle cx='150' cy='80' r='10' fill='none' stroke='#7DD3FC' stroke-opacity='0.35' stroke-width='1'/><path d='M150 46v68M116 80h68' stroke='#E5C07B' stroke-opacity='0.18' stroke-width='0.9'/><circle cx='150' cy='80' r='2.5' fill='#E5C07B' fill-opacity='0.7'/><text x='150' y='138' fill='#B89B62' font-family='monospace' font-size='10' letter-spacing='1.5' text-anchor='middle'>ACQUIRING PLATE…</text></svg>`)}`;
     let imgHtml = '';
     if (q.imageDataUrl && q.imageDataUrl.length > 100) {
         imgHtml = `<img class="sr-question-img" id="sr-question-img" src="${_safeImgSrc(q.imageDataUrl)}" alt="Question image">`;
@@ -3530,7 +3530,7 @@ waitForDriveToken(() => {
 // Tiny SVG used both as the initial placeholder AND as the "unloaded" state
 // for cards that have scrolled out of the viewport (frees the decoded bitmap).
 // Fully-encoded data URI (raw `<`, `>`, `#` inside a src attribute are fragile).
-const LAZY_IMG_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='90'%3E%3Crect width='100%25' height='100%25' fill='%2312121a'/%3E%3Ctext x='50%25' y='50%25' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' dominant-baseline='middle'%3ELoading%E2%80%A6%3C/text%3E%3C/svg%3E";
+const LAZY_IMG_PLACEHOLDER = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90' viewBox='0 0 140 90'><rect width='140' height='90' rx='8' fill='#090B11'/><path d='M10 20V10h10M120 10h10v10M10 70v10h10M120 80h10V70' fill='none' stroke='#E5C07B' stroke-opacity='0.45' stroke-width='1.2' stroke-linecap='round'/><circle cx='70' cy='38' r='16' fill='none' stroke='#E5C07B' stroke-opacity='0.28' stroke-width='1' stroke-dasharray='2 3'/><circle cx='70' cy='38' r='2' fill='#E5C07B' fill-opacity='0.55'/><text x='70' y='69' fill='#B89B62' font-family='monospace' font-size='8' letter-spacing='1.1' text-anchor='middle'>ACQUIRING PLATE…</text></svg>`)}`;
 
 let _errorImgObserver = null;
 
