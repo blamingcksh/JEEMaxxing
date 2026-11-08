@@ -662,6 +662,121 @@ try {
     });
     ok(noResults === null, 'play returns null when nothing was answered');
 
+    // Hardcore Win: Big Castle + Princess + Fireworks
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.evaluate(() => {
+        window.SessionRecap.reset();
+        window.SessionRecap.record({ id: 'hc-win-1' }, { correct: true, secs: 95, targetSecs: 90, eloDelta: 18, mode: 'hardcore' });
+        window.SessionRecap.record({ id: 'hc-win-2' }, { correct: true, secs: 30, targetSecs: 90, eloDelta: 12, mode: 'hardcore' });
+    });
+    await start();
+    await page.waitForSelector('#mario-recap');
+    await page.waitForSelector('#mario-recap-pill.is-summary', { timeout: 12000 });
+    await page.waitForFunction(() => Number(document.getElementById('mario-recap')?.dataset.hardcoreFireworks || 0) >= 2, { timeout: 4000 });
+    const hcWin = await page.evaluate(() => {
+        const overlay = document.getElementById('mario-recap');
+        return {
+            sessionMode: overlay.dataset.sessionMode,
+            castleSize: overlay.dataset.castleSize,
+            megaOutcome: overlay.dataset.megaOutcome,
+            megaPop: overlay.dataset.megaPop,
+            finaleBranch: overlay.dataset.finaleBranch,
+            castleFlag: overlay.dataset.castleFlag,
+            fireworks: Number(overlay.dataset.hardcoreFireworks || 0),
+            bossVisible: overlay.dataset.bossVisible,
+            goombaVisible: overlay.dataset.goombaVisible,
+        };
+    });
+    ok(
+        hcWin.sessionMode === 'hardcore' &&
+        hcWin.castleSize === 'big' &&
+        hcWin.megaOutcome === 'green' &&
+        hcWin.megaPop === '+30' &&
+        hcWin.finaleBranch === 'princess' &&
+        hcWin.castleFlag === 'green' &&
+        hcWin.fireworks >= 2 &&
+        hcWin.bossVisible === undefined &&
+        hcWin.goombaVisible === undefined,
+        'Hardcore win renders Big Castle, Princess Peach finale, and sky fireworks without enemies',
+        JSON.stringify(hcWin)
+    );
+    await page.screenshot({ path: path.join(SHOTS, 'mario-recap-hardcore-win.png') });
+    await page.mouse.click(20, 120);
+    await waitGone(page);
+
+    // Hardcore Loss: Big Castle + Boss shoots Fire Shot across courtyard to hit & kill Mario (NO Goomba)
+    await page.evaluate(() => {
+        window.SessionRecap.reset();
+        window.SessionRecap.record({ id: 'hc-loss-1' }, { correct: false, secs: 45, targetSecs: 90, eloDelta: -11, mode: 'hardcore' });
+        window.SessionRecap.record({ id: 'hc-loss-2' }, { correct: false, secs: 50, targetSecs: 90, eloDelta: -8, mode: 'hardcore' });
+    });
+    await start();
+    await page.waitForFunction(() => document.getElementById('mario-recap')?.dataset.finalePhase === 'BOSS_FIRE', { timeout: 10000 });
+    await page.waitForTimeout(90);
+    await page.screenshot({ path: path.join(SHOTS, 'mario-recap-hardcore-boss-fire.png') });
+    await page.waitForSelector('#mario-recap-pill.is-summary', { timeout: 12000 });
+    await page.waitForTimeout(260);
+    const hcLoss = await page.evaluate(() => {
+        const overlay = document.getElementById('mario-recap');
+        return {
+            sessionMode: overlay.dataset.sessionMode,
+            castleSize: overlay.dataset.castleSize,
+            megaOutcome: overlay.dataset.megaOutcome,
+            megaPop: overlay.dataset.megaPop,
+            finaleBranch: overlay.dataset.finaleBranch,
+            castleFlag: overlay.dataset.castleFlag,
+            bossVisible: overlay.dataset.bossVisible,
+            bossFired: overlay.dataset.bossFired,
+            bossFireHit: overlay.dataset.bossFireHit,
+            goombaVisible: overlay.dataset.goombaVisible,
+            chimneySmoke: Number(overlay.dataset.chimneySmoke || 0),
+            marioPose: overlay.dataset.marioPose,
+            marioDeath: overlay.dataset.marioDeath,
+        };
+    });
+    ok(
+        hcLoss.sessionMode === 'hardcore' &&
+        hcLoss.castleSize === 'big' &&
+        hcLoss.megaOutcome === 'red' &&
+        hcLoss.megaPop === '−19' &&
+        hcLoss.finaleBranch === 'negative' &&
+        hcLoss.castleFlag === 'red' &&
+        hcLoss.bossVisible === 'true' &&
+        hcLoss.bossFired === 'true' &&
+        hcLoss.bossFireHit === 'true' &&
+        hcLoss.goombaVisible === undefined &&
+        hcLoss.chimneySmoke > 0 &&
+        hcLoss.marioPose === 'dead' &&
+        hcLoss.marioDeath === 'done',
+        'Hardcore loss renders Big Castle and Boss firing a fire shot that kills Mario without spawning a Goomba',
+        JSON.stringify(hcLoss)
+    );
+    await page.screenshot({ path: path.join(SHOTS, 'mario-recap-hardcore-loss.png') });
+    await page.mouse.click(20, 120);
+    await waitGone(page);
+
+    // Hardcore Mobile framing verification (390x844)
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => {
+        window.SessionRecap.reset();
+        window.SessionRecap.record({ id: 'hc-mob-1' }, { correct: true, secs: 40, targetSecs: 90, eloDelta: 20, mode: 'hardcore' });
+    });
+    await start();
+    await page.waitForSelector('#mario-recap-pill.is-summary', { timeout: 10000 });
+    await page.waitForTimeout(260);
+    const hcMob = await page.evaluate(() => {
+        const overlay = document.getElementById('mario-recap');
+        const pill = document.getElementById('mario-recap-pill').getBoundingClientRect();
+        return {
+            castleSize: overlay.dataset.castleSize,
+            inViewport: pill.left >= 0 && pill.right <= innerWidth && pill.top >= 0 && pill.bottom <= innerHeight,
+        };
+    });
+    ok(hcMob.castleSize === 'big' && hcMob.inViewport, 'Hardcore Big Castle fits mobile viewport cleanly', JSON.stringify(hcMob));
+    await page.screenshot({ path: path.join(SHOTS, 'mario-recap-hardcore-mobile.png') });
+    await page.mouse.click(20, 120);
+    await waitGone(page);
+
     ok(pageErrors.length === 0, 'no uncaught page errors', pageErrors.join(' | '));
     const relevantConsoleErrors = consoleErrors.filter((msg) => !/favicon|404/i.test(msg));
     ok(relevantConsoleErrors.length === 0, 'no console errors', relevantConsoleErrors.join(' | '));

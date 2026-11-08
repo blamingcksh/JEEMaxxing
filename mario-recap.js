@@ -377,6 +377,137 @@ const GOOMBA_SPRITES = {
     ]
 };
 
+const BOSS_PALETTE = {
+    'K': '#0f172a',
+    'G': '#22c55e',
+    'g': '#15803d',
+    'S': '#166534',
+    'R': '#ef4444',
+    'O': '#f97316',
+    'Y': '#facc15',
+    'y': '#ca8a04',
+    'W': '#f8fafc',
+    'w': '#cbd5e1',
+    'D': '#1e293b',
+    'E': '#fef08a'
+};
+
+const BOSS_SPRITES = {
+    stand1: [
+        "........................",
+        ".....WW...WW............",
+        "....KWwK.KWwKROO........",
+        "....KGGKKGGGKRROK.......",
+        "...KGGGGGGGKKRRRK.......",
+        "..KGGGGWREGGKROKWW......",
+        ".KGGGGGGGGGGGKKSWWwK....",
+        "KGGKGGGGGGGGKKSSSWWK....",
+        "KGGGGWKKWGGKDDSSSKWWwK..",
+        ".KKKKGGGGKKWDWSSSKWWwK..",
+        "....KGGKKDDWWKSSSKKK....",
+        "...KYyGKKGKKKYSSSSKWWwK.",
+        "..KYYyGGWWGGKYSSSSSKWWK.",
+        "..KYYyGGGGKKKYSSSSSSKK..",
+        "..KYYyKKKGGGGKYSSSSSK...",
+        "..KYYyYKKGGGGKYSSSSSKWwK",
+        "...KYYyYKKKKKKYSSSSSKwK.",
+        "...KYYyYYGGGGKYSSSSSK...",
+        "....KYYyGGGGGGKYSSSK....",
+        "....KGGGKKKKGGKKSSKK....",
+        "...KGGGGK..KGGGGKKKK....",
+        "...KGGGgK..KGGGGgKKK....",
+        "..KWWWGGK..KWWWGGgK.....",
+        "..KKKKKKK..KKKKKKKK....."
+    ],
+    stand2: [
+        "........................",
+        ".....WW...WW............",
+        "....KWwK.KWwKROO........",
+        "....KGGKKGGGKRROK.......",
+        "...KGGGGGGGKKRRRK.......",
+        "..KGGGGWREGGKROKWW......",
+        ".KGGGGGGGGGGGKKSWWwK....",
+        "KGGKGGGGGGGGKKSSSWWK....",
+        "KGGGGWKKWGGKDDSSSKWWwK..",
+        ".KKKKGGGGKKWDWSSSKWWwK..",
+        "....KGGKKDDWWKSSSKKK....",
+        "...KYyGKKGKKKYSSSSKWWwK.",
+        "..KYYyGGWWGGKYSSSSSKWWK.",
+        "..KYYyGGGGKKKYSSSSSSKK..",
+        "..KYYyKKKGGGGKYSSSSSK...",
+        "..KYYyYKKGGGGKYSSSSSKWwK",
+        "...KYYyYKKKKKKYSSSSSKwK.",
+        "...KYYyYYGGGGKYSSSSSK...",
+        "....KGGGKKKKGGKKSSKK....",
+        "....KGGGGK..KGGGGKKK....",
+        "...KGGGGgK...KGGGGKK....",
+        "..KWWWGGK....KWWWGGK....",
+        "..KKKKKKK....KKKKKKK....",
+        "........................"
+    ],
+    fire: [
+        "........................",
+        ".....WW...WW............",
+        "....KWwK.KWwKROO........",
+        "...KGGGKKGGGKRROK.......",
+        "..KGGGGGGGGKKRRRK.......",
+        ".KGGGGGWREGGKROKWW......",
+        "KGGKGGGGGGGGKKSSWWwK....",
+        "KGGGGWGGGGGGKKSSSWWK....",
+        ".KKKKOOYYGGGKKSSSKWWwK..",
+        "...KKOOYYGKKDDSSSKWWwK..",
+        "..KGGWWYYKKWDWSSSKKK....",
+        ".KGGGGGGKKDDWKSSSSKWWwK.",
+        "..KKKKYYyGKKKYSSSSSKWWK.",
+        "..KYYyGGGGGGKYSSSSSSKK..",
+        "..KYYyKKGGGGKKYSSSSSK...",
+        "..KYYyYKKWWGGKYSSSSSKWwK",
+        "...KYYyYKKKKKKYSSSSSKwK.",
+        "...KYYyYYGGGGKYSSSSSK...",
+        "....KYYyGGGGGGKYSSSK....",
+        "....KGGGKKKKGGKKSSKK....",
+        "...KGGGGK..KGGGGKKKK....",
+        "...KGGGgK..KGGGGgKKK....",
+        "..KWWWGGK..KWWWGGgK.....",
+        "..KKKKKKK..KKKKKKKK....."
+    ]
+};
+
+const FIRE_SHOT_PALETTE = {
+    'K': '#450a0a',
+    'R': '#ef4444',
+    'O': '#f97316',
+    'Y': '#fde047',
+    'W': '#fffbeb'
+};
+
+const FIRE_SHOT_FRAMES = [
+    [
+        "...KKKKK........",
+        ".KKRRRRRKK..RR..",
+        "KROOOOOOORRKRRO.",
+        "KROYYYYYYOORROOR",
+        "KRYYWWWWYYOORRO.",
+        "KRYYWWWWYYOORROR",
+        "KROYYYYYYOORRO..",
+        "KROOOOOOORRKRR..",
+        ".KKRRRRRKK......",
+        "...KKKKK........"
+    ],
+    [
+        "...KKKKK........",
+        ".KKRRRRRKK...RR.",
+        "KROOOOOOORRRKRO.",
+        "KROYYYYYYOORRRO.",
+        "KRYYWWWWYYOORROR",
+        "KRYYWWWWYYOORRO.",
+        "KROYYYYYYOORRRO.",
+        "KROOOOOOORRRKR..",
+        ".KKRRRRRKK...R..",
+        "...KKKKK........"
+    ]
+];
+
 const MUSHROOM_PALETTE = {
     'K': '#1e1b4b',
     'P': '#f43f5e',
@@ -746,15 +877,17 @@ export const SessionRecap = {
         return true;
     },
 
-    recordSkip(q) {
+    recordSkip(q, options = {}) {
         if (!q) return false;
         const key = itemKey(q);
         if (this._byKey.has(key)) return false;
+        const mode = options && typeof options.mode === 'string' && options.mode ? options.mode : 'standard';
         const entry = {
             outcome: 'grey',
             secs: 0,
             targetSecs: 0,
-            eloDelta: null
+            eloDelta: null,
+            mode
         };
         this._byKey.set(key, entry);
         this._items.push(entry);
@@ -777,6 +910,7 @@ export const SessionRecap = {
         if (result.eloDelta !== undefined && result.eloDelta !== null && Number.isFinite(Number(result.eloDelta))) {
             existing.eloDelta = Math.round(Number(result.eloDelta));
         }
+        if (typeof result.mode === 'string' && result.mode) existing.mode = result.mode;
         return true;
     },
 
@@ -1093,6 +1227,34 @@ class RetroSoundEngine {
     playLoss(mode = 'standard') {
         this._playJingle(mode === 'hardcore' ? 'gameover' : 'death');
     }
+
+    playBossFire() {
+        const ctx = this.getCtx();
+        if (!ctx) return;
+        const v = this.vol();
+        if (v <= 0) return;
+        try {
+            const now = ctx.currentTime;
+            const osc = ctx.createOscillator();
+            const sub = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sawtooth';
+            sub.type = 'square';
+            osc.frequency.setValueAtTime(420, now);
+            osc.frequency.exponentialRampToValueAtTime(92, now + 0.19);
+            sub.frequency.setValueAtTime(210, now);
+            sub.frequency.exponentialRampToValueAtTime(54, now + 0.19);
+            gain.gain.setValueAtTime(0.10 * v, now);
+            gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.008 * v), now + 0.19);
+            osc.connect(gain);
+            sub.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            sub.start(now);
+            osc.stop(now + 0.195);
+            sub.stop(now + 0.195);
+        } catch (_) {}
+    }
 }
 
 class MarioRecapScene {
@@ -1101,6 +1263,7 @@ class MarioRecapScene {
         this.resolve = resolve;
         this.parchment = options.tone === 'parchment';
         this.sessionMode = options.mode === 'hardcore' ? 'hardcore' : 'standard';
+        const isHardcore = this.sessionMode === 'hardcore';
         this.summary = summarizeItems(items);
         this.verdict = resolveSessionVerdict(this.summary);
         this.destroyed = false;
@@ -1126,6 +1289,9 @@ class MarioRecapScene {
         const lastBlockX = Math.max(0, items.length - 1) * BLOCK_SPACING;
         const megaX = lastBlockX + 46;
         const castleX = megaX + 68;
+        const hardcoreMeetX = this.verdict.castleMood === 'positive'
+            ? castleX + 7
+            : (this.verdict.castleMood === 'negative' ? castleX - 28 : castleX + 6);
 
         this.run = {
             speed: clamp(items.length / 8, 1, 3),
@@ -1166,11 +1332,11 @@ class MarioRecapScene {
         this.death = null;
 
         this.finale = {
-            phase: 'NONE', // 'NONE' | 'MERGE' | 'MEGA_RUN' | 'MEGA_JUMP' | 'CASTLE_APPROACH' | 'CASTLE_MEET' | 'DONE'
+            phase: 'NONE', // 'NONE' | 'MERGE' | 'MEGA_RUN' | 'MEGA_JUMP' | 'CASTLE_APPROACH' | 'BOSS_WINDUP' | 'BOSS_FIRE' | 'CASTLE_MEET' | 'DONE'
             timer: 0,
             mergeDuration: 24,
             mergeFragments: [],
-            marioMeetX: castleX - 13
+            marioMeetX: isHardcore ? hardcoreMeetX : castleX - 13
         };
 
         this.megaBlock = {
@@ -1189,8 +1355,11 @@ class MarioRecapScene {
 
         this.castle = {
             x: castleX,
-            width: 44,
-            height: 44,
+            variant: isHardcore ? 'big' : 'small',
+            width: isHardcore ? 76 : 44,
+            height: isHardcore ? 74 : 44,
+            smokeX: isHardcore ? 59 : 31,
+            smokeY: isHardcore ? -60 : -45,
             doorGlow: 0,
             flagRaise: 0.45,
             flagSettled: false,
@@ -1200,8 +1369,8 @@ class MarioRecapScene {
         };
 
         this.princess = {
-            x: castleX + 14,
-            targetX: castleX + 2,
+            x: isHardcore ? castleX + 30 : castleX + 14,
+            targetX: isHardcore ? castleX + 26 : castleX + 2,
             y: 0,
             vy: 0,
             visible: false,
@@ -1222,6 +1391,22 @@ class MarioRecapScene {
             scaleX: 1,
             scaleY: 1
         };
+
+        this.boss = {
+            x: castleX + 26,
+            targetX: castleX + 14,
+            y: 0,
+            vy: 0,
+            visible: false,
+            alpha: 0,
+            pose: 'stand1',
+            animTimer: 0,
+            scaleX: 1,
+            scaleY: 1
+        };
+
+        this.fireShot = null;
+        this.fireworkTimers = [];
 
         this.blocks = [];
         this.coins = [];
@@ -1304,6 +1489,8 @@ class MarioRecapScene {
         this.hudGrey = el.querySelector('#mario-recap-count-grey');
         if (this.hudGreyWrap) this.hudGreyWrap.hidden = !(this.summary.skipped > 0);
         el.dataset.castleFlag = this.castle.flagColor;
+        el.dataset.castleSize = this.castle.variant;
+        el.dataset.sessionMode = this.sessionMode;
     }
 
     resize() {
@@ -1510,7 +1697,13 @@ class MarioRecapScene {
         let desiredCamX = this.mario.x;
         if (this.finale.phase === 'MERGE' || this.finale.phase === 'MEGA_RUN' || this.finale.phase === 'MEGA_JUMP') {
             desiredCamX = Math.max(this.mario.x, this.megaBlock.x + 8);
-        } else if (this.finale.phase === 'CASTLE_APPROACH' || this.finale.phase === 'CASTLE_MEET' || this.finale.phase === 'DONE') {
+        } else if (
+            this.finale.phase === 'CASTLE_APPROACH'
+            || this.finale.phase === 'BOSS_WINDUP'
+            || this.finale.phase === 'BOSS_FIRE'
+            || this.finale.phase === 'CASTLE_MEET'
+            || this.finale.phase === 'DONE'
+        ) {
             desiredCamX = this.megaBlock.x + 48;
         }
         this.run.cameraX += (desiredCamX - this.run.cameraX) * Math.min(1, 0.14 * dt);
@@ -1519,6 +1712,7 @@ class MarioRecapScene {
     }
 
     updateFinale(fdt) {
+        const prevTimer = this.finale.timer;
         this.finale.timer += fdt;
 
         if (this.finale.phase === 'MERGE') {
@@ -1605,12 +1799,21 @@ class MarioRecapScene {
             this.castle.flagRaise = Math.min(1, this.castle.flagRaise + 0.05 * fdt);
             this.castle.flagWaveTimer += fdt * 0.16;
 
+            const isHardcoreNegative = this.sessionMode === 'hardcore' && this.verdict.castleMood === 'negative';
+
             if (this.verdict.castleMood === 'positive') {
                 this.princess.visible = true;
                 this.princess.alpha = Math.min(1, this.princess.alpha + 0.065 * fdt);
                 this.princess.x += (this.princess.targetX - this.princess.x) * Math.min(1, 0.14 * fdt);
                 this.princess.animTimer += fdt * 0.22;
                 this.castle.doorGlow = Math.min(1, this.castle.doorGlow + 0.06 * fdt);
+            } else if (isHardcoreNegative) {
+                this.boss.visible = true;
+                this.boss.alpha = Math.min(1, this.boss.alpha + 0.08 * fdt);
+                this.boss.x += (this.boss.targetX - this.boss.x) * Math.min(1, 0.15 * fdt);
+                this.boss.animTimer += fdt * 0.18;
+                this.boss.pose = 'stand1';
+                this.tickChimneySmoke(fdt);
             } else if (this.verdict.castleMood === 'negative') {
                 this.goomba.visible = true;
                 this.goomba.alpha = Math.min(1, this.goomba.alpha + 0.065 * fdt);
@@ -1619,11 +1822,31 @@ class MarioRecapScene {
                 this.tickChimneySmoke(fdt);
             }
 
-            const touching = this.verdict.castleMood === 'negative'
+            const touching = !isHardcoreNegative
+                && this.verdict.castleMood === 'negative'
                 && this.goomba.alpha > 0.5
                 && this.mario.x + MARIO_HIT_W >= this.goomba.x + 1;
             if (touching || this.mario.x >= this.finale.marioMeetX) {
                 this.mario.x = Math.min(this.mario.x, this.finale.marioMeetX);
+
+                if (isHardcoreNegative) {
+                    this.mario.state = 'FINISHED';
+                    this.setMarioPose('idle');
+                    this.mario.scaleX = 1.15;
+                    this.mario.scaleY = 0.85;
+                    this.spawnFootDust(this.mario.x, 0, 4);
+                    this.boss.visible = true;
+                    this.boss.alpha = 1;
+                    this.boss.x = this.boss.targetX;
+                    this.boss.pose = 'fire';
+                    this.boss.scaleX = 0.94;
+                    this.boss.scaleY = 1.06;
+                    if (this.overlay) this.overlay.dataset.bossVisible = 'true';
+                    this.finale.phase = 'BOSS_WINDUP';
+                    this.finale.timer = 0;
+                    return;
+                }
+
                 this.finale.phase = 'CASTLE_MEET';
                 this.finale.timer = 0;
 
@@ -1640,6 +1863,13 @@ class MarioRecapScene {
                     this.princess.scaleX = 0.88;
                     this.princess.scaleY = 1.15;
                     this.spawnCelebrationHearts();
+                    if (this.sessionMode === 'hardcore') {
+                        this.fireworkTimers = [
+                            { delay: 8, x: this.castle.x + 12, y: -76, colors: ['#fde047', '#34d399', '#ffffff', '#6ee7b7'] },
+                            { delay: 26, x: this.castle.x + 64, y: -86, colors: ['#38bdf8', '#f472b6', '#fde047', '#ffffff'] },
+                            { delay: 44, x: this.castle.x + 38, y: -102, colors: ['#34d399', '#fde047', '#f472b6', '#ffffff'] }
+                        ];
+                    }
                     this.sfx.playWin(this.sessionMode);
                 } else if (this.verdict.castleMood === 'negative') {
                     this.mario.state = 'DYING';
@@ -1666,6 +1896,142 @@ class MarioRecapScene {
                     this.mario.scaleY = 1.10;
                     this.sfx.playNothing();
                 }
+            }
+            return;
+        }
+
+        if (this.finale.phase === 'BOSS_WINDUP') {
+            this.castle.flagRaise = Math.min(1, this.castle.flagRaise + 0.055 * fdt);
+            this.castle.flagWaveTimer += fdt * 0.16;
+            this.tickChimneySmoke(fdt);
+            this.boss.visible = true;
+            this.boss.alpha = 1;
+            this.boss.pose = 'fire';
+            const windP = clamp(this.finale.timer / 15, 0, 1);
+            this.boss.scaleX = 1 + windP * 0.08;
+            this.boss.scaleY = 1 - windP * 0.07;
+
+            if (Math.floor(prevTimer / 3) !== Math.floor(this.finale.timer / 3)) {
+                this.spawnPixelParticles(
+                    this.boss.x + 2,
+                    -15,
+                    ['#fde047', '#f97316', '#ef4444'],
+                    5,
+                    0.9,
+                    false
+                );
+            }
+
+            if (this.finale.timer >= 15) {
+                this.boss.scaleX = 1.16;
+                this.boss.scaleY = 0.86;
+                this.fireShot = {
+                    x: this.boss.x - 8,
+                    y: -6,
+                    vx: -1.65,
+                    vy: 0.18,
+                    frameTimer: 0,
+                    trailTimer: 0
+                };
+                this.impactFlashes.push({
+                    x: this.boss.x - 1,
+                    y: -13,
+                    width: 10,
+                    life: 0.9,
+                    color: '#f97316'
+                });
+                this.spawnPixelParticles(
+                    this.boss.x,
+                    -14,
+                    ['#fde047', '#f97316', '#ef4444', '#fffbeb'],
+                    12,
+                    1.4,
+                    false
+                );
+                this.sfx.playBossFire();
+                if (this.overlay) this.overlay.dataset.bossFired = 'true';
+                this.finale.phase = 'BOSS_FIRE';
+                this.finale.timer = 0;
+            }
+            return;
+        }
+
+        if (this.finale.phase === 'BOSS_FIRE') {
+            this.castle.flagRaise = Math.min(1, this.castle.flagRaise + 0.055 * fdt);
+            this.castle.flagWaveTimer += fdt * 0.16;
+            this.tickChimneySmoke(fdt);
+            this.boss.pose = this.finale.timer < 6 ? 'fire' : 'stand1';
+            this.boss.animTimer += fdt * 0.16;
+
+            const fs = this.fireShot;
+            if (fs) {
+                fs.x += fs.vx * fdt;
+                fs.y = Math.min(-4, fs.y + fs.vy * fdt);
+                fs.frameTimer += fdt * 0.45;
+                fs.trailTimer += fdt;
+                if (fs.trailTimer >= 1.3) {
+                    fs.trailTimer = 0;
+                    this.particles.push({
+                        x: fs.x + 12 + Math.random() * 4,
+                        y: fs.y - 4 + (Math.random() - 0.5) * 4,
+                        vx: 0.35 + Math.random() * 0.3,
+                        vy: -0.18 - Math.random() * 0.3,
+                        gravity: -0.01,
+                        bounces: false,
+                        size: Math.random() > 0.5 ? 2 : 1,
+                        color: Math.random() > 0.4 ? '#f97316' : '#fde047',
+                        life: 0.72,
+                        decay: 0.06
+                    });
+                }
+            }
+
+            if ((fs && fs.x <= this.mario.x + MARIO_HIT_W - 5) || this.finale.timer >= 36) {
+                const hitX = fs ? fs.x + 4 : this.mario.x + 8;
+                this.fireShot = null;
+                this.boss.pose = 'stand1';
+                this.boss.vy = -1.35;
+                this.boss.scaleX = 0.88;
+                this.boss.scaleY = 1.14;
+                this.mario.state = 'DYING';
+                this.setMarioPose('dead');
+                this.mario.vy = 0;
+                this.mario.scaleX = 1.16;
+                this.mario.scaleY = 0.86;
+                this.death = { phase: 'FREEZE', timer: 0, gone: false };
+                if (this.overlay) {
+                    this.overlay.dataset.marioDeath = 'dying';
+                    this.overlay.dataset.bossFireHit = 'true';
+                }
+                this.run.hitStopFrames = 2;
+                this.run.shakeIntensity = 3.2;
+                this.impactFlashes.push({
+                    x: hitX,
+                    y: -8,
+                    width: 18,
+                    life: 1.0,
+                    color: '#f97316'
+                });
+                this.shockwaves.push({
+                    x: hitX,
+                    y: -8,
+                    size: 10,
+                    speed: 1.5,
+                    alpha: 0.95,
+                    color: '#fb7185'
+                });
+                this.spawnPixelParticles(
+                    hitX,
+                    -8,
+                    ['#ef4444', '#f97316', '#fde047', '#fffbeb'],
+                    24,
+                    2.2,
+                    true
+                );
+                this.spawnChimneySmoke(true);
+                this.sfx.playLoss(this.sessionMode);
+                this.finale.phase = 'CASTLE_MEET';
+                this.finale.timer = 0;
             }
             return;
         }
@@ -1712,10 +2078,70 @@ class MarioRecapScene {
                     this.princess.scaleY = 0.88;
                 }
             }
+            for (let i = this.fireworkTimers.length - 1; i >= 0; i--) {
+                const fw = this.fireworkTimers[i];
+                fw.delay -= fdt;
+                if (fw.delay <= 0) {
+                    this.fireworkTimers.splice(i, 1);
+                    const ringCount = 18;
+                    for (let k = 0; k < ringCount; k++) {
+                        const angle = (Math.PI * 2 * k) / ringCount + (Math.random() - 0.5) * 0.2;
+                        const spd = 1.05 + (k % 2) * 0.65 + Math.random() * 0.35;
+                        this.particles.push({
+                            x: fw.x,
+                            y: fw.y,
+                            vx: Math.cos(angle) * spd,
+                            vy: Math.sin(angle) * spd - 0.25,
+                            gravity: 0.018,
+                            bounces: false,
+                            size: k % 3 === 0 ? 3 : 2,
+                            color: fw.colors[k % fw.colors.length],
+                            life: 1.0,
+                            decay: 0.016
+                        });
+                    }
+                    this.impactFlashes.push({
+                        x: fw.x,
+                        y: fw.y,
+                        width: 14,
+                        life: 0.9,
+                        color: fw.colors[0]
+                    });
+                    this.shockwaves.push({
+                        x: fw.x,
+                        y: fw.y,
+                        size: 8,
+                        speed: 1.65,
+                        alpha: 0.95,
+                        color: fw.colors[0]
+                    });
+                    if (this.overlay) {
+                        this.overlay.dataset.hardcoreFireworks = String(
+                            Number(this.overlay.dataset.hardcoreFireworks || 0) + 1
+                        );
+                    }
+                }
+            }
             return;
         }
 
         if (this.verdict.castleMood === 'negative') {
+            if (this.sessionMode === 'hardcore') {
+                if (this.boss.y < 0 || this.boss.vy !== 0) {
+                    this.boss.y += this.boss.vy * fdt;
+                    this.boss.vy += 0.20 * fdt;
+                    if (this.boss.y >= 0) {
+                        this.boss.y = 0;
+                        this.boss.vy = 0;
+                        this.boss.scaleX = 1.14;
+                        this.boss.scaleY = 0.86;
+                    }
+                }
+                this.boss.pose = 'stand1';
+                this.boss.animTimer += fdt * 0.14;
+                this.tickChimneySmoke(fdt);
+                return;
+            }
             if (this.goomba.y < 0 || this.goomba.vy !== 0) {
                 this.goomba.y += this.goomba.vy * fdt;
                 this.goomba.vy += 0.20 * fdt;
@@ -1859,10 +2285,12 @@ class MarioRecapScene {
     spawnChimneySmoke(burst = false) {
         const colors = ['#1e293b', '#334155', '#475569'];
         const count = burst ? 3 : 1;
+        const baseX = this.castle.x + (this.castle.smokeX || 31);
+        const baseY = this.castle.smokeY || -45;
         for (let i = 0; i < count; i++) {
             this.smokePuffs.push({
-                x: this.castle.x + 31 + (i - (count - 1) * 0.5) * 1.6,
-                y: -45 - i * 2.2,
+                x: baseX + (i - (count - 1) * 0.5) * 1.6,
+                y: baseY - i * 2.2,
                 vx: 0.08 + (Math.random() - 0.3) * 0.08,
                 vy: -0.26 - Math.random() * 0.10,
                 age: i * 4,
@@ -1918,6 +2346,11 @@ class MarioRecapScene {
         if (this.goomba.visible) {
             this.goomba.scaleX += (1 - this.goomba.scaleX) * Math.min(1, 0.22 * dt);
             this.goomba.scaleY += (1 - this.goomba.scaleY) * Math.min(1, 0.22 * dt);
+        }
+
+        if (this.boss.visible) {
+            this.boss.scaleX += (1 - this.boss.scaleX) * Math.min(1, 0.20 * dt);
+            this.boss.scaleY += (1 - this.boss.scaleY) * Math.min(1, 0.20 * dt);
         }
 
         for (let i = this.coins.length - 1; i >= 0; i--) {
@@ -2587,7 +3020,16 @@ class MarioRecapScene {
 
     drawCastle() {
         const c = this.castle;
-        if (!this.isVisibleX(c.x + c.width / 2, 60)) return;
+        if (!this.isVisibleX(c.x + c.width / 2, Math.max(60, c.width / 2 + 24))) return;
+        if (c.variant === 'big') {
+            this.drawBigCastle();
+        } else {
+            this.drawSmallCastle();
+        }
+    }
+
+    drawSmallCastle() {
+        const c = this.castle;
         const ctx = this.ctx;
         const P = this.pixel;
         const sx = this.worldToScreenX(c.x);
@@ -2719,6 +3161,309 @@ class MarioRecapScene {
                 ctx.fillRect(doorX, doorY + 2 * P + Math.min(4 * P, grateH - P), doorW, P);
             }
             ctx.fillRect(doorX, doorY + 2 * P + grateH - P, doorW, P);
+        }
+
+        ctx.restore();
+    }
+
+    drawBigCastle() {
+        const c = this.castle;
+        const ctx = this.ctx;
+        const P = this.pixel;
+        const sx = this.worldToScreenX(c.x);
+        const sy = this.worldToScreenY(0);
+
+        const brickBase = '#c2593f';
+        const brickLight = '#e07a5f';
+        const brickDark = '#7c2d12';
+        const stoneBase = '#64748b';
+        const stoneLight = '#cbd5e1';
+        const stoneDark = '#334155';
+        const border = '#1e1b4b';
+        const archDark = '#090d16';
+
+        const flagPalettes = {
+            yellow: { fill: '#facc15', light: '#fef08a', finial: '#facc15' },
+            green: { fill: '#34d399', light: '#a7f3d0', finial: '#34d399' },
+            red: { fill: '#f43f5e', light: '#fecdd3', finial: '#fb7185' },
+            grey: { fill: '#94a3b8', light: '#cbd5e1', finial: '#94a3b8' }
+        };
+        const fp = flagPalettes[c.flagColor] || flagPalettes.yellow;
+        const wave = c.flagSettled ? (Math.floor(c.flagWaveTimer) % 2) : 0;
+
+        const isAngry = !!(this.boss && this.boss.visible);
+        const winGlowAlpha = c.doorGlow > 0.02
+            ? Math.min(0.75, c.doorGlow * 0.72)
+            : (isAngry ? Math.min(0.68, this.boss.alpha * 0.65) : 0);
+        const winGlowColor = c.doorGlow > 0.02 ? '#fde047' : '#ef4444';
+
+        ctx.save();
+
+        // Main central flagpole rising from the upper keep spire (-96 .. -74)
+        const poleX = sx + 38 * P;
+        const poleTopY = sy - 96 * P;
+        const poleBottomY = sy - 74 * P;
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(poleX, poleTopY, P, poleBottomY - poleTopY);
+        ctx.fillStyle = fp.finial;
+        ctx.fillRect(poleX - P, poleTopY - P, 3 * P, 2 * P);
+
+        if (c.flagRaise > 0.02) {
+            const flagY = poleBottomY - Math.round(c.flagRaise * 15 * P) - 7 * P;
+            ctx.fillStyle = fp.fill;
+            ctx.fillRect(poleX + P, flagY, 8 * P, 7 * P);
+            ctx.fillRect(poleX + 9 * P, flagY + wave * P, 3 * P, 5 * P);
+            ctx.fillStyle = fp.light;
+            ctx.fillRect(poleX + 2 * P, flagY + P, 5 * P, 2 * P);
+        }
+
+        // Twin flanking turret pennants on the corner bastions
+        const turretPoleXs = [sx + 7 * P, sx + 69 * P];
+        for (const tpx of turretPoleXs) {
+            const tpTop = sy - 46 * P;
+            const tpBot = sy - 37 * P;
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillRect(tpx, tpTop, P, tpBot - tpTop);
+            ctx.fillStyle = fp.finial;
+            ctx.fillRect(tpx, tpTop - P, P, P);
+            ctx.fillStyle = fp.fill;
+            ctx.fillRect(tpx + P, tpTop + wave * P, 4 * P, 3 * P);
+        }
+
+        // Rooftop chimney on right shoulder of Middle Keep (center x+59, rim y-59)
+        const chimX = sx + 57 * P;
+        const chimY = sy - 59 * P;
+        ctx.fillStyle = border;
+        ctx.fillRect(chimX - P, chimY - P, 6 * P, 9 * P);
+        ctx.fillStyle = brickDark;
+        ctx.fillRect(chimX, chimY, 4 * P, 8 * P);
+        ctx.fillStyle = stoneLight;
+        ctx.fillRect(chimX - P, chimY - P, 6 * P, 2 * P);
+
+        // Middle Keep (52w x 24h: x+12 .. x+64, y-52 .. y-28)
+        const mkX = sx + 12 * P;
+        const mkY = sy - 52 * P;
+        const mkW = 52 * P;
+        const mkH = 24 * P;
+        ctx.fillStyle = border;
+        ctx.fillRect(mkX - P, mkY - P, mkW + 2 * P, mkH + 2 * P);
+        ctx.fillStyle = brickBase;
+        ctx.fillRect(mkX, mkY, mkW, mkH);
+
+        // Middle Keep battlements on exposed left shoulder (chimney occupies right shoulder)
+        const mkMerlons = [0, 5];
+        for (const offset of mkMerlons) {
+            const bx = mkX + offset * P;
+            ctx.fillStyle = border;
+            ctx.fillRect(bx - P, mkY - 4 * P, 6 * P, 4 * P);
+            ctx.fillStyle = brickLight;
+            ctx.fillRect(bx, mkY - 3 * P, 4 * P, 3 * P);
+            ctx.fillStyle = stoneLight;
+            ctx.fillRect(bx, mkY - 3 * P, 4 * P, P);
+        }
+
+        // Middle Keep brick mortar & sill
+        ctx.fillStyle = brickDark;
+        for (let row = 1; row <= 4; row++) {
+            ctx.fillRect(mkX + P, mkY + row * 5 * P, mkW - 2 * P, P);
+        }
+        ctx.fillStyle = brickLight;
+        ctx.fillRect(mkX + P, mkY + P, mkW - 2 * P, P);
+
+        // Upper Spire / Inner Keep (30w x 22h: x+23 .. x+53, y-74 .. y-52)
+        const spX = sx + 23 * P;
+        const spY = sy - 74 * P;
+        const spW = 30 * P;
+        const spH = 22 * P;
+        ctx.fillStyle = border;
+        ctx.fillRect(spX - P, spY - P, spW + 2 * P, spH + 2 * P);
+        ctx.fillStyle = brickBase;
+        ctx.fillRect(spX, spY, spW, spH);
+
+        // Upper Spire 4 symmetric battlements (6w across 30w)
+        for (let i = 0; i < 4; i++) {
+            const bx = spX + i * 8 * P;
+            ctx.fillStyle = border;
+            ctx.fillRect(bx - P, spY - 5 * P, 8 * P, 5 * P);
+            ctx.fillStyle = brickLight;
+            ctx.fillRect(bx, spY - 4 * P, 6 * P, 4 * P);
+            ctx.fillStyle = stoneLight;
+            ctx.fillRect(bx, spY - 4 * P, 6 * P, P);
+        }
+        ctx.fillStyle = brickDark;
+        for (let row = 1; row <= 3; row++) {
+            ctx.fillRect(spX + P, spY + row * 5 * P, spW - 2 * P, P);
+        }
+        ctx.fillStyle = stoneBase;
+        ctx.fillRect(spX, spY + spH - 2 * P, spW, 2 * P);
+
+        // Helper for drawing stone-trimmed arched windows
+        const drawCastleWindow = (wx, wy, ww, wh) => {
+            ctx.fillStyle = border;
+            ctx.fillRect(wx - P, wy - P, ww + 2 * P, wh + 2 * P);
+            ctx.fillStyle = stoneDark;
+            ctx.fillRect(wx, wy + wh - P, ww, P);
+            ctx.fillStyle = archDark;
+            ctx.fillRect(wx + P, wy, ww - 2 * P, 2 * P);
+            ctx.fillRect(wx, wy + 2 * P, ww, wh - 2 * P);
+            if (winGlowAlpha > 0) {
+                ctx.save();
+                ctx.globalAlpha = winGlowAlpha;
+                ctx.fillStyle = winGlowColor;
+                ctx.fillRect(wx + P, wy + 2 * P, ww - 2 * P, wh - 3 * P);
+                ctx.restore();
+            }
+        };
+
+        // Upper Spire tall central window + Middle Keep flanking windows
+        drawCastleWindow(spX + 12 * P, spY + 6 * P, 6 * P, 10 * P);
+        drawCastleWindow(mkX + 4 * P, mkY + 6 * P, 5 * P, 9 * P);
+        drawCastleWindow(mkX + 43 * P, mkY + 6 * P, 5 * P, 9 * P);
+
+        // Middle Keep center royal / fortress crest
+        const crestX = sx + 34 * P;
+        const crestY = sy - 46 * P;
+        ctx.fillStyle = border;
+        ctx.fillRect(crestX - P, crestY - P, 10 * P, 11 * P);
+        ctx.fillStyle = stoneDark;
+        ctx.fillRect(crestX, crestY, 8 * P, 9 * P);
+        const crestTone = isAngry
+            ? '#ef4444'
+            : (this.verdict.hasVictory ? '#facc15' : '#94a3b8');
+        ctx.fillStyle = crestTone;
+        ctx.fillRect(crestX + P, crestY + P, 6 * P, 7 * P);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(crestX + 3 * P, crestY + 3 * P, 2 * P, 3 * P);
+
+        // Central Lower Rampart Wall (48w x 28h: x+14 .. x+62, y-28 .. y)
+        const loX = sx + 14 * P;
+        const loY = sy - 28 * P;
+        const loW = 48 * P;
+        const loH = 28 * P;
+        ctx.fillStyle = border;
+        ctx.fillRect(loX - P, loY - P, loW + 2 * P, loH + 2 * P);
+        ctx.fillStyle = brickBase;
+        ctx.fillRect(loX, loY, loW, loH);
+
+        // Rampart 5 symmetric battlements across central wall
+        for (const offset of [2, 11, 21, 31, 40]) {
+            const bx = loX + offset * P;
+            ctx.fillStyle = border;
+            ctx.fillRect(bx - P, loY - 4 * P, 8 * P, 4 * P);
+            ctx.fillStyle = brickLight;
+            ctx.fillRect(bx, loY - 3 * P, 6 * P, 3 * P);
+            ctx.fillStyle = stoneLight;
+            ctx.fillRect(bx, loY - 3 * P, 6 * P, P);
+        }
+
+        // Rampart brick courses
+        ctx.fillStyle = brickDark;
+        for (let row = 1; row <= 5; row++) {
+            ctx.fillRect(loX + P, loY + row * 5 * P, loW - 2 * P, P);
+        }
+        ctx.fillStyle = brickLight;
+        ctx.fillRect(loX + P, loY + P, loW - 2 * P, P);
+
+        // Twin Flanking Wing Bastions (Left 0..14, Right 62..76, height 34h)
+        const bastionXs = [sx, sx + 62 * P];
+        const basY = sy - 34 * P;
+        const basW = 14 * P;
+        const basH = 34 * P;
+        for (const bx0 of bastionXs) {
+            ctx.fillStyle = border;
+            ctx.fillRect(bx0 - P, basY - P, basW + 2 * P, basH + 2 * P);
+            ctx.fillStyle = brickBase;
+            ctx.fillRect(bx0, basY, basW, basH);
+
+            // 3 symmetric battlements per bastion
+            for (let i = 0; i < 3; i++) {
+                const mx = bx0 + i * 5 * P;
+                ctx.fillStyle = border;
+                ctx.fillRect(mx - P, basY - 4 * P, 6 * P, 4 * P);
+                ctx.fillStyle = brickLight;
+                ctx.fillRect(mx, basY - 3 * P, 4 * P, 3 * P);
+                ctx.fillStyle = stoneLight;
+                ctx.fillRect(mx, basY - 3 * P, 4 * P, P);
+            }
+
+            // Bastion masonry lines + stone trim belt
+            ctx.fillStyle = brickDark;
+            for (let row = 1; row <= 6; row++) {
+                ctx.fillRect(bx0 + P, basY + row * 5 * P, basW - 2 * P, P);
+            }
+            ctx.fillStyle = stoneBase;
+            ctx.fillRect(bx0, basY + 3 * P, basW, P);
+
+            // Narrow arrow-slit loophole
+            const slitX = bx0 + 6 * P;
+            const slitY = basY + 8 * P;
+            ctx.fillStyle = border;
+            ctx.fillRect(slitX - P, slitY - P, 4 * P, 12 * P);
+            ctx.fillStyle = archDark;
+            ctx.fillRect(slitX, slitY, 2 * P, 10 * P);
+            if (winGlowAlpha > 0) {
+                ctx.save();
+                ctx.globalAlpha = winGlowAlpha * 0.85;
+                ctx.fillStyle = winGlowColor;
+                ctx.fillRect(slitX, slitY + P, 2 * P, 8 * P);
+                ctx.restore();
+            }
+        }
+
+        // Ground-level carved ashlar stone plinth across the whole 76w fortress
+        ctx.fillStyle = border;
+        ctx.fillRect(sx - P, sy - 4 * P, 78 * P, P);
+        ctx.fillStyle = stoneDark;
+        ctx.fillRect(sx, sy - 3 * P, 76 * P, 3 * P);
+        ctx.fillStyle = stoneBase;
+        ctx.fillRect(sx + P, sy - 3 * P, 74 * P, P);
+
+        // Grand Arched Gateway (18w x 21h centered at x+29 .. x+47)
+        const doorX = sx + 29 * P;
+        const doorY = sy - 21 * P;
+        const doorW = 18 * P;
+        const doorH = 21 * P;
+        ctx.fillStyle = border;
+        ctx.fillRect(doorX - 2 * P, doorY - 2 * P, doorW + 4 * P, doorH + 2 * P);
+        ctx.fillStyle = stoneBase;
+        ctx.fillRect(doorX - P, doorY - P, doorW + 2 * P, doorH + P);
+        ctx.fillStyle = archDark;
+        ctx.fillRect(doorX + 3 * P, doorY, doorW - 6 * P, 1 * P);
+        ctx.fillRect(doorX + P, doorY + P, doorW - 2 * P, 2 * P);
+        ctx.fillRect(doorX, doorY + 3 * P, doorW, doorH - 3 * P);
+
+        if (c.doorGlow > 0.02) {
+            ctx.save();
+            ctx.globalAlpha = c.doorGlow * 0.62;
+            ctx.fillStyle = '#fef08a';
+            ctx.fillRect(doorX + P, doorY + 3 * P, doorW - 2 * P, doorH - 3 * P);
+            ctx.restore();
+        } else if (!this.verdict.hasVictory) {
+            const emergeAlpha = isAngry
+                ? this.boss.alpha
+                : (this.goomba.visible ? this.goomba.alpha : 0);
+            const liftCells = Math.round(emergeAlpha * 12);
+            const grateH = Math.max(3, (doorH / P) - 3 - liftCells) * P;
+            ctx.fillStyle = '#475569';
+            for (let bar = 3; bar <= 14; bar += 4) {
+                ctx.fillRect(doorX + bar * P, doorY + 3 * P, P, grateH);
+            }
+            if (grateH >= 6 * P) {
+                ctx.fillRect(doorX, doorY + 3 * P + Math.min(5 * P, grateH - P), doorW, P);
+            }
+            ctx.fillRect(doorX, doorY + 3 * P + grateH - P, doorW, P);
+        }
+
+        // Twin Gatehouse Wall Torches flanking the grand arch above hero head height
+        const flicker = this.reducedMotion ? 0 : (Math.floor(this.run.globalTick * 0.22) % 2);
+        for (const tx of [sx + 24 * P, sx + 50 * P]) {
+            const ty = sy - 19 * P;
+            ctx.fillStyle = stoneDark;
+            ctx.fillRect(tx, ty + 2 * P, 2 * P, 3 * P);
+            ctx.fillStyle = '#f97316';
+            ctx.fillRect(tx, ty - flicker * P, 2 * P, (2 + flicker) * P);
+            ctx.fillStyle = '#fde047';
+            ctx.fillRect(tx, ty + P - flicker * P, P, P);
         }
 
         ctx.restore();
@@ -2866,6 +3611,8 @@ class MarioRecapScene {
             });
         }
 
+        if (this.overlay) this.overlay.dataset.finalePhase = this.finale.phase;
+
         if (this.goomba.visible) {
             if (this.overlay) this.overlay.dataset.goombaVisible = 'true';
             const gSprite = Math.floor(this.goomba.animTimer) % 2 === 0
@@ -2875,6 +3622,18 @@ class MarioRecapScene {
                 scaleX: this.goomba.scaleX,
                 scaleY: this.goomba.scaleY,
                 alpha: this.goomba.alpha
+            });
+        }
+
+        if (this.boss.visible) {
+            if (this.overlay) this.overlay.dataset.bossVisible = 'true';
+            const bossSprite = this.boss.pose === 'fire'
+                ? BOSS_SPRITES.fire
+                : (Math.floor(this.boss.animTimer) % 2 === 0 ? BOSS_SPRITES.stand1 : BOSS_SPRITES.stand2);
+            this.drawSpriteMatrix(bossSprite, BOSS_PALETTE, this.boss.x, this.boss.y, this.pixel, {
+                scaleX: this.boss.scaleX,
+                scaleY: this.boss.scaleY,
+                alpha: this.boss.alpha
             });
         }
 
@@ -2904,6 +3663,24 @@ class MarioRecapScene {
                 scaleX: this.mario.scaleX,
                 scaleY: this.mario.scaleY
             });
+        }
+
+        if (this.fireShot && this.isVisibleX(this.fireShot.x + 8, 28)) {
+            const fs = this.fireShot;
+            const glowX = this.worldToScreenX(fs.x + 6);
+            const glowY = this.worldToScreenY(fs.y - 5);
+            const glowR = 14 * this.pixel;
+            const fireGlow = ctx.createRadialGradient(glowX, glowY, this.pixel, glowX, glowY, glowR);
+            fireGlow.addColorStop(0, 'rgba(255, 251, 235, 0.55)');
+            fireGlow.addColorStop(0.38, 'rgba(249, 115, 22, 0.38)');
+            fireGlow.addColorStop(1, 'rgba(239, 68, 68, 0)');
+            ctx.save();
+            ctx.fillStyle = fireGlow;
+            ctx.fillRect(glowX - glowR, glowY - glowR, glowR * 2, glowR * 2);
+            ctx.restore();
+
+            const fsFrame = FIRE_SHOT_FRAMES[Math.floor(fs.frameTimer) % FIRE_SHOT_FRAMES.length];
+            this.drawSpriteMatrix(fsFrame, FIRE_SHOT_PALETTE, fs.x, fs.y, this.pixel);
         }
 
         for (const h of this.hearts) {
@@ -3126,6 +3903,8 @@ class MarioRecapScene {
         };
         this.blocks = [];
         this.mushrooms = [];
+        this.fireShot = null;
+        this.fireworkTimers = [];
         this.finale.phase = 'DONE';
         this.megaBlock.visible = true;
         this.megaBlock.hit = true;
@@ -3151,10 +3930,27 @@ class MarioRecapScene {
             this.setMarioPose('dead');
             this.death = { phase: 'GONE', timer: DEATH_FINISH_TICKS, gone: true };
             if (this.overlay) this.overlay.dataset.marioDeath = 'done';
-            this.goomba.visible = true;
-            this.goomba.alpha = 1;
-            this.goomba.x = this.goomba.targetX;
-            this.goomba.y = 0;
+            if (this.sessionMode === 'hardcore') {
+                this.goomba.visible = false;
+                this.goomba.alpha = 0;
+                this.boss.visible = true;
+                this.boss.alpha = 1;
+                this.boss.x = this.boss.targetX;
+                this.boss.y = 0;
+                this.boss.pose = 'stand1';
+                if (this.overlay) {
+                    this.overlay.dataset.bossVisible = 'true';
+                    this.overlay.dataset.bossFired = 'true';
+                    this.overlay.dataset.bossFireHit = 'true';
+                }
+            } else {
+                this.boss.visible = false;
+                this.boss.alpha = 0;
+                this.goomba.visible = true;
+                this.goomba.alpha = 1;
+                this.goomba.x = this.goomba.targetX;
+                this.goomba.y = 0;
+            }
             if (!this.smokePuffs.length) this.spawnChimneySmoke(true);
         } else {
             this.setMarioPose('shrug');
@@ -3184,6 +3980,8 @@ class MarioRecapScene {
                 ? 'princess'
                 : this.verdict.castleMood;
             this.overlay.dataset.castleFlag = this.castle.flagColor;
+            this.overlay.dataset.castleSize = this.castle.variant;
+            this.overlay.dataset.sessionMode = this.sessionMode;
         }
     }
 
@@ -3207,6 +4005,8 @@ class MarioRecapScene {
         this.run.anticipationMs = 0;
         this.run.finished = true;
         this.mario.state = 'FINISHED';
+        this.fireShot = null;
+        this.fireworkTimers = [];
         if (this.finishTimer) {
             clearTimeout(this.finishTimer);
             this.finishTimer = 0;

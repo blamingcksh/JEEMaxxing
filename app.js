@@ -7769,7 +7769,7 @@ function _eloTargetSeconds(q) {
 
 function _noteSessionSkip(q) {
     if (!q || AppState.bountyMode) return;
-    try { SessionRecap.recordSkip(q); } catch (_) {}
+    try { SessionRecap.recordSkip(q, { mode: _activeModeForQuestion(q) }); } catch (_) {}
 }
 
 function _noteSessionElo(q, eloResult) {

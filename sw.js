@@ -185,7 +185,11 @@
 // v96 - HARDCORE HIGHEST-ELO FALLBACK: when no qElo >= 1800 questions remain
 //        in the chapter selection, Hardcore serves the highest-qElo remaining
 //        eligible question until the bank is exhausted.
-const VERSION = 'jeemax-v96';
+// v97 - HARDCORE RECAP FINALE: Hardcore wins feature the Big Castle + fireworks
+//        finale; Hardcore losses replace the Goomba with Bowser firing a fire
+//        shot across the courtyard to hit Mario. mario-recap.js/app.js changed.
+const VERSION = 'jeemax-v97';
+
 const SHELL = [
   './',
   './index.html',
