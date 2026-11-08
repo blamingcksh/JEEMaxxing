@@ -1006,7 +1006,7 @@ function showResults(m) {
     const autopsyHtml = autopsy
         ? '<details class="mr-autopsy"><summary>🔍 Mistake autopsy — what actually cost you</summary>' +
           '<table class="mr-table"><tr><th>Topic</th><th>✗</th></tr>' +
-          autopsy.byTag.slice(0, 6).map(t => '<tr><td>' + _esc(t.tag) + '</td><td class="rp-bad">' + t.count + '</td></tr>').join('') +
+          autopsy.byTag.slice(0, 6).map((t, i) => '<tr' + (i === 0 ? ' class="rp-hot"' : '') + '><td>' + _esc(t.tag) + '</td><td class="rp-bad">' + t.count + '</td></tr>').join('') +
           '</table><div style="margin-top:8px;">' +
           autopsy.byBand.map(b => '<span class="rp-chip" title="' + _esc(b.label) + '">' + _esc(b.label.split('·')[0].trim()) + ' ×' + b.count + '</span>').join(' ') +
           '</div><button class="mr-navbtn" style="margin-top:10px;" onclick="window.mockCopyAutopsy()" type="button"><svg class="g"><use href="#g-copy"/></svg> Copy autopsy</button></details>'
@@ -1014,8 +1014,12 @@ function showResults(m) {
 
     const durMs = (m.finishedAt && m.run && m.run.startedAt) ? (m.finishedAt - m.run.startedAt) : 0;
     const timeChip = durMs > 0 ? '<span class="mr-chip time">⏱ ' + fmtClock(durMs) + '</span>' : '';
+    const totalPct = sc.max > 0 ? (sc.total / sc.max) * 100 : 0;
+    const totalTone = totalPct >= 70 ? 'sig-good' : totalPct >= 40 ? 'sig-warn' : 'sig-bad';
+    const accPct = Math.round(sc.accuracy * 100);
+    const accTone = accPct >= 80 ? 'sig-good' : accPct >= 60 ? 'sig-warn' : 'sig-bad';
     const accChip = sc.attempted > 0
-        ? '<span class="mr-chip acc">' + Math.round(sc.accuracy * 100) + '% accuracy</span>' : '';
+        ? '<span class="mr-chip acc ' + accTone + '">' + accPct + '% accuracy</span>' : '';
     const predChip = sc.max > 0 ? '<span class="mr-chip pred">Predicted ~' + sc.predicted + '</span>' : '';
     const brierLine = sc.brier != null
         ? '<div class="mr-res-line">Calibration Brier: <b>' + sc.brier.toFixed(3) + '</b> over ' + sc.brierN + ' confidence-tagged answers (lower = honest)</div>'
@@ -1025,11 +1029,11 @@ function showResults(m) {
     ov.className = 'mock-runner';
     ov.innerHTML = '<div class="mr-shell results">' +
         '<div class="mr-res-head"><div class="mr-res-title">📊 ' + _esc(m.name) + '</div>' +
-        '<div class="mr-scoreline"><span class="mr-total">' + sc.total + ' <span>/ ' + sc.max + '</span></span>' +
+        '<div class="mr-scoreline"><span class="mr-total ' + totalTone + '">' + sc.total + ' <span>/ ' + sc.max + '</span></span>' +
         predChip + accChip + timeChip + '</div>' +
         (sc.wrongIds.length
-            ? '<div class="mr-res-line">❌ ' + sc.wrongIds.length + ' wrong — review below and log them to The Vault.</div>'
-            : '<div class="mr-res-line">Clean paper. 😤</div>') +
+            ? '<div class="mr-res-line"><span class="sig-chip bad">❌ ' + sc.wrongIds.length + ' wrong — review below and log them to The Vault.</span></div>'
+            : '<div class="mr-res-line"><span class="sig-chip good">Clean paper. 😤</span></div>') +
         '</div>' +
         '<div class="mr-res-body">' + brierLine +
         '<div class="mr-subjgrid">' + subjRows + '</div>' +
@@ -1778,9 +1782,9 @@ function renderAnalysis(root) {
         .sort((a, b) => b.count - a.count);
     const maxCount = focusEntries.length ? focusEntries[0].count : 1;
     const lossMapHtml = focusEntries.length
-        ? '<div class="mk-losslist">' + focusEntries.slice(0, 10).map(e => {
+        ? '<div class="mk-losslist">' + focusEntries.slice(0, 10).map((e, i) => {
             const pct = Math.max(6, Math.round((e.count / maxCount) * 100));
-            return '<div class="mk-lossrow"><span class="mk-loss-ch">' + _esc(e.chapter) + '</span>' +
+            return '<div class="mk-lossrow' + (i < 3 ? ' is-hot' : '') + '"><span class="mk-loss-ch">' + _esc(e.chapter) + '</span>' +
                 '<span class="mk-loss-pat">' + _esc(e.pattern.toUpperCase()) + '</span>' +
                 '<span class="mk-loss-bar"><i style="width:' + pct + '%"></i></span>' +
                 '<span class="mk-loss-n">' + e.count + ' ✗</span></div>';

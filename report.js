@@ -620,14 +620,18 @@ export function renderReportHtml(report, opts) {
     const maxTags = _num(opts && opts.maxTags, 12);
     const k = report.kpis;
 
-    const kpi = (label, value) =>
-        '<div class="rp-kpi"><span class="rp-kpi-v">' + _esc(value) + '</span><span class="rp-kpi-l">' + _esc(label) + '</span></div>';
+    const accTone = (pct) => pct == null ? 'sig-info' : pct < 60 ? 'sig-bad' : pct < 80 ? 'sig-warn' : 'sig-good';
+    const signalTone = (text) => /^Foundation crack:|^Trending worse/i.test(text) ? 'bad'
+        : /^Stretch wall:/i.test(text) ? 'info'
+            : 'warn';
+    const kpi = (label, value, tone) =>
+        '<div class="rp-kpi' + (tone ? ' ' + tone : '') + '"><span class="rp-kpi-v">' + _esc(value) + '</span><span class="rp-kpi-l">' + _esc(label) + '</span></div>';
 
     let html = '<div class="rp-kpis">' +
-        kpi('Questions', k.questions) +
-        kpi('Mistakes', k.mistakes + ' (' + k.mistakeRatePct + '%)') +
-        kpi('Accuracy', k.attemptAccuracyPct != null ? k.attemptAccuracyPct + '%' : '—') +
-        kpi('Attempts', k.attempts) +
+        kpi('Questions', k.questions, 'sig-info') +
+        kpi('Mistakes', k.mistakes + ' (' + k.mistakeRatePct + '%)', k.mistakes > 0 ? 'sig-bad' : 'sig-good') +
+        kpi('Accuracy', k.attemptAccuracyPct != null ? k.attemptAccuracyPct + '%' : '—', accTone(k.attemptAccuracyPct)) +
+        kpi('Attempts', k.attempts, 'sig-info') +
         '</div>';
 
     // Tag leaderboard
@@ -636,10 +640,13 @@ export function renderReportHtml(report, opts) {
         html += '<div class="rp-empty">No tagged questions in this scope yet.</div>';
     } else {
         html += '<table class="rp-table"><thead><tr><th>Tag</th><th>Qs</th><th>✗</th><th>Acc</th><th>Difficulty</th><th>Why</th></tr></thead><tbody>';
+        let hotLeft = 3;
         for (const r of report.tagRows.slice(0, maxTags)) {
+            const hot = r.mistakes > 0 && hotLeft > 0;
+            if (hot) hotLeft--;
             const why = [];
             if (r.dominantFriction) why.push('<span class="rp-chip">' + _esc(_frictionLabel(r.dominantFriction) || r.dominantFriction) + '</span>');
-            if (r.overconfident) why.push('<span class="rp-chip rp-chip-warn">' + _esc(r.overconfident + '× overconfident') + '</span>');
+            if (r.overconfident) why.push('<span class="rp-chip rp-chip-bad">' + _esc(r.overconfident + '× overconfident') + '</span>');
             if (r.repeatOffenders) why.push('<span class="rp-chip">' + _esc(r.repeatOffenders + '× repeat') + '</span>');
             const trendMark = r.trend === 'worse'
                 ? ' <span class="rp-trend-bad" title="more mistakes in the last 30 days than the 30 before">↑</span>'
@@ -649,15 +656,17 @@ export function renderReportHtml(report, opts) {
             // Cortex v3 leak chip — only present when the caller supplied a
             // leak lookup; keeps the table byte-identical otherwise.
             const leakChip = (typeof r.leak === 'number')
-                ? ' <span class="rp-chip ' + (r.leak >= 0.6 ? 'rp-chip-warn' : '') +
+                ? ' <span class="rp-chip ' + (r.leak >= 0.6 ? 'rp-chip-bad' : '') +
                   '" title="Cortex leakiness — how often your attempts on this tag fail, recency-weighted">' +
                   Math.round(r.leak * 100) + '% leak</span>'
                 : '';
-            html += '<tr>' +
+            const accCls = r.accuracyPct == null ? '' : r.accuracyPct < 60 ? 'rp-bad' : r.accuracyPct < 80 ? 'rp-warn' : 'rp-good';
+            html += '<tr' + (hot ? ' class="rp-hot"' : '') + '>' +
                 '<td class="rp-tagcell">' + _esc(r.tag) + trendMark + leakChip + '</td>' +
                 '<td>' + r.questions + '</td>' +
-                '<td class="' + (r.mistakes > 0 ? 'rp-bad' : 'rp-good') + '">' + r.mistakes + '</td>' +
-                '<td>' + (r.accuracyPct != null ? r.accuracyPct + '%' : '—') + '</td>' +
+                '<td class="' + (r.mistakes > 0 ? 'rp-bad' : 'rp-good') + '">' +
+                (r.mistakes > 0 ? '<span class="rp-bad-badge">' + r.mistakes + '</span>' : r.mistakes) + '</td>' +
+                '<td class="' + accCls + '">' + (r.accuracyPct != null ? r.accuracyPct + '%' : '—') + '</td>' +
                 '<td class="rp-mono">' + _esc(r.avgQelo != null ? String(r.avgQelo) : '—') +
                 (r.bandMix ? ' <span class="rp-bandmix">' + _esc(r.bandMix) + '</span>' : '') + '</td>' +
                 '<td>' + (why.join(' ') || '<span class="rp-dim">clean</span>') + '</td>' +
@@ -676,7 +685,10 @@ export function renderReportHtml(report, opts) {
     for (const b of report.bandRows) {
         if (!b.questions) continue;
         const w = Math.round((b.mistakes / maxM) * 100);
-        html += '<div class="rp-bar-row"><span class="rp-bar-label">' + _esc(b.label) + '</span>' +
+        const tone = (b.band === 'T1_FOUNDATION' || b.band === 'T2_CORE_MAINS') ? 'rp-bar-bad'
+            : (b.band === 'T3_STD_MAINS' || b.band === 'T4_ADV_EASY') ? 'rp-bar-warn'
+                : b.band === UNRATED ? 'rp-bar-muted' : 'rp-bar-info';
+        html += '<div class="rp-bar-row ' + tone + '"><span class="rp-bar-label">' + _esc(b.label) + '</span>' +
             '<span class="rp-bar-track"><span class="rp-bar-fill" style="width:' + w + '%"></span></span>' +
             '<span class="rp-bar-val">' + b.mistakes + '/' + b.questions + '</span></div>';
     }
@@ -693,7 +705,7 @@ export function renderReportHtml(report, opts) {
     // Signals
     if (report.signals.length) {
         html += '<div class="rp-section"><div class="rp-h"><svg class="g"><use href="#g-spark"/></svg> Signals</div>';
-        for (const s of report.signals) html += '<div class="rp-signal">• ' + _esc(s) + '</div>';
+        for (const s of report.signals) html += '<div class="rp-signal"><span class="rp-signal-dot ' + signalTone(s) + '" aria-hidden="true"></span>' + _esc(s) + '</div>';
         html += '</div>';
     }
 

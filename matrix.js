@@ -4274,7 +4274,7 @@ export function renderChapterProgressList() {
         // bank questions. An untouched (`is-void`) row is a place-holder, not
         // the weakest chapter, and must never wear the single accent.
         if (i === 0 && r.total > 0) cls.push('is-flag');
-        if (r.pct >= 100) cls.push('is-done');
+        if (r.total > 0) cls.push(r.pct >= 100 ? 'is-done' : r.pct >= 60 ? 'is-high' : r.pct >= 25 ? 'is-mid' : 'is-low');
         const name = safeAttr(r.name);
         return `<div class="${cls.join(' ')}" role="button" tabindex="0"` +
                ` data-subj="${r.subj}" data-enc="${encodeURIComponent(r.name)}" data-pct="${r.pct}"` +
