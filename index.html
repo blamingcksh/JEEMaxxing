@@ -1760,5 +1760,18 @@ window.clearMatrixFilters = function () {
 })();
 </script>
 
+<!-- Home-Screen cold-launch viewport nudge: iPadOS can report a stale window
+     height at launch (grey strip at the bottom until the window is resized).
+     Re-fire layout a few times after launch / on return to foreground so the
+     viewport settles without the user having to resize the window. -->
+<script>
+(function () {
+    function nudge() { window.dispatchEvent(new Event('resize')); }
+    function burst() { [0, 120, 400, 900, 1800].forEach(function (ms) { setTimeout(nudge, ms); }); }
+    window.addEventListener('load', burst);
+    window.addEventListener('pageshow', burst);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) burst(); });
+})();
+</script>
 </body>
 </html>
