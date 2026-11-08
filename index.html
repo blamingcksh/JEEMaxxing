@@ -1760,5 +1760,43 @@ window.clearMatrixFilters = function () {
 })();
 </script>
 
+<!-- TEMP iPad launch-gap diagnostics + viewport re-apply (remove once fixed). -->
+<script>
+(function () {
+    var vp = document.querySelector('meta[name="viewport"]');
+    function reapply() {
+        if (!vp) return;
+        var c = vp.getAttribute('content');
+        vp.setAttribute('content', c + ',');
+        requestAnimationFrame(function () { vp.setAttribute('content', c); });
+    }
+    var box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:8px;top:calc(var(--sat,0px) + 70px);z-index:2147483647;background:rgba(0,0,0,.85);color:#7CFC9A;font:11px/1.35 monospace;padding:6px 8px;border:1px solid #7CFC9A;border-radius:6px;white-space:pre;max-width:92vw';
+    function probe() {
+        var p = document.createElement('div');
+        p.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;padding-bottom:env(safe-area-inset-bottom);padding-top:env(safe-area-inset-top)';
+        document.body.appendChild(p);
+        var cs = getComputedStyle(p), sab = cs.paddingBottom, sat = cs.paddingTop;
+        p.remove();
+        var vv = window.visualViewport;
+        box.textContent =
+            'inner ' + innerWidth + 'x' + innerHeight + '\n' +
+            'vv ' + (vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) : '-') + '\n' +
+            'screen ' + screen.width + 'x' + screen.height + '\n' +
+            'html.client ' + document.documentElement.clientHeight + '\n' +
+            'body ' + Math.round(document.body.getBoundingClientRect().height) + '\n' +
+            'sat ' + sat + ' sab ' + sab + '\n' +
+            'standalone ' + (navigator.standalone === true) + '\n(tap to hide)';
+    }
+    box.addEventListener('click', function () { box.remove(); });
+    window.addEventListener('load', function () {
+        document.body.appendChild(box);
+        probe();
+        [0, 300, 1000].forEach(function (ms) { setTimeout(function () { reapply(); probe(); }, ms); });
+        setTimeout(probe, 1500);
+    });
+    window.addEventListener('resize', probe);
+})();
+</script>
 </body>
 </html>
