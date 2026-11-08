@@ -75,8 +75,8 @@
     fab.setAttribute('aria-expanded', 'false');
     fab.innerHTML =
       '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" ' +
-      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+      'stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M4.5 19.5h15" opacity="0.5"/><path d="M15.8 3.6a2.1 2.1 0 0 1 3 3L8.2 17.2l-3.9.9.9-3.9Z"/><path d="M14.2 5.4l2.8 2.8" stroke-width="1.25"/><path d="M4.5 5.5h5M4.5 9.5h3" stroke-width="1.25" opacity="0.55"/></svg>';
     var qb = document.getElementById('dash-quick-bar');
     if (qb) {
       qb.appendChild(fab);

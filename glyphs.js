@@ -15,94 +15,141 @@
   'use strict';
   if (window.__glyph) return;
 
-  /* Each entry: inner markup of a <symbol viewBox="0 0 24 24">. Strokes only,
-     currentColor, so a single CSS rule sizes and tints every glyph. */
+  /* Each entry: inner markup of a <symbol viewBox="0 0 24 24">. Strokes use
+     currentColor, with semantic utility classes expanded in sprite() for
+     subtle tonal hierarchy (.dot, .dim, .thin, .tint). */
   var GLYPHS = {
-    /* ── reticle family (quick actions) ── */
-    target:   '<circle cx="12" cy="12" r="7.25"/><circle class="dot" cx="12" cy="12" r="1.1"/>' +
-              '<path d="M12 1.75v3.5M12 18.75v3.5M1.75 12h3.5M18.75 12h3.5"/>',
-    shield:   '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4 21 21"/><path d="M7.5 10.5a3 3 0 0 1 3-3"/>',
-    flame:    '<path d="M12 2.5c.9 4.6 2.4 6.1 7 7-4.6.9-6.1 2.4-7 7-.9-4.6-2.4-6.1-7-7 4.6-.9 6.1-2.4 7-7Z"/>',
-    spark:    '<path d="M12 3l1.5 7.5L21 12l-7.5 1.5L12 21l-1.5-7.5L3 12l7.5-1.5Z"/>',
-    bolt:     '<path d="M13.4 2.6 5.2 13.2h5.4l-1 8.2 8.2-10.6h-5.4Z"/>',
-    person:   '<circle cx="12" cy="7.4" r="3.1"/><path d="M6.2 20.2a5.8 5.8 0 0 1 11.6 0"/>',
-    skull:    '<path d="M12 3.25a6.9 6.9 0 0 0-6.9 6.9c0 2.5 1.3 4.3 2.9 5.5v2.6a1.5 1.5 0 0 0 1.5 1.5h5a1.5 1.5 0 0 0 1.5-1.5v-2.6c1.6-1.2 2.9-3 2.9-5.5A6.9 6.9 0 0 0 12 3.25Z"/>' +
-              '<circle class="dot" cx="9.4" cy="10.6" r="1.2"/><circle class="dot" cx="14.6" cy="10.6" r="1.2"/><path d="M10.4 19.75v-2.2M13.6 19.75v-2.2"/>',
+    /* ── reticle & prestige family ── */
+    target:   '<circle cx="12" cy="12" r="7.5" class="dim"/><circle cx="12" cy="12" r="3.6"/><circle class="dot" cx="12" cy="12" r="1.2"/>' +
+              '<path d="M12 1.8v4M12 18.2v4M1.8 12h4M18.2 12h4"/>',
+    shield:   '<path class="tint" d="M12 2.8 19 5.5v5.6c0 4.6-2.9 8.1-7 10.1-4.1-2-7-5.5-7-10.1V5.5Z"/>' +
+              '<path d="M12 2.8 19 5.5v5.6c0 4.6-2.9 8.1-7 10.1-4.1-2-7-5.5-7-10.1V5.5Z"/>' +
+              '<path class="dim" d="M12 6.2v11.6M8.5 9.8h7"/>',
+    flame:    '<path class="tint" d="M12.6 2.6c1.1 3.6 4.4 5.6 4.4 9.6a5 5 0 0 1-10 0c0-2.1.9-3.9 2.3-5.3.2 1.6 1 2.5 2.1 2.8-.6-2.5-.3-4.9 1.2-7.1Z"/>' +
+              '<path d="M12.6 2.6c1.1 3.6 4.4 5.6 4.4 9.6a5 5 0 0 1-10 0c0-2.1.9-3.9 2.3-5.3.2 1.6 1 2.5 2.1 2.8-.6-2.5-.3-4.9 1.2-7.1Z"/>' +
+              '<path class="dim" d="M12 17.2a2.2 2.2 0 0 0 2-2.3c0-1.3-.9-2.2-1.8-3.2-.6 1.2-2 1.9-2 3.2a2 2 0 0 0 1.8 2.3Z"/>',
+    spark:    '<path class="tint" d="M12 2.6l1.9 7.5L21.4 12l-7.5 1.9L12 21.4l-1.9-7.5L2.6 12l7.5-1.9Z"/>' +
+              '<path d="M12 2.6l1.9 7.5L21.4 12l-7.5 1.9L12 21.4l-1.9-7.5L2.6 12l7.5-1.9Z"/>' +
+              '<path class="dim" d="M18.6 4.2v2.4M17.4 5.4h2.4M5.4 17.4v2.4M4.2 18.6h2.4"/>',
+    bolt:     '<path class="tint" d="M13.6 2.4 5.2 13.1h5.6l-1.1 8.5 8.8-10.9h-5.6Z"/>' +
+              '<path d="M13.6 2.4 5.2 13.1h5.6l-1.1 8.5 8.8-10.9h-5.6Z"/>',
+    person:   '<circle cx="12" cy="12" r="9.5" class="dim"/><circle cx="12" cy="9" r="2.9"/><path d="M6.6 18.8a5.8 5.8 0 0 1 10.8 0"/>',
+    skull:    '<path class="tint" d="M12 3.2a6.8 6.8 0 0 0-6.8 6.8c0 2.4 1.2 4.2 2.8 5.4v2.7a1.5 1.5 0 0 0 1.5 1.5h5a1.5 1.5 0 0 0 1.5-1.5v-2.7c1.6-1.2 2.8-3 2.8-5.4A6.8 6.8 0 0 0 12 3.2Z"/>' +
+              '<path d="M12 3.2a6.8 6.8 0 0 0-6.8 6.8c0 2.4 1.2 4.2 2.8 5.4v2.7a1.5 1.5 0 0 0 1.5 1.5h5a1.5 1.5 0 0 0 1.5-1.5v-2.7c1.6-1.2 2.8-3 2.8-5.4A6.8 6.8 0 0 0 12 3.2Z"/>' +
+              '<circle class="dot" cx="9.4" cy="10.4" r="1.25"/><circle class="dot" cx="14.6" cy="10.4" r="1.25"/>' +
+              '<path class="thin" d="M11.3 13.6l.7-1.1.7 1.1M10.2 19.6v-2.3M12 19.6v-2.3M13.8 19.6v-2.3"/>',
 
     /* ── modes ── */
-    flow:     '<ellipse cx="12" cy="12" rx="9" ry="4.25" transform="rotate(-24 12 12)"/>' +
-              '<circle class="dot" cx="12" cy="12" r="1.9"/><circle class="dot" cx="20" cy="8.2" r="1.2"/>',
-    hardcore: '<circle cx="15.5" cy="8.5" r="4"/><path d="M12.6 11.4 4 20M15.2 14.2l-4.6 4.6M10.7 9.3 5.2 11.8"/>',
-    lock:     '<rect x="5.5" y="10.5" width="13" height="9.5" rx="1.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/>',
-    gauge:    '<path d="M3.5 17.75a9.2 9.2 0 0 1 17 0"/><path d="M12 17.5 16.2 11"/><circle class="dot" cx="12" cy="17.5" r="1.1"/>',
+    flow:     '<ellipse cx="12" cy="12" rx="9.2" ry="4" transform="rotate(-24 12 12)"/>' +
+              '<ellipse class="dim" cx="12" cy="12" rx="9.2" ry="4" transform="rotate(24 12 12)"/>' +
+              '<circle class="dot" cx="12" cy="12" r="1.8"/><circle class="dot" cx="20.1" cy="8.4" r="1.25"/>',
+    hardcore: '<circle cx="15.4" cy="8.6" r="4.2" class="tint"/><circle cx="15.4" cy="8.6" r="4.2"/>' +
+              '<path d="M12.4 11.6 3.5 20.5M9.5 14.5l-4.2.3M10.4 16.6l-.3 3.9"/>' +
+              '<path class="dim" d="M14.2 6.8l1.2-1.8 1.2 1.8"/>',
+    lock:     '<rect class="tint" x="5.2" y="10.5" width="13.6" height="9.5" rx="2"/><rect x="5.2" y="10.5" width="13.6" height="9.5" rx="2"/>' +
+              '<path d="M8.5 10.5V7.4a3.5 3.5 0 0 1 7 0v3.1"/><circle class="dot" cx="12" cy="14.6" r="1.15"/><path d="M12 15.5v2"/>',
+    gauge:    '<path d="M3.4 17.5a9.2 9.2 0 0 1 17.2 0"/><path class="dim" d="M6.4 11.2l1.4 1.2M12 8.2v1.8M17.6 11.2l-1.4 1.2"/>' +
+              '<path d="M12 17.4 16.4 10.8"/><circle class="dot" cx="12" cy="17.4" r="1.35"/>',
 
     /* ── subjects ── */
-    physics:  '<path d="M12 2.25v3"/><path d="M12 5.25 8.1 14.9"/><circle cx="7.7" cy="17.2" r="2.6"/>' +
-              '<path d="M2.75 19a13.5 13.5 0 0 0 9.25 2.4"/>',
-    chemistry:'<path d="M9.5 2.5h5M10.5 2.5v5.5L4.8 18a2.4 2.4 0 0 0 2.1 3.5h10.2a2.4 2.4 0 0 0 2.1-3.5L13.5 8V2.5"/>' +
-              '<path d="M7.4 14.5h9.2"/>',
-    maths:    '<circle class="dot" cx="12" cy="4" r="1.4"/><path d="M11 5.4 5.5 20.25M13 5.4 18.5 20.25M8.1 13.9h7.8"/>',
+    physics:  '<ellipse cx="12" cy="12" rx="9.6" ry="3.8" transform="rotate(-32 12 12)"/>' +
+              '<ellipse cx="12" cy="12" rx="9.6" ry="3.8" transform="rotate(32 12 12)"/>' +
+              '<ellipse class="dim" cx="12" cy="12" rx="3.8" ry="9.6"/>' +
+              '<circle class="dot" cx="12" cy="12" r="1.85"/>',
+    chemistry:'<path d="M9.2 2.8h5.6M10.4 2.8v5.4L4.7 17.9a2.3 2.3 0 0 0 2 3.4h10.6a2.3 2.3 0 0 0 2-3.4L13.6 8.2V2.8"/>' +
+              '<path class="tint" d="M7.6 13.8h8.8l2.5 4.3a1.9 1.9 0 0 1-1.6 2.8H6.7a1.9 1.9 0 0 1-1.6-2.8Z"/>' +
+              '<path class="dim" d="M7.6 13.8h8.8"/><circle class="dot" cx="10.6" cy="17" r="1"/><circle class="dot" cx="13.8" cy="15.8" r=".85"/>',
+    maths:    '<circle cx="12" cy="4.4" r="1.5"/><path d="M11.1 5.7 5.2 20.5M12.9 5.7 18.8 20.5"/>' +
+              '<path class="dim" d="M6.5 14.2a8.2 8.2 0 0 0 11 0"/><path class="thin" d="M12 2v.9M9.5 17.5l.6-1.4M14.5 17.5l-.6-1.4"/>',
 
     /* ── celestial ── */
-    moon:     '<path d="M19.5 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10 10.5Z"/>',
-    sun:      '<circle cx="12" cy="12" r="4.4"/>' +
-              '<path d="M12 2.4v2.6M12 19v2.6M2.4 12H5M19 12h2.6M5 5l1.85 1.85M17.15 17.15 19 19M19 5l-1.85 1.85M6.85 17.15 5 19"/>',
-    sleep:    '<path d="M17.5 12.5A6.5 6.5 0 1 1 10 3.5a5.4 5.4 0 0 0 7.5 9Z"/>' +
-              '<path d="M17.5 3.5l.65 1.85L20 6l-1.85.65L17.5 8.5l-.65-1.85L15 6l1.85-.65Z"/>',
-    eclipse:  '<circle cx="9.75" cy="12" r="6.4"/><circle cx="14.25" cy="12" r="6.4"/>',
-    eye:      '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.9"/>',
+    moon:     '<path class="tint" d="M19.5 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10 10.5Z"/>' +
+              '<path d="M19.5 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10 10.5Z"/>' +
+              '<circle class="dot" cx="16.8" cy="5.8" r="1"/>',
+    sun:      '<circle class="tint" cx="12" cy="12" r="4.4"/><circle cx="12" cy="12" r="4.4"/>' +
+              '<path d="M12 2.2v2.4M12 19.4v2.4M2.2 12h2.4M19.4 12h2.4"/>' +
+              '<path class="dim" d="M5.1 5.1l1.7 1.7M17.2 17.2l1.7 1.7M18.9 5.1l-1.7 1.7M6.8 17.2l-1.7 1.7"/>',
+    sleep:    '<path d="M17.2 12.8A6.6 6.6 0 1 1 9.8 3.6a5.5 5.5 0 0 0 7.4 9.2Z"/>' +
+              '<path d="M15.2 3.8h3.4l-3.4 3.4h3.4"/><path class="dim" d="M18.2 8.8h2.4l-2.4 2.4h2.4"/>',
+    eclipse:  '<circle class="tint" cx="12" cy="12" r="6.2"/><circle cx="12" cy="12" r="6.2"/><circle class="dim" cx="12" cy="12" r="8.6"/>' +
+              '<path d="M7.6 5.2v2.6M6.3 6.5h2.6"/>',
+    eye:      '<path d="M2.4 12S6 5.5 12 5.5 21.6 12 21.6 12 18 18.5 12 18.5 2.4 12 2.4 12Z"/>' +
+              '<circle cx="12" cy="12" r="3.2"/><circle class="dot" cx="12" cy="12" r="1.2"/>',
 
     /* ── instruments / data ── */
-    bell:     '<path d="M12 3a6 6 0 0 0-6 6v4.5L4.5 16h15L18 13.5V9a6 6 0 0 0-6-6Z"/><path d="M9.75 19a2.4 2.4 0 0 0 4.5 0"/>',
-    clock:    '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>',
-    chart:    '<path d="M4 4v16h16"/><path d="M7.5 15.5l3.5-4 3 2.5 5-6.5"/>',
-    trophy:   '<path d="M12 4.5l1.6 4.4 4.4 1.6-4.4 1.6L12 16.5l-1.6-4.4L6 10.5l4.4-1.6Z"/>' +
-              '<path d="M4.25 15.5a9.5 9.5 0 0 0 2 4.25M19.75 15.5a9.5 9.5 0 0 1-2 4.25"/>',
-    seed:     '<path d="M12 21.5V13"/><path d="M12 13c0-4 2.5-6.5 7-6.5 0 4-2.5 6.5-7 6.5Z"/>' +
-              '<path d="M12 15.5c0-3.2-1.9-5.2-5.8-5.2 0 3.2 1.9 5.2 5.8 5.2Z"/>',
+    bell:     '<path class="tint" d="M12 3.2a5.8 5.8 0 0 0-5.8 5.8v4.5L4.5 16.2h15l-1.7-2.7V9A5.8 5.8 0 0 0 12 3.2Z"/>' +
+              '<path d="M12 3.2a5.8 5.8 0 0 0-5.8 5.8v4.5L4.5 16.2h15l-1.7-2.7V9A5.8 5.8 0 0 0 12 3.2Z"/><path d="M9.8 19.2a2.3 2.3 0 0 0 4.4 0"/>',
+    clock:    '<path class="dim" d="M10.5 2h3M12 2v1.6"/><circle cx="12" cy="12.5" r="8.4"/>' +
+              '<path class="dim" d="M12 6.4v.9M17.8 12.5h-.9M12 18.6v-.9M6.2 12.5h.9"/><path d="M12 8.2v4.3l3.2 1.8"/>',
+    chart:    '<path class="dim" d="M3.8 3.8v16.4h16.4"/>' +
+              '<path d="M6.8 15.8l3.6-4.2 3.2 2.4 4.8-6.4"/><circle class="dot" cx="10.4" cy="11.6" r="1.2"/><circle class="dot" cx="13.6" cy="14" r="1.2"/><circle class="dot" cx="18.4" cy="7.6" r="1.25"/>',
+    trophy:   '<path class="tint" d="M7.2 4h9.6v5.2a4.8 4.8 0 0 1-9.6 0Z"/>' +
+              '<path d="M7.2 4h9.6v5.2a4.8 4.8 0 0 1-9.6 0Z"/><path d="M7.2 5.4H4.4a1.6 1.6 0 0 0-1.4 2C3.5 9.4 5 10.6 7.2 10.8M16.8 5.4h2.8a1.6 1.6 0 0 1 1.4 2c-.5 2-2 3.2-4.2 3.4M12 14v5M8.2 20.5h7.6"/>',
+    seed:     '<path d="M12 21v-8.8"/><path class="tint" d="M12 12.5c0-4 2.5-6.8 7.2-6.8 0 4-2.5 6.8-7.2 6.8Z"/>' +
+              '<path d="M12 12.5c0-4 2.5-6.8 7.2-6.8 0 4-2.5 6.8-7.2 6.8Z"/><path d="M12 15.2c0-3.1-1.9-5.2-5.8-5.2 0 3.1 1.9 5.2 5.8 5.2Z"/><path class="dim" d="M7 21h10"/>',
 
     /* ── system / files ── */
-    cloud:    '<path d="M7 18.5a4.5 4.5 0 0 1-.4-9A6 6 0 0 1 18.3 11a3.75 3.75 0 0 1-.8 7.5Z"/>',
-    archive:  '<rect x="3.5" y="4" width="17" height="5" rx="1"/><path d="M5.5 9v9.5A1.5 1.5 0 0 0 7 20h10a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13.25h4"/>',
-    gear:     '<circle cx="12" cy="12" r="3.2"/><path d="M12 6.6V4M12 20v-2.6M6.6 12H4M20 12h-2.6M8.2 8.2 6.4 6.4M17.6 17.6l-1.8-1.8M15.8 8.2l1.8-1.8M6.4 17.6l1.8-1.8"/>',
-    key:      '<circle cx="7" cy="15" r="3.5"/><path d="M9.5 12.5 20 2M15.9 6.1l3 3M12.9 9.1l2.5 2.5"/>',
-    image:    '<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><circle cx="9" cy="10" r="1.75"/><path d="M4.5 17.5 10 12l4 4 2.5-2.5 3 3"/>',
-    upload:   '<path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15"/>',
-    download: '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 15v3.5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15"/>',
-    volume:   '<path d="M4 9.5v5h3.5L12 19V5L7.5 9.5Z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/>',
-    sliders:  '<path d="M4 7h16M4 17h16M8 4.5v5M16 14.5v5"/>',
-    trash:    '<path d="M4 6h16M10 3h4M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>',
-    copy:     '<rect x="8.5" y="8.5" width="11" height="11" rx="1.5"/><path d="M5.5 15.5h-1a1.5 1.5 0 0 1-1.5-1.5v-9a1.5 1.5 0 0 1 1.5-1.5h9a1.5 1.5 0 0 1 1.5 1.5v1"/>',
-    doc:      '<path d="M6 3.5h8.5l4.5 4.5V20a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V5A1.5 1.5 0 0 1 6 3.5Z"/><path d="M14.5 3.5V8H19M8.5 12.5h7M8.5 16.5h4.5"/>',
-    map:      '<path d="M3.5 6.5 8.5 4l7 2.5 5-2.5v13.5l-5 2.5-7-2.5-5 2.5Z"/><path d="M8.5 4v13.5M15.5 6.5V20"/>',
-    sword:    '<path d="M18.5 3.5 20.5 5.5l-9.5 9.5-2.5-2.5 9.5-9.5Z"/><path d="M6 18l2.5 2.5M7 16l-3.5 3.5L5 21l3.5-3.5M3 21l-1 1"/>',
-    hourglass:'<path d="M6 3h12M6 21h12M7 3v4.5a5 5 0 0 0 2.5 4.33L12 13.5l2.5-1.67A5 5 0 0 0 17 7.5V3M7 21v-4.5a5 5 0 0 1 2.5-4.33L12 10.5l2.5 1.67A5 5 0 0 1 17 16.5V21"/>',
-    wand:     '<path d="M15 4l5 5L7 22l-5-5ZM18.5 2.5l1 2 2 1-2 1-1 2-1-2-2-1 2-1ZM5 3l.5 1 1 .5-1 .5-.5 1-.5-1-1-.5 1-.5Z"/>',
-    folder:   '<path d="M3.5 6a1.5 1.5 0 0 1 1.5-1.5h4.5l2.5 2.5H19a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5Z"/>',
-    compass:  '<circle cx="12" cy="12" r="8.5"/><polygon points="12,6.5 14.5,12 12,17.5 9.5,12"/><circle class="dot" cx="12" cy="12" r="1.2"/>',
-    arrow:    '<path d="M4 12h15M13 6l6 6-6 6"/>',
-    check:    '<path d="M4.5 12.5 10 18 19.5 6.5"/>',
-    cross:    '<path d="M5.5 5.5l13 13M18.5 5.5l-13 13"/>'
+    cloud:    '<path class="tint" d="M7 18.2a4.4 4.4 0 0 1-.4-8.8 5.9 5.9 0 0 1 11.6 1.5 3.6 3.6 0 0 1-.8 7.3Z"/>' +
+              '<path d="M7 18.2a4.4 4.4 0 0 1-.4-8.8 5.9 5.9 0 0 1 11.6 1.5 3.6 3.6 0 0 1-.8 7.3Z"/>',
+    archive:  '<rect class="tint" x="3.5" y="4" width="17" height="4.8" rx="1"/><rect x="3.5" y="4" width="17" height="4.8" rx="1"/>' +
+              '<path d="M5.4 8.8v9.8A1.5 1.5 0 0 0 6.9 20h10.2a1.5 1.5 0 0 0 1.5-1.4V8.8"/><path d="M9.8 13.2h4.4"/>',
+    gear:     '<path d="M10.4 3h3.2l.5 2.1 1.8.8 1.9-1.1 2.2 2.2-1.1 1.9.8 1.8 2.1.5v3.2l-2.1.5-.8 1.8 1.1 1.9-2.2 2.2-1.9-1.1-1.8.8-.5 2.1h-3.2l-.5-2.1-1.8-.8-1.9 1.1-2.2-2.2 1.1-1.9-.8-1.8L2.2 13.6v-3.2l2.1-.5.8-1.8-1.1-1.9L6.2 4l1.9 1.1 1.8-.8Z"/>' +
+              '<circle cx="12" cy="12" r="3"/>',
+    key:      '<circle cx="7.4" cy="15.4" r="3.6"/><circle class="dim" cx="7.4" cy="15.4" r="1.3"/>' +
+              '<path d="M10.1 12.9 20.2 2.8M15.8 7.2l2.8 2.8M13.2 9.8l2.2 2.2"/>',
+    image:    '<rect x="3.5" y="4.5" width="17" height="15" rx="1.8"/><circle cx="8.8" cy="9.6" r="1.6"/>' +
+              '<path d="M4.5 17.5 9.8 12.2l3.8 3.6 2.6-2.4 3.4 3.4"/>',
+    upload:   '<path d="M12 15.2V4M7.4 8.4 12 3.8l4.6 4.6"/><path d="M4.5 15.2v3.4a1.8 1.8 0 0 0 1.8 1.8h11.4a1.8 1.8 0 0 0 1.8-1.8v-3.4"/>',
+    download: '<path d="M12 3.8v11.4M7.4 10.6 12 15.2l4.6-4.6"/><path d="M4.5 15.2v3.4a1.8 1.8 0 0 0 1.8 1.8h11.4a1.8 1.8 0 0 0 1.8-1.8v-3.4"/>',
+    volume:   '<path class="tint" d="M4 9.5v5h3.5L12 19V5L7.5 9.5Z"/><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5Z"/>' +
+              '<path d="M15.6 9.1a4.2 4.2 0 0 1 0 5.8"/><path class="dim" d="M18.2 6.6a7.8 7.8 0 0 1 0 10.8"/>',
+    sliders:  '<path class="dim" d="M4 7h3m5 0h8M4 12h11m5 0h0M4 17h4m5 0h7"/>' +
+              '<circle cx="9.5" cy="7" r="2.2"/><circle cx="17.5" cy="12" r="2.2"/><circle cx="10.5" cy="17" r="2.2"/>',
+    trash:    '<path d="M4.2 6h15.6M9.5 3.4h5M18.4 6l-.9 13.6a1.8 1.8 0 0 1-1.8 1.7H8.3a1.8 1.8 0 0 1-1.8-1.7L5.6 6"/>' +
+              '<path class="dim" d="M10 10.5v6.2M14 10.5v6.2"/>',
+    copy:     '<rect x="8.6" y="8.6" width="11.2" height="11.2" rx="1.6"/>' +
+              '<path class="dim" d="M5.6 15.6h-1a1.5 1.5 0 0 1-1.5-1.5v-9a1.5 1.5 0 0 1 1.5-1.5h9a1.5 1.5 0 0 1 1.5 1.5v1"/>',
+    doc:      '<path d="M6 3.5h8.2l4.8 4.8V20a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V5A1.5 1.5 0 0 1 6 3.5Z"/>' +
+              '<path class="dim" d="M14.2 3.5v4.8H19M8.5 12.4h7M8.5 16.4h4.5"/>',
+    map:      '<path d="M3.5 6.2 8.8 3.8l6.4 2.4 5.3-2.4v14l-5.3 2.4-6.4-2.4-5.3 2.4Z"/>' +
+              '<path class="dim" d="M8.8 3.8v14M15.2 6.2v14"/><circle class="dot" cx="12" cy="10.5" r="1.3"/>',
+    sword:    '<path d="M19.5 3.5l1 1-10.5 10.5-2-2Z"/><path d="M6.4 13.6l4 4M4.2 18.8l3-3M2.8 21.2l1.4-2.4 1.6 1.6-2.4 1.4Z"/>',
+    hourglass:'<path d="M6 3.2h12M6 20.8h12M7.2 3.2v4.3a4.8 4.8 0 0 0 2.5 4.2L12 13.1l2.3-1.4a4.8 4.8 0 0 0 2.5-4.2V3.2M7.2 20.8v-4.3a4.8 4.8 0 0 1 2.5-4.2L12 10.9l2.3 1.4a4.8 4.8 0 0 1 2.5 4.2v4.3"/>' +
+              '<path class="tint" d="M9 19.6h6l-3-3.4Z"/>',
+    wand:     '<path d="M3.8 20.2 14.2 9.8"/><path d="M16.2 3.2l1 2.8 2.8 1-2.8 1-1 2.8-1-2.8-2.8-1 2.8-1Z"/>' +
+              '<circle class="dot" cx="9" cy="6.2" r="1"/><circle class="dot" cx="19" cy="14.5" r=".9"/>',
+    folder:   '<path d="M3.5 6a1.5 1.5 0 0 1 1.5-1.5h4.2l2.3 2.2H19a1.5 1.5 0 0 1 1.5 1.5v9.8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5Z"/>' +
+              '<path class="dim" d="M3.5 10.2h17"/>',
+    compass:  '<circle cx="12" cy="12" r="8.8" class="dim"/><polygon class="tint" points="12,5.8 14.4,12 12,18.2 9.6,12"/>' +
+              '<polygon points="12,5.8 14.4,12 12,18.2 9.6,12"/><circle class="dot" cx="12" cy="12" r="1.25"/>',
+    arrow:    '<path d="M4.2 12h15M13.5 6.4 19.2 12l-5.7 5.6"/>',
+    check:    '<path d="M4.8 12.6 10 17.8 19.4 6.6"/>',
+    cross:    '<path d="M5.6 5.6l12.8 12.8M18.4 5.6l-12.8 12.8"/>'
   };
 
   /* Typographic fallbacks for string contexts (textContent / title / toast). */
   var TEXT = {
-    target: '◎', shield: '◍', flame: '✦', spark: '✦', bolt: '↯', person: '◍', skull: '☠', flow: '◌', hardcore: '☄',
-    lock: '⊘', gauge: '◷', physics: '⚗', chemistry: '⚗', maths: '∆',
+    target: '◎', shield: '⛨', flame: '✶', spark: '✦', bolt: '↯', person: '◍', skull: '☠', flow: '◌', hardcore: '☄',
+    lock: '⊘', gauge: '◷', physics: '⚛', chemistry: '⚗', maths: '∆',
     moon: '☾', sun: '☀', sleep: '☾', eclipse: '◐', eye: '◉',
-    bell: '◔', clock: '◷', chart: '∿', trophy: '✦', seed: '❧',
-    cloud: '∘', archive: '▤', gear: '✺', key: '⚥', image: '▣',
+    bell: '◔', clock: '◷', chart: '∿', trophy: '♕', seed: '❧',
+    cloud: '∘', archive: '▤', gear: '⚙', key: '⚥', image: '▣',
     upload: '↑', download: '↓', volume: '◍', arrow: '→', check: '✓', cross: '✕',
     sliders: '⌸', trash: '⌫', copy: '⎘', doc: '▤', map: '☲', sword: '⚔',
-    hourglass: '⏳', wand: '✦', folder: '📁', compass: '⎈'
+    hourglass: '⏳', wand: '✦', folder: '▤', compass: '⎈'
   };
 
   function sprite() {
     var defs = '';
     for (var name in GLYPHS) {
+      var body = GLYPHS[name]
+        .replace(/class="dot"/g, 'fill="currentColor" stroke="none"')
+        .replace(/class="tint"/g, 'fill="currentColor" fill-opacity="0.16" stroke="none"')
+        .replace(/class="dim"/g, 'stroke-opacity="0.46"')
+        .replace(/class="thin"/g, 'stroke-width="0.9"');
       defs += '<symbol id="g-' + name + '" viewBox="0 0 24 24">' +
-        '<g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">' +
-        GLYPHS[name].replace(/class="dot"/g, 'fill="currentColor" stroke="none"') +
+        '<g fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">' +
+        body +
         '</g></symbol>';
     }
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

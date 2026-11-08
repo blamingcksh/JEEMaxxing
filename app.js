@@ -5185,7 +5185,7 @@ export function showQuestionList() {
 // in the real image (in-memory bank or Drive) only when the card nears the
 // viewport — keeps the DOM free of hundreds of embedded base64 blobs.
 if (_hasCardImage) {
-    imgHtml = `<img data-drive-id="${q.driveImageId || ''}" data-qid="${q.id}" class="lazy-practice-img" decoding="async" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>" style="max-width:100%; border-radius:8px;">`;
+    imgHtml = `<img data-drive-id="${q.driveImageId || ''}" data-qid="${q.id}" class="lazy-practice-img" decoding="async" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90' viewBox='0 0 140 90'><rect width='140' height='90' rx='8' fill='%23090B11'/><path d='M10 20V10h10M120 10h10v10M10 70v10h10M120 80h10V70' fill='none' stroke='%23E5C07B' stroke-opacity='0.45' stroke-width='1.2' stroke-linecap='round'/><circle cx='70' cy='38' r='16' fill='none' stroke='%23E5C07B' stroke-opacity='0.28' stroke-width='1' stroke-dasharray='2 3'/><circle cx='70' cy='38' r='2' fill='%23E5C07B' fill-opacity='0.55'/><text x='70' y='69' fill='%23B89B62' font-family='monospace' font-size='8' letter-spacing='1.1' text-anchor='middle'>ACQUIRING PLATE…</text></svg>" style="max-width:100%; border-radius:8px;">`;
 } else {
     // Elegant left-aligned text layout with a line clamp to keep card heights uniform on the grid sheet
     imgHtml = `
@@ -5237,7 +5237,7 @@ if (_hasCardImage) {
 
 // Tiny SVG used both as the initial placeholder AND as the "unloaded" state
 // for cards that have scrolled out of the viewport (frees the decoded bitmap).
-const LAZY_IMG_PLACEHOLDER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading…</text></svg>";
+const LAZY_IMG_PLACEHOLDER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90' viewBox='0 0 140 90'><rect width='140' height='90' rx='8' fill='%23090B11'/><path d='M10 20V10h10M120 10h10v10M10 70v10h10M120 80h10V70' fill='none' stroke='%23E5C07B' stroke-opacity='0.45' stroke-width='1.2' stroke-linecap='round'/><circle cx='70' cy='38' r='16' fill='none' stroke='%23E5C07B' stroke-opacity='0.28' stroke-width='1' stroke-dasharray='2 3'/><circle cx='70' cy='38' r='2' fill='%23E5C07B' fill-opacity='0.55'/><text x='70' y='69' fill='%23B89B62' font-family='monospace' font-size='8' letter-spacing='1.1' text-anchor='middle'>ACQUIRING PLATE…</text></svg>";
 
 let _practiceImgObserver = null;
 let _practicePrefetching = false;
@@ -6803,7 +6803,7 @@ export function renderPracticeQuestionModal() {
         if (AppState.currentQ.imageDataUrl) {
             questionImageHtml = `<img id="practice-modal-img" src="${_safeImgSrc(AppState.currentQ.imageDataUrl)}" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; transition: opacity 0.3s; cursor: pointer;">`;
         } else if (AppState.currentQ.driveImageId && typeof AppState.driveAccessToken !== 'undefined' && AppState.driveAccessToken) {
-            questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90'><rect width='100%' height='100%' fill='%2312121a'/><text x='50%' y='50%' fill='%23444a6a' font-family='sans-serif' font-size='11' text-anchor='middle' alignment-baseline='middle'>Loading asset...</text></svg>" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; cursor: pointer;">`;
+            questionImageHtml = `<img id="practice-modal-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90' viewBox='0 0 140 90'><rect width='140' height='90' rx='8' fill='%23090B11'/><path d='M10 20V10h10M120 10h10v10M10 70v10h10M120 80h10V70' fill='none' stroke='%23E5C07B' stroke-opacity='0.45' stroke-width='1.2' stroke-linecap='round'/><circle cx='70' cy='38' r='16' fill='none' stroke='%23E5C07B' stroke-opacity='0.28' stroke-width='1' stroke-dasharray='2 3'/><circle cx='70' cy='38' r='2' fill='%23E5C07B' fill-opacity='0.55'/><text x='70' y='69' fill='%23B89B62' font-family='monospace' font-size='8' letter-spacing='1.1' text-anchor='middle'>ACQUIRING PLATE…</text></svg>" onclick="openPracticeImageLightbox(this.src)" style="max-width:100%; max-height:360px; border-radius:16px; margin-bottom:16px; cursor: pointer;">`;
             // Capture the question this fetch belongs to — the user can hit
             // Next/skip before it resolves, and the old code then attached the
             // image to the NEW current question (and persisted the mixup).

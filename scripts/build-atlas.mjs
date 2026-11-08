@@ -1,11 +1,12 @@
 // build-atlas.mjs — Observatory plate pipeline.
-// Reads the engraved folio plates in SVGs/pl-*.svg and gemini-svg*.svg
-// and writes all 26 museum-grade SVGs to atlas/.
+// Combines engraved folio plates in SVGs/pl-*.svg with procedural museum-grade
+// mathematical & horological plates from atlas-generators.mjs and writes all 30 SVGs to atlas/.
 //
 // Usage: node scripts/build-atlas.mjs
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { PROCEDURAL_PLATES } from './atlas-generators.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'SVGs');
@@ -14,7 +15,8 @@ const OUT = join(ROOT, 'atlas');
 // ── Master pl-*.svg Folio Plates ──────────────────────────────────────────
 const PLATES = [
   { src: 'pl-i-event-horizon.svg',   out: 'folio-i-horizon.svg',
-    keep: ['nebula-wisps', 'star-field-40', 'gargantua-system'], loose: false },
+    keep: ['star-field-40', 'observer-orbit', 'observer-satellite', 'gargantua-system'],
+    loose: false, vbOverride: [36, 170, 728, 550] },
   { src: 'pl-ii-instrument.svg',     out: 'atmos-ii-instrument-dusk.svg',
     keep: ['mount-pillar-and-feet', 'clock-drive-and-weight', 'equatorial-head', 'refractor-ota'], loose: false },
   { src: 'pl-iii-lunar-log.svg',     out: 'folio-iii-lunar.svg',
@@ -612,12 +614,15 @@ function buildPlate(cfg) {
   }
 
   let body = keptEls.map(el => el.markup.replace(/<text[\s\S]*?<\/text>/g, '')).join('\n');
+  if (cfg.out === 'folio-iv-microscope.svg') {
+    body = stripBalancedGroup(body, /<g id="makers-plate-cartouche"[^>]*>/);
+  }
   let defsMarkup = defs ? defs.markup : '';
   defsMarkup = defsMarkup.replace(/<radialGradient id="plate-vignette"[\s\S]*?<\/radialGradient>/g, '');
   defsMarkup = defsMarkup
     .split('\n').filter(l => !/\.label-|\.font-serif|\.font-mono|\.plate-bg|\.plate-paper/.test(l)).join('\n');
 
-  const newVb = approxBBox(body, vb);
+  const newVb = cfg.vbOverride || approxBBox(body, vb);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${newVb.join(' ')}">${defsMarkup}${body}</svg>`;
   const min = svg.replace(/\n\s+/g, '\n').replace(/>\s+</g, '><');
   writeFileSync(join(OUT, cfg.out), min);
@@ -629,25 +634,38 @@ mkdirSync(OUT, { recursive: true });
 
 console.log('── Folio Plates ──');
 for (const cfg of PLATES) {
-  const r = buildPlate(cfg);
-  console.log(`✓ ${cfg.out.padEnd(28)} ${(r.bytes / 1024).toFixed(1)} KB (from ${cfg.src})`);
+  if (PROCEDURAL_PLATES[cfg.out]) {
+    const outSvg = PROCEDURAL_PLATES[cfg.out]().replace(/\n\s+/g, '\n').replace(/>\s+</g, '><');
+    writeFileSync(join(OUT, cfg.out), outSvg);
+    console.log(`✓ ${cfg.out.padEnd(28)} ${(outSvg.length / 1024).toFixed(1)} KB (procedural Observatory)`);
+  } else {
+    const r = buildPlate(cfg);
+    console.log(`✓ ${cfg.out.padEnd(28)} ${(r.bytes / 1024).toFixed(1)} KB (from ${cfg.src})`);
+  }
 }
 
-console.log('\n── Gemini & Celestial Plates ──');
+console.log('\n── Procedural & Celestial Plates ──');
 for (const cfg of GEMINI_TARGETS) {
-  const raw = readFileSync(join(SRC, cfg.src), 'utf8');
   let outSvg;
-  if (cfg.style === 'moon-night') {
-    outSvg = buildMoonAstrolabe(raw, 'night');
-  } else if (cfg.style === 'moon-dusk') {
-    outSvg = buildMoonAstrolabe(raw, 'dusk');
-  } else if (cfg.style === 'engraved') {
-    outSvg = buildGeminiEngraved(raw, cfg);
+  let origin;
+  if (PROCEDURAL_PLATES[cfg.out]) {
+    outSvg = PROCEDURAL_PLATES[cfg.out]().replace(/\n\s+/g, '\n').replace(/>\s+</g, '><');
+    origin = 'procedural Observatory';
   } else {
-    outSvg = buildGeminiColored(raw, cfg);
+    const raw = readFileSync(join(SRC, cfg.src), 'utf8');
+    if (cfg.style === 'moon-night') {
+      outSvg = buildMoonAstrolabe(raw, 'night');
+    } else if (cfg.style === 'moon-dusk') {
+      outSvg = buildMoonAstrolabe(raw, 'dusk');
+    } else if (cfg.style === 'engraved') {
+      outSvg = buildGeminiEngraved(raw, cfg);
+    } else {
+      outSvg = buildGeminiColored(raw, cfg);
+    }
+    origin = `${cfg.style}, from ${cfg.src}`;
   }
   writeFileSync(join(OUT, cfg.out), outSvg);
-  console.log(`✓ ${cfg.out.padEnd(28)} ${(outSvg.length / 1024).toFixed(1)} KB (${cfg.style}, from ${cfg.src})`);
+  console.log(`✓ ${cfg.out.padEnd(28)} ${(outSvg.length / 1024).toFixed(1)} KB (${origin})`);
 }
 
 console.log('\n── Backwards-Compatible Aliases ──');

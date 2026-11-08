@@ -295,9 +295,9 @@
   var fab = null, pop = null, openState = false;
   var ui = {};                              // element cache
 
-  var SVG_METRO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-    + '<path class="metro-body" d="M9.2 3h5.6l4.1 15.6a1.6 1.6 0 0 1-1.55 2H6.65a1.6 1.6 0 0 1-1.55-2Z"/>'
-    + '<g class="metro-arm"><path d="M12 17V5.4"/><circle cx="12" cy="6.6" r="1.35" fill="currentColor" stroke="none"/></g>'
+  var SVG_METRO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<g class="metro-body"><path d="M9.6 2.8h4.8l3.6 14.4h.9v2.8a1.1 1.1 0 0 1-1.1 1.1H6.2A1.1 1.1 0 0 1 5.1 20v-2.8h.9L9.6 2.8Z"/><path d="M6.2 17.2h11.6M10.3 5.6h3.4" stroke-width="1.2" opacity="0.65"/><circle cx="12" cy="17" r="1.2" stroke-width="1.2"/></g>'
+    + '<g class="metro-arm"><path d="M12 17V4.9"/><path d="M10.4 8.2h3.2l-.65 2.7h-1.9Z" fill="currentColor" fill-opacity="0.28"/><circle cx="12" cy="5" r="0.95" fill="currentColor" stroke="none"/></g>'
     + '</svg>';
 
   function buildUi() {

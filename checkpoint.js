@@ -901,7 +901,7 @@ function showLockdown(q) {
         // Placeholder SVG; the actual image is fetched from Drive after the
         // overlay is mounted (see lazy-load block below).
         imageHTML = '<img class="cp-question-image cp-img-pending" id="cp-question-img" ' +
-            'src="data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'280\' height=\'160\'><rect width=\'100%\' height=\'100%\' fill=\'%2312121a\'/><text x=\'50%\' y=\'50%\' fill=\'%23444a6a\' font-family=\'sans-serif\' font-size=\'12\' text-anchor=\'middle\' alignment-baseline=\'middle\'>Downloading question image…</text></svg>" ' +
+            'src="data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'280\' height=\'160\' viewBox=\'0 0 280 160\'><rect width=\'280\' height=\'160\' rx=\'10\' fill=\'%23090B11\'/><path d=\'M14 26V14h12M254 14h12v12M14 134v12h12M254 146h12v-12\' fill=\'none\' stroke=\'%23E5C07B\' stroke-opacity=\'0.45\' stroke-width=\'1.3\' stroke-linecap=\'round\'/><circle cx=\'140\' cy=\'70\' r=\'24\' fill=\'none\' stroke=\'%23E5C07B\' stroke-opacity=\'0.28\' stroke-width=\'1\' stroke-dasharray=\'3 4\'/><circle cx=\'140\' cy=\'70\' r=\'2.5\' fill=\'%23E5C07B\' fill-opacity=\'0.65\'/><text x=\'140\' y=\'122\' fill=\'%23B89B62\' font-family=\'monospace\' font-size=\'10\' letter-spacing=\'1.4\' text-anchor=\'middle\'>ACQUIRING PLATE…</text></svg>" ' +
             'alt="Question image loading" />';
     }
     // else: no imageHTML — image block omitted entirely.
