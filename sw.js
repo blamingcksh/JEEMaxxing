@@ -180,7 +180,7 @@
 //        app.js/matrix.js changed.
 // v86 - SIGNAL COLOURS: styles-signal.css joins the shell precache. Critical
 //        analysis numbers, bars and chips glow semantic red/amber/green/cyan.
-const VERSION = 'jeemax-v86';
+const VERSION = 'jeemax-v87';
 const SHELL = [
   './',
   './index.html',
