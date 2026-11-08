@@ -416,3 +416,50 @@ html.jmax-standalone body::before {
         row-gap: 6px;
     }
 }
+
+/* ── 11. Home-Screen standalone height (iPadOS 26 launch-slab fix) ─────────
+   styles.css uses 100dvh so non-standalone Safari tabs clear the retractable
+   toolbar. In iPadOS 26 Home-Screen standalone mode there is no browser
+   chrome, yet WebKit initializes 100dvh (and innerHeight) to 100svh
+   (windowHeight - top status bar, e.g. 788px on an 820px screen) until a
+   window resize happens, cutting off body/#obs-atmos 32px short of the
+   bottom edge. 100lvh/100vh already resolve to the true window height (820px)
+   from frame 0, so restore 100vh/100lvh in standalone mode. */
+@media (display-mode: standalone) {
+    body,
+    .app-container,
+    #gb-canvas {
+        height: 100vh;
+        height: 100lvh;
+    }
+    .mr-shell {
+        height: calc(100vh - var(--sat));
+        height: calc(100lvh - var(--sat));
+    }
+}
+@media (display-mode: standalone) and (max-width: 768px) {
+    .crop-modal-card {
+        height: 100vh;
+        height: 100lvh;
+        max-height: 100vh;
+        max-height: 100lvh;
+    }
+}
+html.jmax-standalone body,
+html.jmax-standalone .app-container,
+html.jmax-standalone #gb-canvas {
+    height: 100vh;
+    height: 100lvh;
+}
+html.jmax-standalone .mr-shell {
+    height: calc(100vh - var(--sat));
+    height: calc(100lvh - var(--sat));
+}
+@media (max-width: 768px) {
+    html.jmax-standalone .crop-modal-card {
+        height: 100vh;
+        height: 100lvh;
+        max-height: 100vh;
+        max-height: 100lvh;
+    }
+}
