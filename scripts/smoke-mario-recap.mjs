@@ -206,7 +206,7 @@ ok(source.includes('is-parchment'), 'recap supports a parchment veil');
 ok(app.includes('window.__jmaxAppToast || alert'), 'queue-cleared notice falls back to toast');
 ok(app.includes('window.SessionRecap = SessionRecap'), 'recap is exposed for QA and bridge code');
 ok(html.includes('href="mario-recap.css"'), 'index loads recap stylesheet');
-ok(sw.includes("'jeemax-v85'"), 'service worker version bumped');
+ok(sw.includes("'jeemax-v86'"), 'service worker version bumped');
 ok(sw.includes("'./mario-recap.js'"), 'recap engine is precached');
 ok(sw.includes("'./mario-recap.css'"), 'recap stylesheet is precached');
 

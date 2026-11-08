@@ -1473,11 +1473,9 @@ export async function updateUI() {
     if (varEl) {
         if (totalSolved === 0) {
             varEl.textContent = 'Ready';
-            varEl.style.color = 'var(--text-muted)';
             varEl.dataset.state = 'ready';
         } else {
             varEl.textContent = (variance > 0 ? "+" : "") + variance.toFixed(1) + "%";
-            varEl.style.color = variance >= 0 ? 'var(--glow-green)' : 'var(--glow-red)';
             varEl.dataset.state = variance >= 0 ? 'positive' : 'negative';
         }
     }
@@ -9353,23 +9351,23 @@ function _renderCalibrationReport() {
     const brier = recent.reduce((a, c) => a + Math.pow(Number(c.p) - Number(c.s), 2), 0) / n;
     const gap = avgP - acc;   // >0 overconfident · <0 underconfident
     const verdict = (gap > 0.08)
-        ? { txt: 'OVERCONFIDENT', color: '#fda4af', note: 'You say sure when you are not — discount first instincts.' }
+        ? { txt: 'OVERCONFIDENT', tone: 'bad', note: 'You say sure when you are not — discount first instincts.' }
         : (gap < -0.08)
-            ? { txt: 'UNDERCONFIDENT', color: '#fde047', note: 'You know more than you admit — commit faster.' }
-            : { txt: 'CALIBRATED', color: '#4ade80', note: 'Certainty matches reality — exam-ready trait.' };
-    const brierColor = brier <= 0.15 ? '#4ade80' : (brier <= 0.25 ? '#fde047' : '#fda4af');
+            ? { txt: 'UNDERCONFIDENT', tone: 'warn', note: 'You know more than you admit — commit faster.' }
+            : { txt: 'CALIBRATED', tone: 'good', note: 'Certainty matches reality — exam-ready trait.' };
+    const brierTone = brier <= 0.15 ? 'good' : (brier <= 0.25 ? 'warn' : 'bad');
     const meterW = Math.min(50, Math.abs(gap) * 250);
     el.title = 'Calibration Report · rolling last ' + n + ' graded solves · ' + verdict.note;
     el.innerHTML =
         '<span class="calib-kicker">CALIBRATION</span>' +
-        '<span class="calib-metric"><b style="color:' + brierColor + '">' + brier.toFixed(3) + '</b><i>BRIER·' + n + '</i></span>' +
+        '<span class="calib-metric"><b class="sig-' + brierTone + '">' + brier.toFixed(3) + '</b><i>BRIER·' + n + '</i></span>' +
         '<span class="calib-sep"></span>' +
-        '<span class="calib-metric"><b>' + Math.round(acc * 100) + '%</b><i>ACTUAL</i></span>' +
+        '<span class="calib-metric"><b class="sig-info">' + Math.round(acc * 100) + '%</b><i>ACTUAL</i></span>' +
         '<span class="calib-meter" aria-hidden="true">' +
-        '<span class="calib-meter-fill" style="width:' + meterW + '%; background:' + verdict.color + '; ' + (gap >= 0 ? 'left:50%;' : 'right:50%;') + '"></span>' +
+        '<span class="calib-meter-fill sig-' + brierTone + '" style="width:' + meterW + '%; ' + (gap >= 0 ? 'left:50%;' : 'right:50%;') + '"></span>' +
         '</span>' +
-        '<span class="calib-metric"><b style="color:#c4b5fd">' + Math.round(avgP * 100) + '%</b><i>CLAIMED</i></span>' +
-        '<span class="calib-verdict" style="color:' + verdict.color + '; border-color:' + verdict.color + '55;">' + verdict.txt + '</span>';
+        '<span class="calib-metric"><b class="sig-info">' + Math.round(avgP * 100) + '%</b><i>CLAIMED</i></span>' +
+        '<span class="calib-verdict sig-chip ' + verdict.tone + '">' + verdict.txt + '</span>';
 }
 window.renderCalibrationReport = _renderCalibrationReport;
 

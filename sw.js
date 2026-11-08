@@ -178,7 +178,9 @@
 //        SessionRecap ledger and plays the Mario run on close (grey skips on ‹ / ›),
 //        and both stages now open in Parchment with the moon toggling to Roast.
 //        app.js/matrix.js changed.
-const VERSION = 'jeemax-v85';
+// v86 - SIGNAL COLOURS: styles-signal.css joins the shell precache. Critical
+//        analysis numbers, bars and chips glow semantic red/amber/green/cyan.
+const VERSION = 'jeemax-v86';
 const SHELL = [
   './',
   './index.html',
@@ -188,6 +190,7 @@ const SHELL = [
   './styles-retention.css',
   './styles-chapters.css',
   './styles-ipad.css',
+  './styles-signal.css',
   './directive.css',
   './bridge.css',
   './tuckin.css',
