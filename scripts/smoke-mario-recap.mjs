@@ -160,6 +160,11 @@ ok(source.includes('spawnEloPop'), 'scene spawns Elo pops on block hit');
 ok(source.includes('spawnMegaEloPop'), 'scene spawns net Elo pop on Big Block hit');
 ok(source.includes('drawMergingBlocks'), 'scene smoothly merges blocks into Big Block');
 ok(source.includes('drawCastle'), 'scene draws Mario Castle');
+ok(source.includes('drawBigCastle'), 'scene includes Big Castle renderer for Hardcore finale');
+ok(source.includes('BOSS_SPRITES'), 'scene includes Boss sprites for Hardcore net-negative payoff');
+ok(source.includes('FIRE_SHOT_FRAMES'), 'scene includes Fire Shot sprites for Hardcore Boss attack');
+ok(source.includes("'BOSS_WINDUP'") && source.includes("'BOSS_FIRE'"), 'scene sequences Boss windup and fire-shot impact states');
+ok(source.includes('playBossFire'), 'sound engine includes Boss fireball audio effect');
 ok(source.includes('PRINCESS_SPRITES'), 'scene includes Princess Peach sprites');
 ok(source.includes('GOOMBA_SPRITES'), 'scene includes Goomba sprites for net-negative payoff');
 ok(source.includes('SLEEP_Z_LARGE'), 'scene includes pixel sleep Z sprites for neutral/skip gag');
@@ -184,6 +189,8 @@ SessionRecap.record(mq1, { correct: true, secs: 20, targetSecs: 60, mode: 'flow'
 SessionRecap.record(mq2, { correct: false, secs: 40, targetSecs: 60, mode: 'hardcore' });
 eq(SessionRecap._items[0].mode, 'flow', 'upgraded skip preserves recorded mode (flow)');
 eq(SessionRecap._items[1].mode, 'hardcore', 'recorded entry stores hardcore mode');
+SessionRecap.recordSkip({ id: 'mq3' }, { mode: 'hardcore' });
+eq(SessionRecap._items[2].mode, 'hardcore', 'recordSkip preserves explicit hardcore mode');
 SessionRecap.reset();
 
 const winSong = decodeSmbJingle('win');
@@ -208,6 +215,7 @@ ok(app.includes('_recordSessionRecap(AppState.currentQ'), 'app records graded an
 ok(app.includes('mode: _activeModeForQuestion(q)'), 'app stamps active question mode onto recap records');
 ok(app.includes('_noteSessionElo(AppState.currentQ'), 'app records Elo deltas for recap blocks');
 ok(app.includes('_noteSessionSkip('), 'app records skipped questions for recap blocks');
+ok(app.includes('SessionRecap.recordSkip(q, { mode: _activeModeForQuestion(q) })'), 'app preserves active mode on skipped questions');
 ok(app.includes('SessionRecap.play({ tone: recapTone })'), 'app plays recap on close');
 ok(/closeModalStr\('practice-modal'\);[\s\S]{0,180}SessionRecap\.play\(\{ tone/.test(app), 'recap starts synchronously after the stage closes');
 ok(!/setTimeout\([^)]*SessionRecap\.play/.test(app), 'recap start is not deferred');
