@@ -182,20 +182,20 @@ const MARIO_SPRITES = {
         "....bbbbBBBBHHhh",
         ".....hhhh..hhhh."
     ],
-    slump: [
-        "................",
+    dead: [
         ".....rRRRRR.....",
         "....rRRRRWWWR...",
-        "....rRRRRRRRRr..",
-        "...HSHSSsESSSS..",
-        "...HSHHSSSHsSS..",
-        "...HHSSSSHHHH...",
+        "...WHHHSSSSHHW..",
+        "..WgHSHSESSSESgW",
+        "..WgHSHSSSSSHSgW",
+        "...WHHSSSEEHHW..",
         ".....sSSSSSS....",
         "....rRRBRRR.....",
         "...rRRRBRRBRR...",
         "...rRRBBBBBRR...",
         "...WWBYBBBYBWW..",
         "...WgBBBBBBBgW..",
+        "....bBBBBBBBB...",
         "....bBBB.bBBB...",
         "...HHHh...HHHh..",
         "...hhhh...hhhh.."
@@ -676,6 +676,52 @@ const COMBO_SCALE = [0, 2, 4, 5, 7, 9, 11, 12];
 const MEGA_ANTICIPATION_BASE_MS = 180;
 const MEGA_ANTICIPATION_PER_COMBO_MS = 6;
 const MEGA_SHAKE_PX = 3;
+const MARIO_HIT_W = 16;
+const DEATH_FREEZE_TICKS = 14;
+const DEATH_FINISH_TICKS = 110;
+
+export const WIN_NOTES = [
+    { f: 196.00, d: 0.11 },
+    { f: 261.63, d: 0.11 },
+    { f: 329.63, d: 0.11 },
+    { f: 392.00, d: 0.11 },
+    { f: 523.25, d: 0.11 },
+    { f: 659.25, d: 0.11 },
+    { f: 783.99, d: 0.32 },
+    { f: 659.25, d: 0.30 },
+    { f: 207.65, d: 0.11 },
+    { f: 261.63, d: 0.11 },
+    { f: 311.13, d: 0.11 },
+    { f: 415.30, d: 0.11 },
+    { f: 523.25, d: 0.11 },
+    { f: 622.25, d: 0.11 },
+    { f: 830.61, d: 0.32 },
+    { f: 622.25, d: 0.30 },
+    { f: 233.08, d: 0.11 },
+    { f: 293.66, d: 0.11 },
+    { f: 349.23, d: 0.11 },
+    { f: 466.16, d: 0.11 },
+    { f: 587.33, d: 0.11 },
+    { f: 698.46, d: 0.11 },
+    { f: 932.33, d: 0.32 },
+    { f: 932.33, d: 0.11 },
+    { f: 932.33, d: 0.11 },
+    { f: 932.33, d: 0.11 },
+    { f: 1046.50, d: 0.74 }
+];
+
+export const LOSS_NOTES = [
+    { f: 493.88, d: 0.08 },
+    { f: 698.46, d: 0.14 },
+    { f: 0, d: 0.14 },
+    { f: 698.46, d: 0.12 },
+    { f: 698.46, d: 0.16 },
+    { f: 659.25, d: 0.16 },
+    { f: 587.33, d: 0.16 },
+    { f: 523.25, d: 0.28 },
+    { f: 329.63, d: 0.16 },
+    { f: 261.63, d: 0.45 }
+];
 
 export function comboSemitones(step) {
     const s = Math.max(0, Math.floor(Number(step) || 0));
@@ -979,7 +1025,7 @@ class RetroSoundEngine {
         } catch (_) {}
     }
 
-    playSkip() {
+    playNothing() {
         const ctx = this.getCtx();
         if (!ctx) return;
         const v = this.vol();
@@ -1050,107 +1096,49 @@ class RetroSoundEngine {
         } else if (outcome === 'red') {
             this.playRedNova();
         } else {
-            this.playSkip();
+            this.playNothing();
         }
     }
 
-    playCongratulations() {
+    playSequence(notes, { type = 'square', sub = false, peak = 0.075 } = {}) {
         const ctx = this.getCtx();
         if (!ctx) return;
         const v = this.vol();
         if (v <= 0) return;
         try {
-            const now = ctx.currentTime;
-            // Classic NES Stage Clear / Congratulations fanfare cadence
-            const melody = [
-                { f: 392.00, t: 0.00, d: 0.09 }, // G4
-                { f: 523.25, t: 0.09, d: 0.09 }, // C5
-                { f: 659.25, t: 0.18, d: 0.09 }, // E5
-                { f: 783.99, t: 0.27, d: 0.18 }, // G5
-                { f: 659.25, t: 0.46, d: 0.11 }, // E5
-                { f: 1046.50, t: 0.58, d: 0.48 } // C6
-            ];
-            for (const n of melody) {
-                const osc = ctx.createOscillator();
-                const sub = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'square';
-                sub.type = 'triangle';
-                const start = now + n.t;
-                osc.frequency.setValueAtTime(n.f, start);
-                sub.frequency.setValueAtTime(n.f * 0.5, start);
-                gain.gain.setValueAtTime(0.078 * v, start);
-                gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.006 * v), start + n.d);
-                osc.connect(gain);
-                sub.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(start);
-                sub.start(start);
-                osc.stop(start + n.d + 0.01);
-                sub.stop(start + n.d + 0.01);
+            let t = ctx.currentTime;
+            for (const n of notes) {
+                if (n.f > 0) {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(n.f, t);
+                    gain.gain.setValueAtTime(peak * v, t);
+                    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.006 * v), t + n.d);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(t);
+                    osc.stop(t + n.d + 0.01);
+                    if (sub) {
+                        const subOsc = ctx.createOscillator();
+                        subOsc.type = 'triangle';
+                        subOsc.frequency.setValueAtTime(n.f * 0.5, t);
+                        subOsc.connect(gain);
+                        subOsc.start(t);
+                        subOsc.stop(t + n.d + 0.01);
+                    }
+                }
+                t += n.d;
             }
         } catch (_) {}
     }
 
-    playSomberEnd(isNegative = true) {
-        const ctx = this.getCtx();
-        if (!ctx) return;
-        const v = this.vol();
-        if (v <= 0) return;
-        try {
-            const now = ctx.currentTime;
-            const notes = isNegative
-                ? [
-                    { f: 329.63, t: 0.00, d: 0.13 }, // E4
-                    { f: 311.13, t: 0.14, d: 0.13 }, // Eb4
-                    { f: 293.66, t: 0.28, d: 0.13 }, // D4
-                    { f: 261.63, t: 0.42, d: 0.30 }  // C4
-                ]
-                : [
-                    { f: 329.63, t: 0.00, d: 0.12 },
-                    { f: 392.00, t: 0.13, d: 0.22 }
-                ];
-            for (const n of notes) {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'triangle';
-                const start = now + n.t;
-                osc.frequency.setValueAtTime(n.f, start);
-                gain.gain.setValueAtTime(0.08 * v, start);
-                gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.006 * v), start + n.d);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(start);
-                osc.stop(start + n.d + 0.01);
-            }
-        } catch (_) {}
+    playWin() {
+        this.playSequence(WIN_NOTES, { type: 'square', sub: true, peak: 0.078 });
     }
 
-    playGoombaPeek() {
-        const ctx = this.getCtx();
-        if (!ctx) return;
-        const v = this.vol();
-        if (v <= 0) return;
-        try {
-            const now = ctx.currentTime;
-            const notes = [
-                { f: 196.00, t: 0.06, d: 0.08 },
-                { f: 146.83, t: 0.15, d: 0.11 }
-            ];
-            for (const n of notes) {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'square';
-                const start = now + n.t;
-                osc.frequency.setValueAtTime(n.f, start);
-                gain.gain.setValueAtTime(0.045 * v, start);
-                gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.005 * v), start + n.d);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(start);
-                osc.stop(start + n.d + 0.01);
-            }
-        } catch (_) {}
+    playLoss() {
+        this.playSequence(LOSS_NOTES, { type: 'square', sub: false, peak: 0.075 });
     }
 }
 
@@ -1220,6 +1208,8 @@ class MarioRecapScene {
             scaleY: 1,
             trailTimer: 0
         };
+
+        this.death = null;
 
         this.finale = {
             phase: 'NONE', // 'NONE' | 'MERGE' | 'MEGA_RUN' | 'MEGA_JUMP' | 'CASTLE_APPROACH' | 'CASTLE_MEET' | 'DONE'
@@ -1488,7 +1478,11 @@ class MarioRecapScene {
         this.mario.scaleY += (1 - this.mario.scaleY) * Math.min(1, 0.25 * dt);
 
         this.mario.trailTimer += dt;
-        if (!this.run.finished && (this.mario.state === 'JUMPING' || this.run.speed > 1.25) && this.mario.trailTimer >= 2.2) {
+        if (!this.run.finished
+            && this.mario.state !== 'DYING'
+            && this.mario.state !== 'GONE'
+            && (this.mario.state === 'JUMPING' || this.run.speed > 1.25)
+            && this.mario.trailTimer >= 2.2) {
             this.mario.trailTimer = 0;
             this.marioTrails.push({
                 x: this.mario.x,
@@ -1671,8 +1665,11 @@ class MarioRecapScene {
                 this.tickChimneySmoke(fdt);
             }
 
-            if (this.mario.x >= this.finale.marioMeetX) {
-                this.mario.x = this.finale.marioMeetX;
+            const touching = this.verdict.castleMood === 'negative'
+                && this.goomba.alpha > 0.5
+                && this.mario.x + MARIO_HIT_W >= this.goomba.x + 1;
+            if (touching || this.mario.x >= this.finale.marioMeetX) {
+                this.mario.x = Math.min(this.mario.x, this.finale.marioMeetX);
                 this.finale.phase = 'CASTLE_MEET';
                 this.finale.timer = 0;
 
@@ -1689,12 +1686,15 @@ class MarioRecapScene {
                     this.princess.scaleX = 0.88;
                     this.princess.scaleY = 1.15;
                     this.spawnCelebrationHearts();
-                    this.sfx.playCongratulations();
+                    this.sfx.playWin();
                 } else if (this.verdict.castleMood === 'negative') {
-                    this.mario.state = 'FINISHED';
-                    this.setMarioPose('slump');
-                    this.mario.scaleX = 1.12;
-                    this.mario.scaleY = 0.88;
+                    this.mario.state = 'DYING';
+                    this.setMarioPose('dead');
+                    this.mario.vy = 0;
+                    this.mario.scaleX = 1.08;
+                    this.mario.scaleY = 0.92;
+                    this.death = { phase: 'FREEZE', timer: 0, gone: false };
+                    if (this.overlay) this.overlay.dataset.marioDeath = 'dying';
                     this.goomba.visible = true;
                     this.goomba.alpha = 1;
                     this.goomba.x = this.goomba.targetX;
@@ -1702,8 +1702,7 @@ class MarioRecapScene {
                     this.goomba.scaleX = 0.86;
                     this.goomba.scaleY = 1.16;
                     this.spawnChimneySmoke(true);
-                    this.sfx.playSomberEnd(true);
-                    this.sfx.playGoombaPeek();
+                    this.sfx.playLoss();
                 } else {
                     this.mario.state = 'FINISHED';
                     this.setMarioPose('shrug');
@@ -1711,7 +1710,7 @@ class MarioRecapScene {
                     this.mario.zSpawnTimer = 0;
                     this.mario.scaleX = 0.90;
                     this.mario.scaleY = 1.10;
-                    this.sfx.playSomberEnd(false);
+                    this.sfx.playNothing();
                 }
             }
             return;
@@ -1719,7 +1718,10 @@ class MarioRecapScene {
 
         if (this.finale.phase === 'CASTLE_MEET' || this.finale.phase === 'DONE') {
             this.updateCastleTail(fdt);
-            if (this.finale.phase === 'CASTLE_MEET' && this.finale.timer >= 20 && !this.run.finished) {
+            const ready = this.verdict.castleMood === 'negative'
+                ? !!(this.death && this.death.gone) && this.finale.timer >= DEATH_FINISH_TICKS
+                : this.finale.timer >= 20;
+            if (this.finale.phase === 'CASTLE_MEET' && ready && !this.run.finished) {
                 this.finale.phase = 'DONE';
                 this.finishRun();
             }
@@ -1730,7 +1732,9 @@ class MarioRecapScene {
         this.castle.flagRaise = Math.min(1, this.castle.flagRaise + 0.055 * fdt);
         this.castle.flagWaveTimer += fdt * 0.16;
 
-        if (this.mario.y < 0 || this.mario.vy !== 0) {
+        if (this.mario.state === 'DYING' || this.mario.state === 'GONE') {
+            this.updateMarioDeath(fdt);
+        } else if (this.mario.y < 0 || this.mario.vy !== 0) {
             this.mario.y += this.mario.vy * fdt;
             this.mario.vy += 0.22 * fdt;
             if (this.mario.y >= 0) {
@@ -1804,6 +1808,51 @@ class MarioRecapScene {
             if (this.mario.zSpawnTimer >= 36) {
                 this.mario.zSpawnTimer -= 36;
                 this.spawnSleepZ();
+            }
+        }
+    }
+
+    updateMarioDeath(fdt) {
+        if (!this.death || this.mario.state === 'GONE') return;
+        this.death.timer += fdt;
+
+        if (this.reducedMotion) {
+            if (!this.death.gone && this.death.timer >= DEATH_FREEZE_TICKS) {
+                this.death.phase = 'GONE';
+                this.death.gone = true;
+                if (this.overlay) this.overlay.dataset.marioDeath = 'done';
+            }
+            return;
+        }
+
+        if (this.death.phase === 'FREEZE') {
+            this.mario.scaleX = 1.08 + Math.sin(this.death.timer * 1.6) * 0.035;
+            this.mario.scaleY = 0.92 - Math.sin(this.death.timer * 1.6) * 0.025;
+            if (this.death.timer >= DEATH_FREEZE_TICKS) {
+                this.death.phase = 'HOP';
+                this.death.timer = 0;
+                this.mario.vy = -3.4;
+                this.mario.scaleX = 0.82;
+                this.mario.scaleY = 1.18;
+                this.spawnFootDust(this.mario.x, 0, 4);
+            }
+            return;
+        }
+
+        if (this.death.phase === 'HOP' || this.death.phase === 'FALL') {
+            this.mario.y += this.mario.vy * fdt;
+            this.mario.vy += 0.22 * fdt;
+
+            if (this.death.phase === 'HOP' && this.mario.y >= 0 && this.mario.vy > 0) {
+                this.death.phase = 'FALL';
+            }
+
+            const fallLimit = (this.height - this.floorY) / this.pixel + 20;
+            if (this.death.phase === 'FALL' && this.mario.y > fallLimit) {
+                this.mario.state = 'GONE';
+                this.death.phase = 'GONE';
+                this.death.gone = true;
+                if (this.overlay) this.overlay.dataset.marioDeath = 'done';
             }
         }
     }
@@ -2215,7 +2264,7 @@ class MarioRecapScene {
             block.glowIntensity = 0.65;
             block.status = 'grey';
             this.run.counts.skipped++;
-            this.sfx.playSkip();
+            this.sfx.playNothing();
             this.impactFlashes.push({
                 x: blockCenterX,
                 y: blockBottomY,
@@ -2876,14 +2925,18 @@ class MarioRecapScene {
         }
 
         let marioMatrix = MARIO_SPRITES.run1;
-        if (this.mario.state === 'JUMPING') {
+        if (this.mario.state === 'DYING') {
+            marioMatrix = MARIO_SPRITES.dead;
+        } else if (this.mario.state === 'GONE') {
+            marioMatrix = null;
+        } else if (this.mario.state === 'JUMPING') {
             marioMatrix = this.mario.vy < 0.25 ? MARIO_SPRITES.jump : MARIO_SPRITES.fall;
         } else if (this.mario.state === 'FINISHED') {
             if (this.overlay) this.overlay.dataset.marioPose = this.mario.pose;
-            if (this.mario.pose === 'shrug') marioMatrix = MARIO_SPRITES.shrug;
+            if (this.mario.pose === 'dead') marioMatrix = MARIO_SPRITES.dead;
+            else if (this.mario.pose === 'shrug') marioMatrix = MARIO_SPRITES.shrug;
             else if (this.mario.pose === 'sit1') marioMatrix = MARIO_SPRITES.sit1;
             else if (this.mario.pose === 'sit2') marioMatrix = MARIO_SPRITES.sit2;
-            else if (this.mario.pose === 'slump') marioMatrix = MARIO_SPRITES.slump;
             else marioMatrix = MARIO_SPRITES.idle;
         } else {
             if (this.mario.animFrame === 0) marioMatrix = MARIO_SPRITES.run1;
@@ -2891,11 +2944,13 @@ class MarioRecapScene {
             else marioMatrix = MARIO_SPRITES.run3;
         }
 
-        this.drawSpriteMatrix(marioMatrix, PALETTE, this.mario.x, this.mario.y, this.pixel, {
-            flipX: this.mario.facing === -1,
-            scaleX: this.mario.scaleX,
-            scaleY: this.mario.scaleY
-        });
+        if (marioMatrix) {
+            this.drawSpriteMatrix(marioMatrix, PALETTE, this.mario.x, this.mario.y, this.pixel, {
+                flipX: this.mario.facing === -1,
+                scaleX: this.mario.scaleX,
+                scaleY: this.mario.scaleY
+            });
+        }
 
         for (const h of this.hearts) {
             if (!this.isVisibleX(h.x, 12)) continue;
@@ -3137,7 +3192,11 @@ class MarioRecapScene {
             this.princess.y = 0;
             this.castle.doorGlow = 1;
         } else if (this.verdict.castleMood === 'negative') {
-            this.setMarioPose('slump');
+            this.mario.state = 'GONE';
+            this.mario.vy = 0;
+            this.setMarioPose('dead');
+            this.death = { phase: 'GONE', timer: DEATH_FINISH_TICKS, gone: true };
+            if (this.overlay) this.overlay.dataset.marioDeath = 'done';
             this.goomba.visible = true;
             this.goomba.alpha = 1;
             this.goomba.x = this.goomba.targetX;
@@ -3177,7 +3236,7 @@ class MarioRecapScene {
     finishRun() {
         if (this.run.finished) return;
         this.run.finished = true;
-        this.mario.state = 'FINISHED';
+        if (this.mario.state !== 'GONE') this.mario.state = 'FINISHED';
         this.mario.scaleX = 1;
         this.mario.scaleY = 1;
         this.run.shakeIntensity = 0;
