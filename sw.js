@@ -180,7 +180,12 @@
 //        app.js/matrix.js changed.
 // v86 - SIGNAL COLOURS: styles-signal.css joins the shell precache. Critical
 //        analysis numbers, bars and chips glow semantic red/amber/green/cyan.
-const VERSION = 'jeemax-v94';
+// v95 - SMB1 NES JINGLES: smb-jingles.js joins the shell precache for
+//        mode-aware Mario recap win/lose fanfares.
+// v96 - HARDCORE HIGHEST-ELO FALLBACK: when no qElo >= 1800 questions remain
+//        in the chapter selection, Hardcore serves the highest-qElo remaining
+//        eligible question until the bank is exhausted.
+const VERSION = 'jeemax-v96';
 const SHELL = [
   './',
   './index.html',
@@ -201,6 +206,7 @@ const SHELL = [
   './bridge.js',
   './tuckin.js',
   './mario-recap.js',
+  './smb-jingles.js',
   './memory.js',
   './chapter-weights.js',
   './mock.js',

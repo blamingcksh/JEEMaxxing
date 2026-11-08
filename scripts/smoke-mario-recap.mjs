@@ -5,12 +5,11 @@ import {
     classify,
     comboRatio,
     comboSemitones,
-    LOSS_NOTES,
     megaAnticipationMs,
     resolveSessionVerdict,
     SessionRecap,
-    WIN_NOTES,
 } from '../mario-recap.js';
+import { decode as decodeSmbJingle } from '../smb-jingles.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let failures = 0;
@@ -169,16 +168,32 @@ ok(source.includes('settleCastleFlag'), 'scene updates castle rooftop flag color
 ok(source.includes('playWin'), 'sound engine includes the Stage Clear fanfare');
 ok(source.includes('playLoss'), 'sound engine includes the death jingle for negative Elo');
 
-const winTotal = WIN_NOTES.reduce((sum, note) => sum + note.d, 0);
-const lossTotal = LOSS_NOTES.reduce((sum, note) => sum + note.d, 0);
-eq(WIN_NOTES.length, 27, 'win fanfare has 27 notes');
-eq(LOSS_NOTES.length, 10, 'loss jingle has 10 notes');
-ok(Math.abs(winTotal - 4.61) < 0.01, 'win fanfare lasts about 4.61s (got ' + winTotal.toFixed(3) + 's)');
-ok(Math.abs(lossTotal - 1.85) < 0.01, 'loss jingle lasts about 1.85s (got ' + lossTotal.toFixed(3) + 's)');
-eq(WIN_NOTES[0].f, 196, 'win fanfare starts on G3');
-eq(WIN_NOTES[WIN_NOTES.length - 1].f, 1046.5, 'win fanfare resolves on C6');
-eq(LOSS_NOTES[0].f, 493.88, 'loss jingle starts on B4');
-eq(LOSS_NOTES[LOSS_NOTES.length - 1].f, 261.63, 'loss jingle resolves on C4');
+ok(source.includes("from './smb-jingles.js'"), 'recap engine imports SMB1 NES jingle synthesizer');
+ok(source.includes("mode === 'hardcore' ? 'castle' : 'win'"), 'playWin routes Hardcore to Castle Clear and Standard/Flow to Level Clear');
+ok(source.includes("mode === 'hardcore' ? 'gameover' : 'death'"), 'playLoss routes Hardcore to Game Over and Standard/Flow to Mario Dies');
+ok(source.includes('this.sfx.playWin(this.sessionMode)'), 'castle positive payoff passes sessionMode to playWin');
+ok(source.includes('this.sfx.playLoss(this.sessionMode)'), 'castle negative payoff passes sessionMode to playLoss');
+ok(source.includes('this.sfx.stopJingle()'), 'dismissing the recap stops any active jingle');
+
+// Mode stamping on SessionRecap entries
+SessionRecap.reset();
+const mq1 = { id: 'mq1' };
+const mq2 = { id: 'mq2' };
+SessionRecap.recordSkip(mq1);
+SessionRecap.record(mq1, { correct: true, secs: 20, targetSecs: 60, mode: 'flow' });
+SessionRecap.record(mq2, { correct: false, secs: 40, targetSecs: 60, mode: 'hardcore' });
+eq(SessionRecap._items[0].mode, 'flow', 'upgraded skip preserves recorded mode (flow)');
+eq(SessionRecap._items[1].mode, 'hardcore', 'recorded entry stores hardcore mode');
+SessionRecap.reset();
+
+const winSong = decodeSmbJingle('win');
+const deathSong = decodeSmbJingle('death');
+const castleSong = decodeSmbJingle('castle');
+const gameoverSong = decodeSmbJingle('gameover');
+ok(Math.abs(winSong.endT - 5.52) < 0.02, 'Level Clear fanfare lasts ~5.52s');
+ok(Math.abs(deathSong.endT - 3.00) < 0.02, 'Mario Dies jingle lasts ~3.00s');
+ok(Math.abs(castleSong.endT - 6.19) < 0.02, 'Castle Clear fanfare lasts ~6.19s');
+ok(Math.abs(gameoverSong.endT - 3.72) < 0.02, 'Game Over jingle lasts ~3.72s');
 ok(source.includes('DYING') && source.includes('updateMarioDeath'), 'scene includes the dying state and death animation');
 ok(html.includes('id="fx-mario-sound"'), 'config panel has Mario Recap Sounds toggle');
 ok(!source.includes('aria-modal'), 'overlay does not claim modal semantics');
@@ -190,6 +205,7 @@ ok(app.includes("from './mario-recap.js'"), 'app imports recap engine');
 ok(matrix.includes("from './mario-recap.js'"), 'matrix imports recap engine');
 ok(app.includes('SessionRecap.reset()'), 'app resets per run');
 ok(app.includes('_recordSessionRecap(AppState.currentQ'), 'app records graded answers');
+ok(app.includes('mode: _activeModeForQuestion(q)'), 'app stamps active question mode onto recap records');
 ok(app.includes('_noteSessionElo(AppState.currentQ'), 'app records Elo deltas for recap blocks');
 ok(app.includes('_noteSessionSkip('), 'app records skipped questions for recap blocks');
 ok(app.includes('SessionRecap.play({ tone: recapTone })'), 'app plays recap on close');
@@ -206,8 +222,9 @@ ok(source.includes('is-parchment'), 'recap supports a parchment veil');
 ok(app.includes('window.__jmaxAppToast || alert'), 'queue-cleared notice falls back to toast');
 ok(app.includes('window.SessionRecap = SessionRecap'), 'recap is exposed for QA and bridge code');
 ok(html.includes('href="mario-recap.css"'), 'index loads recap stylesheet');
-ok(sw.includes("'jeemax-v86'"), 'service worker version bumped');
+ok(/const VERSION = 'jeemax-v\d+'/.test(sw), 'service worker version bumped');
 ok(sw.includes("'./mario-recap.js'"), 'recap engine is precached');
+ok(sw.includes("'./smb-jingles.js'"), 'SMB1 jingle synthesizer is precached');
 ok(sw.includes("'./mario-recap.css'"), 'recap stylesheet is precached');
 
 if (failures) {

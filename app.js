@@ -7784,6 +7784,7 @@ function _recordSessionRecap(q, correct, secs) {
             correct: !!correct,
             secs: Number(secs) || 0,
             targetSecs: Number(_eloTargetSeconds(q)) || 0,
+            mode: _activeModeForQuestion(q),
         });
     } catch (_) {}
 }
@@ -7920,7 +7921,23 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
     // the hardcore floor, and Hardcore exits gracefully when the chapter has
     // no ≥minQeloFloor questions instead of silently downgrading to easy ones.
     if (mode === 'hardcore' && cfg.minQeloFloor) {
-        bank = bank.filter(q => q.qElo >= cfg.minQeloFloor);
+        const hcBank = bank.filter(q => q.qElo >= cfg.minQeloFloor);
+        if (hcBank.length > 0) {
+            bank = hcBank;
+        } else if (bank.length > 0) {
+            const _skipRankFallback = (q) => Math.min(9999, Number(q.skips) || 0);
+            const highestFirst = bank.slice().sort((a, b) => {
+                const ra = _skipRankFallback(a) - _skipRankFallback(b);
+                if (ra !== 0) return ra;
+                if (b.qElo !== a.qElo) return b.qElo - a.qElo;
+                const sa = (a.solveCount || 0) - (b.solveCount || 0);
+                if (sa !== 0) return sa;
+                const ta = a.lastSolvedAt ? new Date(a.lastSolvedAt).getTime() : 0;
+                const tb = b.lastSolvedAt ? new Date(b.lastSolvedAt).getTime() : 0;
+                return ta - tb;
+            });
+            return highestFirst[0];
+        }
     }
     if (!bank.length) return null;
     const userElo = (AppState.elo && AppState.elo[subject]) || 1200;
@@ -8401,8 +8418,7 @@ function _hasModeEligibleQuestion(mode) {
             : _chaptersMatch(q.chapter, chapter)) &&
         _isUnexecutedModeQuestion(q) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
-        !q.isAnomaly && !q.modeRetired &&
-        (mode !== 'hardcore' || !cfg.minQeloFloor || q.qElo >= cfg.minQeloFloor)
+        !q.isAnomaly && !q.modeRetired
     );
 }
 

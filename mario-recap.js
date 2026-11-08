@@ -1,3 +1,5 @@
+import { playSmbJingle } from './smb-jingles.js';
+
 const BLOCK_SIZE = 16;
 const MEGA_BLOCK_SIZE = 32;
 const BLOCK_SPACING = 40;
@@ -680,49 +682,6 @@ const MARIO_HIT_W = 16;
 const DEATH_FREEZE_TICKS = 14;
 const DEATH_FINISH_TICKS = 110;
 
-export const WIN_NOTES = [
-    { f: 196.00, d: 0.11 },
-    { f: 261.63, d: 0.11 },
-    { f: 329.63, d: 0.11 },
-    { f: 392.00, d: 0.11 },
-    { f: 523.25, d: 0.11 },
-    { f: 659.25, d: 0.11 },
-    { f: 783.99, d: 0.32 },
-    { f: 659.25, d: 0.30 },
-    { f: 207.65, d: 0.11 },
-    { f: 261.63, d: 0.11 },
-    { f: 311.13, d: 0.11 },
-    { f: 415.30, d: 0.11 },
-    { f: 523.25, d: 0.11 },
-    { f: 622.25, d: 0.11 },
-    { f: 830.61, d: 0.32 },
-    { f: 622.25, d: 0.30 },
-    { f: 233.08, d: 0.11 },
-    { f: 293.66, d: 0.11 },
-    { f: 349.23, d: 0.11 },
-    { f: 466.16, d: 0.11 },
-    { f: 587.33, d: 0.11 },
-    { f: 698.46, d: 0.11 },
-    { f: 932.33, d: 0.32 },
-    { f: 932.33, d: 0.11 },
-    { f: 932.33, d: 0.11 },
-    { f: 932.33, d: 0.11 },
-    { f: 1046.50, d: 0.74 }
-];
-
-export const LOSS_NOTES = [
-    { f: 493.88, d: 0.08 },
-    { f: 698.46, d: 0.14 },
-    { f: 0, d: 0.14 },
-    { f: 698.46, d: 0.12 },
-    { f: 698.46, d: 0.16 },
-    { f: 659.25, d: 0.16 },
-    { f: 587.33, d: 0.16 },
-    { f: 523.25, d: 0.28 },
-    { f: 329.63, d: 0.16 },
-    { f: 261.63, d: 0.45 }
-];
-
 export function comboSemitones(step) {
     const s = Math.max(0, Math.floor(Number(step) || 0));
     return COMBO_SCALE[Math.min(s, COMBO_SCALE.length - 1)];
@@ -764,6 +723,7 @@ export const SessionRecap = {
         const targetSecs = Number(result.targetSecs);
         const rawElo = result.eloDelta !== undefined && result.eloDelta !== null ? Number(result.eloDelta) : NaN;
         const eloDelta = Number.isFinite(rawElo) ? Math.round(rawElo) : null;
+        const mode = typeof result.mode === 'string' && result.mode ? result.mode : 'standard';
         const existing = this._byKey.get(key);
         if (existing) {
             if (existing.outcome !== 'grey') return false;
@@ -771,13 +731,15 @@ export const SessionRecap = {
             existing.secs = Number.isFinite(secs) ? secs : 0;
             existing.targetSecs = Number.isFinite(targetSecs) ? targetSecs : 0;
             if (eloDelta !== null) existing.eloDelta = eloDelta;
+            existing.mode = mode;
             return true;
         }
         const entry = {
             outcome: classify(result),
             secs: Number.isFinite(secs) ? secs : 0,
             targetSecs: Number.isFinite(targetSecs) ? targetSecs : 0,
-            eloDelta
+            eloDelta,
+            mode
         };
         this._byKey.set(key, entry);
         this._items.push(entry);
@@ -846,10 +808,12 @@ export const SessionRecap = {
             activeScene.destroy();
             activeScene = null;
         }
+        const derivedMode = items.some((i) => i && i.mode === 'hardcore') ? 'hardcore' : 'standard';
+        const sceneOptions = Object.assign({ mode: derivedMode }, options);
         return new Promise((resolve) => {
             let scene = null;
             try {
-                scene = new MarioRecapScene(items, resolve, options);
+                scene = new MarioRecapScene(items, resolve, sceneOptions);
                 activeScene = scene;
                 scene.mount();
             } catch (err) {
@@ -882,6 +846,10 @@ function wantMarioSound() {
 }
 
 class RetroSoundEngine {
+    constructor() {
+        this._jingle = null;
+    }
+
     getCtx() {
         if (!wantMarioSound()) return null;
         try {
@@ -1100,45 +1068,30 @@ class RetroSoundEngine {
         }
     }
 
-    playSequence(notes, { type = 'square', sub = false, peak = 0.075 } = {}) {
+    stopJingle() {
+        if (this._jingle) {
+            try { this._jingle.stop(); } catch (_) {}
+            this._jingle = null;
+        }
+    }
+
+    _playJingle(id) {
         const ctx = this.getCtx();
         if (!ctx) return;
         const v = this.vol();
         if (v <= 0) return;
+        this.stopJingle();
         try {
-            let t = ctx.currentTime;
-            for (const n of notes) {
-                if (n.f > 0) {
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    osc.type = type;
-                    osc.frequency.setValueAtTime(n.f, t);
-                    gain.gain.setValueAtTime(peak * v, t);
-                    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.006 * v), t + n.d);
-                    osc.connect(gain);
-                    gain.connect(ctx.destination);
-                    osc.start(t);
-                    osc.stop(t + n.d + 0.01);
-                    if (sub) {
-                        const subOsc = ctx.createOscillator();
-                        subOsc.type = 'triangle';
-                        subOsc.frequency.setValueAtTime(n.f * 0.5, t);
-                        subOsc.connect(gain);
-                        subOsc.start(t);
-                        subOsc.stop(t + n.d + 0.01);
-                    }
-                }
-                t += n.d;
-            }
+            this._jingle = playSmbJingle(ctx, id, v);
         } catch (_) {}
     }
 
-    playWin() {
-        this.playSequence(WIN_NOTES, { type: 'square', sub: true, peak: 0.078 });
+    playWin(mode = 'standard') {
+        this._playJingle(mode === 'hardcore' ? 'castle' : 'win');
     }
 
-    playLoss() {
-        this.playSequence(LOSS_NOTES, { type: 'square', sub: false, peak: 0.075 });
+    playLoss(mode = 'standard') {
+        this._playJingle(mode === 'hardcore' ? 'gameover' : 'death');
     }
 }
 
@@ -1147,6 +1100,7 @@ class MarioRecapScene {
         this.items = items;
         this.resolve = resolve;
         this.parchment = options.tone === 'parchment';
+        this.sessionMode = options.mode === 'hardcore' ? 'hardcore' : 'standard';
         this.summary = summarizeItems(items);
         this.verdict = resolveSessionVerdict(this.summary);
         this.destroyed = false;
@@ -1686,7 +1640,7 @@ class MarioRecapScene {
                     this.princess.scaleX = 0.88;
                     this.princess.scaleY = 1.15;
                     this.spawnCelebrationHearts();
-                    this.sfx.playWin();
+                    this.sfx.playWin(this.sessionMode);
                 } else if (this.verdict.castleMood === 'negative') {
                     this.mario.state = 'DYING';
                     this.setMarioPose('dead');
@@ -1702,7 +1656,7 @@ class MarioRecapScene {
                     this.goomba.scaleX = 0.86;
                     this.goomba.scaleY = 1.16;
                     this.spawnChimneySmoke(true);
-                    this.sfx.playLoss();
+                    this.sfx.playLoss(this.sessionMode);
                 } else {
                     this.mario.state = 'FINISHED';
                     this.setMarioPose('shrug');
@@ -3341,6 +3295,9 @@ class MarioRecapScene {
     dismiss() {
         if (this.destroyed) return;
         this.destroyed = true;
+        if (this.sfx && typeof this.sfx.stopJingle === 'function') {
+            this.sfx.stopJingle();
+        }
         cancelAnimationFrame(this.raf);
         this.raf = 0;
         if (this.finishTimer) {
