@@ -5,9 +5,11 @@ import {
     classify,
     comboRatio,
     comboSemitones,
+    LOSS_NOTES,
     megaAnticipationMs,
     resolveSessionVerdict,
     SessionRecap,
+    WIN_NOTES,
 } from '../mario-recap.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -154,7 +156,7 @@ ok(source.includes('mario-recap-pill'), 'single summary pill exists');
 ok(!source.includes('mario-recap-continue'), 'legacy continue control is removed');
 ok(!source.includes('mario-recap-sound'), 'no floating sound button on recap overlay');
 ok(source.includes('wantMarioSound'), 'sound engine is gated by config preference');
-ok(source.includes('playSkip'), 'sound engine includes skip dud sound');
+ok(source.includes('playNothing'), 'sound engine includes the neutral skip blip');
 ok(source.includes('spawnEloPop'), 'scene spawns Elo pops on block hit');
 ok(source.includes('spawnMegaEloPop'), 'scene spawns net Elo pop on Big Block hit');
 ok(source.includes('drawMergingBlocks'), 'scene smoothly merges blocks into Big Block');
@@ -164,8 +166,20 @@ ok(source.includes('GOOMBA_SPRITES'), 'scene includes Goomba sprites for net-neg
 ok(source.includes('SLEEP_Z_LARGE'), 'scene includes pixel sleep Z sprites for neutral/skip gag');
 ok(source.includes('spawnChimneySmoke'), 'scene spawns chimney dark smoke on negative runs');
 ok(source.includes('settleCastleFlag'), 'scene updates castle rooftop flag color when Big Block settles');
-ok(source.includes('playCongratulations'), 'sound engine includes Congratulations fanfare');
-ok(source.includes('playSomberEnd'), 'sound engine includes somber jingle for negative Elo');
+ok(source.includes('playWin'), 'sound engine includes the Stage Clear fanfare');
+ok(source.includes('playLoss'), 'sound engine includes the death jingle for negative Elo');
+
+const winTotal = WIN_NOTES.reduce((sum, note) => sum + note.d, 0);
+const lossTotal = LOSS_NOTES.reduce((sum, note) => sum + note.d, 0);
+eq(WIN_NOTES.length, 27, 'win fanfare has 27 notes');
+eq(LOSS_NOTES.length, 10, 'loss jingle has 10 notes');
+ok(Math.abs(winTotal - 4.61) < 0.01, 'win fanfare lasts about 4.61s (got ' + winTotal.toFixed(3) + 's)');
+ok(Math.abs(lossTotal - 1.85) < 0.01, 'loss jingle lasts about 1.85s (got ' + lossTotal.toFixed(3) + 's)');
+eq(WIN_NOTES[0].f, 196, 'win fanfare starts on G3');
+eq(WIN_NOTES[WIN_NOTES.length - 1].f, 1046.5, 'win fanfare resolves on C6');
+eq(LOSS_NOTES[0].f, 493.88, 'loss jingle starts on B4');
+eq(LOSS_NOTES[LOSS_NOTES.length - 1].f, 261.63, 'loss jingle resolves on C4');
+ok(source.includes('DYING') && source.includes('updateMarioDeath'), 'scene includes the dying state and death animation');
 ok(html.includes('id="fx-mario-sound"'), 'config panel has Mario Recap Sounds toggle');
 ok(!source.includes('aria-modal'), 'overlay does not claim modal semantics');
 ok(css.includes('z-index: 2147483100'), 'overlay sits above existing layers');

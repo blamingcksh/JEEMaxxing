@@ -509,6 +509,7 @@ try {
             goombaVisible: overlay.dataset.goombaVisible,
             chimneySmoke: Number(overlay.dataset.chimneySmoke || 0),
             marioPose: overlay.dataset.marioPose,
+            marioDeath: overlay.dataset.marioDeath,
         };
     });
     ok(
@@ -518,8 +519,9 @@ try {
         negRun.castleFlag === 'red' &&
         negRun.goombaVisible === 'true' &&
         negRun.chimneySmoke > 0 &&
-        negRun.marioPose === 'slump',
-        'negative net Elo turns castle flag red, puffs chimney smoke, and peeks Goomba from doorway',
+        negRun.marioPose === 'dead' &&
+        negRun.marioDeath === 'done',
+        'negative net Elo turns castle flag red, plays the death animation, and leaves the Goomba visible',
         JSON.stringify(negRun)
     );
     await page.screenshot({ path: path.join(SHOTS, 'mario-recap-negative.png') });
