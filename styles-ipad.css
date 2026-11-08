@@ -416,39 +416,3 @@ html.jmax-standalone body::before {
         row-gap: 6px;
     }
 }
-
-
-/* ── 11. Home-Screen launch: no grey strip at the bottom ───────────────────
-   iPadOS (Stage Manager / windowed apps) can hand the PWA a stale viewport
-   height on cold launch, so body's 100vh/100dvh comes up shorter than the
-   real window until a resize forces re-layout. The uncovered strip then
-   showed the bare <html> canvas (grey). Two-part fix:
-     1. paint <html> with the themed base colour so any gap is invisible;
-     2. in standalone, pin body to the window edges (fixed + inset:0) instead
-        of a vh/dvh height, so it tracks the real layout viewport. */
-html {
-    background-color: var(--bg-base, #08090d);
-}
-@media (display-mode: standalone) {
-    html, body {
-        min-height: 100%;
-    }
-    body {
-        position: fixed;
-        inset: 0;
-        height: auto;
-        width: 100%;
-    }
-    .app-container {
-        height: 100%;
-    }
-}
-html.jmax-standalone body {
-    position: fixed;
-    inset: 0;
-    height: auto;
-    width: 100%;
-}
-html.jmax-standalone .app-container {
-    height: 100%;
-}
