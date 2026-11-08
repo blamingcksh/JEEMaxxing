@@ -236,6 +236,36 @@ console.log('── Hardcore: ≥1800 floor enforced + Continue advances ──'
     ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore Continue keeps mode active');
 }
 
+console.log('── Hardcore fallback: when no >=1800 left, serves highest qElo remaining until bank ends ──');
+{
+    seedBank(0, 'physics', 'Thermo', 0, 1200);
+    AppState.questionBank = [
+        mk('low1', 1410),
+        mk('hc1', 1880),
+        mk('low3', 1720),
+        mk('low2', 1580),
+    ];
+    globalThis.startHardcorePractice();
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore starts when mixed bank has >=1800');
+    ok(currentId() === 'hc1', 'Hardcore serves >=1800 question first (got ' + currentId() + ')');
+
+    globalThis.continuePractice();
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore stays active when >=1800 runs out but lower-Elo questions remain');
+    ok(currentId() === 'low3', 'Hardcore fallback picks highest remaining qElo 1720 first (got ' + currentId() + ')');
+
+    globalThis.continuePractice();
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore stays active on second fallback question');
+    ok(currentId() === 'low2', 'Hardcore fallback picks next-highest qElo 1580 (got ' + currentId() + ')');
+
+    globalThis.continuePractice();
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore stays active on last fallback question');
+    ok(currentId() === 'low1', 'Hardcore fallback picks last remaining qElo 1410 (got ' + currentId() + ')');
+
+    globalThis.continuePractice();
+    ok(AppState.practiceFlowMode === 'standard', 'Hardcore exits to standard only after all questions in the bank are exhausted');
+    ok(AppState.practiceQuestions.length === 0, 'Queue is empty once all questions end');
+}
+
 console.log('── Standard practice: classic index navigation is untouched ──');
 {
     seedBank(0, 'physics', 'Thermo', 920, 1200); // clear mode state
