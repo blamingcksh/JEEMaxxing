@@ -120,6 +120,9 @@ function seedBank(n, subject, chapter, baseElo, userElo) {
     AppState.currentChapter = chapter;
     AppState.elo = { physics: userElo, chemistry: userElo, maths: userElo, global: userElo };
     AppState.practiceFlowMode = 'standard';
+    AppState.flowSlider = 72;
+    AppState._pqServedMode = 'standard';
+    AppState._flowSessionActive = false;
     AppState.practiceQuestions = [];
     AppState.practiceSubmittedFlags = [];
     AppState.currentPracticeIndex = 0;
@@ -165,9 +168,14 @@ console.log('── Flow mode: Next/Prev no-ops; Continue advances ──');
     ok(currentId() !== q1 && currentId() !== q2 && currentId() !== q3, 'Continue drains all four questions');
     ok(AppState.practiceFlowMode === 'flow', 'Continue keeps Flow mode active');
 
+    // Infinite engine: the pool never drains. After every candidate has been
+    // seen, the next Continue recycles the strongest one instead of exiting.
     globalThis.continuePractice();
-    ok(AppState.practiceFlowMode === 'standard', 'exhausting the pool exits the mode');
-    ok(AppState.practiceQuestions.length === 0, 'queue is cleared on exhaustion');
+    ok(AppState.practiceFlowMode === 'flow', 'Continue recycles instead of exiting once all questions are seen');
+    ok(AppState.practiceQuestions.length === 1, 'queue stays one-item after recycling');
+    ok(['f0', 'f1', 'f2', 'f3'].includes(currentId()), 'recycled question is a previously seen one (got ' + currentId() + ')');
+    globalThis.continuePractice();
+    ok(AppState.practiceFlowMode === 'flow', 'Continue keeps flowing after recycling');
 }
 
 console.log('── Flow mode: Skip is no-regret and advances ──');
@@ -222,12 +230,15 @@ console.log('── Flow mode: "already know" retires the question from mode pic
     ok(firstAgain.id !== 'k0', 'a modeRetired question is never re-served (got ' + firstAgain.id + ')');
 }
 
-console.log('── Hardcore: ≥1800 floor enforced + Continue advances ──');
+console.log('── Hardcore via slider 100: high-Elo pick + Continue advances ──');
 {
     seedBank(0, 'physics', 'Thermo', 0, 1200);
     AppState.questionBank = [mk('h0', 1850), mk('h1', 1900), mk('h2', 1950)];
+    globalThis.__setFlowSlider(100);
     globalThis.startHardcorePractice();
-    ok(AppState.practiceFlowMode === 'hardcore', 'startHardcorePractice activates hardcore mode');
+    ok(AppState.flowSlider === 100, 'Hardcore entry pins the dial to 100');
+    ok(AppState.practiceFlowMode === 'hardcore', 'startHardcorePractice activates hardcore mode at 100');
+    ok(AppState._pqServedMode === 'hardcore', 'served mode is stamped hardcore');
     const hElo = AppState.practiceQuestions[0] && AppState.practiceQuestions[0].qElo;
     ok(hElo >= 1800, 'Hardcore serves a ≥1800 question (got ' + hElo + ')');
     const q1 = currentId();
@@ -236,7 +247,7 @@ console.log('── Hardcore: ≥1800 floor enforced + Continue advances ──'
     ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore Continue keeps mode active');
 }
 
-console.log('── Hardcore fallback: when no >=1800 left, serves highest qElo remaining until bank ends ──');
+console.log('── Hardcore via slider: Gaussian centre + infinite recycle ──');
 {
     seedBank(0, 'physics', 'Thermo', 0, 1200);
     AppState.questionBank = [
@@ -245,25 +256,28 @@ console.log('── Hardcore fallback: when no >=1800 left, serves highest qElo 
         mk('low3', 1720),
         mk('low2', 1580),
     ];
+    globalThis.__setFlowSlider(100);
     globalThis.startHardcorePractice();
     ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore starts when mixed bank has >=1800');
-    ok(currentId() === 'hc1', 'Hardcore serves >=1800 question first (got ' + currentId() + ')');
+    // Centre at 100 is ~1611 (30% upward anchor toward 2300), so the Gaussian
+    // picks closest to centre first, not the absolute ceiling.
+    ok(currentId() === 'low2', 'Hardcore Gaussian picks closest-to-centre 1580 first (got ' + currentId() + ')');
 
     globalThis.continuePractice();
-    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore stays active when >=1800 runs out but lower-Elo questions remain');
-    ok(currentId() === 'low3', 'Hardcore fallback picks highest remaining qElo 1720 first (got ' + currentId() + ')');
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore stays active on second question');
+    ok(currentId() === 'low3', 'Hardcore picks next-closest 1720 (got ' + currentId() + ')');
 
     globalThis.continuePractice();
-    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore stays active on second fallback question');
-    ok(currentId() === 'low2', 'Hardcore fallback picks next-highest qElo 1580 (got ' + currentId() + ')');
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore stays active on third question');
+    ok(currentId() === 'low1', 'Hardcore picks 1410 next (got ' + currentId() + ')');
 
     globalThis.continuePractice();
-    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore stays active on last fallback question');
-    ok(currentId() === 'low1', 'Hardcore fallback picks last remaining qElo 1410 (got ' + currentId() + ')');
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore stays active on fourth question');
+    ok(currentId() === 'hc1', 'Hardcore picks the 1880 ceiling last (got ' + currentId() + ')');
 
     globalThis.continuePractice();
-    ok(AppState.practiceFlowMode === 'standard', 'Hardcore exits to standard only after all questions in the bank are exhausted');
-    ok(AppState.practiceQuestions.length === 0, 'Queue is empty once all questions end');
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore recycles instead of exiting once all questions are seen');
+    ok(AppState.practiceQuestions.length === 1, 'queue stays one-item after recycling');
 }
 
 console.log('── Standard practice: classic index navigation is untouched ──');
@@ -293,7 +307,7 @@ console.log('── Standard practice: classic index navigation is untouched ─
         'standard end-of-queue closes without mode interference');
 }
 
-console.log('── Flow vs Hardcore serve DIFFERENT questions (hardcore floor) ──');
+console.log('── Flow (72) vs Hardcore (100) serve DIFFERENT questions ──');
 {
     const mixed = [
         mk('e0', 1200), mk('e1', 1250), mk('e2', 1300),
@@ -302,6 +316,7 @@ console.log('── Flow vs Hardcore serve DIFFERENT questions (hardcore floor) 
 
     seedBank(0, 'physics', 'Thermo', 0, 1200);
     AppState.questionBank = mixed.slice();
+    globalThis.__setFlowSlider(72);
     globalThis.startFlowPractice();
     const flowPick = currentId();
     const flowElo = AppState.practiceQuestions[0] && AppState.practiceQuestions[0].qElo;
@@ -310,6 +325,7 @@ console.log('── Flow vs Hardcore serve DIFFERENT questions (hardcore floor) 
 
     seedBank(0, 'physics', 'Thermo', 0, 1200);
     AppState.questionBank = mixed.slice();
+    globalThis.__setFlowSlider(100);
     globalThis.startHardcorePractice();
     const hardPick = currentId();
     const hardElo = AppState.practiceQuestions[0] && AppState.practiceQuestions[0].qElo;

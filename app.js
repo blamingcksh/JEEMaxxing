@@ -69,6 +69,20 @@ import { Directive } from './directive.js';
 import './bridge.js';
 import './tuckin.js';
 import { SessionRecap } from './mario-recap.js';
+// Flow intensity dial — pure math + the pixel-room slider component.
+import {
+    FLOW_SLIDER_DEFAULT,
+    HARDCORE_THRESHOLD,
+    clampFlowValue,
+    modeForValue as _flowModeForValue,
+    zoneForValue as _flowZoneForValue,
+    labelForValue as _flowLabelForValue,
+    describeValue as _flowDescribeValue,
+    pWinForValue as _flowPWinForValue,
+    centerElo as _flowCenterElo,
+    profileForValue as _flowProfileForValue,
+} from './flow-slider.js';
+import { mountFlowSlider } from './slider-resident.js';
 
 /** Stage full LU pricing context for the next solve unit logged through
  *  changeCount(). One-shot; silently ignored if the Directive isn't live. */
@@ -2224,7 +2238,7 @@ export function openMultiChapterMode(mode) {
 
     const title = document.getElementById('multi-chapter-mode-title');
     if (title) {
-        title.textContent = mode === 'hardcore' ? 'Hardcore' : 'Flow';
+        title.textContent = 'Flow';
     }
 
     const subject = AppState.currentSubject;
@@ -2296,7 +2310,14 @@ export function startMultiChapterMode() {
     AppState.currentChapterSelection = chapters;
     AppState.currentFilter = 'all';
     closeModalStr('multi-chapter-mode-modal');
-    _ensureLockinSetup(_multiChapterMode);
+    // The multi-chapter picker is chapter scope only. Intensity comes from the
+    // dial; it is never forced here (so a 100 dial still enters Hardcore and a
+    // 72 dial still enters Flow). Only a legacy 'hardcore' caller is upgraded.
+    const requested = (_multiChapterMode === 'hardcore' && clampFlowValue(AppState.flowSlider) < HARDCORE_THRESHOLD)
+        ? 100
+        : clampFlowValue(AppState.flowSlider);
+    _applyFlowSlider(requested, { notify: true, syncEntry: true, syncLive: false });
+    _ensureLockinSetup(_flowModeForValue(clampFlowValue(AppState.flowSlider)));
 }
 
 export function openChapterDetail(ch) {
@@ -5501,6 +5522,9 @@ export function startPracticeWithQuestion(questions, index, opts = null) {
     // leak its footer/nav state into this session.
     SessionRecap.reset();
     AppState.practiceFlowMode = 'standard';
+    AppState._flowSessionActive = false;
+    _stampServedMode('standard');
+    _destroyLiveFlowSlider();
     _modeAdaptive.targetPwin = null;
     AppState.practiceQuestions = questions;
     AppState.currentPracticeIndex = index;
@@ -7803,6 +7827,9 @@ function _isQuestionEloCalibrated(q) {
  * questions the hardcore picker never chose.
  */
 function _activeModeForQuestion(questionObj) {
+    // The live dial is the gate: if it has been eased back to Flow while a
+    // Hardcore-stamped question is on screen, that question keeps the mode it
+    // was SERVED under (see _pqServedMode), and the next pick relaxes.
     const mode = AppState.practiceFlowMode || 'standard';
     if (mode === 'standard') return 'standard';
     const queued = Array.isArray(AppState.practiceQuestions)
@@ -7811,9 +7838,11 @@ function _activeModeForQuestion(questionObj) {
     if (!queued || !questionObj) return 'standard';
     // Reference identity first (modal passes live bank objects), id fallback
     // in case a caller hands a re-fetched copy of the same question.
-    if (queued === questionObj) return mode;
+    if (queued === questionObj) return AppState._pqServedMode || mode;
     if (queued.id !== undefined && questionObj.id !== undefined &&
-        queued.id.toString() === questionObj.id.toString()) return mode;
+        queued.id.toString() === questionObj.id.toString()) {
+        return AppState._pqServedMode || mode;
+    }
     return 'standard';
 }
 
@@ -7887,14 +7916,14 @@ function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, act
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  PRACTICE MODE HELPERS  (Flow State vs Hardcore / Overclock)
+//  PRACTICE MODE HELPERS  (Flow intensity 0–100 · 98+ is Hardcore)
 // ════════════════════════════════════════════════════════════════════════════
 //
-//  Mode-aware reward math + picker. The mode is stored on AppState.practiceFlowMode
-//  and persists across reloads. The two big buttons in chapter-detail view hand
-//  the user a one-tap, hands-off cadence (Flow) or a high-stakes boss-fight
-//  (Hardcore). The picker rebuilds AppState.practiceQuestions via
-//  _pickQuestionForMode() whenever the user enters a mode or finishes a solve.
+//  Mode-aware reward math + picker. AppState.flowSlider (0–100) is the source
+//  of truth; AppState.practiceFlowMode ('flow' | 'hardcore' | 'standard') is the
+//  binary reward gate derived from it. The picker rebuilds
+//  AppState.practiceQuestions via _pickFlowQuestionInfinite() whenever the user
+//  enters a mode or finishes a solve; it never exhausts a rated chapter.
 
 /** Canonical P_win (same formula the delta branch uses). */
 function _pWinForQ(userElo, qElo) {
@@ -7918,9 +7947,9 @@ function _modeTimeMultiplier(S, tau, mode) {
 }
 
 /**
- * A Flow / Hardcore question must be genuinely untouched. Status alone is
- * not enough because older records can retain an `unsolved` status after an
- * attempt, while fumbled records use both `wrong` and `error`.
+ * Retained for diagnostics only. Selection no longer requires untouched
+ * questions — the infinite engine re-serves solved questions at reduced
+ * weight — so do not gate new pickers on this helper.
  */
 function _isUnexecutedModeQuestion(q) {
     if (!q) return false;
@@ -7940,6 +7969,243 @@ function _isUnexecutedModeQuestion(q) {
         && !hasSolveTelemetry
         && !q.errorReason;
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  FLOW INTENSITY ENGINE
+// ════════════════════════════════════════════════════════════════════════════
+//
+//  Selection is infinite. Instead of filtering by a fixed P_win window and
+//  exiting when the "unexecuted" pool drains, every question in scope competes
+//  under a Gaussian affinity for the dial's target qElo. sigma auto-widens
+//  until it can see a candidate, and recently-solved questions are weighted
+//  down rather than removed, so the engine always returns a question.
+
+const _FLOW_SIGMA_BASE = 55;
+const _FLOW_SIGMA_RANGE = 145;
+const _FLOW_SIGMA_MAX = 720;
+const _FLOW_SRS_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+function _flowScopePool(subject, chapter) {
+    const sel = AppState.currentChapterSelection;
+    return (AppState.questionBank || []).filter(q =>
+        q && q.subject === subject &&
+        (Array.isArray(sel) && sel.length
+            ? sel.some(ch => _chaptersMatch(q.chapter, ch))
+            : _chaptersMatch(q.chapter, chapter)) &&
+        typeof q.qElo === 'number' && isFinite(q.qElo) &&
+        !q.isAnomaly
+    );
+}
+
+function _flowChapterAvgQElo(pool) {
+    if (!Array.isArray(pool) || !pool.length) return null;
+    let sum = 0;
+    for (const q of pool) sum += q.qElo;
+    return sum / pool.length;
+}
+
+/** Recency weight: a 6h cooldown, soft instead of a hard exclusion. */
+function _flowCooldownWeight(q, now) {
+    const stamp = Date.parse(q.lastSolvedAt || q.lastReviewedAt || '');
+    if (!isFinite(stamp) || stamp <= 0) return 1;
+    const age = Math.max(0, now - stamp);
+    if (age >= _FLOW_SRS_COOLDOWN_MS) return 1;
+    return 0.18 + 0.82 * (age / _FLOW_SRS_COOLDOWN_MS);
+}
+
+/**
+ * Pick one question for the dial, never returning null while the chapter has
+ * any qElo-rated questions at all.
+ *
+ * @param {string} subject
+ * @param {string} chapter
+ * @param {number} value 0–100 dial
+ * @param {Set} [seenSet] questions already served this run; recycled only
+ *   after every other candidate has been seen.
+ */
+function _pickFlowQuestionInfinite(subject, chapter, value, seenSet) {
+    subject = _normalizeSubjectKey(subject);
+    const all = _flowScopePool(subject, chapter);
+    if (!all.length) return null;
+
+    const v = clampFlowValue(value);
+    const userElo = (AppState.elo && AppState.elo[subject]) || 1200;
+    const chapterAvg = _flowChapterAvgQElo(all);
+    let target = _flowCenterElo(userElo, v, chapterAvg);
+    // Keep the target inside the app's rating band even when the anchor or a
+    // corrupt chapter average would push it outside.
+    target = Math.max(800, Math.min(2550, target));
+
+    // Retired questions are a last resort, not a hard exclusion: the dial must
+    // never dead-end because the user tapped "already know" a few times.
+    const fresh = all.filter(q => !q.modeRetired);
+    let pool = fresh.length ? fresh : all;
+
+    // Seen questions are recycled only after the unseen pool is empty.
+    if (seenSet && seenSet.size) {
+        const unseen = pool.filter(q => !seenSet.has(q));
+        if (unseen.length) pool = unseen;
+    }
+
+    // Auto-widen sigma until at least one candidate is inside it. This is what
+    // makes an empty "hard" neighbourhood (or a chapter whose ceiling sits far
+    // below the anchor) resolve to the closest available question.
+    let sigma = _FLOW_SIGMA_BASE + (v / 100) * _FLOW_SIGMA_RANGE;
+    while (sigma < _FLOW_SIGMA_MAX && !pool.some(q => Math.abs(q.qElo - target) <= sigma)) {
+        sigma *= 1.6;
+    }
+    sigma = Math.min(_FLOW_SIGMA_MAX, sigma);
+
+    const now = Date.now();
+    const scoreOf = (q) => {
+        const z = (q.qElo - target) / sigma;
+        let s = Math.exp(-0.5 * z * z);
+        s *= 1 / (1 + Math.max(0, Number(q.solveCount) || 0) * 0.35);
+        s *= 1 / (1 + Math.max(0, Number(q.skips) || 0) * 0.55);
+        s *= _flowCooldownWeight(q, now);
+        return s;
+    };
+    const lastTs = (q) => {
+        const t = Date.parse(q.lastSolvedAt || q.lastReviewedAt || '');
+        return isFinite(t) ? t : 0;
+    };
+
+    let best = pool[0];
+    let bestScore = scoreOf(best);
+    for (let i = 1; i < pool.length; i++) {
+        const q = pool[i];
+        const s = scoreOf(q);
+        if (s > bestScore + 1e-12) {
+            best = q;
+            bestScore = s;
+            continue;
+        }
+        if (Math.abs(s - bestScore) <= 1e-12) {
+            // Deterministic tie-breakers: least-solved, least-skipped, stalest,
+            // then closest to the target, then id (stable across reloads).
+            const a = best;
+            const ga = Math.abs(a.qElo - target);
+            const gb = Math.abs(q.qElo - target);
+            if (
+                (Number(q.solveCount) || 0) < (Number(a.solveCount) || 0) ||
+                ((Number(q.solveCount) || 0) === (Number(a.solveCount) || 0) && (Number(q.skips) || 0) < (Number(a.skips) || 0)) ||
+                ((Number(q.solveCount) || 0) === (Number(a.solveCount) || 0) && (Number(q.skips) || 0) === (Number(a.skips) || 0) && lastTs(q) < lastTs(a)) ||
+                ((Number(q.solveCount) || 0) === (Number(a.solveCount) || 0) && (Number(q.skips) || 0) === (Number(a.skips) || 0) && lastTs(q) === lastTs(a) && gb < ga) ||
+                ((Number(q.solveCount) || 0) === (Number(a.solveCount) || 0) && (Number(q.skips) || 0) === (Number(a.skips) || 0) && lastTs(q) === lastTs(a) && gb === ga && String(q.id) < String(a.id))
+            ) {
+                best = q;
+                bestScore = s;
+            }
+        }
+    }
+    return best;
+}
+
+/** Stamp the mode the current question was SERVED under (reward gate). */
+function _stampServedMode(mode) {
+    AppState._pqServedMode = (mode === 'hardcore') ? 'hardcore' : (mode === 'flow' ? 'flow' : 'standard');
+}
+
+/** Daily Hardcore cap check (also used by the slider gates). */
+function _hardcoreCapReached() {
+    if (AppState.hardcoreDailyDate !== todayLocalKey()) return false;
+    return (AppState.hardcoreDailyCount || 0) >= (MODE_TUNING.hardcore.capPerDay || 8);
+}
+
+/** Snap ≥98 back to 97 when the daily Hardcore cap is spent. */
+function _gateFlowSliderValue(value, opts) {
+    let next = clampFlowValue(value);
+    if (next >= HARDCORE_THRESHOLD && _hardcoreCapReached()) {
+        next = HARDCORE_THRESHOLD - 1;
+        if (!opts || opts.notify !== false) {
+            try {
+                (window.__jmaxAppToast || alert)(
+                    'Daily Hardcore cap reached (' + (MODE_TUNING.hardcore.capPerDay || 8) + '). Intensity eased to 97.'
+                );
+            } catch (_) {}
+        }
+    }
+    return next;
+}
+
+/** Read-only snapshot for pomodoro / tests / debug. */
+function _flowSliderState() {
+    const value = clampFlowValue(AppState.flowSlider);
+    return {
+        value,
+        visible: AppState.flowSliderVisible === true,
+        mode: _flowModeForValue(value),
+        zone: _flowZoneForValue(value),
+        label: _flowLabelForValue(value),
+        hardcore: value >= HARDCORE_THRESHOLD,
+        capReached: _hardcoreCapReached(),
+        dailyWins: AppState.hardcoreDailyDate === todayLocalKey() ? (AppState.hardcoreDailyCount || 0) : 0,
+        dailyCap: MODE_TUNING.hardcore.capPerDay || 8,
+    };
+}
+
+/**
+ * Apply a dial value. This is the single writer: it persists, repaints every
+ * mounted rail, updates the reward gate for the NEXT question, and resets the
+ * adaptive target. It never touches the current question.
+ */
+let _flowSliderSaveTimer = null;
+function _applyFlowSlider(value, opts) {
+    const options = opts || {};
+    const before = clampFlowValue(AppState.flowSlider);
+    const next = _gateFlowSliderValue(value, options);
+    AppState.flowSlider = next;
+
+    const mode = _flowModeForValue(next);
+    if (AppState._flowSessionActive) {
+        AppState.practiceFlowMode = mode;
+        _modeAdaptive.targetPwin = _flowPWinForValue(next);
+    }
+    window.__flowSliderMode = mode;
+
+    // Repaint hosts + readouts. Both the entry rail and the live dock may be
+    // mounted at different times; setValue is silent so this cannot loop.
+    try {
+        const readout = _flowLabelForValue(next);
+        const entryReadout = document.getElementById('lockin-intensity-readout');
+        if (entryReadout) entryReadout.textContent = readout;
+        const liveReadout = document.getElementById('flow-slider-live-readout');
+        if (liveReadout) liveReadout.textContent = readout;
+        const entryWrap = document.getElementById('lockin-intensity');
+        if (entryWrap) entryWrap.classList.toggle('is-hardcore', mode === 'hardcore');
+        const liveWrap = document.getElementById('flow-slider-dock');
+        if (liveWrap) liveWrap.classList.toggle('is-hardcore', mode === 'hardcore');
+        const entryApi = _lockinSliderApi || (typeof window !== 'undefined' ? window.__lockinSliderApi : null);
+        if (entryApi && typeof entryApi.setValue === 'function' && options.syncEntry !== false && next !== before) {
+            entryApi.setValue(next);
+        }
+        if (_liveSliderApi && options.syncLive !== false && next !== before) {
+            _liveSliderApi.setValue(next);
+        }
+    } catch (_) {}
+
+    // Debounced persistence: slider input can fire dozens of times a second.
+    if (_flowSliderSaveTimer) clearTimeout(_flowSliderSaveTimer);
+    _flowSliderSaveTimer = setTimeout(() => {
+        _flowSliderSaveTimer = null;
+        try { saveAllAsync().catch(console.error); } catch (_) {}
+    }, 350);
+
+    return next;
+}
+
+/** Called after a Hardcore win crosses the daily cap. */
+function _snapFlowSliderAfterCap() {
+    if (!_hardcoreCapReached()) return;
+    if (clampFlowValue(AppState.flowSlider) < HARDCORE_THRESHOLD) return;
+    _applyFlowSlider(HARDCORE_THRESHOLD - 1, { notify: true });
+    if (AppState._flowSessionActive) _renderModeBadge();
+}
+
+window.__setFlowSlider = (value, opts) => _applyFlowSlider(value, opts);
+window.__getFlowSliderState = _flowSliderState;
+window.__gateFlowSliderValue = (value) => _gateFlowSliderValue(value, { notify: false });
+
 
 /**
  * Pick a chapter-local question whose P_win falls inside the mode's window,
@@ -8102,6 +8368,13 @@ function _pickQuestionForMode(subject, chapter, mode, seenSet) {
 // the same way but left pristine (no-regret) apart from a deprioritizing skip
 // stamp.
 let _modeSeenIds = new Set();
+// Slider component handles: at most one entry rail and one live dock exist.
+let _lockinSliderApi = null;
+let _liveSliderApi = null;
+// Transient session flag: only an open Flow/Hardcore run may rewrite
+// practiceFlowMode from the dial. Standard sessions stay standard.
+AppState._flowSessionActive = !!AppState._flowSessionActive;
+if (typeof AppState._pqServedMode !== 'string') AppState._pqServedMode = 'standard';
 
 // Session-scoped adaptive difficulty throttle: the live target win-probability
 // the picker aims at. Reset on mode entry; drifts with performance + skips.
@@ -8117,8 +8390,10 @@ function _modeSeenSet() {
     return _modeSeenIds;
 }
 
-/** Mode's default sweet-spot target P_win (midpoint of the strict window). */
 function _modeCenter(mode) {
+    if (mode === 'flow' || mode === 'hardcore') {
+        return _flowPWinForValue(AppState.flowSlider);
+    }
     const cfg = MODE_TUNING[mode] || MODE_TUNING.standard;
     return (cfg.PwinMin + cfg.PwinMax) / 2;
 }
@@ -8127,6 +8402,10 @@ function _modeCenter(mode) {
  * Adaptive difficulty throttle — nudges the session target P_win based on the
  * just-solved outcome, EMA-smoothed so it never swings wildly. Raising the
  * target means "serve easier next", lowering means "serve harder next".
+ *
+ * Flow mode re-bases on the live dial: the dial, not a mode window, owns the
+ * centre. The adaptive output is still honoured as the Gaussian picker target
+ * but is deliberately not used to re-centre the dial.
  */
 function _modeNextTargetPwin(mode, outcome) {
     const cfg = MODE_TUNING[mode] || MODE_TUNING.standard;
@@ -8356,8 +8635,8 @@ function skipQuestion(reason) {
         _serveModeEntry({ q: AppState.practiceQuestions[0], submitted: false });
         _hideModeContinueButton();
     } else {
-        // Skipping exhausted the pool — _rebuildPracticeQuestionsForMode already
-        // exited the mode. Tear down the modal like _modeAdvance does.
+        // Only an empty/unrated chapter lands here — _rebuildPracticeQuestionsForMode
+        // already exited the mode. Tear down the modal like _modeAdvance does.
         if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
         closePracticeModal();
         showQuestionList();
@@ -8383,7 +8662,8 @@ function _modeAdvance() {
         _hideModeContinueButton();
         return;
     }
-    // Pool exhausted — _rebuildPracticeQuestionsForMode already exited the mode.
+    // Only an empty/unrated chapter lands here — _rebuildPracticeQuestionsForMode
+    // already exited the mode.
     if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
     closePracticeModal();
     showQuestionList();
@@ -8438,6 +8718,10 @@ function _serveModeEntry(entry) {
     AppState.practiceSubmittedFlags = [!!entry.submitted];
     AppState.currentPracticeIndex = 0;
     AppState.practiceSeconds = 0;
+    // The question keeps the mode it was SERVED under. If the dial was eased
+    // down mid-question, the reward/recap gate honours this stamp, and the
+    // next refill adopts the new dial.
+    _stampServedMode(_flowModeForValue(_applyFlowSlider(AppState.flowSlider, { notify: false, syncEntry: true, syncLive: false })));
     updatePracticeTimerDisplay();
     if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
     if (!entry.submitted) {
@@ -8457,14 +8741,14 @@ function _serveModeEntry(entry) {
 function _modeSnapshot(mode, chapterNames) {
     const subject = _normalizeSubjectKey(AppState.currentSubject);
     const names = Array.isArray(chapterNames) && chapterNames.length ? chapterNames : null;
-    const cfg = MODE_TUNING[mode] || {};
     let totalEligible = 0;
     let bossCount = 0;
     for (const q of (AppState.questionBank || [])) {
         if (q.subject !== subject) continue;
         if (names && !names.some(ch => _chaptersMatch(q.chapter, ch))) continue;
-        if (!_isUnexecutedModeQuestion(q)) continue;
-        if (typeof q.qElo !== 'number' || !isFinite(q.qElo) || q.isAnomaly || q.modeRetired) continue;
+        // Infinite engine: every rated question in scope is eligible, even if
+        // it was solved before. "Eligible" no longer means "untouched".
+        if (typeof q.qElo !== 'number' || !isFinite(q.qElo) || q.isAnomaly) continue;
         totalEligible++;
         if (q.qElo >= 1800) bossCount++;
     }
@@ -8472,7 +8756,7 @@ function _modeSnapshot(mode, chapterNames) {
     return {
         total: totalEligible,
         boss: bossCount,
-        count: mode === 'hardcore' && cfg.minQeloFloor ? (bossCount || totalEligible) : totalEligible,
+        count: totalEligible,
         dailyWins: wins,
         dailyCap: MODE_TUNING.hardcore.capPerDay || 8
     };
@@ -8481,18 +8765,13 @@ window.__modeSnapshot = _modeSnapshot;
 window.__getModePoolCount = (m, chs) => _modeSnapshot(m, Array.isArray(chs) ? chs : (chs ? [chs] : null)).count;
 
 /**
- * Pre-flight for a Lock-In entry. Hardcore's daily cap and the "is there at
- * least one mode-eligible question" probe both gate the Ritual Chamber so the
- * user never signs a pact that cannot be started.
+ * Pre-flight for a Lock-In entry: the "is there at least one mode-eligible
+ * question" probe gates the Ritual Chamber so the user never signs a pact
+ * that cannot be started.
  */
-function _hardcoreCapReached() {
-    if (AppState.hardcoreDailyDate !== todayLocalKey()) return false;
-    return (AppState.hardcoreDailyCount || 0) >= (MODE_TUNING.hardcore.capPerDay || 8);
-}
 
 function _hasModeEligibleQuestion(mode) {
     if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return false;
-    const cfg = MODE_TUNING[mode] || {};
     const subject = _normalizeSubjectKey(AppState.currentSubject);
     const sel = AppState.currentChapterSelection;
     const chapter = AppState.currentChapter;
@@ -8501,22 +8780,28 @@ function _hasModeEligibleQuestion(mode) {
         (Array.isArray(sel) && sel.length
             ? sel.some(ch => _chaptersMatch(q.chapter, ch))
             : _chaptersMatch(q.chapter, chapter)) &&
-        _isUnexecutedModeQuestion(q) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
-        !q.isAnomaly && !q.modeRetired
+        !q.isAnomaly
     );
 }
 
 /** Open the Mode-Reactive Lock-In Ritual Chamber, then enter the mode. */
 function _ensureLockinSetup(mode, customCtx) {
     if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return;
-    const label = mode === 'flow' ? 'Flow' : 'Hardcore';
-    if (mode === 'hardcore' && _hardcoreCapReached()) {
-        (window.__jmaxAppToast || alert)('Daily Hardcore cap reached (' + (MODE_TUNING.hardcore.capPerDay || 8) + '). Override tomorrow with full send.');
-        return;
+    // The dial, not the caller's label, decides which side of 98 we enter.
+    // A legacy 'hardcore' caller is upgraded to the top of the dial; a capped
+    // account is eased back to 97 and toasted instead of being blocked.
+    if (mode === 'hardcore' && clampFlowValue(AppState.flowSlider) < HARDCORE_THRESHOLD) {
+        _applyFlowSlider(100, { notify: true });
+    } else if (clampFlowValue(AppState.flowSlider) >= HARDCORE_THRESHOLD) {
+        _applyFlowSlider(AppState.flowSlider, { notify: true });
     }
-    if (!_hasModeEligibleQuestion(mode)) {
-        (window.__jmaxAppToast || alert)('No ' + label + '-eligible questions in this chapter. Add or unsolve some first.');
+    const value = clampFlowValue(AppState.flowSlider);
+    const resolved = _flowModeForValue(value);
+    if (!_hasModeEligibleQuestion(resolved)) {
+        (window.__jmaxAppToast || alert)(
+            'No Flow-eligible questions in this chapter. Add or import rated questions first.'
+        );
         return;
     }
     const ctx = Object.assign({
@@ -8524,35 +8809,44 @@ function _ensureLockinSetup(mode, customCtx) {
         chapter: AppState.currentChapter,
         chapterSelection: AppState.currentChapterSelection,
     }, customCtx || {});
-    openLockinSetupModal(mode, ctx, () => { _setPracticeMode(mode); });
+    openLockinSetupModal(resolved, ctx, () => { _setPracticeMode(resolved); });
 }
 window.__ensureLockinSetup = _ensureLockinSetup;
 
 /** Set the active practice mode and persist it. */
 function _setPracticeMode(mode) {
     if (!PRACTICE_MODES.includes(mode)) return;
+    // Single source of truth: resolve the dial first (and gate the cap), then
+    // derive the binary reward mode from that value.
+    const requested = (mode === 'hardcore') ? 100 : clampFlowValue(AppState.flowSlider);
+    const value = _applyFlowSlider(_gateFlowSliderValue(requested, { notify: true }), { notify: false });
+    let resolved = _flowModeForValue(value);
+
     SessionRecap.reset();
-    AppState.practiceFlowMode = mode;
+    AppState._flowSessionActive = true;
+    AppState.practiceFlowMode = resolved;
+    _stampServedMode(resolved);
     // Fresh run — drop any navigation history left over from a previous mode
-    // and reset the adaptive throttle to the mode's sweet spot.
+    // and reset the adaptive throttle to the dial's target.
     _clearModeHistory();
-    _modeAdaptive.targetPwin = _modeCenter(mode);
+    _modeAdaptive.targetPwin = _flowPWinForValue(value);
+    _modeAdaptive.hist = [];
     // Reset hardcore daily counter if the date rolled over (LOCAL day — UTC
     // would reset at 05:30 IST and grant a fresh quota pre-midnight).
     const today = todayLocalKey();
-    if (mode === 'hardcore') {
+    if (resolved === 'hardcore') {
         if (AppState.hardcoreDailyDate !== today) {
             AppState.hardcoreDailyDate = today;
             AppState.hardcoreDailyCount = 0;
         }
-        if (AppState.hardcoreDailyCount >= (MODE_TUNING.hardcore.capPerDay || 8)) {
-            alert('Daily Hardcore cap reached (' + (MODE_TUNING.hardcore.capPerDay || 8) + '). Override tomorrow with full send.');
-            // Revert mode + repaint badge so the UI doesn't lie about state.
-            AppState.practiceFlowMode = 'standard';
-            _renderModeBadge();
-            _renderModeFooter();
-            saveAllAsync().catch(console.error);
-            return;
+        if (_hardcoreCapReached()) {
+            // The gate should already have caught this, but re-check after the
+            // date roll so a stale saved slider cannot squeeze through.
+            _applyFlowSlider(HARDCORE_THRESHOLD - 1, { notify: true });
+            resolved = 'flow';
+            AppState.practiceFlowMode = resolved;
+            _stampServedMode(resolved);
+            _modeAdaptive.targetPwin = _flowPWinForValue(HARDCORE_THRESHOLD - 1);
         }
     }
     saveAllAsync().catch(console.error);
@@ -8574,6 +8868,7 @@ function _setPracticeMode(mode) {
         AppState.photoHidden = false;
         const hideBtn = document.getElementById('hide-photo-toggle');
         if (hideBtn) hideBtn.innerHTML = '🖼&nbsp;&nbsp;Hide Image';
+        _mountLiveFlowSlider();
         // ── Start the practice-question timer ──
         // Lives INSIDE the non-empty-queue branch: a failed mode refill used
         // to leave this 1s interval running with no modal — and a non-null
@@ -8598,7 +8893,10 @@ function _setPracticeMode(mode) {
 function _exitPracticeMode() {
     SessionRecap.reset();
     AppState.practiceFlowMode = 'standard';
+    AppState._flowSessionActive = false;
+    _stampServedMode('standard');
     _modeAdaptive.targetPwin = null;
+    _destroyLiveFlowSlider();
     if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
     AppState.practiceSeconds = 0;
     AppState.practiceQuestions = [];
@@ -8619,36 +8917,36 @@ function _exitPracticeMode() {
  * reset practiceSubmittedFlags, currentPracticeIndex. This is the post-solve
  * auto-refill for Flow / Hardcore.
  *
- * @param {Set} [seenSet]  Passed through to _pickQuestionForMode so a refill
- *   never re-serves a question already shown this run (see practiceNext).
+ * The infinite engine never exhausts a rated chapter, so the old "pool drained
+ * → Arena Cleared / exit to standard" branch only remains for a chapter with
+ * no rated questions at all.
+ *
+ * @param {Set} [seenSet]  Passed through to _pickFlowQuestionInfinite so a
+ *   refill prefers questions not shown this run (and recycles only when every
+ *   candidate has been seen).
  */
 function _rebuildPracticeQuestionsForMode(seenSet) {
     const mode = AppState.practiceFlowMode;
     if (mode === 'standard' || !PRACTICE_MODES.includes(mode)) return;
-    const q = _pickQuestionForMode(AppState.currentSubject, AppState.currentChapter, mode, seenSet);
+    const value = _applyFlowSlider(AppState.flowSlider, { notify: true, syncEntry: false, syncLive: false });
+    const servedMode = _flowModeForValue(value);
+    const q = _pickFlowQuestionInfinite(
+        AppState.currentSubject,
+        AppState.currentChapter,
+        value,
+        seenSet
+    );
     if (!q) {
-        // ── Lock-In: the whole eligible pool was cleared before the clock ran
-        // out. Bank the elapsed block and crown the run with the Arena Cleared
-        // banner instead of the plain "exiting to standard" toast. ──
-        if (completeLockinOnPoolExhausted()) {
-            AppState.practiceFlowMode = 'standard';
-            _modeAdaptive.targetPwin = null;
-            _renderModeBadge();
-            _renderModeFooter();
-            saveAllAsync().catch(console.error);
-            AppState.practiceQuestions = [];
-            AppState.practiceSubmittedFlags = [];
-            AppState.currentPracticeIndex = 0;
-            AppState.practiceSeconds = 0;
-            _clearModeHistory();
-            return;
-        }
-        // No more mode-eligible questions in this chapter — gracefully exit
-        // the mode so the user is not stuck staring at a blank practice modal.
-        const label = mode === 'flow' ? 'Flow' : 'Hardcore';
-        (window.__jmaxAppToast || alert)('No more ' + label + '-eligible questions in this chapter. Exiting to standard mode.');
+        // Only an empty/unrated chapter can land here now. (Arena Cleared is
+        // intentionally unreachable for Flow: the pool no longer drains.)
+        (window.__jmaxAppToast || alert)(
+            'No Flow-eligible questions in this chapter. Add or import rated questions first.'
+        );
         AppState.practiceFlowMode = 'standard';
+        AppState._flowSessionActive = false;
+        _stampServedMode('standard');
         _modeAdaptive.targetPwin = null;
+        _destroyLiveFlowSlider();
         _renderModeBadge();
         _renderModeFooter();
         saveAllAsync().catch(console.error);
@@ -8661,6 +8959,8 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
         return;
     }
     // We have a fresh mode-appropriate question; reset queue to a one-item pool.
+    AppState.practiceFlowMode = servedMode;
+    _stampServedMode(servedMode);
     AppState.practiceQuestions = [q];
     AppState.practiceSubmittedFlags = AppState.practiceQuestions.map(() => false);
     AppState.currentPracticeIndex = 0;
@@ -8681,14 +8981,15 @@ function _renderModeButtonsIntoChapterDetail() {
     const ch = AppState.currentChapter;
     const targetChapters = Array.isArray(sel) && sel.length ? sel : (ch ? [ch] : null);
     const flowSnap = _modeSnapshot('flow', targetChapters);
-    const hcSnap = _modeSnapshot('hardcore', targetChapters);
 
     // If controls already exist, refresh the live eligible counters
     const flowCountEl = document.getElementById('btn-mode-flow-count');
-    const hcCountEl = document.getElementById('btn-mode-hc-count');
-    if (flowCountEl && hcCountEl) {
+    if (flowCountEl) {
         flowCountEl.textContent = String(flowSnap.count);
-        hcCountEl.textContent = String(hcSnap.count);
+    }
+    const existing = document.getElementById('btn-mode-flow');
+    if (existing) {
+        existing.title = 'Flow · intensity 0–100 · 98+ is Hardcore';
         return;
     }
 
@@ -8713,18 +9014,10 @@ function _renderModeButtonsIntoChapterDetail() {
     const flow = document.createElement('button');
     flow.id = 'btn-mode-flow';
     flow.className = 'mode-text-btn';
-    flow.title = 'Flow State · P(WIN) 75–85%';
+    flow.title = 'Flow · intensity 0–100 · 98+ is Hardcore';
     flow.innerHTML = 'Flow <span class="mode-count" id="btn-mode-flow-count">' + flowSnap.count + '</span>';
     flow.onclick = () => { _ensureLockinSetup('flow'); _playModeSound('flow'); };
     row.appendChild(flow);
-
-    const hardcore = document.createElement('button');
-    hardcore.id = 'btn-mode-hardcore';
-    hardcore.className = 'mode-text-btn';
-    hardcore.title = 'Hardcore Crucible · ELO ≥ 1800';
-    hardcore.innerHTML = 'Hardcore <span class="mode-count" id="btn-mode-hc-count">' + hcSnap.count + '</span>';
-    hardcore.onclick = () => { _ensureLockinSetup('hardcore'); _playModeSound('hardcore'); };
-    row.appendChild(hardcore);
 }
 
 /** Test action — jumps to this subject's mock-test chapters (`Mock: *`
@@ -8827,14 +9120,120 @@ function _spawnModeHoverParticles(e, btn, mode) {
 
 /** Reflect the current mode in the badges/exit-pill and button active states. */
 function _renderModeBadge() {
-    // Visual toggle state intentionally removed — pills are plain action buttons.
+    // Cheap repaint hooks for a non-destructive retune: the modal already
+    // carries data-practice-mode (set by _renderModeFooter) and the clock
+    // shows elapsed time, so _renderModeBadge only updates the timer readout.
+    // Crucially it must never close or rebuild the modal mid-question.
+    try { if (typeof updatePracticeTimerDisplay === 'function') updatePracticeTimerDisplay(); } catch (_) {}
+}
+
+// ── Live Flow slider dock ──────────────────────────────────────────────────
+
+function _sliderMountSupported() {
+    if (typeof document === 'undefined' || !document.createElement) return false;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    if (typeof IntersectionObserver !== 'function' || typeof ResizeObserver !== 'function') return false;
+    return true;
+}
+
+function _destroyLiveFlowSlider() {
+    if (_liveSliderApi) {
+        try { _liveSliderApi.destroy(); } catch (_) {}
+        _liveSliderApi = null;
+    }
+    const dock = document.getElementById('flow-slider-dock');
+    if (dock) {
+        dock.classList.remove('is-visible');
+        const host = document.getElementById('flow-slider-live-host');
+        if (host) host.innerHTML = '';
+    }
+    _syncFlowSliderToggle();
+}
+
+/** Reflect the persisted visibility preference on the top-right toggle. */
+function _syncFlowSliderToggle() {
+    const visible = AppState.flowSliderVisible === true && !!AppState._flowSessionActive;
+    try {
+        const btn = document.getElementById('flow-slider-toggle');
+        if (btn) {
+            btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+            btn.setAttribute('aria-label', visible ? 'Hide intensity slider' : 'Show intensity slider');
+            btn.title = visible ? 'Hide intensity slider' : 'Show intensity slider';
+        }
+        const dock = document.getElementById('flow-slider-dock');
+        if (dock) dock.classList.toggle('is-visible', visible);
+    } catch (_) {}
+}
+
+/** Top-right toggle: show/hide the live intensity rail (hidden by default). */
+function _toggleFlowSliderVisibility() {
+    AppState.flowSliderVisible = !(AppState.flowSliderVisible === true);
+    try { saveAllAsync().catch(console.error); } catch (_) {}
+    if (AppState.flowSliderVisible) {
+        _mountLiveFlowSlider();
+    } else {
+        _destroyLiveFlowSlider();
+    }
+    _syncFlowSliderToggle();
+}
+
+function _mountLiveFlowSlider() {
+    _syncFlowSliderToggle();
+    // Hidden by default: never mount (or keep) a rail until the user opts in.
+    if (AppState.flowSliderVisible !== true) {
+        _destroyLiveFlowSlider();
+        return;
+    }
+    if (!_sliderMountSupported()) return;
+    const modal = document.getElementById('practice-modal');
+    const dock = document.getElementById('flow-slider-dock');
+    const host = document.getElementById('flow-slider-live-host');
+    const readout = document.getElementById('flow-slider-live-readout');
+    if (!modal || !dock || !host || !readout) return;
+    if (!AppState._flowSessionActive) return;
+
+    // Reuse the mounted rail when the modal instance survives; only rebuild
+    // when the host was wiped (e.g. practice modal innerHTML reset).
+    if (_liveSliderApi && host.contains(_liveSliderApi.root)) {
+        dock.classList.add('is-visible');
+        return;
+    }
+    if (_liveSliderApi) {
+        try { _liveSliderApi.destroy(); } catch (_) {}
+        _liveSliderApi = null;
+    }
+    host.innerHTML = '';
+    let api = null;
+    try {
+        api = mountFlowSlider(host, {
+            value: AppState.flowSlider,
+            label: 'Practice intensity',
+            describe: (v) => _flowDescribeValue(v),
+            onInput: (v) => { _applyFlowSlider(v, { notify: true }); },
+        });
+    } catch (e) {
+        console.warn('[flow-slider] live mount failed', e);
+        api = null;
+    }
+    _liveSliderApi = api;
+    if (api) {
+        api.setValue(AppState.flowSlider);
+    }
+    readout.textContent = _flowLabelForValue(AppState.flowSlider);
+    dock.classList.toggle('is-hardcore', AppState.flowSlider >= HARDCORE_THRESHOLD);
+    dock.classList.add('is-visible');
+    _syncFlowSliderToggle();
 }
 
 // Expose the public entry points so programmatic callers / smoke tests work directly,
 // while UI buttons route through _ensureLockinSetup (window.__ensureLockinSetup).
-window.startFlowPractice     = () => _setPracticeMode('flow');
+window.startFlowPractice     = () => _setPracticeMode(_flowModeForValue(_applyFlowSlider(AppState.flowSlider, { notify: true })));
 window.startHardcorePractice = () => _setPracticeMode('hardcore');
 window.exitPracticeMode      = () => _exitPracticeMode();
+window._mountLiveFlowSlider  = _mountLiveFlowSlider;
+window._destroyLiveFlowSlider = _destroyLiveFlowSlider;
+window.toggleFlowSliderVisibility = _toggleFlowSliderVisibility;
+window.__toggleFlowSliderVisibility = _toggleFlowSliderVisibility;
 
 // ── Lock-In break auto-ignition ────────────────────────────────────────────
 // Called by pomodoro.js the instant an earned break ends (00:00 or Skip Rest).
@@ -9040,6 +9439,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
                     AppState.hardcoreDailyCount = 0;
                 }
                 AppState.hardcoreDailyCount = (AppState.hardcoreDailyCount || 0) + 1;
+                if (_hardcoreCapReached()) _snapFlowSliderAfterCap();
             }
         }
 
@@ -9228,6 +9628,7 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
               AppState.hardcoreDailyCount = 0;
           }
           AppState.hardcoreDailyCount = (AppState.hardcoreDailyCount || 0) + 1;
+          if (_hardcoreCapReached()) _snapFlowSliderAfterCap();
       }
     }
     let newE_s = Math.max(0, E_s + rawDelta);
@@ -10665,6 +11066,9 @@ export function closePracticeModal() {
     if (!AppState.bountyMode) {
         try { recapPromise = SessionRecap.play({ tone: recapTone }); } catch (_) {}
     }
+    _destroyLiveFlowSlider();
+    AppState._flowSessionActive = false;
+    _stampServedMode('standard');
     const modalEl = document.getElementById('practice-modal');
     if (modalEl) {
         modalEl.classList.remove('pq-has-media');

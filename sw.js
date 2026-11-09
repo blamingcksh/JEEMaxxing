@@ -192,7 +192,10 @@
 //        ritual across Chapters deck, multi-chapter scope picker, lock-in chamber,
 //        and clean question-list controls. styles-modes.css joins shell precache.
 // v99 - MODE MINIMAL PASS: Flow/Hardcore chrome stripped to plain text + hairlines.
-const VERSION = 'jeemax-v99';
+// v100 - FLOW INTENSITY SLIDER: standalone Hardcore folded into the 0–100
+//        slider-resident dial (98+ = Hardcore). flow-slider.js /
+//        slider-resident.js + slider-resident.css join shell precache.
+const VERSION = 'jeemax-v100';
 
 const SHELL = [
   './',
@@ -210,6 +213,9 @@ const SHELL = [
   './mario-recap.css',
   './app.js',
   './storage.js',
+  './flow-slider.js',
+  './slider-resident.js',
+  './slider-resident.css',
   './directive.js',
   './bridge.js',
   './tuckin.js',
