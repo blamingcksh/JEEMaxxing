@@ -222,7 +222,7 @@ console.log('── app: cap parity (snap to 97) ──');
     ok(AppState.flowSlider === 97, 'dial holds 97 after the capped call');
 }
 
-console.log('── app: infinite engine (solved pool still flows) ──');
+console.log('── app: untouched-only engine (solved pool does not flow) ──');
 {
     AppState.questionBank = [
         mk('z0', 1100, { status: 'solved', solveCount: 2, lastSolvedAt: new Date().toISOString() }),
@@ -243,13 +243,39 @@ console.log('── app: infinite engine (solved pool still flows) ──');
     AppState.hardcoreDailyDate = null;
 
     globalThis.startFlowPractice();
-    ok(AppState.practiceFlowMode === 'flow', 'fully-solved chapter still enters Flow');
-    ok(currentId() !== null, 'engine serves a solved question instead of dead-ending');
-    for (let i = 0; i < 12; i++) {
-        globalThis.continuePractice();
-        ok(AppState.practiceFlowMode === 'flow', 'recycle #' + (i + 1) + ' stays in Flow');
-    }
-    ok(AppState.practiceQuestions.length === 1, 'pool stays one-item under recycling');
+    ok(AppState.practiceFlowMode === 'standard', 'fully-solved chapter does not enter Flow');
+    ok(AppState.practiceQuestions.length === 0, 'no solved question is served');
+}
+
+console.log('── app: Flow only serves untouched questions ──');
+{
+    AppState.questionBank = [
+        mk('u0', 1100, { status: 'solved', solveCount: 2, lastSolvedAt: new Date().toISOString() }),
+        mk('u1', 1200),
+        mk('u2', 1300),
+    ];
+    AppState.currentSubject = 'physics';
+    AppState.currentChapter = 'Thermo';
+    AppState.currentChapterSelection = null;
+    AppState.elo = { physics: 1200, chemistry: 1200, maths: 1200, global: 1200 };
+    AppState.practiceFlowMode = 'standard';
+    AppState.flowSlider = 72;
+    AppState._pqServedMode = 'standard';
+    AppState._flowSessionActive = false;
+    AppState.practiceQuestions = [];
+    AppState.practiceSubmittedFlags = [];
+    AppState.currentPracticeIndex = 0;
+    AppState.hardcoreDailyCount = 0;
+    AppState.hardcoreDailyDate = null;
+
+    globalThis.startFlowPractice();
+    ok(AppState.practiceFlowMode === 'flow', 'Flow enters when untouched questions exist');
+    ok(currentId() !== 'u0', 'solved question is never served (got ' + currentId() + ')');
+    globalThis.continuePractice();
+    ok(AppState.practiceFlowMode === 'flow', 'Flow stays while untouched questions remain');
+    ok(currentId() !== 'u0', 'second pick is also untouched (got ' + currentId() + ')');
+    globalThis.continuePractice();
+    ok(AppState.practiceFlowMode === 'standard', 'Flow exits once untouched pool is drained');
 }
 
 console.log('── app: live dock toggle (hidden by default) ──');

@@ -168,14 +168,11 @@ console.log('── Flow mode: Next/Prev no-ops; Continue advances ──');
     ok(currentId() !== q1 && currentId() !== q2 && currentId() !== q3, 'Continue drains all four questions');
     ok(AppState.practiceFlowMode === 'flow', 'Continue keeps Flow mode active');
 
-    // Infinite engine: the pool never drains. After every candidate has been
-    // seen, the next Continue recycles the strongest one instead of exiting.
+    // Untouched-only: once every untouched question has been seen, the mode
+    // exits to standard instead of recycling a solved question.
     globalThis.continuePractice();
-    ok(AppState.practiceFlowMode === 'flow', 'Continue recycles instead of exiting once all questions are seen');
-    ok(AppState.practiceQuestions.length === 1, 'queue stays one-item after recycling');
-    ok(['f0', 'f1', 'f2', 'f3'].includes(currentId()), 'recycled question is a previously seen one (got ' + currentId() + ')');
-    globalThis.continuePractice();
-    ok(AppState.practiceFlowMode === 'flow', 'Continue keeps flowing after recycling');
+    ok(AppState.practiceFlowMode === 'standard', 'exhausting untouched pool exits the mode');
+    ok(AppState.practiceQuestions.length === 0, 'queue is cleared on exhaustion');
 }
 
 console.log('── Flow mode: Skip is no-regret and advances ──');
@@ -247,7 +244,7 @@ console.log('── Hardcore via slider 100: high-Elo pick + Continue advances �
     ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore Continue keeps mode active');
 }
 
-console.log('── Hardcore via slider: Gaussian centre + infinite recycle ──');
+console.log('── Hardcore via slider: Gaussian centre + untouched exhaustion ──');
 {
     seedBank(0, 'physics', 'Thermo', 0, 1200);
     AppState.questionBank = [
@@ -276,8 +273,8 @@ console.log('── Hardcore via slider: Gaussian centre + infinite recycle ─�
     ok(currentId() === 'hc1', 'Hardcore picks the 1880 ceiling last (got ' + currentId() + ')');
 
     globalThis.continuePractice();
-    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore recycles instead of exiting once all questions are seen');
-    ok(AppState.practiceQuestions.length === 1, 'queue stays one-item after recycling');
+    ok(AppState.practiceFlowMode === 'standard', 'Hardcore exits to standard once untouched pool is drained');
+    ok(AppState.practiceQuestions.length === 0, 'Queue is empty once all untouched questions end');
 }
 
 console.log('── Standard practice: classic index navigation is untouched ──');
