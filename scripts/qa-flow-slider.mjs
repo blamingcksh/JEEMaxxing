@@ -146,7 +146,7 @@ try {
     ok(!/<aside class="flow-slider-dock[^"]*is-visible/.test(indexHtml), 'dock markup starts hidden (no is-visible)');
     ok(indexHtml.includes('slider-resident.css'), 'slider CSS linked');
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-    ok(sw.includes("VERSION = 'jeemax-v100'"), 'service worker cache bumped to v100');
+    ok(sw.includes("VERSION = 'jeemax-v101'"), 'service worker cache bumped to v101');
     ok(sw.includes('./flow-slider.js') && sw.includes('./slider-resident.js'), 'slider modules precached');
     const appJs = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
     ok(!appJs.includes("startHardcorePractice = () => _setPracticeMode('hardcore');\nwindow.startHardcorePractice = () => _setPracticeMode('hardcore')"), 'no standalone hardcore entry remains');

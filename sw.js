@@ -195,7 +195,9 @@
 // v100 - FLOW INTENSITY SLIDER: standalone Hardcore folded into the 0–100
 //        slider-resident dial (98+ = Hardcore). flow-slider.js /
 //        slider-resident.js + slider-resident.css join shell precache.
-const VERSION = 'jeemax-v100';
+// v101 - FLOW UNTOUCHED-ONLY: Flow/Hardcore offer only untouched questions
+//        (solved/attempted never served, mode exits when pool drains).
+const VERSION = 'jeemax-v101';
 
 const SHELL = [
   './',

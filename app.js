@@ -7923,7 +7923,8 @@ function _deltaBasedUserAndQuestionReward(userElo, qElo, isCorrect, subject, act
 //  of truth; AppState.practiceFlowMode ('flow' | 'hardcore' | 'standard') is the
 //  binary reward gate derived from it. The picker rebuilds
 //  AppState.practiceQuestions via _pickFlowQuestionInfinite() whenever the user
-//  enters a mode or finishes a solve; it never exhausts a rated chapter.
+//  enters a mode or finishes a solve; Flow only ever offers untouched
+//  questions.
 
 /** Canonical P_win (same formula the delta branch uses). */
 function _pWinForQ(userElo, qElo) {
@@ -7947,9 +7948,9 @@ function _modeTimeMultiplier(S, tau, mode) {
 }
 
 /**
- * Retained for diagnostics only. Selection no longer requires untouched
- * questions — the infinite engine re-serves solved questions at reduced
- * weight — so do not gate new pickers on this helper.
+ * A Flow / Hardcore question must be genuinely untouched. Status alone is
+ * not enough because older records can retain an `unsolved` status after an
+ * attempt, while fumbled records use both `wrong` and `error`.
  */
 function _isUnexecutedModeQuestion(q) {
     if (!q) return false;
@@ -7974,11 +7975,10 @@ function _isUnexecutedModeQuestion(q) {
 //  FLOW INTENSITY ENGINE
 // ════════════════════════════════════════════════════════════════════════════
 //
-//  Selection is infinite. Instead of filtering by a fixed P_win window and
-//  exiting when the "unexecuted" pool drains, every question in scope competes
-//  under a Gaussian affinity for the dial's target qElo. sigma auto-widens
-//  until it can see a candidate, and recently-solved questions are weighted
-//  down rather than removed, so the engine always returns a question.
+//  Selection scores untouched questions by Gaussian affinity for the dial's
+//  target qElo. sigma auto-widens until it can see a candidate. Solved /
+//  attempted / retired questions are never served — when the untouched pool
+//  is drained the mode exits to standard.
 
 const _FLOW_SIGMA_BASE = 55;
 const _FLOW_SIGMA_RANGE = 145;
@@ -7992,8 +7992,10 @@ function _flowScopePool(subject, chapter) {
         (Array.isArray(sel) && sel.length
             ? sel.some(ch => _chaptersMatch(q.chapter, ch))
             : _chaptersMatch(q.chapter, chapter)) &&
+        _isUnexecutedModeQuestion(q) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
-        !q.isAnomaly
+        !q.isAnomaly &&
+        !q.modeRetired
     );
 }
 
@@ -8014,14 +8016,14 @@ function _flowCooldownWeight(q, now) {
 }
 
 /**
- * Pick one question for the dial, never returning null while the chapter has
- * any qElo-rated questions at all.
+ * Pick one untouched question for the dial, or null when the untouched pool
+ * is drained (caller exits the mode).
  *
  * @param {string} subject
  * @param {string} chapter
  * @param {number} value 0–100 dial
- * @param {Set} [seenSet] questions already served this run; recycled only
- *   after every other candidate has been seen.
+ * @param {Set} [seenSet] questions already served this run; a refill never
+ *   re-serves one, and the mode exits once every candidate has been seen.
  */
 function _pickFlowQuestionInfinite(subject, chapter, value, seenSet) {
     subject = _normalizeSubjectKey(subject);
@@ -8036,15 +8038,13 @@ function _pickFlowQuestionInfinite(subject, chapter, value, seenSet) {
     // corrupt chapter average would push it outside.
     target = Math.max(800, Math.min(2550, target));
 
-    // Retired questions are a last resort, not a hard exclusion: the dial must
-    // never dead-end because the user tapped "already know" a few times.
-    const fresh = all.filter(q => !q.modeRetired);
-    let pool = fresh.length ? fresh : all;
+    let pool = all;
 
-    // Seen questions are recycled only after the unseen pool is empty.
+    // Seen questions are never re-served. When every untouched candidate has
+    // been seen, return null so the caller exits the mode.
     if (seenSet && seenSet.size) {
-        const unseen = pool.filter(q => !seenSet.has(q));
-        if (unseen.length) pool = unseen;
+        pool = pool.filter(q => !seenSet.has(q));
+        if (!pool.length) return null;
     }
 
     // Auto-widen sigma until at least one candidate is inside it. This is what
@@ -8746,9 +8746,9 @@ function _modeSnapshot(mode, chapterNames) {
     for (const q of (AppState.questionBank || [])) {
         if (q.subject !== subject) continue;
         if (names && !names.some(ch => _chaptersMatch(q.chapter, ch))) continue;
-        // Infinite engine: every rated question in scope is eligible, even if
-        // it was solved before. "Eligible" no longer means "untouched".
-        if (typeof q.qElo !== 'number' || !isFinite(q.qElo) || q.isAnomaly) continue;
+        // Eligible means untouched: solved / attempted questions do not count.
+        if (!_isUnexecutedModeQuestion(q)) continue;
+        if (typeof q.qElo !== 'number' || !isFinite(q.qElo) || q.isAnomaly || q.modeRetired) continue;
         totalEligible++;
         if (q.qElo >= 1800) bossCount++;
     }
@@ -8780,8 +8780,9 @@ function _hasModeEligibleQuestion(mode) {
         (Array.isArray(sel) && sel.length
             ? sel.some(ch => _chaptersMatch(q.chapter, ch))
             : _chaptersMatch(q.chapter, chapter)) &&
+        _isUnexecutedModeQuestion(q) &&
         typeof q.qElo === 'number' && isFinite(q.qElo) &&
-        !q.isAnomaly
+        !q.isAnomaly && !q.modeRetired
     );
 }
 
@@ -8913,17 +8914,16 @@ function _exitPracticeMode() {
 }
 
 /**
- * Refill AppState.practiceQuestions with one mode-appropriate question,
- * reset practiceSubmittedFlags, currentPracticeIndex. This is the post-solve
- * auto-refill for Flow / Hardcore.
+ * Refill AppState.practiceQuestions with one mode-appropriate untouched
+ * question, reset practiceSubmittedFlags, currentPracticeIndex. This is the
+ * post-solve auto-refill for Flow / Hardcore.
  *
- * The infinite engine never exhausts a rated chapter, so the old "pool drained
- * → Arena Cleared / exit to standard" branch only remains for a chapter with
- * no rated questions at all.
+ * The untouched pool drains as questions are solved: once every candidate
+ * has been seen the mode exits to standard (with the Lock-In Arena Cleared
+ * banking handoff when a timed block completes first).
  *
  * @param {Set} [seenSet]  Passed through to _pickFlowQuestionInfinite so a
- *   refill prefers questions not shown this run (and recycles only when every
- *   candidate has been seen).
+ *   refill never re-serves a question already shown this run.
  */
 function _rebuildPracticeQuestionsForMode(seenSet) {
     const mode = AppState.practiceFlowMode;
@@ -8937,11 +8937,28 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
         seenSet
     );
     if (!q) {
-        // Only an empty/unrated chapter can land here now. (Arena Cleared is
-        // intentionally unreachable for Flow: the pool no longer drains.)
-        (window.__jmaxAppToast || alert)(
-            'No Flow-eligible questions in this chapter. Add or import rated questions first.'
-        );
+        // ── Lock-In: the whole untouched pool was cleared before the clock ran
+        // out. Bank the elapsed block and crown the run with the Arena Cleared
+        // banner instead of the plain "exiting to standard" toast. ──
+        if (completeLockinOnPoolExhausted()) {
+            AppState.practiceFlowMode = 'standard';
+            AppState._flowSessionActive = false;
+            _stampServedMode('standard');
+            _modeAdaptive.targetPwin = null;
+            _destroyLiveFlowSlider();
+            _renderModeBadge();
+            _renderModeFooter();
+            saveAllAsync().catch(console.error);
+            AppState.practiceQuestions = [];
+            AppState.practiceSubmittedFlags = [];
+            AppState.currentPracticeIndex = 0;
+            AppState.practiceSeconds = 0;
+            _clearModeHistory();
+            return;
+        }
+        // No more untouched questions in this chapter — gracefully exit the
+        // mode so the user is not stuck staring at a blank practice modal.
+        (window.__jmaxAppToast || alert)('No more untouched questions in this chapter. Exiting to standard mode.');
         AppState.practiceFlowMode = 'standard';
         AppState._flowSessionActive = false;
         _stampServedMode('standard');
