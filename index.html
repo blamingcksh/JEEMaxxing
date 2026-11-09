@@ -74,6 +74,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
      while the legacy sheets keep working underneath (see observatory.css) ── -->
 <link rel="stylesheet" href="observatory.css">
 <link rel="stylesheet" href="styles-telemetry.css">
+<link rel="stylesheet" href="slider-resident.css">
 <link rel="stylesheet" href="styles-modes.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
@@ -492,8 +493,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         <span class="dz-rule" aria-hidden="true"></span>
                     </div>
                     <div class="chapter-actions" role="group" aria-label="Chapter actions">
-                        <button class="mode-text-btn" id="chapters-mode-flow" onclick="openMultiChapterMode('flow')" title="Flow State · P(WIN) 75–85%">Flow <span class="mode-count" id="chapters-flow-count">0</span></button>
-                        <button class="mode-text-btn" id="chapters-mode-hardcore" onclick="openMultiChapterMode('hardcore')" title="Hardcore Crucible · ELO ≥ 1800">Hardcore <span class="mode-count" id="chapters-hc-count">0</span></button>
+                        <button class="mode-text-btn" id="chapters-mode-flow" onclick="openMultiChapterMode('flow')" title="Flow · intensity 0–100 · 98+ is Hardcore">Flow <span class="mode-count" id="chapters-flow-count">0</span></button>
                         <button class="btn btn-primary" onclick="openModal('add-chapter-modal')">+ New Chapter</button>
                     </div>
                 </div>
@@ -724,6 +724,15 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     <button type="button" class="ls-btn" onclick="lockinStep('rounds',1)" aria-label="Increase rounds">+</button>
                 </div>
             </div>
+        </div>
+
+        <div class="lockin-intensity" id="lockin-intensity">
+            <div class="lockin-intensity-head">
+                <strong>Intensity <span id="lockin-intensity-readout">72 · FLOW</span></strong>
+                <span>98+ is Hardcore</span>
+            </div>
+            <div class="flow-slider-host" id="lockin-slider-host" aria-label="Flow intensity"></div>
+            <p class="lockin-intensity-rule" id="lockin-intensity-rule">Soft blocks for steady hours.</p>
         </div>
 
         <div class="lockin-timeline">
@@ -1015,6 +1024,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     <!-- Top-right ghost corner controls -->
     <nav class="pq-corner pq-corner-r" aria-label="Practice Controls">
         <button class="pq-ghost pq-corner-park" id="practice-park-btn" onclick="window.parkCurrentPracticeQuestion && window.parkCurrentPracticeQuestion()" aria-label="Park for tomorrow" title="Park question as tomorrow's bridge">🌉</button>
+        <button class="pq-ghost" id="flow-slider-toggle" onclick="window.toggleFlowSliderVisibility && window.toggleFlowSliderVisibility()" aria-label="Show intensity slider" aria-pressed="false" title="Show intensity slider"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="2" fill="currentColor" stroke="none"/></svg></button>
         <button class="pq-ghost pq-next" id="practice-next-btn" onclick="practiceNext()" aria-label="Next question">›</button>
         <button class="pq-ghost pq-corner-moon" id="immersive-focus-btn" onclick="toggleImmersive()" aria-label="Toggle Roast / Parchment theme" title="Toggle warm dark/light theme">☾</button>
         <button class="pq-ghost pq-corner-close" onclick="closePracticeModal()" aria-label="Close practice">✕</button>
@@ -1053,6 +1063,13 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
     <!-- Hold-to-reveal cue & circular fill indicator -->
     <div class="pq-hold-hint" id="pq-hold-hint" aria-hidden="true">HOLD 800MS // DECRYPT</div>
+    <aside class="flow-slider-dock" id="flow-slider-dock" aria-label="Flow intensity">
+        <div class="flow-slider-dock-head">
+            <strong id="flow-slider-live-readout">72 · FLOW</strong>
+            <span>intensity</span>
+        </div>
+        <div class="flow-slider-host" id="flow-slider-live-host"></div>
+    </aside>
     <div class="pq-hold-ring-wrap" id="pq-hold-ring-wrap" aria-hidden="true">
         <svg class="pq-hold-ring" viewBox="0 0 52 52">
             <circle class="pq-hold-ring-bg" cx="26" cy="26" r="22" />

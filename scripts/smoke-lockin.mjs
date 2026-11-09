@@ -104,6 +104,7 @@ function ok(cond, label) {
 
 console.log('── [1] Mode-Reactive Lock-In Chamber Setup & Presets ──');
 {
+    window.AppState.flowSlider = 72;
     let confirmedMode = null;
     const opened = pomo.openLockinSetupModal('hardcore', { subject: 'maths', chapter: 'Calculus' }, (sess) => {
         confirmedMode = sess.mode;
@@ -137,6 +138,7 @@ console.log('── [1] Mode-Reactive Lock-In Chamber Setup & Presets ──');
 
 console.log('── [2] Silent Expiry While Question On Screen & Deferred Break Transition ──');
 {
+    window.AppState.flowSlider = 72;
     state.studySecs.physics = 0;
     pomo.openLockinSetupModal('flow', { subject: 'physics', chapter: 'Electrostatics' }, () => {
         document.getElementById('practice-modal').classList.add('active');

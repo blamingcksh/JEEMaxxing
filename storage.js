@@ -20,6 +20,11 @@ import {
     resolveChapterWeight as _resolveCW,
     DEFAULT_CHAPTER_WEIGHT as _DEFAULT_CHAPTER_W,
 } from './chapter-weights.js';
+import {
+    FLOW_SLIDER_DEFAULT,
+    clampFlowValue,
+    modeForValue as flowModeForValue,
+} from './flow-slider.js';
 
 // ---------------------------------------------------------------------------
 //  Lazy UI-callback bridge — set from app.js during bootstrap
@@ -975,6 +980,12 @@ export const AppState = {
     practiceCorrectStreak: 0,
     extractedItems: [],
     practiceFlowMode: 'standard',
+    // Single source of truth for Flow intensity. practiceFlowMode is derived
+    // from this value (98–100 = hardcore) and remains the binary reward gate.
+    flowSlider: FLOW_SLIDER_DEFAULT,
+    // Live dock visibility. Hidden by default; the top-right toggle opts in.
+    // Persisted so the choice survives reloads.
+    flowSliderVisible: false,
     hardcoreDailyCount: 0,
     hardcoreDailyDate: null,
     // Target exam date (YYYY-MM-DD) for the countdown chip + AIR popup.
@@ -2119,6 +2130,8 @@ async function _doSaveAll() {
     entries.push(['jeemax_elo_updated_at', Number(AppState.eloUpdatedAt) || 0]);
     // Practice mode + hardcore daily counter persistence
     entries.push(['jeemax_practice_mode', AppState.practiceFlowMode || 'standard']);
+    entries.push(['jeemax_flow_slider', clampFlowValue(AppState.flowSlider)]);
+    entries.push(['jeemax_flow_slider_visible', AppState.flowSliderVisible === true]);
     entries.push(['jeemax_hardcore_daily', {
         date: AppState.hardcoreDailyDate,
         count: AppState.hardcoreDailyCount || 0,
@@ -2243,7 +2256,8 @@ export async function loadDataAsync() {
         g = await idbGetMany([
             'jeemax_question_bank', 'jeemax_chapters', 'bounty_data',
             'jeemax_solved', 'jeemax_study_secs',
-            'jeemax_elo', 'jeemax_elo_updated_at', 'jeemax_practice_mode', 'jeemax_hardcore_daily',
+            'jeemax_elo', 'jeemax_elo_updated_at', 'jeemax_practice_mode', 'jeemax_flow_slider', 'jeemax_flow_slider_visible',
+            'jeemax_hardcore_daily',
             'jeemax_calibration_log', 'jeemax_chapter_theta',
             'jeemax_chapter_weights_ai', 'jeemax_chapter_weights_user',
             'jeemax_mocks', 'jeemax_mock_focus',
@@ -2286,6 +2300,8 @@ export async function loadDataAsync() {
     const savedElo = g['jeemax_elo'];
     const savedEloUpdatedAt = g['jeemax_elo_updated_at'];
     const savedMode = g['jeemax_practice_mode'];
+    const savedFlowSlider = g['jeemax_flow_slider'];
+    const savedFlowSliderVisible = g['jeemax_flow_slider_visible'];
     const hcDaily = g['jeemax_hardcore_daily'];
     const username = g['jeemax_username'];
     const pfp = g['jeemax_profile_pic'];
@@ -2401,8 +2417,17 @@ export async function loadDataAsync() {
         AppState.mockFocus = savedMockFocus;
     }
 
-    // Hydrate active practice mode + hardcore daily counter (resets daily)
-    if (savedMode && PRACTICE_MODES.includes(savedMode)) AppState.practiceFlowMode = savedMode;
+    // Hydrate active practice mode + hardcore daily counter (resets daily).
+    // The slider is the source of truth: a saved flow/hardcore mode is rebuilt
+    // from the saved dial so the two can never disagree after a reload.
+    if (isFinite(Number(savedFlowSlider))) AppState.flowSlider = clampFlowValue(savedFlowSlider);
+    // Live dock visibility: strict boolean, hidden by default.
+    AppState.flowSliderVisible = savedFlowSliderVisible === true;
+    if (savedMode && PRACTICE_MODES.includes(savedMode)) {
+        AppState.practiceFlowMode = (savedMode === 'standard')
+            ? 'standard'
+            : flowModeForValue(AppState.flowSlider);
+    }
     if (hcDaily && typeof hcDaily === 'object') {
         // Local day key — every writer/gate buckets by local date; a UTC key
         // here reset the cap at 05:30 IST and granted a phantom extra quota

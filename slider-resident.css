@@ -1,0 +1,250 @@
+/* ============================================================================
+   slider-resident.css — the pixel room inside the Flow intensity rail.
+   Component art: UI by @Lattice_Node — ludion.ai/p/slider-resident (MIT)
+   Host styling lives at the bottom under the .flow-slider-* namespaces.
+   ============================================================================ */
+
+/* UI by @Lattice_Node — ludion.ai/p/slider-resident (MIT) */
+[data-ld-part="slider-resident"] {
+  /* Theme tokens are supplied by the Observatory host. The component only
+     reads these five hues plus radius/motion, so it repaints with the ink. */
+  --_bg: var(--ld-bg, #06070A);
+  --_surface: var(--ld-surface, #E5C07B);
+  --_fg: var(--ld-fg, #F2EDE3);
+  --_muted: var(--ld-muted, rgba(242, 237, 227, .38));
+  --_accent: var(--ld-accent, #9CD3F0);
+  --_radius: var(--ld-radius, 9999px);
+  --_font: var(--ld-font, "IBM Plex Sans", system-ui, sans-serif);
+  --_space: var(--ld-space, 8px);
+  --_shadow: var(--ld-shadow, 0 1px 2px rgb(0 0 0 / .35), 0 6px 14px rgb(0 0 0 / .28));
+  --_motion: var(--ld-motion, 200ms);
+
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  /* Fits any host. The intrinsic 1 : 2.5714 frame is the art; hosts size it. */
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 2.5714;
+  font-family: var(--_font);
+  color: var(--_fg);
+}
+
+/* Invisible swatch used to resolve theme colours. */
+[data-ld-part="slider-resident"] .probe {
+  display: none;
+}
+
+/* Token shadow; the canvas paints the large soft shadow. */
+[data-ld-part="slider-resident"] .shade {
+  position: absolute;
+  display: block;
+  border-radius: var(--_radius);
+  box-shadow: var(--_shadow);
+  pointer-events: none;
+}
+
+[data-ld-part="slider-resident"] .scene {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Real range input: the canvas paints, this only receives input. */
+[data-ld-part="slider-resident"] .range {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--_radius);
+  background: transparent;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+[data-ld-part="slider-resident"] .range:active {
+  cursor: grabbing;
+}
+
+[data-ld-part="slider-resident"] .range:focus {
+  outline: none;
+}
+
+[data-ld-part="slider-resident"] .range:focus-visible {
+  outline: 2px solid var(--_accent);
+  outline-offset: calc(var(--_space) * .75);
+  transition: outline-offset var(--_motion) ease;
+}
+
+/* Hide the native control visually; pointer, touch and keyboard still work. */
+@supports selector(:has(*)) {
+  [data-ld-part="slider-resident"] .range {
+    opacity: 0;
+  }
+  [data-ld-part="slider-resident"] .range:focus-visible {
+    outline: none;
+  }
+  [data-ld-part="slider-resident"]:has(.range:focus-visible) .shade {
+    outline: 2px solid var(--_accent);
+    outline-offset: calc(var(--_space) * .75);
+  }
+}
+
+/* Match the thumb width to the lens so finger and lens centre agree. */
+[data-ld-part="slider-resident"] .range::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
+  border: 0;
+}
+
+[data-ld-part="slider-resident"] .range::-moz-range-track {
+  height: 100%;
+  background: transparent;
+  border: 0;
+}
+
+[data-ld-part="slider-resident"] .range::-webkit-slider-thumb {
+  width: var(--thumb, 96px);
+  height: 100%;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  outline: none;
+  opacity: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+[data-ld-part="slider-resident"] .range::-moz-range-thumb {
+  width: var(--thumb, 96px);
+  height: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-ld-part="slider-resident"] .range:focus-visible {
+    transition: none;
+  }
+}
+
+/* ── JEEMaxxing host chrome ─────────────────────────────────────────────── */
+
+.flow-slider-host {
+  --ld-bg: #0B0D13;
+  --ld-surface: var(--obs-ink, #E5C07B);
+  --ld-fg: var(--obs-bone, #F2EDE3);
+  --ld-muted: var(--obs-bone-3, rgba(242, 237, 227, .38));
+  --ld-accent: var(--mode-flow, #9CD3F0);
+  --ld-font: var(--font-body, "IBM Plex Sans", system-ui, sans-serif);
+  --ld-radius: 9999px;
+  --ld-shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 10px 30px rgba(0, 0, 0, .32);
+  width: 100%;
+  min-width: 0;
+}
+
+html[data-mode="dusk"] .flow-slider-host {
+  --ld-bg: #181B25;
+}
+
+.flow-slider-host.is-hardcore {
+  --ld-accent: var(--mode-hc, #E07A52);
+  --ld-surface: var(--mode-hc, #E07A52);
+}
+
+/* Lock-In entry rail */
+.lockin-intensity { margin: 0 0 20px; }
+.lockin-intensity-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 8px;
+  font-family: var(--font-num, ui-monospace, monospace);
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--obs-bone-3, rgba(242, 237, 227, .38));
+}
+.lockin-intensity-head strong {
+  font-weight: 500; letter-spacing: .12em;
+  color: var(--obs-bone-2, rgba(242, 237, 227, .62));
+}
+.lockin-intensity.is-hardcore .lockin-intensity-head strong { color: var(--mode-hc, #E07A52); }
+.lockin-intensity-rule {
+  margin: 7px 0 0; font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 11.5px; line-height: 1.4;
+  color: var(--obs-bone-3, rgba(242, 237, 227, .38));
+}
+.lockin-intensity.is-hardcore .lockin-intensity-rule { color: var(--mode-hc, #E07A52); }
+.lockin-intensity.is-hardcore .lockin-intensity-rule::before { content: "HARDCORE · 1.8× wins · 8/day cap — "; }
+.lockin-intensity .flow-slider-host { max-width: 424px; margin: 0 auto; }
+
+/* Live practice dock */
+.flow-slider-dock {
+  position: absolute; z-index: 10040;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  width: min(272px, 46vw);
+  padding: 8px 10px 10px;
+  border: 1px solid var(--obs-hair, rgba(229, 192, 123, .10));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--obs-void-2, #0B0D13) 78%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .38);
+  opacity: 0; pointer-events: none; transform: translateY(6px);
+  transition: opacity .22s ease, transform .22s ease;
+}
+.flow-slider-dock.is-visible { opacity: 1; pointer-events: auto; transform: none; }
+.flow-slider-dock.is-hardcore { border-color: color-mix(in srgb, var(--mode-hc, #E07A52) 42%, transparent); }
+.flow-slider-dock-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin: 0 2px 5px;
+  font-family: var(--font-num, ui-monospace, monospace);
+  font-size: 10px; font-variant-numeric: tabular-nums;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--obs-bone-3, rgba(242, 237, 227, .38));
+}
+.flow-slider-dock-head strong {
+  font-weight: 500; color: var(--mode-flow, #9CD3F0);
+}
+.flow-slider-dock.is-hardcore .flow-slider-dock-head strong { color: var(--mode-hc, #E07A52); }
+.flow-slider-dock .flow-slider-host { width: 100%; }
+
+@media (max-width: 640px) {
+  .flow-slider-dock {
+    width: min(176px, 48vw);
+    left: calc(10px + env(safe-area-inset-left));
+    bottom: calc(78px + env(safe-area-inset-bottom));
+    padding: 6px 8px 8px;
+    border-radius: 12px;
+  }
+  .flow-slider-dock-head { font-size: 9px; letter-spacing: .08em; }
+  .lockin-intensity .flow-slider-host { max-width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-slider-dock { transition: none; }
+}
+
+/* Top-right toggle icon (practice modal header). The dock itself stays hidden
+   until the toggle opts in; the icon is the only live chrome by default. */
+#flow-slider-toggle { display: inline-flex; align-items: center; justify-content: center; }
+#flow-slider-toggle svg { width: 18px; height: 18px; }
+#flow-slider-toggle[aria-pressed="true"] { color: var(--mode-flow, #9CD3F0); }
+#practice-modal[data-practice-mode="hardcore"] #flow-slider-toggle[aria-pressed="true"] {
+  color: var(--mode-hc, #E07A52);
+}

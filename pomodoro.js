@@ -2,6 +2,14 @@
 import { formatTime, formatStudyDuration, saveAllAsync, studySecs, SessionFocus } from './storage.js';
 import { GalleryBreak } from './gallery-break.js';
 import { NightGuard } from './nightguard.js';
+import {
+    HARDCORE_THRESHOLD,
+    clampFlowValue,
+    modeForValue as flowModeForValue,
+    labelForValue as flowLabelForValue,
+    describeValue as flowDescribeValue,
+} from './flow-slider.js';
+import { mountFlowSlider } from './slider-resident.js';
 
 // ── Null-safe element lookup ──────────────────────────────────────────────
 // The standalone Focus Mode view and the Ambient Sprint widget were removed in
@@ -1477,6 +1485,7 @@ let _lockinLeftSecs = 0;
 let _lockinCreditedSecs = 0;       // escrow seconds accrued this STUDY block
 let _lockinPausedLeft = 0;
 let _lockinOnConfirm = null;
+let _lockinSliderApi = null;       // entry intensity rail handle (pomodoro side)
 
 // ── small helpers ─────────────────────────────────────────────────────────
 function _clamp(n, lo, hi) { n = parseInt(n, 10); if (!isFinite(n)) n = lo; return Math.min(hi, Math.max(lo, n)); }
@@ -1494,10 +1503,105 @@ function _addPaceGlow() { const m = document.getElementById('practice-modal'); i
 function _removePaceGlow() { const m = document.getElementById('practice-modal'); if (m) m.classList.remove('pq-lockin-complete-glow'); }
 
 // ── Session configuration draft / setup chamber ───────────────────────────
+
+function _entrySliderValue() {
+    try {
+        const A = window.AppState;
+        if (A && isFinite(Number(A.flowSlider))) return clampFlowValue(A.flowSlider);
+    } catch (_) {}
+    return 72;
+}
+
+function _syncLockinIntensityUI() {
+    const v = _entrySliderValue();
+    const mode = flowModeForValue(v);
+    const hardcore = v >= HARDCORE_THRESHOLD;
+    try {
+        const readout = document.getElementById('lockin-intensity-readout');
+        if (readout) readout.textContent = flowLabelForValue(v);
+        const wrap = document.getElementById('lockin-intensity');
+        if (wrap) wrap.classList.toggle('is-hardcore', hardcore);
+        const rule = document.getElementById('lockin-intensity-rule');
+        if (rule) rule.textContent = hardcore
+            ? 'Hardcore · 1.8× wins · 8/day cap — banked time pays double while you grind.'
+            : 'Soft blocks for steady hours. Drag to 98+ for Hardcore.';
+        const title = document.getElementById('lockin-title');
+        if (title) title.textContent = hardcore ? 'Enter the Crucible' : 'Sign the Pact';
+        const launch = document.getElementById('lockin-launch');
+        if (launch) launch.textContent = hardcore ? 'Ignite' : 'Lock in';
+        const modal = document.getElementById('lockin-setup-modal');
+        if (modal && typeof modal.setAttribute === 'function') modal.setAttribute('data-lockin-mode', mode);
+    } catch (_) {}
+    lockinSession.mode = mode;
+}
+
+function _mountEntrySlider() {
+    const host = document.getElementById('lockin-slider-host');
+    if (!host) return;
+    // Reuse the mounted rail; rebuild only if the host was wiped.
+    if (_lockinSliderApi && typeof host.contains === 'function' && host.contains(_lockinSliderApi.root)) return;
+    if (_lockinSliderApi) {
+        try { _lockinSliderApi.destroy(); } catch (_) {}
+        _lockinSliderApi = null;
+    }
+    if (typeof document === 'undefined' || typeof window === 'undefined' ||
+        typeof window.matchMedia !== 'function' ||
+        typeof IntersectionObserver !== 'function' || typeof ResizeObserver !== 'function') return;
+    try { host.innerHTML = ''; } catch (_) {}
+    try {
+        const api = mountFlowSlider(host, {
+            value: _entrySliderValue(),
+            label: 'Practice intensity',
+            describe: (v) => flowDescribeValue(v),
+            onInput: (v) => {
+                try {
+                    if (typeof window.__setFlowSlider === 'function') window.__setFlowSlider(v, { notify: true });
+                    else if (window.AppState) window.AppState.flowSlider = clampFlowValue(v);
+                } catch (_) {}
+                _syncLockinIntensityUI();
+                if (_lockinSliderApi && typeof _lockinSliderApi.setHardcore === 'function') {
+                    _lockinSliderApi.setHardcore(v >= HARDCORE_THRESHOLD);
+                }
+            },
+        });
+        _lockinSliderApi = api;
+        try { if (typeof window !== 'undefined') window.__lockinSliderApi = api; } catch (_) {}
+        if (api && typeof api.setHardcore === 'function') {
+            api.setHardcore(_entrySliderValue() >= HARDCORE_THRESHOLD);
+        }
+    } catch (e) {
+        _lockinSliderApi = null;
+    }
+    _syncLockinIntensityUI();
+}
+
+function _destroyEntrySlider() {
+    if (_lockinSliderApi) {
+        try { _lockinSliderApi.destroy(); } catch (_) {}
+        _lockinSliderApi = null;
+    }
+    try {
+        if (typeof window !== 'undefined') window.__lockinSliderApi = null;
+    } catch (_) {}
+    try {
+        const host = document.getElementById('lockin-slider-host');
+        if (host) host.innerHTML = '';
+    } catch (_) {}
+}
+
 export function openLockinSetupModal(mode, context, onConfirmStart) {
     if (!LOCKIN_MODES.includes(mode)) return false;
     const ctx = context || {};
-    lockinSession.mode = mode;
+    // The dial is the source of truth. A legacy 'hardcore' caller is upgraded
+    // to the top of the dial; a 'flow' caller keeps whatever the dial holds.
+    if (mode === 'hardcore' && _entrySliderValue() < HARDCORE_THRESHOLD) {
+        try {
+            if (typeof window.__setFlowSlider === 'function') window.__setFlowSlider(100, { notify: true });
+            else if (window.AppState) window.AppState.flowSlider = 100;
+        } catch (_) {}
+    }
+    const resolved = flowModeForValue(_entrySliderValue());
+    lockinSession.mode = resolved;
     lockinSession.subject = isValidSubjectKey(ctx.subject) ? ctx.subject
         : (isValidSubjectKey(studySubject) ? studySubject : 'physics');
     lockinSession.chapter = ctx.chapter || '';
@@ -1514,18 +1618,12 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
     _setInputVal('lockin-chill', _clamp(cfg ? cfg.break : 10, 1, 60));
     _setInputVal('lockin-rounds', _clamp(defRounds, 1, 8));
 
-    const modal = document.getElementById('lockin-setup-modal');
-    if (modal && typeof modal.setAttribute === 'function') modal.setAttribute('data-lockin-mode', mode);
-    const title = document.getElementById('lockin-title');
-    if (title) title.textContent = mode === 'hardcore' ? 'Enter the Crucible' : 'Sign the Pact';
-
-    const launchBtn = document.getElementById('lockin-launch');
-    if (launchBtn) {
-        launchBtn.textContent = mode === 'hardcore' ? 'Ignite' : 'Lock in';
-    }
+    _mountEntrySlider();
+    _syncLockinIntensityUI();
 
     _syncLockinPresetActive();
     _renderLockinTimeline();
+    const modal = document.getElementById('lockin-setup-modal');
     if (modal) {
         modal.style.display = 'flex';
         modal.classList.add('active');
@@ -1539,6 +1637,7 @@ export function closeLockinSetupModal() {
         el.classList.remove('active');
         setTimeout(() => { if (!el.classList.contains('active')) el.style.display = 'none'; }, 250);
     }
+    _destroyEntrySlider();
     _lockinOnConfirm = null;
 }
 
@@ -1547,6 +1646,8 @@ export function confirmLockinSetup() {
     const study = _clamp(_inputVal('lockin-grind'), 5, 180);
     const chill = _clamp(_inputVal('lockin-chill'), 1, 60);
     const rounds = _clamp(_inputVal('lockin-rounds'), 1, 8);
+    // The dial wins: whatever the rail currently shows is what we enter.
+    lockinSession.mode = flowModeForValue(_entrySliderValue());
     lockinSession.studyMins = study;
     lockinSession.breakMins = chill;
     lockinSession.totalSessions = rounds;
