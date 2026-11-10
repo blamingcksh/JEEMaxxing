@@ -109,11 +109,7 @@ export function centerElo(userElo, value, chapterAvgElo) {
     return mix(relative, anchor, ramp);
 }
 
-/**
- * Reward + pacing profile for a dial value. Rewards stay binary: every value
- * below 98 uses Flow's 1.0× / 1.0×; 98–100 uses Hardcore's 1.8× / 0.6× and
- * the daily 8-win cap. Sweet spots drift within each side for feel only.
- */
+/** Rewards stay binary across the dial: Flow 1.0× / 1.0×; Hardcore 1.8× / 0.6×. */
 export function profileForValue(value) {
     const v = clampFlowValue(value);
     const hardcore = v >= HARDCORE_THRESHOLD;
@@ -128,7 +124,6 @@ export function profileForValue(value) {
             escrowBonusMultiplier: 2.0,
             winSweetSpot: mix(0.50, 0.40, t),
             lossFastGrace: 0.30,
-            capPerDay: 8,
         };
     }
     const t = clamp01(v / (HARDCORE_THRESHOLD - 1));
@@ -140,7 +135,6 @@ export function profileForValue(value) {
         escrowBonusMultiplier: 1.0,
         winSweetSpot: mix(0.80, 0.55, t),
         lossFastGrace: mix(0.55, 0.42, t),
-        capPerDay: null,
     };
 }
 

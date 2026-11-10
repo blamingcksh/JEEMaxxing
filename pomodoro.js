@@ -1523,7 +1523,7 @@ function _syncLockinIntensityUI() {
         if (wrap) wrap.classList.toggle('is-hardcore', hardcore);
         const rule = document.getElementById('lockin-intensity-rule');
         if (rule) rule.textContent = hardcore
-            ? 'HARDCORE · 1.8x wins — 8/day cap — banked time pays double while you grind.'
+            ? 'HARDCORE · 1.8x wins — banked time pays double while you grind.'
             : 'Soft blocks for steady hours. Drag to 98+ for Hardcore.';
         const title = document.getElementById('lockin-title');
         if (title) title.textContent = hardcore ? 'Enter the Crucible' : 'Sign the Pact';
@@ -1555,7 +1555,7 @@ function _mountEntrySlider() {
             describe: (v) => flowDescribeValue(v),
             onInput: (v) => {
                 try {
-                    if (typeof window.__setFlowSlider === 'function') window.__setFlowSlider(v, { notify: true });
+                    if (typeof window.__setFlowSlider === 'function') window.__setFlowSlider(v);
                     else if (window.AppState) window.AppState.flowSlider = clampFlowValue(v);
                 } catch (_) {}
                 _syncLockinIntensityUI();
@@ -1596,7 +1596,7 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
     // to the top of the dial; a 'flow' caller keeps whatever the dial holds.
     if (mode === 'hardcore' && _entrySliderValue() < HARDCORE_THRESHOLD) {
         try {
-            if (typeof window.__setFlowSlider === 'function') window.__setFlowSlider(100, { notify: true });
+            if (typeof window.__setFlowSlider === 'function') window.__setFlowSlider(100);
             else if (window.AppState) window.AppState.flowSlider = 100;
         } catch (_) {}
     }
