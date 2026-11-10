@@ -986,8 +986,6 @@ export const AppState = {
     // Live dock visibility. Hidden by default; the top-right toggle opts in.
     // Persisted so the choice survives reloads.
     flowSliderVisible: false,
-    hardcoreDailyCount: 0,
-    hardcoreDailyDate: null,
     // Target exam date (YYYY-MM-DD) for the countdown chip + AIR popup.
     // Persisted to IDB (jeemax_exam_date); null = not set.
     examDate: null,
@@ -1475,7 +1473,6 @@ export const MODE_TUNING = {
         escrowBonusMultiplier: 2.0,    // doubled legendary drop rate
         winSweetSpot: 0.45,
         lossFastGrace: 0.3,
-        capPerDay: 8,                    // anti-grind circuit-breaker
         label: '⚡ HARDCORE / OVERCLOCK',
     },
 };
@@ -2128,14 +2125,9 @@ async function _doSaveAll() {
         rd: (AppState.elo.rd && typeof AppState.elo.rd === 'object') ? AppState.elo.rd : {},
     }]);
     entries.push(['jeemax_elo_updated_at', Number(AppState.eloUpdatedAt) || 0]);
-    // Practice mode + hardcore daily counter persistence
     entries.push(['jeemax_practice_mode', AppState.practiceFlowMode || 'standard']);
     entries.push(['jeemax_flow_slider', clampFlowValue(AppState.flowSlider)]);
     entries.push(['jeemax_flow_slider_visible', AppState.flowSliderVisible === true]);
-    entries.push(['jeemax_hardcore_daily', {
-        date: AppState.hardcoreDailyDate,
-        count: AppState.hardcoreDailyCount || 0,
-    }]);
     // ── Long-lived stat state that used to be MEMORY-ONLY (every reload wiped
     //    it back to zero, so these stats only ever reflected the current
     //    session): Brier calibration history · chapter ability θ_c · chapter
@@ -2257,7 +2249,6 @@ export async function loadDataAsync() {
             'jeemax_question_bank', 'jeemax_chapters', 'bounty_data',
             'jeemax_solved', 'jeemax_study_secs',
             'jeemax_elo', 'jeemax_elo_updated_at', 'jeemax_practice_mode', 'jeemax_flow_slider', 'jeemax_flow_slider_visible',
-            'jeemax_hardcore_daily',
             'jeemax_calibration_log', 'jeemax_chapter_theta',
             'jeemax_chapter_weights_ai', 'jeemax_chapter_weights_user',
             'jeemax_mocks', 'jeemax_mock_focus',
@@ -2302,7 +2293,6 @@ export async function loadDataAsync() {
     const savedMode = g['jeemax_practice_mode'];
     const savedFlowSlider = g['jeemax_flow_slider'];
     const savedFlowSliderVisible = g['jeemax_flow_slider_visible'];
-    const hcDaily = g['jeemax_hardcore_daily'];
     const username = g['jeemax_username'];
     const pfp = g['jeemax_profile_pic'];
     const savedKey = g['gemini_api_key'];
@@ -2417,7 +2407,6 @@ export async function loadDataAsync() {
         AppState.mockFocus = savedMockFocus;
     }
 
-    // Hydrate active practice mode + hardcore daily counter (resets daily).
     // The slider is the source of truth: a saved flow/hardcore mode is rebuilt
     // from the saved dial so the two can never disagree after a reload.
     if (isFinite(Number(savedFlowSlider))) AppState.flowSlider = clampFlowValue(savedFlowSlider);
@@ -2427,14 +2416,6 @@ export async function loadDataAsync() {
         AppState.practiceFlowMode = (savedMode === 'standard')
             ? 'standard'
             : flowModeForValue(AppState.flowSlider);
-    }
-    if (hcDaily && typeof hcDaily === 'object') {
-        // Local day key — every writer/gate buckets by local date; a UTC key
-        // here reset the cap at 05:30 IST and granted a phantom extra quota
-        // before local midnight in UTC− zones.
-        const today = todayLocalKey();
-        AppState.hardcoreDailyDate   = hcDaily.date || null;
-        AppState.hardcoreDailyCount  = (hcDaily.date === today) ? (hcDaily.count || 0) : 0;
     }
 
     if (username) {

@@ -2316,7 +2316,7 @@ export function startMultiChapterMode() {
     const requested = (_multiChapterMode === 'hardcore' && clampFlowValue(AppState.flowSlider) < HARDCORE_THRESHOLD)
         ? 100
         : clampFlowValue(AppState.flowSlider);
-    _applyFlowSlider(requested, { notify: true, syncEntry: true, syncLive: false });
+    _applyFlowSlider(requested, { syncEntry: true, syncLive: false });
     _ensureLockinSetup(_flowModeForValue(clampFlowValue(AppState.flowSlider)));
 }
 
@@ -6280,8 +6280,6 @@ function _pqCaptureAttemptSnapshot(q, idx, userSelectedOption) {
             subjElo: safeSubject ? AppState.elo[safeSubject] : undefined,
             globalElo: AppState.elo.global,
             rdSubj: (safeSubject && AppState.elo.rd) ? AppState.elo.rd[safeSubject] : undefined,
-            hardcoreDailyCount: AppState.hardcoreDailyCount,
-            hardcoreDailyDate: AppState.hardcoreDailyDate,
             calibrationLogLen: Array.isArray(AppState.calibrationLog) ? AppState.calibrationLog.length : 0,
             pendingConfidence: window._pendingSolveConfidence || null,
             chapterThetaNode: thetaNode,
@@ -6620,8 +6618,6 @@ function _pqRestoreAttemptImpact(snap, q) {
             if (snap.preElo.chapterThetaNode) AppState.chapterTheta[snap.thetaKey] = { ...snap.preElo.chapterThetaNode };
             else delete AppState.chapterTheta[snap.thetaKey];
         }
-        AppState.hardcoreDailyCount = snap.preElo.hardcoreDailyCount;
-        AppState.hardcoreDailyDate = snap.preElo.hardcoreDailyDate;
         if (Array.isArray(AppState.calibrationLog) && Number.isFinite(Number(snap.preElo.calibrationLogLen))) {
             const len = Math.max(0, Number(snap.preElo.calibrationLogLen) | 0);
             if (AppState.calibrationLog.length > len) {
@@ -7823,7 +7819,7 @@ function _isQuestionEloCalibrated(q) {
  * queued into the practice modal — solves arriving from other entry points
  * (Error-Matrix SR drawer, revision flows) always settle at standard rates.
  * Without this gate, entering Hardcore and then reviewing easy matrix
- * errors would milk 1.8× wins + 2× escrow and burn the daily cap on
+ * errors would milk 1.8× wins + 2× escrow on
  * questions the hardcore picker never chose.
  */
 function _activeModeForQuestion(questionObj) {
@@ -8106,28 +8102,6 @@ function _stampServedMode(mode) {
     AppState._pqServedMode = (mode === 'hardcore') ? 'hardcore' : (mode === 'flow' ? 'flow' : 'standard');
 }
 
-/** Daily Hardcore cap check (also used by the slider gates). */
-function _hardcoreCapReached() {
-    if (AppState.hardcoreDailyDate !== todayLocalKey()) return false;
-    return (AppState.hardcoreDailyCount || 0) >= (MODE_TUNING.hardcore.capPerDay || 8);
-}
-
-/** Snap ≥98 back to 97 when the daily Hardcore cap is spent. */
-function _gateFlowSliderValue(value, opts) {
-    let next = clampFlowValue(value);
-    if (next >= HARDCORE_THRESHOLD && _hardcoreCapReached()) {
-        next = HARDCORE_THRESHOLD - 1;
-        if (!opts || opts.notify !== false) {
-            try {
-                (window.__jmaxAppToast || alert)(
-                    'Daily Hardcore cap reached (' + (MODE_TUNING.hardcore.capPerDay || 8) + '). Intensity eased to 97.'
-                );
-            } catch (_) {}
-        }
-    }
-    return next;
-}
-
 /** Read-only snapshot for pomodoro / tests / debug. */
 function _flowSliderState() {
     const value = clampFlowValue(AppState.flowSlider);
@@ -8138,9 +8112,6 @@ function _flowSliderState() {
         zone: _flowZoneForValue(value),
         label: _flowLabelForValue(value),
         hardcore: value >= HARDCORE_THRESHOLD,
-        capReached: _hardcoreCapReached(),
-        dailyWins: AppState.hardcoreDailyDate === todayLocalKey() ? (AppState.hardcoreDailyCount || 0) : 0,
-        dailyCap: MODE_TUNING.hardcore.capPerDay || 8,
     };
 }
 
@@ -8153,7 +8124,7 @@ let _flowSliderSaveTimer = null;
 function _applyFlowSlider(value, opts) {
     const options = opts || {};
     const before = clampFlowValue(AppState.flowSlider);
-    const next = _gateFlowSliderValue(value, options);
+    const next = clampFlowValue(value);
     AppState.flowSlider = next;
 
     const mode = _flowModeForValue(next);
@@ -8194,17 +8165,8 @@ function _applyFlowSlider(value, opts) {
     return next;
 }
 
-/** Called after a Hardcore win crosses the daily cap. */
-function _snapFlowSliderAfterCap() {
-    if (!_hardcoreCapReached()) return;
-    if (clampFlowValue(AppState.flowSlider) < HARDCORE_THRESHOLD) return;
-    _applyFlowSlider(HARDCORE_THRESHOLD - 1, { notify: true });
-    if (AppState._flowSessionActive) _renderModeBadge();
-}
-
 window.__setFlowSlider = (value, opts) => _applyFlowSlider(value, opts);
 window.__getFlowSliderState = _flowSliderState;
-window.__gateFlowSliderValue = (value) => _gateFlowSliderValue(value, { notify: false });
 
 
 /**
@@ -8721,7 +8683,7 @@ function _serveModeEntry(entry) {
     // The question keeps the mode it was SERVED under. If the dial was eased
     // down mid-question, the reward/recap gate honours this stamp, and the
     // next refill adopts the new dial.
-    _stampServedMode(_flowModeForValue(_applyFlowSlider(AppState.flowSlider, { notify: false, syncEntry: true, syncLive: false })));
+    _stampServedMode(_flowModeForValue(_applyFlowSlider(AppState.flowSlider, { syncEntry: true, syncLive: false })));
     updatePracticeTimerDisplay();
     if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
     if (!entry.submitted) {
@@ -8752,13 +8714,10 @@ function _modeSnapshot(mode, chapterNames) {
         totalEligible++;
         if (q.qElo >= 1800) bossCount++;
     }
-    const wins = AppState.hardcoreDailyDate === todayLocalKey() ? (AppState.hardcoreDailyCount || 0) : 0;
     return {
         total: totalEligible,
         boss: bossCount,
         count: totalEligible,
-        dailyWins: wins,
-        dailyCap: MODE_TUNING.hardcore.capPerDay || 8
     };
 }
 window.__modeSnapshot = _modeSnapshot;
@@ -8790,12 +8749,10 @@ function _hasModeEligibleQuestion(mode) {
 function _ensureLockinSetup(mode, customCtx) {
     if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return;
     // The dial, not the caller's label, decides which side of 98 we enter.
-    // A legacy 'hardcore' caller is upgraded to the top of the dial; a capped
-    // account is eased back to 97 and toasted instead of being blocked.
     if (mode === 'hardcore' && clampFlowValue(AppState.flowSlider) < HARDCORE_THRESHOLD) {
-        _applyFlowSlider(100, { notify: true });
+        _applyFlowSlider(100);
     } else if (clampFlowValue(AppState.flowSlider) >= HARDCORE_THRESHOLD) {
-        _applyFlowSlider(AppState.flowSlider, { notify: true });
+        _applyFlowSlider(AppState.flowSlider);
     }
     const value = clampFlowValue(AppState.flowSlider);
     const resolved = _flowModeForValue(value);
@@ -8817,11 +8774,9 @@ window.__ensureLockinSetup = _ensureLockinSetup;
 /** Set the active practice mode and persist it. */
 function _setPracticeMode(mode) {
     if (!PRACTICE_MODES.includes(mode)) return;
-    // Single source of truth: resolve the dial first (and gate the cap), then
-    // derive the binary reward mode from that value.
     const requested = (mode === 'hardcore') ? 100 : clampFlowValue(AppState.flowSlider);
-    const value = _applyFlowSlider(_gateFlowSliderValue(requested, { notify: true }), { notify: false });
-    let resolved = _flowModeForValue(value);
+    const value = _applyFlowSlider(requested);
+    const resolved = _flowModeForValue(value);
 
     SessionRecap.reset();
     AppState._flowSessionActive = true;
@@ -8832,24 +8787,6 @@ function _setPracticeMode(mode) {
     _clearModeHistory();
     _modeAdaptive.targetPwin = _flowPWinForValue(value);
     _modeAdaptive.hist = [];
-    // Reset hardcore daily counter if the date rolled over (LOCAL day — UTC
-    // would reset at 05:30 IST and grant a fresh quota pre-midnight).
-    const today = todayLocalKey();
-    if (resolved === 'hardcore') {
-        if (AppState.hardcoreDailyDate !== today) {
-            AppState.hardcoreDailyDate = today;
-            AppState.hardcoreDailyCount = 0;
-        }
-        if (_hardcoreCapReached()) {
-            // The gate should already have caught this, but re-check after the
-            // date roll so a stale saved slider cannot squeeze through.
-            _applyFlowSlider(HARDCORE_THRESHOLD - 1, { notify: true });
-            resolved = 'flow';
-            AppState.practiceFlowMode = resolved;
-            _stampServedMode(resolved);
-            _modeAdaptive.targetPwin = _flowPWinForValue(HARDCORE_THRESHOLD - 1);
-        }
-    }
     saveAllAsync().catch(console.error);
     _rebuildPracticeQuestionsForMode();
     _renderModeBadge();
@@ -8928,7 +8865,7 @@ function _exitPracticeMode() {
 function _rebuildPracticeQuestionsForMode(seenSet) {
     const mode = AppState.practiceFlowMode;
     if (mode === 'standard' || !PRACTICE_MODES.includes(mode)) return;
-    const value = _applyFlowSlider(AppState.flowSlider, { notify: true, syncEntry: false, syncLive: false });
+    const value = _applyFlowSlider(AppState.flowSlider, { syncEntry: false, syncLive: false });
     const servedMode = _flowModeForValue(value);
     const q = _pickFlowQuestionInfinite(
         AppState.currentSubject,
@@ -9226,7 +9163,7 @@ function _mountLiveFlowSlider() {
             value: AppState.flowSlider,
             label: 'Practice intensity',
             describe: (v) => _flowDescribeValue(v),
-            onInput: (v) => { _applyFlowSlider(v, { notify: true }); },
+            onInput: (v) => { _applyFlowSlider(v); },
         });
     } catch (e) {
         console.warn('[flow-slider] live mount failed', e);
@@ -9244,7 +9181,7 @@ function _mountLiveFlowSlider() {
 
 // Expose the public entry points so programmatic callers / smoke tests work directly,
 // while UI buttons route through _ensureLockinSetup (window.__ensureLockinSetup).
-window.startFlowPractice     = () => _setPracticeMode(_flowModeForValue(_applyFlowSlider(AppState.flowSlider, { notify: true })));
+window.startFlowPractice     = () => _setPracticeMode(_flowModeForValue(_applyFlowSlider(AppState.flowSlider)));
 window.startHardcorePractice = () => _setPracticeMode('hardcore');
 window.exitPracticeMode      = () => _exitPracticeMode();
 window._mountLiveFlowSlider  = _mountLiveFlowSlider;
@@ -9447,19 +9384,6 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         AppState.elo[safeSubject] = newE_s;
         AppState.eloUpdatedAt = Date.now(); // LWW clock for cloud merge
 
-        if (dr.rawSubjectDelta > 0) {
-            // Track hardcore daily use (only when winning on hardcore)
-            if (mode === 'hardcore' && Sefc === 1) {
-                const today = todayLocalKey();
-                if (AppState.hardcoreDailyDate !== today) {
-                    AppState.hardcoreDailyDate = today;
-                    AppState.hardcoreDailyCount = 0;
-                }
-                AppState.hardcoreDailyCount = (AppState.hardcoreDailyCount || 0) + 1;
-                if (_hardcoreCapReached()) _snapFlowSliderAfterCap();
-            }
-        }
-
         // ── Elo v2 post-commit ──
         _shrinkRdAfterSolve(safeSubject);
         // Memory Kernel v2 write: stability/difficulty/reps/lapses move HERE
@@ -9633,21 +9557,6 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         rawDelta = Math.round(rawDelta * m);
     }
 
-    if (rawDelta > 0) {
-      // Track hardcore daily use so the cap in _setPracticeMode actually
-      // bites on the legacy (uncalibrated) path too — previously only the
-      // fast path incremented it, letting hardcore farm uncapped via
-      // uncalibrated questions.
-      if (_legacyMode === 'hardcore' && S === 1) {
-          const today = todayLocalKey();
-          if (AppState.hardcoreDailyDate !== today) {
-              AppState.hardcoreDailyDate = today;
-              AppState.hardcoreDailyCount = 0;
-          }
-          AppState.hardcoreDailyCount = (AppState.hardcoreDailyCount || 0) + 1;
-          if (_hardcoreCapReached()) _snapFlowSliderAfterCap();
-      }
-    }
     let newE_s = Math.max(0, E_s + rawDelta);
 
     // ── CNS Load: stepped yield multiplier on subject ELO gain only (legacy R_perf path) ──
@@ -12977,8 +12886,6 @@ window.bounty = AppState.bounty;
 
 // ── Forest sync fix: expose live state safely ─────────────────────────────
 window.AppState = AppState;
-// Expose mode tuning (e.g. the hardcore per-day cap) so other flows can't
-// drift from the engine's real constants.
 window.MODE_TUNING = MODE_TUNING;
 window.solved = solved;
 

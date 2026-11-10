@@ -1,6 +1,6 @@
 // Smoke test — Flow intensity slider (flow-slider.js + app integration).
 // Pure part: zones, P(win) curve, anchor blend, binary reward profile.
-// App part: single source of truth, cap snap, served-mode stamp, infinite pool.
+// App part: single source of truth, uncapped Hardcore, served-mode stamp, infinite pool.
 //
 // Run: node scripts/smoke-flow-slider.mjs
 
@@ -157,9 +157,10 @@ ok(centerElo(1200, 100, 1500) > 1500, 'overload anchor pulls 100 toward the chap
 
 console.log('── flow-slider: binary reward profile ──');
 ok(profileForValue(72).winsMultiplier === 1.0 && profileForValue(72).lossMultiplier === 1.0, 'flow rewards 1.0x / 1.0x');
-ok(profileForValue(97).winsMultiplier === 1.0 && profileForValue(97).capPerDay === null, '97 still uses flow rewards');
+ok(profileForValue(97).winsMultiplier === 1.0, '97 still uses flow rewards');
 ok(profileForValue(98).winsMultiplier === 1.8 && profileForValue(98).lossMultiplier === 0.6, '98 uses hardcore rewards');
-ok(profileForValue(98).escrowBonusMultiplier === 2.0 && profileForValue(100).capPerDay === 8, 'hardcore escrow + 8/day cap');
+ok(profileForValue(98).escrowBonusMultiplier === 2.0, 'hardcore escrow stays doubled');
+ok(!('capPerDay' in profileForValue(100)) && !('capPerDay' in globalThis.MODE_TUNING.hardcore), 'Hardcore profiles have no daily cap');
 ok(profileForValue(72).mode === 'flow' && profileForValue(100).mode === 'hardcore', 'profile mode matches gate');
 
 console.log('── app: slider is the source of truth ──');
@@ -176,8 +177,6 @@ console.log('── app: slider is the source of truth ──');
     AppState.practiceQuestions = [];
     AppState.practiceSubmittedFlags = [];
     AppState.currentPracticeIndex = 0;
-    AppState.hardcoreDailyCount = 0;
-    AppState.hardcoreDailyDate = null;
 
     ok(typeof globalThis.__setFlowSlider === 'function', '__setFlowSlider exposed');
     ok(typeof globalThis.__getFlowSliderState === 'function', '__getFlowSliderState exposed');
@@ -205,21 +204,31 @@ console.log('── app: slider is the source of truth ──');
     ok(AppState.flowSlider === 72, 'dial holds the retuned value');
 }
 
-console.log('── app: cap parity (snap to 97) ──');
+console.log('── app: Hardcore has no daily cap ──');
 {
     const d = new Date();
     const localKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    AppState.hardcoreDailyCount = 8;
+    AppState.hardcoreDailyCount = 100;
     AppState.hardcoreDailyDate = localKey;
+    AppState.questionBank = Array.from({ length: 12 }, (_, i) => mk('uncapped-' + i, 1900, { qEloSource: i % 2 ? 'gem-stamped' : 'imported' }));
     AppState.flowSlider = 72;
+    for (const value of [98, 99, 100]) {
+        ok(globalThis.__setFlowSlider(value) === value, 'old daily wins do not block intensity ' + value);
+    }
+    globalThis.startFlowPractice();
+    ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore starts despite old daily wins');
+    for (let i = 0; i < 10; i++) {
+        const q = AppState.practiceQuestions[AppState.currentPracticeIndex];
+        ok(!!q, 'Hardcore question ' + (i + 1) + ' is available');
+        globalThis.calculateEloMigration('physics', 60, 1, 60, q);
+        ok(AppState.flowSlider === 100 && AppState.practiceFlowMode === 'hardcore', 'win ' + (i + 1) + ' does not lower intensity');
+        globalThis.continuePractice();
+        ok(AppState.practiceFlowMode === 'hardcore', 'Hardcore continues after win ' + (i + 1));
+    }
     const snap = globalThis.__getFlowSliderState();
-    ok(snap.dailyCap === 8, 'daily cap is 8');
-    ok(snap.capReached === true, 'cap is reported reached at 8 wins');
-    ok(snap.dailyWins === 8, 'daily wins are reported as 8');
-    const gated = globalThis.__gateFlowSliderValue(100);
-    ok(gated === 97, 'gate snaps 100 to 97 when capped (got ' + gated + ')');
-    ok(globalThis.__setFlowSlider(100) === 97, '__setFlowSlider snaps to 97 when capped');
-    ok(AppState.flowSlider === 97, 'dial holds 97 after the capped call');
+    ok(snap.hardcore === true && !('dailyCap' in snap) && !('capReached' in snap), 'state has no daily restriction');
+    delete AppState.hardcoreDailyCount;
+    delete AppState.hardcoreDailyDate;
 }
 
 console.log('── app: untouched-only engine (solved pool does not flow) ──');
@@ -239,8 +248,6 @@ console.log('── app: untouched-only engine (solved pool does not flow) ─�
     AppState.practiceQuestions = [];
     AppState.practiceSubmittedFlags = [];
     AppState.currentPracticeIndex = 0;
-    AppState.hardcoreDailyCount = 0;
-    AppState.hardcoreDailyDate = null;
 
     globalThis.startFlowPractice();
     ok(AppState.practiceFlowMode === 'standard', 'fully-solved chapter does not enter Flow');
@@ -265,8 +272,6 @@ console.log('── app: Flow only serves untouched questions ──');
     AppState.practiceQuestions = [];
     AppState.practiceSubmittedFlags = [];
     AppState.currentPracticeIndex = 0;
-    AppState.hardcoreDailyCount = 0;
-    AppState.hardcoreDailyDate = null;
 
     globalThis.startFlowPractice();
     ok(AppState.practiceFlowMode === 'flow', 'Flow enters when untouched questions exist');
@@ -293,8 +298,6 @@ console.log('── app: live dock toggle (hidden by default) ──');
     AppState.practiceQuestions = [];
     AppState.practiceSubmittedFlags = [];
     AppState.currentPracticeIndex = 0;
-    AppState.hardcoreDailyCount = 0;
-    AppState.hardcoreDailyDate = null;
 
     ok(AppState.flowSliderVisible === false, 'live dock preference defaults to hidden');
     ok(globalThis.__getFlowSliderState().visible === false, 'state snapshot reports hidden');

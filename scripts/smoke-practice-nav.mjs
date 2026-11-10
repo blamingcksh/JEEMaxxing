@@ -128,8 +128,6 @@ function seedBank(n, subject, chapter, baseElo, userElo) {
     AppState.currentPracticeIndex = 0;
     AppState.practiceSeconds = 0;
     AppState.practiceTimer = null;
-    AppState.hardcoreDailyCount = 0;
-    AppState.hardcoreDailyDate = null;
 }
 
 const mk = (id, qElo, extra) => ({
