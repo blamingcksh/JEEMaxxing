@@ -20,7 +20,8 @@ const MARGIN = 12; // レンズが窓の外を覗いてもよいよう、世界�
 const WORLD_HZ = 30;
 const WORLD_SLACK = 0.004; // 画面の更新の時刻は揺れる。この秒数まで足りなくても、次のコマを出す
 const BPM = 108;
-const PILL_RATIO = 3.2; // 縦 : 横
+const BEZEL_RATIO = 0.045; // 外周のガラス縁。絵をレールいっぱいまで届かせる
+const CHROMA_BOOST = 1.42;
 const READ_TO = 30;
 const TAP_TO = 62;
 const MAX_FROM = 98;
@@ -678,7 +679,7 @@ function mount(root, options = {}) {
       TONES.forEach((L, step) => {
         // 明るさの両端では、鮮やかさを控える
         const edge = 1 - 0.42 * Math.pow((L - 0.56) / 0.38, 2);
-        const lab = [L, (a * ca - b * sa) * amount * edge, (a * sa + b * ca) * amount * edge];
+        const lab = [L, (a * ca - b * sa) * amount * edge * CHROMA_BOOST, (a * sa + b * ca) * amount * edge * CHROMA_BOOST];
         const rgb = labTone(lab, L);
         const id = ramp * NT + step;
         palette[id] = rgb;
@@ -2425,7 +2426,7 @@ function mount(root, options = {}) {
   const measure = () => {
     const box = root.getBoundingClientRect();
     const fullDpr = Math.min(2, devicePixelRatio || 1);
-    const nextFullK = pickK((Math.round(box.height * fullDpr) / 1.4) * (1 - 0.068 * 2));
+    const nextFullK = pickK((Math.round(box.height * fullDpr)) * (1 - BEZEL_RATIO * 2));
     if (nextFullK !== fullK) {
       fullK = nextFullK;
       renderScale = 1;
@@ -2437,10 +2438,10 @@ function mount(root, options = {}) {
     shape.W = W;
     shape.H = H;
     shape.dpr = dpr;
-    // 丸の大きさ：根の中に、1 : 3.2 で置く
-    shape.pillH = H / 1.4;
-    shape.pillW = shape.pillH * PILL_RATIO;
-    shape.bezel = shape.pillH * 0.068;
+    // 丸はレールいっぱいに置く。絵が黒い帯に沈まず、両わきが自然に切れる
+    shape.pillH = H;
+    shape.pillW = W;
+    shape.bezel = shape.pillH * BEZEL_RATIO;
     shape.winW = shape.pillW - shape.bezel * 2;
     shape.winH = shape.pillH - shape.bezel * 2;
     // 角丸のトークンは、小さな部品のための数なので、大きさに合わせて伸ばす
