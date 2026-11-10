@@ -1523,7 +1523,7 @@ function _syncLockinIntensityUI() {
         if (wrap) wrap.classList.toggle('is-hardcore', hardcore);
         const rule = document.getElementById('lockin-intensity-rule');
         if (rule) rule.textContent = hardcore
-            ? 'Hardcore · 1.8× wins · 8/day cap — banked time pays double while you grind.'
+            ? 'HARDCORE · 1.8x wins — 8/day cap — banked time pays double while you grind.'
             : 'Soft blocks for steady hours. Drag to 98+ for Hardcore.';
         const title = document.getElementById('lockin-title');
         if (title) title.textContent = hardcore ? 'Enter the Crucible' : 'Sign the Pact';
