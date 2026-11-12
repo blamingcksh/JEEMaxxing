@@ -195,7 +195,7 @@ body.dc-active #sidebar .metro-fab,
 @media (pointer: coarse) {
     #error-list-container .error-block {
         content-visibility: auto;
-        contain-intrinsic-size: auto none auto auto 190px;
+        contain-intrinsic-size: auto 70px;
     }
 }
 
@@ -317,6 +317,9 @@ html.jmax-standalone .sidebar.collapsed {
 }
 .error-filters {
     top: calc(12px + var(--sat));
+}
+.vault-shell.vault-v2 .error-filters.emf-single {
+    top: var(--sat, 0px);
 }
 .cpcc-header {
     top: var(--sat);

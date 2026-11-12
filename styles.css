@@ -2109,204 +2109,945 @@ body {
 }
 
 /* ════════════════════════════════════════════════════════════════
-   VAULT V2 — refined & airy overhaul (overrides the chunky V1 above).
-   Single-column topbar + slim toolbar + light cards. All JS/QA ids
-   and classes are unchanged — this is pure presentation.
+   VAULT — Radical De-Cluttered Linear List Overhaul (#111315)
+   Zero nested boxes, zero-border ghost filter tabs, borderless chapter
+   sections, flush hairline rows with 44x44 dark thumb + 6px dot +
+   1-line title + muted plain subtext + hover-only right actions.
    ════════════════════════════════════════════════════════════════ */
-.vault-shell.vault-v2 { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+#view-errors.active {
+    animation: none;
+    will-change: auto;
+}
+/* Shift top breathing room inside .vault-shell so sticky filters dock flush at top:0 with zero peeking row gap */
+.app-container > main.main-content:has(#view-errors.active) {
+    padding-top: var(--sat, 0px) !important;
+}
+.vault-shell.vault-v2 {
+    padding-top: 20px;
+    --v-bg: #111315;
+    --v-hover: rgba(255, 255, 255, 0.03);
+    --v-hover-active: rgba(255, 255, 255, 0.08);
+    --v-hairline: rgba(255, 255, 255, 0.05);
+    --v-divider: rgba(255, 255, 255, 0.08);
+    --v-text: #f4f4f5;
+    --v-text-row: #e4e4e7;
+    --v-text-dim: #a1a1aa;
+    --v-text-muted: #71717a;
+    --v-sans: 'Inter', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --v-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    align-items: stretch;
+    font-family: var(--v-sans);
+    color: var(--v-text);
+}
 
-/* ── Topbar (replaces the heavy 238px rail panel) ── */
+/* ── Top Header (borderless flush rail) ── */
 .vault-shell.vault-v2 .vault-rail.vault-topbar {
     position: static;
-    display: flex; flex-direction: column; gap: 10px;
-    padding: 0; background: none; border: none; border-radius: 0; box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 2px 0 12px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0;
+    box-shadow: none;
 }
-.vault-shell.vault-v2 .rail-label, .vault-shell.vault-v2 .rail-block { display: none; }
-.vault-shell.vault-v2 .vt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.vault-shell.vault-v2 .vt-row-main { justify-content: space-between; }
-.vault-shell.vault-v2 .vt-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.vault-shell.vault-v2 .vt-title .kicker { font-size: 10px; letter-spacing: 2px; opacity: 0.7; }
-.vault-shell.vault-v2 .vt-title .box-title { font-size: 20px; letter-spacing: 0.2px; margin: 0; }
-.vault-shell.vault-v2 .stage-head { display: none; }
-
-/* today chip — one quiet inline pill, not a panel */
-.vault-shell.vault-v2 .rail-today.vt-today {
-    flex-direction: row; align-items: center; gap: 8px;
-    padding: 6px 12px 6px 14px; border-radius: 999px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--line);
+.vault-shell.vault-v2 .rail-label,
+.vault-shell.vault-v2 .rail-block,
+.vault-shell.vault-v2 .stage-head,
+.vault-shell.vault-v2 .vt-title .kicker {
+    display: none;
 }
-.vault-shell.vault-v2 .rail-today-num { font-size: 19px; }
-.vault-shell.vault-v2 .rail-today-cap { font-size: 9px; letter-spacing: 1.4px; }
-.vault-shell.vault-v2 .rail-today-headline { display: contents; }
-.vault-shell.vault-v2 .vt-today-sep { width: 1px; align-self: stretch; background: var(--line-strong); }
-.vault-shell.vault-v2 .rail-today-split { gap: 4px; }
-.vault-shell.vault-v2 .rail-today-subj { padding: 3px 8px 3px 6px; background: transparent; border-color: transparent; }
-.vault-shell.vault-v2 .rail-today-subj b { font-size: 11px; }
+.vault-shell.vault-v2 .vt-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.vault-shell.vault-v2 .vt-row-main {
+    justify-content: space-between;
+    gap: 12px;
+}
+.vault-shell.vault-v2 .vt-brand-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+.vault-shell.vault-v2 .vt-title {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+.vault-shell.vault-v2 .vt-title .box-title {
+    font-family: var(--v-sans);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--v-text);
+    margin: 0;
+    white-space: nowrap;
+}
+.vault-shell.vault-v2 .vt-command-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
 
-/* actions cluster — compact, one line */
-.vault-shell.vault-v2 .rail-actions.vt-actions { flex-direction: row; align-items: center; gap: 8px; margin: 0; }
-.vault-shell.vault-v2 .vt-actions .daily-queue-master-btn { padding: 7px 12px; font-size: 11px; border-radius: 999px; }
-.vault-shell.vault-v2 .vt-actions .rail-btn { width: auto; padding: 7px 13px; font-size: 11.5px; border-radius: 999px; }
-.vault-shell.vault-v2 .vt-row-sub { justify-content: space-between; }
-.vault-shell.vault-v2 .daily-queue-badge { font-size: 9.5px; padding: 3px 10px; }
-
-/* subject tabs — light segmented row, not big folder cards */
+/* Subject Switcher: zero-border ghost tabs */
 .vault-shell.vault-v2 .vault-subjects {
-    flex-direction: row; gap: 6px; flex: 1; flex-wrap: nowrap;
-    overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    overflow-x: auto;
+    scrollbar-width: none;
+    max-width: 100%;
 }
 .vault-shell.vault-v2 .vault-subjects::-webkit-scrollbar { display: none; }
 .vault-shell.vault-v2 .subject-folder {
-    flex: 0 0 auto; gap: 7px; padding: 6px 12px 6px 7px; border-radius: 999px;
-    font-size: 12px; font-weight: 600;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--line);
-    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--v-text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background 0.12s ease, color 0.12s ease;
 }
 .vault-shell.vault-v2 .subject-folder::before { display: none; }
-.vault-shell.vault-v2 .subject-folder:hover { transform: none; background: rgba(255, 255, 255, 0.055); }
-.vault-shell.vault-v2 .subject-folder.active { background: rgba(255, 255, 255, 0.06); border-color: var(--folder-accent); color: #fff; }
-.vault-shell.vault-v2 .folder-icon { width: 24px; height: 24px; font-size: 13px; border-radius: 999px; border: none; background: rgba(255, 255, 255, 0.05); }
-.vault-shell.vault-v2 .subject-folder:hover .folder-icon { transform: none; }
-.vault-shell.vault-v2 .folder-count { font-size: 10.5px; padding: 3px 8px; }
-.vault-shell.vault-v2 .subject-folder.active .folder-count { background: rgba(255, 255, 255, 0.08); }
-
-/* ── Slim single-row toolbar ── */
-.vault-shell.vault-v2 .error-matrix-container { gap: 12px; }
-.vault-shell.vault-v2 #emf-scroll-sentinel { margin-top: -12px; }
-.vault-shell.vault-v2 .error-filters {
-    gap: 0; padding: 10px 12px; border-radius: 14px;
-    background: rgba(11, 14, 20, 0.9);
-    box-shadow: 0 10px 24px -20px rgba(0, 0, 0, 0.9);
+.vault-shell.vault-v2 .subject-folder:hover {
+    transform: none;
+    background: rgba(255, 255, 255, 0.04);
+    color: #d4d4d8;
 }
-.vault-shell.vault-v2 .error-filters.emf-docked { padding: 8px 10px; border-radius: 12px; gap: 0; }
+.vault-shell.vault-v2 .subject-folder.active {
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    color: var(--v-text);
+}
+.vault-shell.vault-v2 .subject-folder .folder-icon {
+    width: 15px;
+    height: 15px;
+    font-size: 12px;
+    border-radius: 0;
+    border: none;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.vault-shell.vault-v2 .subject-folder:hover .folder-icon { transform: none; }
+.vault-shell.vault-v2 .folder-count {
+    font-family: var(--v-mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    color: var(--v-text-muted);
+}
+.vault-shell.vault-v2 .subject-folder.active .folder-count {
+    background: transparent;
+    color: var(--v-text-dim);
+}
+
+/* Header Action Buttons */
+.vault-shell.vault-v2 .rail-actions.vt-actions {
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+}
+.vault-shell.vault-v2 .vt-actions .daily-queue-master-btn,
+.vault-shell.vault-v2 .vt-actions .rail-btn {
+    height: 30px;
+    padding: 0 11px;
+    border-radius: 6px;
+    font-family: var(--v-sans);
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.vault-shell.vault-v2 .vt-actions .vault-cta-primary {
+    background: #f59e0b;
+    color: #111315;
+    border: none;
+    font-weight: 600;
+    margin-right: 4px;
+}
+.vault-shell.vault-v2 .vt-actions .vault-cta-primary:hover {
+    background: #fbbf24;
+    color: #090a0c;
+}
+.vault-shell.vault-v2 .vt-actions .vault-cta-primary.active {
+    background: #ef4444;
+    color: #fff;
+}
+.vault-shell.vault-v2 .vt-actions .fix-queue-count {
+    font-family: var(--v-mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    font-weight: 600;
+    opacity: 0.9;
+}
+.vault-shell.vault-v2 .vt-actions .vault-btn-ghost,
+.vault-shell.vault-v2 .vt-actions #bounty-rail-btn {
+    background: transparent;
+    border: none;
+    color: var(--v-text-dim);
+    width: auto;
+}
+.vault-shell.vault-v2 .vt-actions .vault-btn-ghost:hover,
+.vault-shell.vault-v2 .vt-actions #bounty-rail-btn:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--v-text);
+}
+.vault-shell.vault-v2 .daily-queue-badge {
+    align-self: flex-start;
+    font-family: var(--v-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.03em;
+    padding: 2px 0;
+    color: var(--v-text-muted);
+}
+
+/* ── Sticky Flat Ghost-Tab Filter Bar ── */
+.vault-shell.vault-v2 .error-matrix-container { gap: 0; }
+.vault-shell.vault-v2 #emf-scroll-sentinel { margin-top: 0; height: 1px; }
+.vault-shell.vault-v2 .error-filters.emf-single {
+    position: sticky;
+    top: var(--sat, 0px);
+    z-index: 30;
+    min-height: 44px;
+    height: auto;
+    box-sizing: border-box;
+    padding: 7px 0;
+    border-radius: 0;
+    background: rgba(17, 19, 21, 0.96);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: none;
+    display: flex;
+    align-items: center;
+}
+.vault-shell.vault-v2 .error-filters.emf-single.emf-docked {
+    border-bottom-color: rgba(255, 255, 255, 0.11);
+    box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.85);
+}
 .vault-shell.vault-v2 .error-filters.emf-docked .emf-row:not(.emf-row-search) { display: none; }
-/* V2 keeps ONE row visible even when docked — undo the V1 collapse
-   (specificity must beat the `:not()` hide rule above). */
 .vault-shell.vault-v2 .error-filters.emf-docked .emf-row.emf-row-single { display: flex; }
 .vault-shell.vault-v2 .error-filters.emf-docked .emf-search-wrap::after { display: none; }
-.vault-shell.vault-v2 .emf-row-single { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.vault-shell.vault-v2 .emf-row-label { display: none; }
-.vault-shell.vault-v2 .emf-search-wrap { flex: 1 1 200px; min-width: 170px; }
-.vault-shell.vault-v2 .matrix-search { padding: 9px 36px 9px 36px; font-size: 12.5px; border-radius: 10px; }
-.vault-shell.vault-v2 .emf-search-icon { left: 12px; font-size: 13px; }
-.vault-shell.vault-v2 .emf-sep { width: 1px; align-self: stretch; min-height: 22px; background: var(--line-strong); }
-.vault-shell.vault-v2 .emf-pill-group { gap: 5px; }
-.vault-shell.vault-v2 .emf-pill-group .matrix-pill::before { display: none; }
-/* quiet pills — no neon glow */
-.vault-shell.vault-v2 .matrix-pill {
-    padding: 6px 11px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.2px; gap: 5px;
-    background: transparent; box-shadow: none;
-}
-.vault-shell.vault-v2 .matrix-pill:hover { transform: none; box-shadow: none; border-color: var(--line-strong); background: rgba(255, 255, 255, 0.05); }
-.vault-shell.vault-v2 .matrix-pill:active { transform: scale(0.97); }
-.vault-shell.vault-v2 .matrix-pill.active { box-shadow: none; }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="all"]         { color: #fff;    background: rgba(61, 220, 255, 0.10); border-color: rgba(61, 220, 255, 0.45); }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="ready"]       { color: #4ade80; background: rgba(34, 197, 94, 0.10);  border-color: rgba(34, 197, 94, 0.45); }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="due_soon"]    { color: #fbbf24; background: rgba(234, 179, 8, 0.10);  border-color: rgba(234, 179, 8, 0.45); }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="scheduled"]   { color: #93c5fd; background: rgba(59, 130, 246, 0.10); border-color: rgba(59, 130, 246, 0.45); }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="mastered"]    { color: #c4b5fd; background: rgba(139, 92, 246, 0.12); border-color: rgba(139, 92, 246, 0.5); }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="calculation"] { color: #fde047; background: rgba(234, 179, 8, 0.10);  border-color: rgba(234, 179, 8, 0.45); }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="conceptual"]  { color: #fca5a5; background: rgba(248, 113, 113, 0.10); border-color: rgba(248, 113, 113, 0.45); }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="misread"]     { color: #67e8f9; background: rgba(34, 211, 238, 0.10); border-color: rgba(34, 211, 238, 0.45); }
-/* meta lives inline at the end of the bar */
-.vault-shell.vault-v2 .matrix-meta.emf-meta { margin: 0; padding: 0; min-height: 0; margin-left: auto; font-size: 10.5px; animation: none; }
-.vault-shell.vault-v2 .matrix-meta-clear { padding: 3px 10px; font-size: 9px; }
 
-/* ── Light airy cards: ONE accent (status), no wash, ghost stats ── */
-.vault-shell.vault-v2 .error-list { gap: 10px; }
-.vault-shell.vault-v2 .em-group-head { margin: 14px 0 2px; gap: 9px; padding: 0 2px; }
-.vault-shell.vault-v2 .em-group-head:first-child { margin-top: 2px; }
-.vault-shell.vault-v2 .emg-dot { width: 7px; height: 7px; }
-.vault-shell.vault-v2 .em-group--ready .emg-dot,
-.vault-shell.vault-v2 .em-group--due_soon .emg-dot,
-.vault-shell.vault-v2 .em-group--scheduled .emg-dot,
-.vault-shell.vault-v2 .em-group--mastered .emg-dot { animation: none; box-shadow: none; }
-.vault-shell.vault-v2 .emg-label { font-size: 11px; letter-spacing: 1.3px; }
-.vault-shell.vault-v2 .emg-count { font-size: 10px; min-width: 22px; padding: 3px 7px; }
-.vault-shell.vault-v2 .emg-blurb { font-size: 10px; }
-.vault-shell.vault-v2 .error-block {
-    --rail-type: transparent;
-    grid-template-columns: 120px 1fr auto; gap: 16px;
-    padding: 13px 15px 13px 17px; border-radius: 14px;
-    background: rgba(15, 18, 26, 0.72);
-    box-shadow: none;
-    animation-name: emCardInV2;
+.vault-shell.vault-v2 .emf-row-single {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
 }
-.vault-shell.vault-v2 .error-block:nth-child(1),
-.vault-shell.vault-v2 .error-block:nth-child(2),
-.vault-shell.vault-v2 .error-block:nth-child(3),
-.vault-shell.vault-v2 .error-block:nth-child(4),
-.vault-shell.vault-v2 .error-block:nth-child(n+5) { animation-delay: 0s; }
-@keyframes emCardInV2 { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-/* status rail — the single accent */
-.vault-shell.vault-v2 .error-block::before { width: 2px; box-shadow: none; }
-.vault-shell.vault-v2 .error-block[data-sr-status="ready"]::before { background: #22c55e; }
-.vault-shell.vault-v2 .error-block[data-sr-status="due_soon"]::before { background: #eab308; }
-.vault-shell.vault-v2 .error-block[data-sr-status="scheduled"]::before { background: #60a5fa; }
-.vault-shell.vault-v2 .error-block[data-sr-status="mastered"]::before { background: #8b5cf6; }
-/* kill the corner wash */
+.vault-shell.vault-v2 .emf-row-label { display: none; }
+.vault-shell.vault-v2 .emf-search-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1 1 190px;
+    min-width: 150px;
+    max-width: 310px;
+}
+.vault-shell.vault-v2 .emf-search-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    background: transparent;
+    border: none;
+}
+.vault-shell.vault-v2 .emf-search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--v-text-muted);
+    pointer-events: none;
+    display: inline-flex;
+}
+.vault-shell.vault-v2 .matrix-search {
+    width: 100%;
+    height: 30px;
+    padding: 0 26px 0 30px;
+    font-family: var(--v-sans);
+    font-size: 12.5px;
+    color: var(--v-text);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.12s ease, background 0.12s ease;
+}
+.vault-shell.vault-v2 .matrix-search::placeholder { color: var(--v-text-muted); }
+.vault-shell.vault-v2 .matrix-search:focus {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+.vault-shell.vault-v2 .emf-search-clear {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 0;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--v-text-dim);
+    font-size: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.vault-shell.vault-v2 .emf-search-clear[hidden] { display: none; }
+
+/* Single subtle grouping icon button next to Search */
+.vault-shell.vault-v2 .vault-view-icon-btn {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--v-text-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.vault-shell.vault-v2 .vault-view-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--v-text);
+}
+.vault-shell.vault-v2 .vault-view-icon-btn.is-active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--v-text);
+}
+.vault-shell.vault-v2 .vault-view-icon-btn:focus-visible {
+    outline: none;
+    background: rgba(255, 255, 255, 0.10);
+    color: var(--v-text);
+}
+.vault-shell.vault-v2 .vault-view-icon-btn:disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.vault-shell.vault-v2 .emf-sep {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.10);
+    flex-shrink: 0;
+}
+
+/* Zero-Border Ghost Filter Tabs */
+.vault-shell.vault-v2 .emf-pill-group,
+.vault-shell.vault-v2 .emf-segmented {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    height: auto;
+}
+.vault-shell.vault-v2 .emf-pill-group .matrix-pill::before { display: none; }
+.vault-shell.vault-v2 .matrix-pill {
+    height: auto;
+    padding: 5px 9px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--v-text-muted);
+    font-family: var(--v-sans);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.vault-shell.vault-v2 .matrix-pill:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: #d4d4d8;
+    transform: none;
+    box-shadow: none;
+}
+.vault-shell.vault-v2 .matrix-pill:active { transform: scale(0.97); }
+.vault-shell.vault-v2 .matrix-pill.active {
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    color: var(--v-text);
+    box-shadow: none;
+}
+
+.vault-shell.vault-v2 .matrix-meta.emf-meta {
+    margin: 0 0 0 auto;
+    padding: 0;
+    min-height: 0;
+    font-family: var(--v-mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    color: var(--v-text-dim);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    animation: none;
+}
+.vault-shell.vault-v2 .matrix-meta.emf-meta[hidden] { display: none; }
+
+/* ── Borderless Chapter Sections & Flush Hairline List ── */
+.vault-shell.vault-v2 .error-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.vault-shell.vault-v2 .vault-chap-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 12px;
+    border: none;
+    background: transparent;
+}
+.vault-shell.vault-v2 .vault-chap-group:first-child {
+    margin-top: 4px;
+}
+.vault-shell.vault-v2 .vault-chap-group[hidden] { display: none !important; }
+.vault-shell.vault-v2 .vault-chap-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px 8px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0;
+}
+.vault-shell.vault-v2 .vault-chap-toggle {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--v-text);
+    text-align: left;
+    cursor: pointer;
+}
+.vault-shell.vault-v2 .vch-chev {
+    color: var(--v-text-muted);
+    flex-shrink: 0;
+    transition: transform 0.12s ease, color 0.12s ease;
+}
+.vault-shell.vault-v2 .vault-chap-toggle:hover .vch-chev {
+    color: var(--v-text);
+}
+.vault-shell.vault-v2 .vault-chap-group.is-collapsed .vch-chev {
+    transform: rotate(-90deg);
+}
+.vault-shell.vault-v2 .vch-title {
+    font-family: var(--v-sans);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--v-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.vault-shell.vault-v2 .vch-count {
+    font-family: var(--v-mono);
+    font-size: 12.5px;
+    font-weight: 400;
+    letter-spacing: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--v-text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.vault-shell.vault-v2 .vault-chap-practice-btn {
+    height: auto;
+    padding: 4px 8px;
+    border-radius: 5px;
+    background: transparent;
+    border: none;
+    color: var(--v-text-muted);
+    font-family: var(--v-sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 0.12s ease, background 0.12s ease;
+}
+.vault-shell.vault-v2 .vault-chap-practice-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--v-text);
+}
+
+.vault-shell.vault-v2 .vault-chap-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    border: none;
+}
+.vault-shell.vault-v2 .vault-chap-group.is-collapsed .vault-chap-body {
+    display: none;
+}
+
+/* Status Dividers in Flat List Mode */
+.vault-shell.vault-v2 .em-group-head {
+    margin: 14px 0 0;
+    padding: 8px 16px;
+    gap: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.vault-shell.vault-v2 .em-group-head:first-child { margin-top: 4px; }
+.vault-shell.vault-v2 .emg-rule { display: none; }
+.vault-shell.vault-v2 .emg-dot { width: 6px; height: 6px; box-shadow: none !important; animation: none !important; }
+.vault-shell.vault-v2 .emg-label { font-family: var(--v-sans); font-size: 13px; font-weight: 600; color: var(--v-text); text-transform: none; letter-spacing: -0.01em; }
+.vault-shell.vault-v2 .emg-count { font-family: var(--v-mono); font-size: 12px; background: transparent; border: none; padding: 0; min-width: 0; color: var(--v-text-muted); }
+.vault-shell.vault-v2 .emg-blurb { display: none; }
+
+/* ── Ultra-Clean Flush Hairline Row Anatomy ── */
+.vault-shell.vault-v2 .error-block {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 12px 16px;
+    margin: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--v-hairline);
+    box-shadow: none;
+    animation: none;
+    transition: background 0.12s ease;
+    outline: none;
+    cursor: pointer;
+}
+.vault-shell.vault-v2 .error-block::before,
 .vault-shell.vault-v2 .error-block::after { display: none; }
-.vault-shell.vault-v2 .error-block:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -18px rgba(0, 0, 0, 0.9); border-color: var(--line-strong); }
-/* thumbnail */
-.vault-shell.vault-v2 .error-img-box { width: 120px; height: 80px; border-radius: 10px; }
-.vault-shell.vault-v2 .error-img-box .sr-due-badge { top: 5px; left: 5px; font-size: 8.5px; padding: 2px 8px; letter-spacing: 0.5px; }
-/* details */
-.vault-shell.vault-v2 .error-details { gap: 7px; }
-.vault-shell.vault-v2 .error-chapter { font-size: 15px; }
-.vault-shell.vault-v2 .error-tag-row { gap: 6px; }
-.vault-shell.vault-v2 .error-tag { font-size: 9px; padding: 2px 9px; letter-spacing: 0.6px; }
-.vault-shell.vault-v2 .sr-due-badge { font-size: 9px; padding: 2px 9px; letter-spacing: 0.5px; }
-.vault-shell.vault-v2 .sr-due--ready::before { width: 5px; height: 5px; animation: none; }
-/* ghost stats — text pairs, not boxes */
-.vault-shell.vault-v2 .sr-stats-row { gap: 12px; }
-.vault-shell.vault-v2 .sr-stat { padding: 0; background: none; border: none; gap: 4px; }
-.vault-shell.vault-v2 .sr-stat:first-child { padding: 0; border: none; }
-.vault-shell.vault-v2 .sr-stat b { font-size: 12px; }
-.vault-shell.vault-v2 .sr-stat i { font-size: 8px; letter-spacing: 1px; }
-/* dots */
-.vault-shell.vault-v2 .sr-dots-label { font-size: 8px; }
-.vault-shell.vault-v2 .sr-attempt-dot { width: 9px; height: 9px; border-radius: 3px; }
-.vault-shell.vault-v2 .sr-attempt-dot:hover { transform: scale(1.2); }
-/* actions — compact CTA, icon-quiet secondary row */
-.vault-shell.vault-v2 .sr-card-actions { gap: 6px; }
-.vault-shell.vault-v2 .sr-practice-btn { padding: 8px 9px 8px 15px; font-size: 11px; gap: 7px; box-shadow: 0 3px 12px -6px rgba(255, 122, 26, 0.6); }
-.vault-shell.vault-v2 .sr-practice-btn:hover { box-shadow: 0 5px 16px -6px rgba(255, 122, 26, 0.65); }
-.vault-shell.vault-v2 .sr-btn-arrow { width: 19px; height: 19px; font-size: 11px; }
-.vault-shell.vault-v2 .sr-history-toggle { font-size: 10px; padding: 3px 6px; }
-.vault-shell.vault-v2 .delete-btn { width: 26px; height: 26px; font-size: 12px; }
-/* history + queue + empty states */
-.vault-shell.vault-v2 .sr-expanded-history { padding: 10px 2px 0; max-height: 240px; }
-.vault-shell.vault-v2 .daily-queue-subject-divider { padding: 10px 2px 8px; margin: 6px 0 0; font-size: 12px; }
-.vault-shell.vault-v2 .dqs-track { height: 4px; }
-.vault-shell.vault-v2 .em-empty { padding: 40px 20px; border-radius: 14px; gap: 8px; }
-.vault-shell.vault-v2 .em-empty-icon { font-size: 32px; }
+.vault-shell.vault-v2 .error-block.bounty-active-error {
+    background: rgba(245, 158, 11, 0.04);
+}
+@media (hover: hover) {
+    .vault-shell.vault-v2 .error-block:hover {
+        transform: none;
+        background: var(--v-hover);
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        box-shadow: none;
+    }
+}
+/* Crisp keyboard navigation highlight with zero transition delay */
+.vault-shell.vault-v2 .error-block.is-kb-focused,
+.vault-shell.vault-v2 .error-block:focus-visible {
+    transition: none;
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 2px 0 0 #e5c07b;
+}
+
+/* Row Element 1: 6px Semantic Dot + 44x44 Dark Thumbnail */
+.vault-shell.vault-v2 .vrow-visual {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+.vault-shell.vault-v2 .vrow-type-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.vault-shell.vault-v2 .vrow-type-dot--calculation { background: #f59e0b; }
+.vault-shell.vault-v2 .vrow-type-dot--conceptual  { background: #ef4444; }
+.vault-shell.vault-v2 .vrow-type-dot--misread     { background: #8b5cf6; }
+
+.vault-shell.vault-v2 .error-img-box {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: #0f1114;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.vault-shell.vault-v2 .error-img-box img.lazy-error-img {
+    width: 100%;
+    height: 100%;
+    padding: 2px;
+    box-sizing: border-box;
+    object-fit: contain;
+    display: block;
+    cursor: zoom-in;
+    transition: opacity 0.14s ease;
+}
+.vault-shell.vault-v2 .error-img-box img.lazy-error-img[data-loaded="1"] {
+    filter: invert(0.92) hue-rotate(180deg) contrast(1.05);
+    opacity: 0.85;
+}
+.vault-shell.vault-v2 .error-img-box.is-raw-img img.lazy-error-img[data-loaded="1"] {
+    filter: none;
+    opacity: 1;
+}
+.vault-shell.vault-v2 .error-block:hover .error-img-box img.lazy-error-img[data-loaded="1"] {
+    opacity: 1;
+    transform: none;
+}
+.vault-shell.vault-v2 .vimg-raw-btn {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    padding: 0 3px;
+    border-radius: 3px;
+    border: none;
+    background: rgba(17, 19, 21, 0.9);
+    color: #a1a1aa;
+    font-family: var(--v-mono);
+    font-size: 8px;
+    line-height: 1.3;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+.vault-shell.vault-v2 .error-img-box:hover .vimg-raw-btn,
+.vault-shell.vault-v2 .error-img-box.is-raw-img .vimg-raw-btn {
+    opacity: 1;
+}
+.vault-shell.vault-v2 .error-img-box.is-raw-img .vimg-raw-btn {
+    color: #fbbf24;
+}
+.vault-shell.vault-v2 .error-img-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--v-text-muted);
+    background: rgba(255, 255, 255, 0.02);
+}
+.vault-shell.vault-v2 .error-img-placeholder .error-img-svg {
+    width: 17px;
+    height: 17px;
+    opacity: 0.65;
+}
+
+/* Row Element 2: Clean 2-line Center Text Stack */
+.vault-shell.vault-v2 .error-details {
+    flex: 1 1 0%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.vault-shell.vault-v2 .sr-card-line1 {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+.vault-shell.vault-v2 .error-chapter {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+.vault-shell.vault-v2 .sr-card-title {
+    font-family: var(--v-sans);
+    font-size: 13.5px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--v-text-row);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    width: 100%;
+}
+.vault-shell.vault-v2 .sr-card-title--fallback {
+    color: var(--v-text-dim);
+    font-weight: 400;
+}
+.vault-shell.vault-v2 .sr-card-line2 {
+    font-family: var(--v-sans);
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--v-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.vault-shell.vault-v2 .vrow-dot-sep {
+    opacity: 0.55;
+}
+.vault-shell.vault-v2 .vrow-sub-chap {
+    color: var(--v-text-dim);
+}
+.vault-shell.vault-v2 .vrow-sub-tags {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.vault-shell.vault-v2 .vrow-tag,
+.vault-shell.vault-v2 .vrow-tag.sr-card-usertag {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: var(--v-text-muted);
+    cursor: pointer;
+    transition: color 0.12s ease;
+}
+.vault-shell.vault-v2 .vrow-tag:hover,
+.vault-shell.vault-v2 .vrow-tag.sr-card-usertag:hover {
+    background: transparent !important;
+    color: #d4d4d8;
+}
+.vault-shell.vault-v2 .vrow-sub-bounty {
+    color: #fbbf24;
+    font-weight: 500;
+}
+
+/* Row Element 3: Hover-Only Right Actions */
+.vault-shell.vault-v2 .sr-card-actions {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+}
+.vault-shell.vault-v2 .sr-card-actions-sub {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+.vault-shell.vault-v2 .sr-history-toggle {
+    height: 28px;
+    padding: 0 6px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--v-text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.vault-shell.vault-v2 .sr-history-toggle:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--v-text);
+}
+.vault-shell.vault-v2 .delete-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--v-text-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.vault-shell.vault-v2 .delete-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+}
+.vault-shell.vault-v2 .sr-practice-btn {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--v-text-dim);
+    font-family: var(--v-sans);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    text-transform: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    box-shadow: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.vault-shell.vault-v2 .sr-btn-arrow {
+    width: auto;
+    height: auto;
+    background: none;
+    font-size: 12px;
+    line-height: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+    .vault-shell.vault-v2 .sr-card-actions-sub {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.14s ease;
+    }
+    .vault-shell.vault-v2 .error-block:hover .sr-card-actions-sub,
+    .vault-shell.vault-v2 .error-block.is-kb-focused .sr-card-actions-sub,
+    .vault-shell.vault-v2 .error-block:focus-within .sr-card-actions-sub {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .vault-shell.vault-v2 .error-block:hover .sr-practice-btn,
+    .vault-shell.vault-v2 .error-block.is-kb-focused .sr-practice-btn {
+        background: rgba(255, 255, 255, 0.10);
+        color: var(--v-text);
+    }
+    .vault-shell.vault-v2 .sr-practice-btn:hover {
+        transform: none;
+        box-shadow: none;
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+    }
+}
+
+/* On-Demand History & Raw SRS Telemetry Drawer */
+.vault-shell.vault-v2 .sr-expanded-history {
+    flex: 0 0 100%;
+    width: 100%;
+    margin-top: 6px;
+    padding: 10px 4px 2px 60px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    max-height: 240px;
+    overflow-y: auto;
+}
+.vault-shell.vault-v2 .sr-history-srs-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    font-family: var(--v-mono);
+    font-size: 11px;
+    color: var(--v-text-dim);
+}
+.vault-shell.vault-v2 .sr-history-srs-strip b { color: var(--v-text); font-weight: 600; }
+.vault-shell.vault-v2 .sr-history-empty {
+    font-family: var(--v-mono);
+    font-size: 11px;
+    color: var(--v-text-muted);
+    padding: 2px 0 6px;
+}
+
+/* Daily Queue + Empty States */
+.vault-shell.vault-v2 .daily-queue-subject-divider { padding: 10px 16px; margin: 4px 0 0; font-size: 11px; }
+.vault-shell.vault-v2 .dqs-track { height: 3px; }
+.vault-shell.vault-v2 .em-empty { padding: 40px 20px; border-radius: 0; gap: 8px; background: transparent; border: none; border-top: 1px solid rgba(255, 255, 255, 0.06); }
 .vault-shell.vault-v2 .em-empty-title { font-size: 15px; }
-/* queue mode — tabs recede, active queue button leads */
 .vault-shell.vault-v2.queue-active .vault-subjects { opacity: 0.45; }
 .vault-shell.vault-v2.queue-active .vault-subjects .subject-folder.active { opacity: 1; }
 
-/* ── V2 responsive ── */
+/* ── Responsive Breakpoints (Clean Wrapping, Zero Legacy Bloat) ── */
 @media (max-width: 1100px) {
-    .vault-shell.vault-v2 .vault-rail.vault-topbar { position: static; }
-    .vault-shell.vault-v2 .vt-row-main { align-items: flex-start; }
-    .vault-shell.vault-v2 .rail-today.vt-today { order: 3; flex: 1 1 100%; justify-content: flex-start; }
+    .vault-shell.vault-v2 .emf-row.emf-row-single { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px 8px; }
+    .vault-shell.vault-v2 .emf-search-group { flex: 1 1 220px; max-width: none; }
+    .vault-shell.vault-v2 .emf-sep { display: none; }
 }
 @media (max-width: 900px) {
-    .vault-shell.vault-v2 .error-block { grid-template-columns: 96px 1fr; gap: 12px; }
-    .vault-shell.vault-v2 .error-img-box { width: 96px; height: 70px; }
-    .vault-shell.vault-v2 .sr-card-actions { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: space-between; }
-    .vault-shell.vault-v2 .emf-sep { display: none; }
-    .vault-shell.vault-v2 .matrix-meta.emf-meta { margin-left: 0; flex: 1 1 100%; justify-content: flex-start; }
+    .vault-shell.vault-v2 .vt-command-right { margin-left: 0; width: 100%; justify-content: flex-start; }
+    .vault-shell.vault-v2 .emf-row.emf-row-single { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; }
+    .vault-shell.vault-v2 .emf-search-group { flex: 1 1 100%; max-width: none; }
+    .vault-shell.vault-v2 .emf-search-wrap { flex: 1 1 auto; height: 30px; max-width: none; margin-left: 0; }
+    .vault-shell.vault-v2 .error-block { display: flex; flex-wrap: wrap; align-items: center; padding: 11px 12px; gap: 10px 12px; }
+    .vault-shell.vault-v2 .error-img-box { width: 44px; height: 44px; max-height: 44px; }
+    .vault-shell.vault-v2 .sr-card-actions { width: auto; flex-direction: row; align-items: center; justify-content: flex-end; }
+    .vault-shell.vault-v2 .vault-chap-head { padding: 10px 12px 8px; }
 }
-@media (max-width: 560px) {
-    .vault-shell.vault-v2 .error-block { grid-template-columns: 1fr; padding: 12px 12px 12px 15px; }
-    .vault-shell.vault-v2 .error-img-box { width: 100%; height: 110px; }
-    .vault-shell.vault-v2 .vt-actions { width: 100%; }
-    .vault-shell.vault-v2 .vt-actions .rail-btn,
-    .vault-shell.vault-v2 .vt-actions .daily-queue-master-btn { flex: 1; text-align: center; }
-    .vault-shell.vault-v2 .emg-blurb { display: none; }
+@media (max-width: 640px) {
+    .vault-shell.vault-v2 { padding-top: 12px; }
+    .vault-shell.vault-v2 .vt-brand-group { width: 100%; flex-direction: column; align-items: flex-start; gap: 8px; }
+    .vault-shell.vault-v2 .vault-subjects { flex: none; width: 100%; display: flex; flex-wrap: nowrap; gap: 4px; }
+    .vault-shell.vault-v2 .subject-folder { padding: 5px 10px; flex: 0 0 auto; }
+    .vault-shell.vault-v2 .vt-actions { width: 100%; flex-wrap: wrap; gap: 6px; }
+    .vault-shell.vault-v2 .vt-actions .daily-queue-master-btn { flex: 1 1 100%; width: 100%; margin-right: 0; }
+    .vault-shell.vault-v2 .vt-actions .rail-btn { flex: 1 1 0%; justify-content: center; background: transparent; border: none; }
+    .vault-shell.vault-v2 .emf-pill-group { flex-wrap: wrap; max-width: 100%; }
+    .vault-shell.vault-v2 .error-block { padding: 10px 8px; gap: 8px 10px; }
+    .vault-shell.vault-v2 .sr-card-actions { width: auto; flex: 0 0 auto; margin-left: auto; justify-content: flex-end; gap: 4px; padding-left: 0; }
+    .vault-shell.vault-v2 .sr-card-actions-sub { display: none; }
+    .vault-shell.vault-v2 .error-block.is-kb-focused .sr-card-actions-sub,
+    .vault-shell.vault-v2 .error-block:focus-within .sr-card-actions-sub { display: inline-flex; opacity: 1; pointer-events: auto; }
+    .vault-shell.vault-v2 .sr-expanded-history { padding-left: 8px; }
 }
 
 /* ── Respect reduced-motion preferences ── */
@@ -2321,7 +3062,6 @@ body {
     .subject-folder:hover, .subject-folder.active,
     .error-block:hover, .matrix-pill:hover, .sr-practice-btn:hover { transform: none; }
 }
-
 /* ════════════════════════════════════════════════════════════════════════
    SR PRACTICE DRAWER (matrix.js overlay)
    ════════════════════════════════════════════════════════════════════════ */
@@ -10957,12 +11697,12 @@ html[data-mode="dusk"] .loading-overlay { background: rgba(28, 30, 48, 0.62) !im
    ════════════════════════════════════════════════════════════════════════ */
 
 /* ── Vault: error cards on the token scale ── */
-.error-block {
+.vault-shell:not(.vault-v2) .error-block {
     border-radius: var(--r-xl) !important;
     padding: var(--sp-4) var(--sp-5) var(--sp-4) calc(var(--sp-5) + 4px) !important;
     gap: var(--sp-5) !important;
 }
-.error-block:hover { box-shadow: var(--e-2) !important; }
+.vault-shell:not(.vault-v2) .error-block:hover { box-shadow: var(--e-2) !important; }
 .bounty-btn { border-radius: var(--r-full); transition: background var(--t-fast) ease, transform var(--t-fast) var(--ease); }
 .bounty-btn:hover { background: rgba(255, 178, 36, 0.22); transform: translateY(-1px); }
 
@@ -11686,29 +12426,7 @@ details.rp-advanced summary { cursor:pointer; color:var(--text-muted); font-size
 details.mr-autopsy summary { cursor:pointer; font-size:12px; font-weight:700; letter-spacing:.3px; user-select:none; }
 details.mr-autopsy[open] summary { margin-bottom:8px; }
 
-/* ════════════════════════════════════════════════════════════════════════
-   VAULT V2 — final cascade. Beats the DESIGN SYSTEM v4 `!important`
-   layer above (§3 components, §8 deep-polish) without touching it.
-   ════════════════════════════════════════════════════════════════ */
-.vault-shell.vault-v2 .error-block { border-radius: 14px !important; padding: 13px 15px 13px 17px !important; gap: 16px !important; }
-.vault-shell.vault-v2 .error-block:hover { box-shadow: 0 10px 22px -18px rgba(0, 0, 0, 0.9) !important; }
-.vault-shell.vault-v2 .subject-folder { border-radius: 999px !important; }
-.vault-shell.vault-v2 .subject-folder:hover { background: rgba(255, 255, 255, 0.055) !important; }
-.vault-shell.vault-v2 .subject-folder.active { background: rgba(255, 255, 255, 0.06) !important; border-color: var(--folder-accent) !important; color: #fff !important; }
-.vault-shell.vault-v2 .matrix-pill { padding: 6px 11px !important; font-size: 11.5px !important; background: transparent !important; box-shadow: none !important; }
-.vault-shell.vault-v2 .matrix-pill:hover { background: rgba(255, 255, 255, 0.05) !important; color: #fff !important; box-shadow: none !important; border-color: var(--line-strong) !important; }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="all"]         { color: #fff !important;    background: rgba(61, 220, 255, 0.10) !important; border-color: rgba(61, 220, 255, 0.45) !important; box-shadow: none !important; }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="ready"]       { color: #4ade80 !important; background: rgba(34, 197, 94, 0.10) !important;  border-color: rgba(34, 197, 94, 0.45) !important; box-shadow: none !important; }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="due_soon"]    { color: #fbbf24 !important; background: rgba(234, 179, 8, 0.10) !important;  border-color: rgba(234, 179, 8, 0.45) !important; box-shadow: none !important; }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="scheduled"]   { color: #93c5fd !important; background: rgba(59, 130, 246, 0.10) !important; border-color: rgba(59, 130, 246, 0.45) !important; box-shadow: none !important; }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="mastered"]    { color: #c4b5fd !important; background: rgba(139, 92, 246, 0.12) !important; border-color: rgba(139, 92, 246, 0.5) !important; box-shadow: none !important; }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="calculation"] { color: #fde047 !important; background: rgba(234, 179, 8, 0.10) !important;  border-color: rgba(234, 179, 8, 0.45) !important; box-shadow: none !important; }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="conceptual"]  { color: #fca5a5 !important; background: rgba(248, 113, 113, 0.10) !important; border-color: rgba(248, 113, 113, 0.45) !important; box-shadow: none !important; }
-.vault-shell.vault-v2 .matrix-pill.active[data-emf-value="misread"]     { color: #67e8f9 !important; background: rgba(34, 211, 238, 0.10) !important; border-color: rgba(34, 211, 238, 0.45) !important; box-shadow: none !important; }
-.vault-shell.vault-v2 .matrix-search { border-radius: 10px !important; padding: 9px 36px 9px 36px !important; }
-.vault-shell.vault-v2 .vt-actions .daily-queue-master-btn { border-radius: 999px !important; }
-/* thumbnail badge must never overflow the slim 120px thumb */
-.vault-shell.vault-v2 .error-img-box .sr-due-badge { font-size: 8px !important; padding: 2px 6px !important; max-width: calc(100% - 10px); overflow: hidden; text-overflow: ellipsis; }
+/* VAULT V3 cascade overrides retired obsolete V2 !important rules cleanly. */
 .mr-autopsy .rp-h { margin-bottom:8px; }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -13618,30 +14336,7 @@ body:has(#view-pomodoro.active) #pomo-mini-widget {
     }
 }
 
-/* 5 · The Vault empty image card collapse & inline badge */
-.vault-shell.vault-v2 .emf-search-wrap,
-.emf-search-wrap {
-    flex: 0 0 auto !important;
-    width: 100% !important;
-    min-height: 0 !important;
-    height: auto !important;
-}
-.error-block:has(.error-img-box--empty),
-.vault-shell.vault-v2 .error-block:has(.error-img-box--empty),
-.error-block.is-no-img,
-.vault-shell.vault-v2 .error-block.is-no-img {
-    grid-template-columns: 1fr auto !important;
-}
-.error-img-box.error-img-box--empty {
-    display: none !important;
-}
-.sr-due-badge.sr-due-badge--inline {
-    position: static !important;
-    display: inline-flex !important;
-    vertical-align: middle !important;
-    margin-left: 8px !important;
-    transform: none !important;
-}
+/* 5 · Vault V3 keeps inline search + uniform 56x56 thumbnail slots across all cards */
 
 /* 5b · Desktop Navbar badge inline & kill red pulse vertical line */
 .nav-item .nav-ck-badge {

@@ -238,19 +238,34 @@ function _closeModalStr(id) {
 // ==================== ERROR MATRIX ====================
 
 export function openErrorMatrix(subject, element) {
-    // Deactivate daily queue when switching subjects
+    // Deactivate daily queue cleanly when switching subjects
     if (_dailyQueueActive) {
         _dailyQueueActive = false;
         const btn = document.getElementById('daily-queue-btn');
-        if (btn) btn.classList.remove('active');
+        if (btn) {
+            btn.classList.remove('active');
+            const lbl = btn.querySelector('.dq-btn-label');
+            if (lbl) lbl.textContent = 'Start Fix Queue';
+        }
         const badge = document.getElementById('daily-queue-badge');
         if (badge) badge.style.display = 'none';
         const shell = document.querySelector('.vault-shell');
         if (shell) shell.classList.remove('queue-active');
+        const listEl = document.getElementById('error-list-container');
+        if (listEl) listEl.classList.remove('is-daily-queue');
+        _setQueueFilterMode(false);
         const allPill = document.querySelector('.emf-pill-group[data-emf-filter="status"] .matrix-pill[data-emf-value="all"]');
         if (allPill) allPill.classList.add('active');
         const statusCarrier = document.getElementById('filter-status');
         if (statusCarrier) statusCarrier.value = 'all';
+    }
+
+    _activeChapterScope = null;
+    _kbFocusedQId = null;
+    const chapCarrier = document.getElementById('filter-chapter');
+    if (chapCarrier) chapCarrier.value = '';
+    if (typeof window !== 'undefined' && typeof window.syncDockedEcho === 'function') {
+        try { window.syncDockedEcho(); } catch (_) {}
     }
 
     document.querySelectorAll('.subject-folder').forEach(f => f.classList.remove('active'));
@@ -311,22 +326,209 @@ function _staggeredChain(tasks) {
     next();
 }
 
-// ── Don't-make-me-think keyboard glue ──────────────────────────────────────
-// "/" focuses the vault search from anywhere in the Errors view (no hunting
-// for the input), Esc clears it / blurs. Wired once per page load; silently
-// skipped in non-DOM environments (Node smoke tests).
+// ── Vault Presentation State (Chapter Grouping Default + Flat Toggle + Keyboard Focus) ─
+const VAULT_VIEW_LS_KEY = 'jeemax_vault_view';
+let _vaultViewMode = 'grouped'; // 'grouped' | 'list'
+try {
+    if (typeof localStorage !== 'undefined') {
+        const savedView = localStorage.getItem(VAULT_VIEW_LS_KEY);
+        if (savedView === 'grouped' || savedView === 'list') {
+            _vaultViewMode = savedView;
+        }
+    }
+} catch (_) {}
+
+const _collapsedChapters = new Set(); // "${subj}::${chapKey}"
+let _activeChapterScope = null;       // normalized chapKey when "Practice all ->" launched
+let _kbFocusedQId = null;             // string id of currently j/k-focused mistake row
+
+function _syncVaultViewAttr() {
+    if (typeof document === 'undefined') return;
+    const shell = document.querySelector('#view-errors .vault-shell');
+    if (shell) shell.setAttribute('data-vault-view', _vaultViewMode);
+    const toggleBtn = document.getElementById('vault-view-toggle-btn');
+    if (toggleBtn) {
+        const isGrouped = _vaultViewMode === 'grouped';
+        toggleBtn.classList.toggle('is-active', !isGrouped);
+        toggleBtn.setAttribute('aria-pressed', isGrouped ? 'true' : 'false');
+        toggleBtn.title = isGrouped
+            ? 'Grouped by Chapter — click for flat list (g)'
+            : 'Flat List — click to group by chapter (g)';
+    }
+}
+
+export function setVaultViewMode(mode, _el) {
+    const nextMode = mode === 'list' ? 'list' : 'grouped';
+    _vaultViewMode = nextMode;
+    try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(VAULT_VIEW_LS_KEY, nextMode);
+    } catch (_) {}
+    _syncVaultViewAttr();
+    if (!_dailyQueueActive) {
+        renderErrorMatrixFromBank();
+        filterErrors();
+    }
+}
+
+export function toggleVaultGrouping() {
+    setVaultViewMode(_vaultViewMode === 'grouped' ? 'list' : 'grouped');
+}
+
+function _clearKbFocus() {
+    _kbFocusedQId = null;
+    if (typeof document === 'undefined') return;
+    document.querySelectorAll('#error-list-container .error-block.is-kb-focused').forEach(el => {
+        el.classList.remove('is-kb-focused');
+        el.setAttribute('tabindex', '-1');
+    });
+}
+
+function _getFocusableVaultBlocks() {
+    if (typeof document === 'undefined') return [];
+    const blocks = Array.from(document.querySelectorAll('#error-list-container .error-block:not(.hidden)'));
+    return blocks.filter(el => {
+        const grp = el.closest('.vault-chap-group');
+        return !grp || (!grp.hidden && !grp.classList.contains('is-collapsed'));
+    });
+}
+
+function _applyKbFocus(el, { scroll = true, domFocus = false } = {}) {
+    if (!el) return;
+    document.querySelectorAll('#error-list-container .error-block.is-kb-focused').forEach(node => {
+        if (node !== el) {
+            node.classList.remove('is-kb-focused');
+            node.setAttribute('tabindex', '-1');
+        }
+    });
+    el.classList.add('is-kb-focused');
+    el.setAttribute('tabindex', '0');
+    _kbFocusedQId = el.getAttribute('data-qid') || '';
+    if (domFocus) {
+        try { el.focus({ preventScroll: true }); } catch (_) {}
+    }
+    if (scroll) {
+        try { el.scrollIntoView({ block: 'nearest', behavior: 'auto' }); } catch (_) {}
+    }
+}
+
+function _moveVaultFocus(delta) {
+    const blocks = _getFocusableVaultBlocks();
+    if (!blocks.length) return;
+    let idx = _kbFocusedQId ? blocks.findIndex(el => el.getAttribute('data-qid') === String(_kbFocusedQId)) : -1;
+    if (idx === -1) {
+        idx = delta >= 0 ? 0 : blocks.length - 1;
+    } else {
+        idx = Math.max(0, Math.min(blocks.length - 1, idx + delta));
+    }
+    _applyKbFocus(blocks[idx], { scroll: true, domFocus: true });
+}
+
+export function toggleVaultChapter(chapKey) {
+    if (!chapKey || typeof document === 'undefined') return;
+    const subj = _normSubj(AppState.currentErrorSubject || 'physics');
+    const storeKey = subj + '::' + chapKey;
+    const group = Array.from(document.querySelectorAll('#error-list-container .vault-chap-group'))
+        .find(g => g.getAttribute('data-chapter-key') === chapKey);
+    if (!group) return;
+    const collapsed = _collapsedChapters.has(storeKey);
+    if (collapsed) {
+        _collapsedChapters.delete(storeKey);
+        group.classList.remove('is-collapsed');
+    } else {
+        _collapsedChapters.add(storeKey);
+        group.classList.add('is-collapsed');
+    }
+    const toggleBtn = group.querySelector('.vault-chap-toggle');
+    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', collapsed ? 'true' : 'false');
+}
+
+// Bleed bar removed: chapter filtering only occurs silently if #filter-chapter carrier is explicitly set.
+
+export function practiceVaultChapter(chapKey) {
+    const norm = String(chapKey || '').trim().toLowerCase();
+    if (!norm) return;
+    _activeChapterScope = norm;
+    let firstId = null;
+    if (typeof document !== 'undefined') {
+        const blocks = Array.from(document.querySelectorAll('#error-list-container .error-block:not(.hidden)'))
+            .filter(el => (el.getAttribute('data-chapter-key') || '') === norm);
+        const dueEl = blocks.find(el => el.getAttribute('data-sr-status') === 'ready') || blocks[0];
+        if (dueEl) firstId = dueEl.getAttribute('data-qid');
+    }
+    if (!firstId && typeof AppState !== 'undefined' && Array.isArray(AppState.questionBank)) {
+        const subj = _normSubj(AppState.currentErrorSubject || 'physics');
+        const match = AppState.questionBank.find(q =>
+            q && q.id != null && q.errorReason &&
+            ['error', 'wrong', 'solved'].includes(q.status) &&
+            _normSubj(q.subject) === subj &&
+            _vaultChapKey(q.chapter) === norm
+        );
+        if (match) firstId = String(match.id);
+    }
+    if (firstId) {
+        openPracticeDrawer(firstId, { chapterScope: norm });
+    } else {
+        _activeChapterScope = null;
+    }
+}
+
+// ── Keyboard-First Navigation (/ j k Enter g Esc) ──────────────────────────
 function _emKeyHandler(e) {
     try {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
         const t = e.target;
-        const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+        const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
         const errorsView = document.getElementById('view-errors');
         const viewActive = !!(errorsView && errorsView.classList.contains('active'));
-        if (e.key === '/' && !typing && viewActive) {
+        const overlayOpen = !!(document.getElementById('sr-practice-overlay') || document.querySelector('.modal-overlay.active'));
+        if (!viewActive || overlayOpen) return;
+
+        if (typing) {
+            if (e.key === 'Escape' && t.id === 'matrix-search-input') {
+                if (t.value) { window.clearMatrixSearch(); }
+                else t.blur();
+            } else if (e.key === 'Enter' && t.id === 'matrix-search-input') {
+                t.blur();
+                const first = _getFocusableVaultBlocks()[0];
+                if (first) _applyKbFocus(first, { scroll: true, domFocus: true });
+            }
+            return;
+        }
+
+        if (e.key === '/') {
             const search = document.getElementById('matrix-search-input');
             if (search) { e.preventDefault(); search.focus(); search.select(); }
-        } else if (e.key === 'Escape' && typing && t.id === 'matrix-search-input') {
-            if (t.value) { window.clearMatrixSearch(); }
-            else t.blur();
+        } else if (e.key === 'g') {
+            if (!_dailyQueueActive) {
+                e.preventDefault();
+                toggleVaultGrouping();
+            }
+        } else if (e.key === 'j' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            _moveVaultFocus(1);
+        } else if (e.key === 'k' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            _moveVaultFocus(-1);
+        } else if (e.key === 'Enter') {
+            const activeCard = t && t.closest ? t.closest('#error-list-container .error-block:not(.hidden)') : null;
+            const otherControlFocused = t && (t.tagName === 'BUTTON' || t.tagName === 'A') && !activeCard;
+            if (otherControlFocused) return;
+            const qid = (activeCard && activeCard.getAttribute('data-qid')) || _kbFocusedQId;
+            if (qid) {
+                const targetCard = _getFocusableVaultBlocks().find(el => el.getAttribute('data-qid') === String(qid));
+                if (targetCard) {
+                    e.preventDefault();
+                    _activeChapterScope = null;
+                    openPracticeDrawer(qid);
+                }
+            }
+        } else if (e.key === 'Escape') {
+            if (_kbFocusedQId) {
+                _clearKbFocus();
+            } else {
+                const chapCarrier = document.getElementById('filter-chapter');
+                if (chapCarrier && chapCarrier.value) { chapCarrier.value = ''; filterErrors(); }
+            }
         }
     } catch (_) { /* never let a hotkey crash the page */ }
 }
@@ -453,7 +655,11 @@ function _decorateVaultQuestionText(raw) {
 function _getActiveVaultQueue(currentQId) {
     let queue = [];
     if (typeof document !== 'undefined') {
-        const visibleEls = Array.from(document.querySelectorAll('#error-list-container .error-block:not(.hidden), #daily-queue-list .error-block:not(.hidden)'));
+        let visibleEls = Array.from(document.querySelectorAll('#error-list-container .error-block:not(.hidden), #daily-queue-list .error-block:not(.hidden)'));
+        if (_activeChapterScope) {
+            const scoped = visibleEls.filter(el => (el.getAttribute('data-chapter-key') || '') === _activeChapterScope);
+            if (scoped.length) visibleEls = scoped;
+        }
         queue = visibleEls.map(el => {
             const idAttr = el.id || '';
             if (idAttr.startsWith('err-block-')) {
@@ -467,7 +673,8 @@ function _getActiveVaultQueue(currentQId) {
         const curSubject = AppState.currentErrorSubject || AppState.currentSubject || null;
         const matching = AppState.questionBank.filter(q => {
             if (!q || q.id == null) return false;
-            if (curSubject && q.subject !== curSubject) return false;
+            if (curSubject && _normSubj(q.subject) !== _normSubj(curSubject)) return false;
+            if (_activeChapterScope && _vaultChapKey(q.chapter) !== _activeChapterScope) return false;
             return q.errorReason && ['error', 'wrong', 'solved'].includes(q.status);
         });
         queue = matching.map(q => String(q.id));
@@ -653,7 +860,7 @@ export function srPracticePrev() {
     const qInfo = _getActiveVaultQueue(_drawerState.qId);
     if (qInfo.prevId) {
         _srNoteSkipIfUnlogged();
-        openPracticeDrawer(qInfo.prevId);
+        openPracticeDrawer(qInfo.prevId, { keepScope: true });
     }
 }
 
@@ -661,7 +868,7 @@ export function srPracticeNext() {
     const qInfo = _getActiveVaultQueue(_drawerState.qId);
     _srNoteSkipIfUnlogged();
     if (qInfo.nextId) {
-        openPracticeDrawer(qInfo.nextId);
+        openPracticeDrawer(qInfo.nextId, { keepScope: true });
     } else {
         closePracticeDrawer();
     }
@@ -678,7 +885,7 @@ export function submitPracticeLogAndNext() {
     const nextId = qInfo.nextId;
     submitPracticeLog({ keepOpenForNext: !!nextId });
     if (nextId) {
-        openPracticeDrawer(nextId);
+        openPracticeDrawer(nextId, { keepScope: true });
     }
 }
 
@@ -709,19 +916,24 @@ export function srOpenSolution() {
 // exists, hold-to-reveal ring, ambient pace line, continuous queue navigation,
 // and compact SR reflection card.
 
-export function openPracticeDrawer(qId) {
+export function openPracticeDrawer(qId, opts) {
     // Handler args arrive percent-encoded (_jsId); older callers may pass the
     // raw id — _findQByHandlerId tries both.
     const q = _findQByHandlerId(qId);
     if (!q) return;
     qId = String(q.id);
 
+    const _keepScope = !!(opts && opts.keepScope);
+    const _explicitScope = opts && opts.chapterScope ? String(opts.chapterScope) : null;
+
     // Fresh open vs. in-session navigation (prev / next / Log & Next).
     const _wasOpen = !!document.getElementById('sr-practice-overlay');
     const _keepRoast = _wasOpen && document.body.classList.contains('immersive-active');
 
-    // Close any existing drawer
+    // Close any existing drawer (preserve chapter scope across in-session navigation)
+    const _savedScope = _explicitScope || (_keepScope ? _activeChapterScope : null);
     closePracticeDrawer({ recap: false });
+    _activeChapterScope = _savedScope;
 
     // New Vault session → fresh Mario ledger.
     if (!_wasOpen && !AppState.bountyMode) { try { SessionRecap.reset(); } catch (_) {} }
@@ -897,6 +1109,7 @@ export function openPracticeDrawer(qId) {
 }
 
 export function closePracticeDrawer(opts) {
+    _activeChapterScope = null;
     const _overlayWas = document.getElementById('sr-practice-overlay');
     // Tone must be read BEFORE immersive-active is removed (same rule as closePracticeModal).
     const _recapTone = document.body.classList.contains('immersive-active') ? 'night' : 'parchment';
@@ -2651,24 +2864,37 @@ export function filterErrors() {
     const typeFilter = document.getElementById('filter-type') ? document.getElementById('filter-type').value : 'all';
     const statusFilter = document.getElementById('filter-status') ? document.getElementById('filter-status').value : 'all';
     const textFilter = document.getElementById('filter-tag') ? document.getElementById('filter-tag').value.toLowerCase().trim() : '';
+    const chapFilter = document.getElementById('filter-chapter') ? document.getElementById('filter-chapter').value.toLowerCase().trim() : '';
 
     const blocks = document.querySelectorAll('#error-list-container .error-block');
     let visible = 0;
     let dueNow = 0;
-    const shownByStatus = Object.create(null); // sr-status -> visible count (feeds group heads + meta)
+    const shownByStatus = Object.create(null); // sr-status -> visible count (list/grid)
+    const shownByChapter = Object.create(null); // chapKey -> { visible, due }
+
     blocks.forEach(block => {
         const bType = block.getAttribute('data-type');
         const bSrStatus = block.getAttribute('data-sr-status');
         const bSubj = block.getAttribute('data-subject');
+        const bChapKey = block.getAttribute('data-chapter-key') || '';
+        const haystack = (block.getAttribute('data-search-haystack') || '').toLowerCase();
 
-        const chapEl = block.querySelector('.error-chapter');
-        const bChapter = chapEl ? chapEl.textContent.toLowerCase() : '';
-        const tagEl = block.querySelector('.error-tag');
-        const bTag = tagEl ? tagEl.textContent.toLowerCase() : '';
+        let textMatch = true;
+        if (textFilter) {
+            if (haystack) {
+                textMatch = haystack.includes(textFilter);
+            } else {
+                const chapEl = block.querySelector('.error-chapter');
+                const bChapter = chapEl ? chapEl.textContent.toLowerCase() : '';
+                const tagEl = block.querySelector('.error-tag');
+                const bTag = tagEl ? tagEl.textContent.toLowerCase() : '';
+                textMatch = bChapter.includes(textFilter) || bTag.includes(textFilter);
+            }
+        }
 
-        let typeMatch = (typeFilter === 'all' || typeFilter === bType);
-        let subjMatch = (_normSubj(bSubj) === _normSubj(AppState.currentErrorSubject));
-        let textMatch = bChapter.includes(textFilter) || bTag.includes(textFilter);
+        const typeMatch = (typeFilter === 'all' || typeFilter === bType);
+        const subjMatch = (_normSubj(bSubj) === _normSubj(AppState.currentErrorSubject));
+        const chapMatch = (!chapFilter || bChapKey === chapFilter);
 
         let statusMatch = true;
         if (statusFilter === 'ready')     statusMatch = bSrStatus === 'ready';
@@ -2676,20 +2902,40 @@ export function filterErrors() {
         else if (statusFilter === 'scheduled')  statusMatch = bSrStatus === 'scheduled';
         else if (statusFilter === 'mastered')   statusMatch = bSrStatus === 'mastered';
 
-        if (typeMatch && statusMatch && subjMatch && textMatch) {
+        if (typeMatch && statusMatch && subjMatch && chapMatch && textMatch) {
             block.classList.remove('hidden');
             visible++;
             shownByStatus[bSrStatus] = (shownByStatus[bSrStatus] || 0) + 1;
             if (bSrStatus === 'ready') dueNow++;
+            if (bChapKey) {
+                const c = shownByChapter[bChapKey] || (shownByChapter[bChapKey] = { visible: 0, due: 0 });
+                c.visible++;
+                if (bSrStatus === 'ready') c.due++;
+            }
         } else {
             block.classList.add('hidden');
         }
     });
 
-    _updateMatrixMeta(visible, blocks.length, { typeFilter, statusFilter, textFilter }, dueNow);
+    _updateMatrixMeta(visible, blocks.length, { typeFilter, statusFilter, textFilter, chapFilter }, dueNow);
 
-    // Section headers mirror their members: a group with no visible cards
-    // collapses (and its counter shows the filtered count, not the total).
+    // Update Chapter Section Headers in Grouped Mode
+    document.querySelectorAll('#error-list-container .vault-chap-group').forEach(group => {
+        const ck = group.getAttribute('data-chapter-key') || '';
+        const tally = shownByChapter[ck] || { visible: 0, due: 0 };
+        group.hidden = tally.visible === 0;
+        const cntEl = group.querySelector('.vch-count');
+        if (cntEl) cntEl.textContent = String(tally.visible);
+        if ((chapFilter && ck === chapFilter) || textFilter) {
+            if (tally.visible > 0) {
+                group.classList.remove('is-collapsed');
+                const tBtn = group.querySelector('.vault-chap-toggle');
+                if (tBtn) tBtn.setAttribute('aria-expanded', 'true');
+            }
+        }
+    });
+
+    // Section headers mirror their members in Flat Urgency List / Grid mode
     document.querySelectorAll('#error-list-container .em-group-head').forEach(head => {
         const st = head.getAttribute('data-group-status');
         const shown = shownByStatus[st] || 0;
@@ -2697,27 +2943,25 @@ export function filterErrors() {
         const cnt = head.querySelector('.emg-count');
         if (cnt) cnt.textContent = String(shown);
     });
+
+    // If keyboard focus fell onto a hidden card, drop focus cleanly
+    if (_kbFocusedQId) {
+        const focusedStillVisible = _getFocusableVaultBlocks().some(el => el.getAttribute('data-qid') === String(_kbFocusedQId));
+        if (!focusedStillVisible) _clearKbFocus();
+    }
 }
 
 // ── Live result feedback ("how many / what's due / how to reset") ──────────
-// DMMT: a filter change must always answer three questions at a glance —
-// how many cards matched, how many need action today, and how to undo.
-function _updateMatrixMeta(visible, total, f, dueNow) {
+function _updateMatrixMeta(visible, total) {
     const meta = document.getElementById('matrix-meta');
-    if (!meta) return;
-
-    if (total === 0) { meta.hidden = true; meta.innerHTML = ''; _toggleNoMatchNode(false); return; }
-
-    const filtersActive = (f.statusFilter !== 'all') || (f.typeFilter !== 'all') || !!f.textFilter;
-    meta.hidden = false;
-    // dueNow arrives pre-tallied from filterErrors' single pass (it used to
-    // rescan every visible block here with a :not(.hidden) selector).
-
-    meta.innerHTML =
-        '<span class="matrix-meta-count"><b>' + visible + '</b>&nbsp;of ' + total + ' shown</span>' +
-        (dueNow ? '<span class="matrix-meta-due">·&nbsp;<b>' + dueNow + '</b>&nbsp;due now</span>' : '') +
-        (filtersActive ? '<button class="matrix-meta-clear" onclick="clearMatrixFilters()" type="button">✕ Clear filters</button>' : '');
-
+    if (meta) {
+        meta.hidden = true;
+        meta.innerHTML = '';
+    }
+    if (total === 0) {
+        _toggleNoMatchNode(false);
+        return;
+    }
     _toggleNoMatchNode(visible === 0);
 }
 
@@ -2799,11 +3043,12 @@ function _setQueueFilterMode(on) {
         if (on) carrier.value = 'all';
         carrier.disabled = !!on;
     });
-    const tagCarrier = document.getElementById('filter-tag');
-    if (tagCarrier) {
-        if (on) tagCarrier.value = '';
-        tagCarrier.disabled = !!on;
-    }
+    ['filter-tag', 'filter-chapter'].forEach(id => {
+        const carrier = document.getElementById(id);
+        if (!carrier) return;
+        if (on) carrier.value = '';
+        carrier.disabled = !!on;
+    });
     const search = document.getElementById('matrix-search-input');
     if (search) {
         if (on) search.value = '';
@@ -2811,12 +3056,12 @@ function _setQueueFilterMode(on) {
     }
     const clearBtn = document.getElementById('matrix-search-clear');
     if (clearBtn) clearBtn.hidden = true;
-    // Both pill groups, not just status: the type pills kept their .active
-    // echo across the queue switch.
-    document.querySelectorAll('.error-filters .matrix-pill').forEach(p => {
+    document.querySelectorAll('.error-filters .matrix-pill[data-emf-value]').forEach(p => {
         p.disabled = !!on;
         p.classList.toggle('active', p.getAttribute('data-emf-value') === 'all');
     });
+    const vtBtn = document.getElementById('vault-view-toggle-btn');
+    if (vtBtn) vtBtn.disabled = !!on;
     if (on && typeof window.syncDockedEcho === 'function') {
         try { window.syncDockedEcho(); } catch (_) {}
     }
@@ -2826,16 +3071,23 @@ function _showDailyQueue() {
     const btn = document.getElementById('daily-queue-btn');
     const title = document.getElementById('error-matrix-title');
     const badge = document.getElementById('daily-queue-badge');
-    if (btn) btn.classList.add('active');
+    if (btn) {
+        btn.classList.add('active');
+        const lbl = btn.querySelector('.dq-btn-label');
+        if (lbl) lbl.textContent = 'Exit Fix Queue';
+    }
+    const dueCountEl = document.getElementById('fix-queue-due-count');
+    if (dueCountEl) dueCountEl.hidden = true;
     if (title) title.textContent = 'Daily Core Queue';
     if (badge) badge.style.display = 'inline';
     const shell = document.querySelector('.vault-shell');
     if (shell) shell.classList.add('queue-active');
-    // Queue mode REPLACES the board, and filterErrors() short-circuits to the
-    // queue while it is active — so the board's filter controls are
-    // meaningless here. They used to be left visible, enabled and fully armed:
-    // the carriers kept whatever the board had, and every pill click or
-    // keystroke called filterErrors() straight into an early return.
+    const listEl = document.getElementById('error-list-container');
+    if (listEl) {
+        listEl.classList.add('is-daily-queue');
+        listEl.classList.remove('vault-list--grid');
+    }
+
     _setQueueFilterMode(true);
     _renderDailyQueueCards();
     _updateDailyQueueMeta();
@@ -2845,10 +3097,16 @@ function _hideDailyQueue() {
     const btn = document.getElementById('daily-queue-btn');
     const title = document.getElementById('error-matrix-title');
     const badge = document.getElementById('daily-queue-badge');
-    if (btn) btn.classList.remove('active');
+    if (btn) {
+        btn.classList.remove('active');
+        const lbl = btn.querySelector('.dq-btn-label');
+        if (lbl) lbl.textContent = 'Start Fix Queue';
+    }
     if (badge) badge.style.display = 'none';
     const shell = document.querySelector('.vault-shell');
     if (shell) shell.classList.remove('queue-active');
+    const listEl = document.getElementById('error-list-container');
+    if (listEl) listEl.classList.remove('is-daily-queue');
     _setQueueFilterMode(false);
     if (title) {
         const subj = AppState.currentErrorSubject;
@@ -3043,7 +3301,7 @@ function _renderDailyQueueCards() {
                 </div>
             `);
         }
-        let cardHtml = _buildErrorCardHTML(q);
+        let cardHtml = _buildErrorCardHTML(q, undefined, { showChapter: true });
         if (_isCompletedToday(q)) {
             // Inject the done class directly into the HTML string
             cardHtml = cardHtml.replace('class="error-block ', 'class="error-block daily-queue-done ');
@@ -3058,25 +3316,81 @@ function _renderDailyQueueCards() {
 
 // ==================== CARD HTML BUILDER ====================
 
-function _buildErrorCardHTML(q, dueInfo) {
-    const tagStyle = TAG_STYLES[q.errorReason] || TAG_STYLES.conceptual;
-    const tagLabel = TAG_LABELS[q.errorReason] || q.errorReason;
-    // dueInfo is resolved ONCE by _buildGroupedBoardHTML and handed down: a
-    // nextReviewAt crossing a boundary between the grouping pass and this pass
-    // filed the card under ONE group header while data-sr-status said another,
-    // and filterErrors' per-header recount then under-counted that group. The
-    // daily queue renders standalone cards, so resolve it here when absent.
-    const due = dueInfo || getDueStatus(q);
+function _vaultChapKey(ch) {
+    return displayChapterName(String(ch || '').replace(/\s+/g, ' ').trim() || 'Uncategorized').toLowerCase();
+}
 
-    // ── Personal tags ──────────────────────────────────────────────────────
-    // filterErrors() matches ONLY `.error-chapter` / `.error-tag` text. The
-    // chips render into `.sr-card-usertag` — a class the filter never queried
-    // — so "tap to hunt this tag" wrote #filter-tag with a string no card could
-    // match (0 of 4 cards visible plus the "Nothing matches those filters" card).
-    // The tags are therefore mirrored as a visually hidden tail INSIDE
-    // .error-chapter. The mistake-type pill keeps its single label, colour and
-    // casing, and the chapter's own ellipsis is untouched (the mirror is out of
-    // flow and clipped to 1px).
+function _vaultShortId(id) {
+    const s = String(id == null ? '' : id).replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!s) return '0000';
+    return s.length > 6 ? s.slice(-4) : s;
+}
+
+function _vaultCleanSnippet(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    let s = raw.replace(/\s+/g, ' ').trim();
+    if (!s || /^manual logged friction point$/i.test(s)) return '';
+    // Tidy common LaTeX markers into readable card-line plain preview
+    s = s
+        .replace(/\$\$/g, ' ')
+        .replace(/\$/g, '')
+        .replace(/\\(?:left|right|mathrm|text|textbf|mathbf|boldsymbol)\b/g, '')
+        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1/$2)')
+        .replace(/\\(?:vec|hat|bar|overline)\{([^}]+)\}/g, '$1')
+        .replace(/\\(?:cdot|times)/g, (m) => (m.endsWith('cdot') ? '·' : '×'))
+        .replace(/\\theta/g, 'θ')
+        .replace(/\\alpha/g, 'α')
+        .replace(/\\beta/g, 'β')
+        .replace(/\\gamma/g, 'γ')
+        .replace(/\\delta/g, 'δ')
+        .replace(/\\Delta/g, 'Δ')
+        .replace(/\\omega/g, 'ω')
+        .replace(/\\pi/g, 'π')
+        .replace(/\\le(?:q)?/g, '≤')
+        .replace(/\\ge(?:q)?/g, '≥')
+        .replace(/\\neq/g, '≠')
+        .replace(/[{}]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (s.length > 150) s = s.slice(0, 148).trimEnd() + '…';
+    return s;
+}
+
+function _vaultPlaceholderSvg(errReason) {
+    if (errReason === 'calculation') {
+        return '<svg class="error-img-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 7h8"/><path d="M8 12h2M12 12h4M8 16h2M12 16h4"/></svg>';
+    }
+    if (errReason === 'misread') {
+        return '<svg class="error-img-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.7"/></svg>';
+    }
+    return '<svg class="error-img-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.5" stroke-dasharray="3 2.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2"/></svg>';
+}
+
+function _vaultMemStats(rPct, q) {
+    let pct = rPct;
+    if (pct == null || Number.isNaN(pct)) {
+        const ef = _numOr(q && q.easeFactor, 2.5);
+        pct = Math.max(10, Math.min(99, Math.round(((ef - 1.3) / 1.7) * 80 + 15)));
+    }
+    let lit = 1;
+    let tier = 'crit';
+    if (pct >= 88)      { lit = 4; tier = 'ok'; }
+    else if (pct >= 70) { lit = 3; tier = 'good'; }
+    else if (pct >= 45) { lit = 2; tier = 'warn'; }
+    return { pct, lit, tier };
+}
+
+function _buildErrorCardHTML(q, dueInfo, opts) {
+    const typeKey = (q.errorReason === 'calculation' || q.errorReason === 'conceptual' || q.errorReason === 'misread')
+        ? q.errorReason
+        : 'conceptual';
+    const tagStyle = TAG_STYLES[typeKey] || TAG_STYLES.conceptual;
+    const tagLabel = TAG_SHORT_LABELS[typeKey] || TAG_LABELS[typeKey] || 'Concept';
+    const due = dueInfo || getDueStatus(q);
+    const chapDisplay = displayChapterName(q.chapter || 'Uncategorized');
+    const chapKey = _vaultChapKey(q.chapter);
+    const showChapterInCard = !!(opts && opts.showChapter);
+
     const tags = (Array.isArray(q.tags) ? q.tags : [])
         .map(t => String(t == null ? '' : t).trim())
         .filter(Boolean);
@@ -3084,9 +3398,6 @@ function _buildErrorCardHTML(q, dueInfo) {
         ? `<span class="sr-chapter-tags" aria-hidden="true" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;"> ${tags.map(t => '#' + _esc(t)).join(' ')} </span>`
         : '';
 
-    // ── Cognitive Cortex v3 card telemetry (all reads are pure + guarded) ──
-    // Live retrievability, days-sitting-overdue and age-since-logging turn the
-    // card into an honest memory readout instead of a bare interval counter.
     let rPct = null, ageTxt = '';
     try { rPct = Math.round(cortexRetrievability(q) * 100); } catch (_) { rPct = null; }
     try {
@@ -3097,82 +3408,103 @@ function _buildErrorCardHTML(q, dueInfo) {
         }
     } catch (_) { ageTxt = ''; }
 
-    // ALWAYS render a lightweight placeholder — the real image (from the
-    // in-memory bank or Drive) is swapped in by initErrorLazyLoaders() only
-    // while the card is near the viewport, and swapped back out (freed) once
-    // it scrolls past. Embedding hundreds of base64 blobs into card HTML at
-    // once was the source of the DOM bloat / heavy lag.
+    let lateDays = 0;
+    if (due.status === 'ready') {
+        try {
+            const refIso = q.nextReviewAt || q.createdAt || '';
+            const ts = new Date(refIso).getTime();
+            if (!isNaN(ts)) lateDays = Math.max(0, Math.floor((Date.now() - ts) / MS_PER_DAY));
+        } catch (_) { lateDays = 0; }
+    }
+
+    const mem = _vaultMemStats(rPct, q);
+    const ivlDays = _numOr(q.currentInterval, 0);
+    const easeVal = _numOr(q.easeFactor, 2.5).toFixed(2);
+    const loggedMeta = ageTxt ? (ageTxt === 'today' ? 'Logged today' : 'Logged ' + ageTxt + ' ago') : 'Target ' + _numOr(q.targetTimeMins, 5) + 'm';
+    const memTooltip = `Recall: ${rPct != null ? rPct + '%' : '—'} · Interval: ${ivlDays}d · Ease: ${easeVal} · ${loggedMeta}`;
+
     let imgHtml = '';
+    let hasThumbImg = false;
     if ((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId) {
-        imgHtml = `<img class="lazy-error-img" data-drive-id="${_esc(q.driveImageId || '')}" data-qid="${_esc(q.id)}" src="${LAZY_IMG_PLACEHOLDER}" onclick="event.stopPropagation();">`;
+        hasThumbImg = true;
+        imgHtml = `<img class="lazy-error-img" data-drive-id="${_esc(q.driveImageId || '')}" data-qid="${_esc(q.id)}" src="${LAZY_IMG_PLACEHOLDER}" alt="Question preview" onclick="event.stopPropagation();">`;
     } else if (q.diagramImageUrl && q.diagramImageUrl.length > 100) {
-        // Gem auto-crop diagram (no whole-question screenshot on file) — the
-        // lazy loader serves it from the bank's diagramImageUrl.
-        imgHtml = `<img class="lazy-error-img" data-diagram="1" data-qid="${_esc(q.id)}" src="${LAZY_IMG_PLACEHOLDER}" title="Diagram" onclick="event.stopPropagation();">`;
+        hasThumbImg = true;
+        imgHtml = `<img class="lazy-error-img" data-diagram="1" data-qid="${_esc(q.id)}" src="${LAZY_IMG_PLACEHOLDER}" alt="Question diagram" onclick="event.stopPropagation();">`;
     } else {
-        imgHtml = '<div class="error-img-none">No image</div>';
+        imgHtml = `<div class="error-img-placeholder error-img-placeholder--${typeKey}" aria-hidden="true">${_vaultPlaceholderSvg(typeKey)}</div>`;
     }
 
     const today = _todayKey();
     const isCurrentBounty = AppState.bounty.active && !AppState.bounty.done && AppState.bounty.date === today &&
         String(q.id) === String(AppState.bounty.questionId);
-    let bountyClass = isCurrentBounty ? 'bounty-active-error' : '';
-    const isNoImg = imgHtml.includes('error-img-none');
-    const imgBoxClass = isNoImg ? 'error-img-box error-img-box--empty' : 'error-img-box';
-    const noImgClass = isNoImg ? ' is-no-img' : '';
+    const bountyClass = isCurrentBounty ? 'bounty-active-error' : '';
+    const imgBoxClass = hasThumbImg ? 'error-img-box' : 'error-img-box error-img-box--placeholder';
 
-    // Inline-handler args use _jsId (percent-encoded): _esc alone survives the
-    // attribute boundary but is HTML-decoded before the handler compiles, so a
-    // quote in q.id could still break out into the JS string.
+    const noteRaw = q.takeaway || q.mistakeNote || q.note || q.extractedText || '';
+    const snippet = _vaultCleanSnippet(noteRaw);
+    const fallbackTitle = `Question #${_vaultShortId(q.id)} · ${loggedMeta}`;
+    const headlineHtml = snippet
+        ? `<span class="sr-card-title">${_esc(snippet)}</span>`
+        : `<span class="sr-card-title sr-card-title--fallback">${_esc(fallbackTitle)}</span>`;
+
+    const subTypeLabel = typeKey === 'calculation' ? 'Calculation' : (typeKey === 'misread' ? 'Misread' : 'Concept');
+    const haystack = [
+        chapDisplay,
+        snippet,
+        tags.map(t => '#' + t).join(' '),
+        subTypeLabel,
+        tagLabel,
+        typeKey,
+        String(q.id || '')
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    const subTagsHtml = tags.length
+        ? tags.slice(0, 3).map(t => `<span class="vrow-tag sr-card-usertag" title="Tap to filter #${_esc(t)}" data-hunt-tag="${_esc(_jsId(t))}" onclick="event.stopPropagation();window.__cortexHuntTag&&__cortexHuntTag(decodeURIComponent(this.getAttribute('data-hunt-tag')||''))">#${_esc(t)}</span>`).join(' ')
+        : '';
+
+    const subLineParts = [];
+    if (showChapterInCard) subLineParts.push(`<span class="vrow-sub-chap">${_esc(chapDisplay)}</span>`);
+    subLineParts.push(`<span class="vrow-sub-type">${subTypeLabel}</span>`);
+    if (subTagsHtml) subLineParts.push(`<span class="vrow-sub-tags">${subTagsHtml}</span>`);
+    if (isCurrentBounty) subLineParts.push(`<span class="vrow-sub-bounty">Bounty</span>`);
+
     return `
-            <div class="error-block ${bountyClass}${noImgClass}" id="err-block-${_jsId(q.id)}"
-                 data-type="${_esc(q.errorReason || 'conceptual')}"
+            <div class="error-block error-block--${typeKey} ${bountyClass}" id="err-block-${_jsId(q.id)}"
+                 tabindex="-1"
+                 data-qid="${_esc(q.id)}"
+                 data-type="${_esc(typeKey)}"
                  data-sr-status="${_esc(due.status)}"
                  data-subject="${_esc(q.subject)}"
+                 data-chapter-key="${_esc(chapKey)}"
+                 data-search-haystack="${_esc(haystack)}"
                  onclick="openPracticeDrawer('${_jsId(q.id)}')" title="Open practice session">
-                <div class="${imgBoxClass}">
-                    ${imgHtml}
-                    ${!isNoImg ? `<span class="sr-due-badge sr-due--${_esc(due.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(due, q))}</span>` : ''}
+                <div class="vrow-visual">
+                    <span class="vrow-type-dot vrow-type-dot--${typeKey}" title="${subTypeLabel}" aria-hidden="true"></span>
+                    <div class="${imgBoxClass}">
+                        ${imgHtml}
+                        ${hasThumbImg ? `<button class="vimg-raw-btn" type="button" onclick="event.stopPropagation();this.closest('.error-img-box').classList.toggle('is-raw-img')" title="Toggle dark/original thumbnail colors" aria-label="Toggle thumbnail invert">orig</button>` : ''}
+                    </div>
                 </div>
                 <div class="error-details">
-                    <div class="error-chapter">${_esc(q.chapter || 'Unknown')}${huntMirror}${isNoImg ? ` <span class="sr-due-badge sr-due-badge--inline sr-due--${_esc(due.status)}" title="Spaced-repetition schedule for this mistake">${_esc(_dueLabel(due, q))}</span>` : ''}</div>
-                    <div class="error-tag-row">
-                        <span class="error-tag error-tag--${_esc(q.errorReason || 'conceptual')}" style="color:${tagStyle.color};background:${tagStyle.bg};">${_esc(tagLabel)}</span>
-                        ${tags.length
-                            // The hunted token rides a data attribute (percent-encoded
-                            // by _jsId and decoded on tap) instead of a JS string literal:
-                            // _esc() does not encode backslashes or the HTML entity pass
-                            // un-does '&quot;', so a tag ending in "\" or a quote broke the
-                            // whole inline handler — stopPropagation never ran and the tap
-                            // fell through to the card root and opened the practice drawer.
-                            // Stripping "'" from the argument (but not the label) also made
-                            // "boy's law" hunt for "boys law".
-                            ? tags.slice(0, 3).map(t => `<span class="sr-card-usertag" title="Personal tag — tap to hunt this tag" data-hunt-tag="${_esc(_jsId(t))}" onclick="event.stopPropagation();window.__cortexHuntTag&&__cortexHuntTag(decodeURIComponent(this.getAttribute('data-hunt-tag')||''))">#${_esc(t)}</span>`).join('')
-                            : ''}
+                    <div class="sr-card-line1">
+                        <span class="error-chapter">${_esc(chapDisplay)}${huntMirror}</span>
+                        ${headlineHtml}
                     </div>
-                    <div class="sr-stats-row">
-                        <span class="sr-stat${rPct != null ? (rPct >= 90 ? ' sr-stat--ok' : rPct >= 80 ? ' sr-stat--warn' : ' sr-stat--crit') : ''}" title="Live retrievability — the brain's current recall odds for this mistake"><b>${rPct != null ? rPct + '%' : '—'}</b><i>recall</i></span>
-                        <span class="sr-stat" title="Spaced-repetition interval — how long this memory currently survives"><b>${_numOr(q.currentInterval, 0)}d</b><i>interval</i></span>
-                        <span class="sr-stat" title="Ease factor — higher means recall is sticking"><b>${_numOr(q.easeFactor, 2.5).toFixed(2)}</b><i>ease</i></span>
-                        ${ageTxt ? `<span class="sr-stat" title="Time since this mistake was logged (age at every solve feeds cortex priors)"><b>${_esc(ageTxt)}</b><i>logged</i></span>` : `<span class="sr-stat" title="Target time per attempt"><b>${_numOr(q.targetTimeMins, 5)}m</b><i>target</i></span>`}
-                    </div>
-                    <div class="sr-attempt-dots-row">
-                        <span class="sr-dots-label">History</span>
-                        ${_buildAttemptDots(q.historyLogs)}
-                    </div>
+                    <div class="sr-card-line2">${subLineParts.join('<span class="vrow-dot-sep" aria-hidden="true">·</span>')}</div>
                 </div>
                 <div class="sr-card-actions">
-                    <button class="sr-practice-btn" onclick="event.stopPropagation();openPracticeDrawer('${_jsId(q.id)}')">Practice Now<span class="sr-btn-arrow">→</span></button>
                     <div class="sr-card-actions-sub">
-                        <button class="sr-history-toggle" onclick="event.stopPropagation();toggleCardHistory('${_jsId(q.id)}')" aria-label="Toggle attempt history">
-                            History
+                        <button class="sr-history-toggle" type="button" onclick="event.stopPropagation();toggleCardHistory('${_jsId(q.id)}')" title="SRS metrics & attempt history" aria-label="Toggle attempt history">
+                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2.1 1.4"/></svg>
                             <span class="sr-chevron" id="sr-chevron-${_jsId(q.id)}">▾</span>
                         </button>
-                        <button class="delete-btn" onclick="event.stopPropagation();removeErrorLog('${_jsId(q.id)}')" title="Delete" aria-label="Delete this mistake"><svg class="g"><use href="#g-trash"/></svg></button>
+                        <button class="delete-btn" type="button" onclick="event.stopPropagation();removeErrorLog('${_jsId(q.id)}')" title="Delete" aria-label="Delete this mistake"><svg class="g"><use href="#g-trash"/></svg></button>
                     </div>
+                    <button class="sr-practice-btn" type="button" onclick="event.stopPropagation();openPracticeDrawer('${_jsId(q.id)}')">Practice<span class="sr-btn-arrow"> →</span></button>
                 </div>
                 <div class="sr-expanded-history" id="sr-history-${_jsId(q.id)}" style="display:none;" onclick="event.stopPropagation();">
-                    <div class="sr-history-header">Attempt History</div>
+                    <div class="sr-history-header">Attempt History & SRS State</div>
                 </div>
             </div>`;
 }
@@ -3283,15 +3615,21 @@ export function addErrorBlock() {
 // ==================== CARD RENDERING ====================
 
 const TAG_STYLES = {
-    calculation: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
-    conceptual:  { color: '#f87171', bg: 'rgba(248,113,113,0.1)' },
-    misread:     { color: '#a78bfa', bg: 'rgba(167,139,250,0.1)' },
+    calculation: { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
+    conceptual:  { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)' },
+    misread:     { color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.14)' },
 };
 
 const TAG_LABELS = {
     calculation: 'Calculation Error',
     conceptual:  'Conceptual Gap',
     misread:     'Misread Constraint',
+};
+
+const TAG_SHORT_LABELS = {
+    calculation: 'Calc',
+    conceptual:  'Concept',
+    misread:     'Misread',
 };
 
 // Plain-language due badge. One glance → "do I need to act on this?"
@@ -3384,34 +3722,128 @@ function _buildHistoryLogs(historyLogs) {
     }).join('');
 }
 
+function _updateFixQueueHeaderCta() {
+    if (typeof document === 'undefined') return;
+    const dueEl = document.getElementById('fix-queue-due-count');
+    const btn = document.getElementById('daily-queue-btn');
+    if (!dueEl || !btn) return;
+    if (_dailyQueueActive) {
+        dueEl.hidden = true;
+        return;
+    }
+    let readyCount = 0;
+    for (const q of AppState.questionBank) {
+        if (!q || !q.errorReason || !['error', 'solved', 'wrong'].includes(q.status)) continue;
+        try {
+            if (getDueStatus(q).status === 'ready') readyCount++;
+        } catch (_) {}
+    }
+    if (readyCount > 0) {
+        dueEl.textContent = '(' + readyCount + ')';
+        dueEl.hidden = false;
+    } else {
+        dueEl.textContent = '';
+        dueEl.hidden = true;
+    }
+}
+
 export function renderErrorMatrixFromBank() {
     let c = document.getElementById('error-list-container');
     if (!c) return;
+
+    _syncVaultViewAttr();
+    _updateFolderCounts();
+    _updateFixQueueHeaderCta();
+
+    if (_dailyQueueActive) return;
+    c.classList.remove('is-daily-queue');
 
     let errs = AppState.questionBank.filter(q =>
         q.errorReason && (q.status === 'error' || q.status === 'solved' || q.status === 'wrong') && _normSubj(q.subject) === _normSubj(AppState.currentErrorSubject)
     );
 
-    _updateFolderCounts();
-
-    // ── Batch: build all card HTML up front, then apply in a single innerHTML
-    //    assignment. This collapses N individual DOM parse+insert cycles into
-    //    one, which is critical when the matrix has dozens of cards. ──
     if (errs.length === 0) {
-        // DMMT: an empty subject never renders as blank confusion — it explains
-        // itself and offers the two ways forward (manual log / AI dump).
         c.innerHTML = _buildEmptyStateHTML();
     } else {
-        c.innerHTML = _buildGroupedBoardHTML(errs);
+        const withStatus = errs.map(q => { const due = getDueStatus(q); return { q, due, st: due.status }; });
+        const ctx = _cortexCtx();
+        withStatus.sort((a, b) => {
+            const sa = EM_STATUS_ORDER[a.st] ?? 9;
+            const sb = EM_STATUS_ORDER[b.st] ?? 9;
+            if (sa !== sb) return sa - sb;
+            if (ctx) return _prioOf(b.q, ctx) - _prioOf(a.q, ctx);
+            return _numOr(a.q.easeFactor, 2.5) - _numOr(b.q.easeFactor, 2.5);
+        });
+
+        if (_vaultViewMode === 'grouped') {
+            c.innerHTML = _buildChapterGroupedBoardHTML(withStatus);
+        } else {
+            c.innerHTML = _buildGroupedBoardHTML(errs, withStatus, { showChapter: true });
+        }
     }
 
     if (typeof initErrorLazyLoaders === 'function') initErrorLazyLoaders();
+
+    // Restore keyboard focus highlight if target card survives re-render
+    if (_kbFocusedQId) {
+        const el = _getFocusableVaultBlocks().find(node => node.getAttribute('data-qid') === String(_kbFocusedQId));
+        if (el) _applyKbFocus(el, { scroll: false, domFocus: false });
+        else _kbFocusedQId = null;
+    }
 }
 
-// ── Status-grouped board ───────────────────────────────────────────────────
-// The matrix is a BOARD, not a flat dump: cards are sorted by urgency and
-// grouped under scannable section headers. One glance answers "what do I
-// work through, in what order, and how much of it is there?"
+// ── Default Grouping: Borderless Chapter Sections & Flush Rows ─────────────
+function _buildChapterGroupedBoardHTML(withStatus) {
+    const subj = _normSubj(AppState.currentErrorSubject || 'physics');
+    const chapCarrier = typeof document !== 'undefined' ? document.getElementById('filter-chapter') : null;
+    const activeChap = chapCarrier ? chapCarrier.value.toLowerCase().trim() : '';
+
+    const groupsMap = new Map();
+    const groupsOrder = [];
+
+    for (const item of withStatus) {
+        const chapKey = _vaultChapKey(item.q.chapter);
+        let grp = groupsMap.get(chapKey);
+        if (!grp) {
+            grp = {
+                key: chapKey,
+                display: displayChapterName(item.q.chapter || 'Uncategorized'),
+                items: [],
+            };
+            groupsMap.set(chapKey, grp);
+            groupsOrder.push(grp);
+        }
+        grp.items.push(item);
+    }
+
+    if (activeChap && !groupsMap.has(activeChap) && chapCarrier) {
+        chapCarrier.value = '';
+    }
+
+    const parts = [];
+    for (const grp of groupsOrder) {
+        const isCollapsed = _collapsedChapters.has(subj + '::' + grp.key);
+        parts.push(`<section class="vault-chap-group${isCollapsed ? ' is-collapsed' : ''}" data-chapter-key="${_esc(grp.key)}">`);
+        parts.push(
+            `<header class="vault-chap-head">` +
+                `<button type="button" class="vault-chap-toggle" aria-expanded="${isCollapsed ? 'false' : 'true'}" onclick="toggleVaultChapter(this.closest('.vault-chap-group').getAttribute('data-chapter-key'))">` +
+                    `<svg class="vch-chev" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>` +
+                    `<span class="vch-title">${_esc(grp.display)}</span>` +
+                    `<span class="vch-count">${grp.items.length}</span>` +
+                `</button>` +
+                `<button type="button" class="vault-chap-practice-btn" data-chap-key="${_esc(grp.key)}" onclick="event.stopPropagation();practiceVaultChapter(this.getAttribute('data-chap-key'))">Practice all →</button>` +
+            `</header>`
+        );
+        parts.push('<div class="vault-chap-body">');
+        for (const { q, due } of grp.items) {
+            parts.push(_buildErrorCardHTML(q, due, { showChapter: false }));
+        }
+        parts.push('</div></section>');
+    }
+    return parts.join('');
+}
+
+// ── Status-grouped urgency board (Flat List / Grid View) ───────────────────
 const EM_STATUS_ORDER = { ready: 0, due_soon: 1, scheduled: 2, mastered: 3 };
 const EM_GROUP_META = {
     ready:     { icon: '', label: 'Due Now',  blurb: 'act on these today' },
@@ -3420,29 +3852,24 @@ const EM_GROUP_META = {
     mastered:  { icon: '', label: 'Mastered', blurb: 'resting — no action needed' },
 };
 
-function _buildGroupedBoardHTML(errs) {
-    // getDueStatus() is resolved ONCE per card and carried down into the card
-    // body. Calling it twice let a nextReviewAt that crossed a boundary between
-    // the grouping pass and the card pass file the card under ONE group header
-    // while its data-sr-status said another — filterErrors' per-header recount
-    // then under-counted the group it was placed in.
-    const withStatus = errs.map(q => { const due = getDueStatus(q); return { q, due, st: due.status }; });
-    // ── Cognitive Cortex v3 within-group ordering: composite priority field,
-    // highest first. The cortex context is computed ONCE for the whole board
-    // (memoized on _bankRev) so N cards don't rebuild profiles N times.
-    // Legacy easeFactor sort remains the fallback path. ──
-    const ctx = _cortexCtx();
-    withStatus.sort((a, b) => {
-        const sa = EM_STATUS_ORDER[a.st] ?? 9;
-        const sb = EM_STATUS_ORDER[b.st] ?? 9;
-        if (sa !== sb) return sa - sb;
-        if (ctx) return _prioOf(b.q, ctx) - _prioOf(a.q, ctx);
-        return _numOr(a.q.easeFactor, 2.5) - _numOr(b.q.easeFactor, 2.5);
-    });
+function _buildGroupedBoardHTML(errs, preSorted, cardOpts) {
+    let withStatus = preSorted;
+    if (!withStatus) {
+        withStatus = errs.map(q => { const due = getDueStatus(q); return { q, due, st: due.status }; });
+        const ctx = _cortexCtx();
+        withStatus.sort((a, b) => {
+            const sa = EM_STATUS_ORDER[a.st] ?? 9;
+            const sb = EM_STATUS_ORDER[b.st] ?? 9;
+            if (sa !== sb) return sa - sb;
+            if (ctx) return _prioOf(b.q, ctx) - _prioOf(a.q, ctx);
+            return _numOr(a.q.easeFactor, 2.5) - _numOr(b.q.easeFactor, 2.5);
+        });
+    }
 
     const countByStatus = {};
     withStatus.forEach(x => { countByStatus[x.st] = (countByStatus[x.st] || 0) + 1; });
 
+    const opts = Object.assign({ showChapter: true }, cardOpts || {});
     const parts = [];
     let lastStatus = null;
     for (const { q, st, due } of withStatus) {
@@ -3459,7 +3886,7 @@ function _buildGroupedBoardHTML(errs) {
                 '</div>'
             );
         }
-        parts.push(_buildErrorCardHTML(q, due));
+        parts.push(_buildErrorCardHTML(q, due, opts));
     }
     return parts.join('');
 }
@@ -3507,14 +3934,36 @@ export function toggleCardHistory(qId) {
         // Handler args arrive percent-encoded (_jsId); _findQByHandlerId
         // resolves both encoded and raw ids back to the bank row.
         const q = _findQByHandlerId(qId);
-        const rowsHtml = _buildHistoryLogs(q ? q.historyLogs : null);
-        if (rowsHtml) {
-            const frag = document.createElement('template');
-            frag.innerHTML = rowsHtml;
-            const header = el.querySelector('.sr-history-header');
-            if (header) header.after(frag.content);
-            else el.appendChild(frag.content);
+        let srsStrip = '';
+        if (q) {
+            let rPct = null;
+            try { rPct = Math.round(cortexRetrievability(q) * 100); } catch (_) { rPct = null; }
+            let ageStr = '—';
+            try {
+                const ms = new Date(q.createdAt || '').getTime();
+                if (!isNaN(ms)) {
+                    const d = Math.floor((Date.now() - ms) / MS_PER_DAY);
+                    ageStr = d <= 0 ? 'today' : (d >= 60 ? Math.floor(d / 30) + 'mo ago' : d + 'd ago');
+                }
+            } catch (_) {}
+            const ivl = _numOr(q.currentInterval, 0);
+            const ef = _numOr(q.easeFactor, 2.5).toFixed(2);
+            const chap = displayChapterName(q.chapter || 'Uncategorized');
+            srsStrip = `<div class="sr-history-srs-strip">
+                <span><b>${rPct != null ? rPct + '%' : '—'}</b> recall</span>
+                <span><b>${ivl}d</b> interval</span>
+                <span><b>${ef}</b> ease</span>
+                <span>logged <b>${_esc(ageStr)}</b></span>
+                <span>chapter <b>${_esc(chap)}</b></span>
+            </div>`;
         }
+        const rowsHtml = _buildHistoryLogs(q ? q.historyLogs : null);
+        const bodyHtml = srsStrip + (rowsHtml || '<div class="sr-history-empty">No practice attempts logged yet.</div>');
+        const frag = document.createElement('template');
+        frag.innerHTML = bodyHtml;
+        const header = el.querySelector('.sr-history-header');
+        if (header) header.after(frag.content);
+        else el.appendChild(frag.content);
     }
     const isVisible = el.style.display !== 'none';
     el.style.display = isVisible ? 'none' : 'block';
@@ -3530,7 +3979,7 @@ waitForDriveToken(() => {
 // Tiny SVG used both as the initial placeholder AND as the "unloaded" state
 // for cards that have scrolled out of the viewport (frees the decoded bitmap).
 // Fully-encoded data URI (raw `<`, `>`, `#` inside a src attribute are fragile).
-const LAZY_IMG_PLACEHOLDER = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='140' height='90' viewBox='0 0 140 90'><rect width='140' height='90' rx='8' fill='#090B11'/><path d='M10 20V10h10M120 10h10v10M10 70v10h10M120 80h10V70' fill='none' stroke='#E5C07B' stroke-opacity='0.45' stroke-width='1.2' stroke-linecap='round'/><circle cx='70' cy='38' r='16' fill='none' stroke='#E5C07B' stroke-opacity='0.28' stroke-width='1' stroke-dasharray='2 3'/><circle cx='70' cy='38' r='2' fill='#E5C07B' fill-opacity='0.55'/><text x='70' y='69' fill='#B89B62' font-family='monospace' font-size='8' letter-spacing='1.1' text-anchor='middle'>ACQUIRING PLATE…</text></svg>`)}`;
+const LAZY_IMG_PLACEHOLDER = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'><rect width='44' height='44' rx='6' fill='#0f1114'/><path d='M7 12V7h5M32 7h5v5M7 32v5h5M32 37h5v-5' fill='none' stroke='#71717a' stroke-opacity='0.45' stroke-width='1.2' stroke-linecap='round'/><circle cx='22' cy='22' r='6.5' fill='none' stroke='#71717a' stroke-opacity='0.35' stroke-width='1.1' stroke-dasharray='2 2'/></svg>`)}`;
 
 let _errorImgObserver = null;
 
@@ -4543,6 +4992,9 @@ export function renderErrorResolutionDashboard() {
     let totalToday = 0;
     subjects.forEach(subj => { totalToday += todayCounts[subj]; });
 
+    _updateFixQueueHeaderCta();
+    _syncVaultViewAttr();
+
     // Squashed-today readouts live in the vault rail (#rail-today-*).
     const railTotalEl = document.getElementById('rail-today-total');
     if (railTotalEl) {
@@ -4580,4 +5032,8 @@ if (typeof window !== 'undefined') {
     window.srOnNumericInput = srOnNumericInput;
     window.srOpenSolution = srOpenSolution;
     window._getActiveVaultQueue = _getActiveVaultQueue;
+    window.setVaultViewMode = setVaultViewMode;
+    window.toggleVaultGrouping = toggleVaultGrouping;
+    window.toggleVaultChapter = toggleVaultChapter;
+    window.practiceVaultChapter = practiceVaultChapter;
 }

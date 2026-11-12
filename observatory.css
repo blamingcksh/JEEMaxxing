@@ -1532,133 +1532,140 @@ html[data-theme="observatory"] .exam-countdown-chip.is-urgent svg {
   color: #f87171 !important;
 }
 
-/* ── §E4 · The Vault Surfaces & Medallions ── */
-html[data-theme="observatory"] .vault-topbar {
+/* ── §E4 · The Vault Surfaces (Linear Zero-Border Ghost Aesthetics + Observatory Ink) ── */
+html[data-theme="observatory"] .vault-shell.vault-v2 .vault-topbar {
   background: transparent !important;
-  border-bottom: 1px solid var(--obs-hair) !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  padding-bottom: 14px !important;
+  padding: 2px 0 12px !important;
 }
-html[data-theme="observatory"] .vault-subjects .subject-folder {
-  position: relative !important;
-  overflow: hidden !important;
+html[data-theme="observatory"] .vault-shell.vault-v2 .vt-actions .vault-cta-primary {
+  background: var(--obs-ink) !important;
+  border: none !important;
+  color: #111315 !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .vt-actions .vault-cta-primary.active {
+  background: #ef4444 !important;
+  color: #fff !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .vt-actions .vault-btn-ghost {
   background: transparent !important;
-  border: 0 !important;
-  border-top: 2px solid var(--obs-hair) !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  padding: 14px 16px !important;
-  transition: all .25s ease !important;
+  border: none !important;
+  color: #a1a1aa !important;
 }
-html[data-theme="observatory"] .vault-subjects .subject-folder:hover,
-html[data-theme="observatory"] .vault-subjects .subject-folder.active {
-  border-top-color: var(--obs-ink) !important;
-  background: rgba(229, 192, 123, 0.04) !important;
-  box-shadow: none !important;
+html[data-theme="observatory"] .vault-shell.vault-v2 .vt-actions .vault-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #f4f4f5 !important;
 }
-html[data-theme="observatory"] .vault-subjects .subject-folder[data-subject="physics"].active {
-  border-top-color: var(--obs-subj-phys) !important;
-}
-html[data-theme="observatory"] .vault-subjects .subject-folder[data-subject="chemistry"].active {
-  border-top-color: var(--obs-subj-chem) !important;
-}
-html[data-theme="observatory"] .vault-subjects .subject-folder[data-subject="maths"].active {
-  border-top-color: var(--obs-subj-math) !important;
-}
-html[data-theme="observatory"] .vault-folder-watermark {
-  position: absolute;
-  right: -10px;
-  top: -10px;
-  width: 90px;
-  height: 90px;
-  object-fit: contain;
-  opacity: 0.18;
-  pointer-events: none;
-  mask-image: radial-gradient(circle at 60% 50%, black 20%, transparent 75%);
-  -webkit-mask-image: radial-gradient(circle at 60% 50%, black 20%, transparent 75%);
-  transition: opacity .3s ease;
-}
-html[data-theme="observatory"] .vault-subjects .subject-folder:hover .vault-folder-watermark,
-html[data-theme="observatory"] .vault-subjects .subject-folder.active .vault-folder-watermark {
-  opacity: 0.34;
-}
-
-/* Vault Filters & Search — eliminate puffy neon cyan */
-html[data-theme="observatory"] .error-filters,
-html[data-theme="observatory"] .emf-single {
+html[data-theme="observatory"] .vault-shell.vault-v2 .vault-subjects .subject-folder {
   background: transparent !important;
-  border: 0 !important;
-  border-bottom: 1px solid var(--obs-hair) !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  padding: 8px 0 14px !important;
-}
-html[data-theme="observatory"] .emf-search-wrap {
-  background: var(--obs-void-2) !important;
-  border: 1px solid var(--obs-hair) !important;
-  border-radius: 4px !important;
-  box-shadow: none !important;
-}
-html[data-theme="observatory"] .emf-search-wrap:focus-within {
-  border-color: var(--obs-ink) !important;
-  box-shadow: 0 0 12px -4px var(--obs-glow) !important;
-}
-html[data-theme="observatory"] .matrix-search {
-  color: var(--obs-bone) !important;
-  font-family: var(--font-body) !important;
-  font-size: 12px !important;
-  background: transparent !important;
-}
-html[data-theme="observatory"] .matrix-pill {
-  font-family: var(--font-num) !important;
-  font-size: 11px !important;
-  font-weight: 500 !important;
-  letter-spacing: .08em !important;
-  background: transparent !important;
-  border: 1px solid var(--obs-hair) !important;
-  border-radius: 4px !important;
-  color: var(--obs-bone-2) !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-}
-html[data-theme="observatory"] .matrix-pill:hover {
-  border-color: var(--obs-edge) !important;
-  color: var(--obs-bone) !important;
-  background: var(--obs-void-3) !important;
-  box-shadow: none !important;
-}
-html[data-theme="observatory"] .matrix-pill.active,
-html[data-theme="observatory"] .matrix-pill.active[data-emf-value] {
-  color: var(--obs-bone) !important;
-  background: var(--obs-ink-soft) !important;
-  border-color: var(--obs-ink) !important;
-  box-shadow: 0 0 12px -4px var(--obs-glow) !important;
-  text-shadow: none !important;
-}
-html[data-theme="observatory"] .matrix-pill::before,
-html[data-theme="observatory"] .matrix-pill.active::before {
-  display: none !important;
-}
-html[data-theme="observatory"] .error-block {
-  background: var(--obs-void-2) !important;
-  border: 1px solid var(--obs-hair) !important;
+  border: none !important;
   border-radius: 6px !important;
   box-shadow: none !important;
-  transition: border-color .2s ease, transform .2s ease !important;
+  padding: 5px 10px !important;
+  color: #71717a !important;
 }
-html[data-theme="observatory"] .error-block:hover {
-  border-color: var(--obs-edge) !important;
-  transform: translateY(-2px) !important;
+html[data-theme="observatory"] .vault-shell.vault-v2 .vault-subjects .subject-folder:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: #d4d4d8 !important;
 }
-html[data-theme="observatory"] .sr-due-badge {
-  font-family: var(--font-num) !important;
-  font-size: 10px !important;
-  letter-spacing: .06em !important;
-  background: var(--obs-void-3) !important;
-  border: 1px solid var(--obs-hair) !important;
-  border-radius: 3px !important;
-  color: var(--obs-bone-2) !important;
+html[data-theme="observatory"] .vault-shell.vault-v2 .vault-subjects .subject-folder.active,
+html[data-theme="observatory"] .vault-shell.vault-v2 .vault-subjects .subject-folder[data-subject="physics"].active,
+html[data-theme="observatory"] .vault-shell.vault-v2 .vault-subjects .subject-folder[data-subject="chemistry"].active,
+html[data-theme="observatory"] .vault-shell.vault-v2 .vault-subjects .subject-folder[data-subject="maths"].active {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #f4f4f5 !important;
+}
+
+/* Sticky Flat Ghost-Tab Filter Bar under Observatory */
+html[data-theme="observatory"] .vault-shell.vault-v2 .error-filters,
+html[data-theme="observatory"] .vault-shell.vault-v2 .emf-single {
+  top: var(--sat, 0px) !important;
+  background: rgba(17, 19, 21, 0.96) !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 7px 0 !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .emf-search-wrap {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .matrix-search {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 6px !important;
+  color: #f4f4f5 !important;
+  font-family: var(--v-sans) !important;
+  font-size: 12.5px !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .matrix-search:focus {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .vault-view-icon-btn,
+html[data-theme="observatory"] .vault-shell.vault-v2 .vault-view-icon-btn:focus-visible {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .matrix-pill {
+  font-family: var(--v-sans) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.01em !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 6px !important;
+  color: #71717a !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  padding: 5px 9px !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .matrix-pill:hover {
+  border: none !important;
+  color: #d4d4d8 !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .matrix-pill.active,
+html[data-theme="observatory"] .vault-shell.vault-v2 .matrix-pill.active[data-emf-value] {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: none !important;
+  color: #f4f4f5 !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .matrix-pill::before,
+html[data-theme="observatory"] .vault-shell.vault-v2 .matrix-pill.active::before {
+  display: none !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .error-block {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transition: background 0.12s ease !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .error-block:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  transform: none !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .error-block.is-kb-focused,
+html[data-theme="observatory"] .vault-shell.vault-v2 .error-block:focus-visible {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: inset 2px 0 0 var(--obs-ink) !important;
+  transition: none !important;
 }
 html[data-theme="observatory"] .daily-queue-subject-divider {
   font-family: var(--font-num) !important;
@@ -1668,7 +1675,6 @@ html[data-theme="observatory"] .daily-queue-subject-divider {
   color: var(--obs-bone-3) !important;
   border-bottom: 1px solid var(--obs-hair) !important;
 }
-
 /* Vault and Mocks Empty Medallion Plates */
 .em-empty-plate,
 html[data-theme="observatory"] .em-empty-plate {
@@ -2024,19 +2030,23 @@ html[data-theme="observatory"] .obs-modal-emblem {
 }
 
 
-/* Vault High-Specificity Pill & Empty State Overrides */
+/* Vault High-Specificity Ghost Tab Overrides */
 html[data-theme="observatory"] #view-errors .emf-pill-group .matrix-pill {
-  color: var(--obs-bone-2) !important;
-  border-color: var(--obs-hair) !important;
-  background: var(--obs-void-2) !important;
+  color: #71717a !important;
+  border: none !important;
+  background: transparent !important;
   box-shadow: none !important;
+}
+html[data-theme="observatory"] #view-errors .emf-pill-group .matrix-pill:hover {
+  color: #d4d4d8 !important;
+  background: rgba(255, 255, 255, 0.04) !important;
 }
 html[data-theme="observatory"] #view-errors .emf-pill-group .matrix-pill.active,
 html[data-theme="observatory"] #view-errors .emf-pill-group .matrix-pill.active[data-emf-value] {
-  color: var(--obs-bone) !important;
-  background: var(--obs-ink-soft) !important;
-  border-color: var(--obs-ink) !important;
-  box-shadow: 0 0 12px -4px var(--obs-glow) !important;
+  color: #f4f4f5 !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: none !important;
+  box-shadow: none !important;
   text-shadow: none !important;
 }
 html[data-theme="observatory"] #view-errors .em-empty {
@@ -2132,23 +2142,32 @@ html[data-theme="observatory"] .subject-card .subject-icon {
 }
 
 
-/* Spaced Repetition Practice Button Polish */
-html[data-theme="observatory"] .sr-practice-btn {
-  border-radius: 4px !important;
-  background: var(--obs-ink-soft) !important;
-  border: 1px solid color-mix(in srgb, var(--obs-ink) 50%, transparent) !important;
-  color: var(--obs-ink) !important;
-  font-family: var(--font-num) !important;
-  font-size: 10.5px !important;
-  letter-spacing: .12em !important;
-  text-transform: uppercase !important;
-  padding: 6px 14px !important;
-  transition: all .2s ease !important;
+/* Spaced Repetition Practice Button Polish (Borderless ghost at rest, pill fill on row hover) */
+html[data-theme="observatory"] .vault-shell.vault-v2 .sr-practice-btn {
+  height: 28px !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #a1a1aa !important;
+  font-family: var(--v-sans) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.01em !important;
+  text-transform: none !important;
+  padding: 0 10px !important;
+  transition: background 0.12s ease, color 0.12s ease !important;
 }
-html[data-theme="observatory"] .sr-practice-btn:hover {
-  background: var(--obs-ink) !important;
-  color: var(--obs-void-2) !important;
-  border-color: var(--obs-ink) !important;
+html[data-theme="observatory"] .vault-shell.vault-v2 .error-block:hover .sr-practice-btn,
+html[data-theme="observatory"] .vault-shell.vault-v2 .error-block.is-kb-focused .sr-practice-btn {
+  background: rgba(255, 255, 255, 0.10) !important;
+  border: none !important;
+  color: #f4f4f5 !important;
+  opacity: 1 !important;
+}
+html[data-theme="observatory"] .vault-shell.vault-v2 .sr-practice-btn:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+  border: none !important;
 }
 
 /* Checkbox Accent Color in Observatory */

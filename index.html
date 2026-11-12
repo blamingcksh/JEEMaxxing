@@ -43,9 +43,15 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         paint; fontsource ships font-display:swap. ── -->
 <link href="https://cdn.jsdelivr.net/fontsource/css/cormorant-garamond@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://cdn.jsdelivr.net/fontsource/css/cormorant-garamond@latest/latin-400-italic.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/inter@latest/latin-400.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/inter@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/inter@latest/latin-600.css" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-400.css" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-sans@latest/latin-600.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-400.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/latin-600.css" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-mono@latest/latin-400.css" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://cdn.jsdelivr.net/fontsource/css/ibm-plex-mono@latest/latin-500.css" rel="stylesheet" media="print" onload="this.media='all'">
 
@@ -308,97 +314,87 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
              VIEW · THE VAULT (ERROR MATRIX)
         ════════════════════════════════════════════ -->
         <section id="view-errors" class="view-section">
-            <!-- ══ VAULT V2 ══ topbar = title + today + subjects + capture · stage = slim toolbar + board.
-                 Every erm-* id is a live contract with matrix.js renderErrorResolutionDashboard() — do not rename.
-                 .vault-rail class is kept on the topbar for legacy selectors/QA. -->
-            <div class="vault-shell vault-v2">
+            <!-- ══ VAULT ══ Linear-style de-cluttered header, flat ghost filter tabs, borderless chapter sections, hairline rows. -->
+            <div class="vault-shell vault-v2" data-vault-view="grouped">
 
-                <!-- ── TOPBAR (was RAIL) ── -->
+                <!-- ── HEADER ── -->
                 <header class="vault-topbar vault-rail">
                     <div class="vt-row vt-row-main">
-                        <div class="vt-title">
-                            <span class="kicker">// SPACED REPETITION</span>
-                            <h2 class="box-title" id="error-matrix-title">Physics Matrix</h2>
+                        <div class="vt-brand-group">
+                            <div class="vt-title">
+                                <span class="kicker">// SPACED REPETITION</span>
+                                <h2 class="box-title" id="error-matrix-title">Physics Matrix</h2>
+                            </div>
+                            <nav class="vault-subjects" aria-label="Error subjects">
+                                <div class="subject-folder active" data-subject="physics" onclick="openErrorMatrix('physics', this)">
+                                    <span class="folder-icon"><svg class="g"><use href="#g-physics"></use></svg></span>
+                                    <span class="folder-name">Physics</span>
+                                    <span class="folder-count" id="folder-count-physics" title="Mistakes tracked in this subject">0</span>
+                                </div>
+                                <div class="subject-folder" data-subject="chemistry" onclick="openErrorMatrix('chemistry', this)">
+                                    <span class="folder-icon"><svg class="g"><use href="#g-chemistry"></use></svg></span>
+                                    <span class="folder-name">Chemistry</span>
+                                    <span class="folder-count" id="folder-count-chemistry" title="Mistakes tracked in this subject">0</span>
+                                </div>
+                                <div class="subject-folder" data-subject="maths" onclick="openErrorMatrix('maths', this)">
+                                    <span class="folder-icon"><svg class="g"><use href="#g-maths"></use></svg></span>
+                                    <span class="folder-name">Maths</span>
+                                    <span class="folder-count" id="folder-count-maths" title="Mistakes tracked in this subject">0</span>
+                                </div>
+                            </nav>
                         </div>
-                        <!-- Squashed-today readout: inline chip (was a big panel).
-                             Ids are a live contract with renderErrorResolutionDashboard(). -->
-                        <div class="rail-today vt-today" role="status" aria-label="Bugs squashed today">
-                            <span class="rail-today-num" id="rail-today-total">0</span>
-                            <span class="rail-today-cap">squashed</span>
-                            <span class="vt-today-sep" aria-hidden="true"></span>
-                            <span class="rail-today-split">
-                                <span class="rail-today-subj" data-subject="physics" title="Physics squashed today"><i><svg class="g"><use href="#g-physics"></use></svg></i><b id="rail-today-physics">0</b></span>
-                                <span class="rail-today-subj" data-subject="chemistry" title="Chemistry squashed today"><i><svg class="g"><use href="#g-chemistry"></use></svg></i><b id="rail-today-chemistry">0</b></span>
-                                <span class="rail-today-subj" data-subject="maths" title="Maths squashed today"><i><svg class="g"><use href="#g-maths"></use></svg></i><b id="rail-today-maths">0</b></span>
-                            </span>
-                        </div>
-                        <div class="rail-actions vt-actions">
-                            <button class="daily-queue-master-btn" id="daily-queue-btn" onclick="toggleDailyQueue()"><svg class="g"><use href="#g-spark"></use></svg> Fix Queue</button>
-                            <button class="daily-queue-master-btn" id="bounty-rail-btn" onclick="openDailyBounty()" style="display:none"><svg class="g"><use href="#g-trophy"></use></svg> Bounty</button>
-                            <button class="btn btn-primary rail-btn" onclick="openModal('add-error-modal')">+ Log</button>
-                            <button class="btn btn-dump rail-btn" id="ai-dump-btn" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')"><svg class="g"><use href="#g-eye"></use></svg> Mistake Report</button>
-                        </div>
-                    </div>
 
-                    <div class="vt-row vt-row-sub">
-                        <nav class="vault-subjects" aria-label="Error subjects">
-                            <div class="subject-folder active" data-subject="physics" onclick="openErrorMatrix('physics', this)">
-                                <img class="vault-folder-watermark" src="atlas/specimen-phys-corona.svg" alt="" aria-hidden="true" loading="lazy">
-                                <span class="folder-icon"><svg class="g"><use href="#g-physics"></use></svg></span>
-                                <span class="folder-name">Physics</span>
-                                <span class="folder-count" id="folder-count-physics" title="Mistakes tracked in this subject">0</span>
+                        <div class="vt-command-right">
+                            <div class="rail-actions vt-actions">
+                                <button class="daily-queue-master-btn vault-cta-primary" id="daily-queue-btn" type="button" onclick="toggleDailyQueue()"><svg class="g"><use href="#g-spark"></use></svg><span class="dq-btn-label">Start Fix Queue</span> <span class="fix-queue-count" id="fix-queue-due-count" hidden>0</span></button>
+                                <button class="daily-queue-master-btn" id="bounty-rail-btn" type="button" onclick="openDailyBounty()" style="display:none"><svg class="g"><use href="#g-trophy"></use></svg> Bounty</button>
+                                <button class="btn rail-btn vault-btn-ghost" type="button" onclick="openModal('add-error-modal')">+ Log</button>
+                                <button class="btn btn-dump rail-btn vault-btn-ghost" id="ai-dump-btn" type="button" onclick="window.populateAiDumpChapters();openModal('ai-dump-modal')" title="Open Mistake Report" aria-label="Mistake Report"><svg class="g"><use href="#g-eye"></use></svg> Report</button>
                             </div>
-                            <div class="subject-folder" data-subject="chemistry" onclick="openErrorMatrix('chemistry', this)">
-                                <img class="vault-folder-watermark" src="atlas/specimen-chem-dendrite.svg" alt="" aria-hidden="true" loading="lazy">
-                                <span class="folder-icon"><svg class="g"><use href="#g-chemistry"></use></svg></span>
-                                <span class="folder-name">Chemistry</span>
-                                <span class="folder-count" id="folder-count-chemistry" title="Mistakes tracked in this subject">0</span>
-                            </div>
-                            <div class="subject-folder" data-subject="maths" onclick="openErrorMatrix('maths', this)">
-                                <img class="vault-folder-watermark" src="atlas/specimen-math-nautilus.svg" alt="" aria-hidden="true" loading="lazy">
-                                <span class="folder-icon"><svg class="g"><use href="#g-maths"></use></svg></span>
-                                <span class="folder-name">Maths</span>
-                                <span class="folder-count" id="folder-count-maths" title="Mistakes tracked in this subject">0</span>
-                            </div>
-                        </nav>
-                        <span class="daily-queue-badge" id="daily-queue-badge" style="display:none">20 problems · 5P + 5M + 10C</span>
+                        </div>
                     </div>
+                    <span class="daily-queue-badge" id="daily-queue-badge" style="display:none">20 problems · 5P + 5M + 10C</span>
                 </header>
 
                 <!-- ── STAGE ── -->
                 <div class="vault-stage">
 
                     <div class="error-matrix-container active" id="error-matrix-container">
-                    <!-- Slim single-row toolbar — hidden carriers feed matrix.js filterErrors().
-                         #emf-scroll-sentinel drives the dock tightening. -->
+                    <!-- Sticky flat ghost-tab filter bar — hidden carriers feed matrix.js filterErrors(). -->
                     <div id="emf-scroll-sentinel" aria-hidden="true"></div>
                     <div class="error-filters emf-single">
                     <input type="hidden" id="filter-status" value="all">
                     <input type="hidden" id="filter-type" value="all">
                     <input type="hidden" id="filter-tag" value="">
+                    <input type="hidden" id="filter-chapter" value="">
 
                     <div class="emf-row emf-row-single">
-                        <div class="emf-search-wrap">
-                            <span class="emf-search-icon">⌕</span>
-                            <input class="matrix-search" id="matrix-search-input" type="text" placeholder="Search chapter or tag…  ( / )" oninput="setMatrixSearch(this.value)" autocomplete="off" aria-label="Search the error matrix by chapter or tag">
-                            <button class="emf-search-clear" id="matrix-search-clear" type="button" onclick="clearMatrixSearch()" aria-label="Clear search" hidden>✕</button>
+                        <div class="emf-search-group">
+                            <div class="emf-search-wrap">
+                                <span class="emf-search-icon" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.8"/><path d="M11 11l3 3"/></svg></span>
+                                <input class="matrix-search" id="matrix-search-input" type="text" placeholder="Search chapter, note, #tag…  (/)" oninput="setMatrixSearch(this.value)" autocomplete="off" aria-label="Search the error matrix by chapter, takeaway, or tag">
+                                <button class="emf-search-clear" id="matrix-search-clear" type="button" onclick="clearMatrixSearch()" aria-label="Clear search" hidden>✕</button>
+                            </div>
+                            <button class="vault-view-icon-btn" id="vault-view-toggle-btn" type="button" onclick="toggleVaultGrouping()" title="Toggle Chapter Grouping (g)" aria-label="Toggle Chapter Grouping" aria-pressed="true">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></svg>
+                            </button>
                         </div>
                         <span class="emf-sep" aria-hidden="true"></span>
-                        <div class="emf-pill-group" data-emf-filter="status" role="group" aria-label="Filter by status">
-                            <button class="matrix-pill active" data-emf-value="all" onclick="setMatrixFilter('status','all',this)">All</button>
-                            <button class="matrix-pill" data-emf-value="ready" onclick="setMatrixFilter('status','ready',this)"><i class="sdot sdot-ready"></i>Due</button>
-                            <button class="matrix-pill" data-emf-value="due_soon" onclick="setMatrixFilter('status','due_soon',this)"><i class="sdot sdot-soon"></i>Soon</button>
-                            <button class="matrix-pill" data-emf-value="scheduled" onclick="setMatrixFilter('status','scheduled',this)"><i class="sdot sdot-later"></i>Later</button>
-                            <button class="matrix-pill" data-emf-value="mastered" onclick="setMatrixFilter('status','mastered',this)"><i class="sdot sdot-done"></i>Done</button>
+                        <div class="emf-pill-group emf-segmented" data-emf-filter="status" role="group" aria-label="Filter by status">
+                            <button class="matrix-pill active" type="button" data-emf-value="all" onclick="setMatrixFilter('status','all',this)">All</button>
+                            <button class="matrix-pill" type="button" data-emf-value="ready" onclick="setMatrixFilter('status','ready',this)">Due</button>
+                            <button class="matrix-pill" type="button" data-emf-value="due_soon" onclick="setMatrixFilter('status','due_soon',this)">Soon</button>
+                            <button class="matrix-pill" type="button" data-emf-value="scheduled" onclick="setMatrixFilter('status','scheduled',this)">Later</button>
+                            <button class="matrix-pill" type="button" data-emf-value="mastered" onclick="setMatrixFilter('status','mastered',this)">Done</button>
                         </div>
                         <span class="emf-sep" aria-hidden="true"></span>
                         <div class="emf-pill-group" data-emf-filter="type" role="group" aria-label="Filter by mistake type">
-                            <button class="matrix-pill active" data-emf-value="all" onclick="setMatrixFilter('type','all',this)">All types</button>
-                            <button class="matrix-pill" data-emf-value="calculation" onclick="setMatrixFilter('type','calculation',this)">Calc</button>
-                            <button class="matrix-pill" data-emf-value="conceptual" onclick="setMatrixFilter('type','conceptual',this)">Concept</button>
-                            <button class="matrix-pill" data-emf-value="misread" onclick="setMatrixFilter('type','misread',this)">Misread</button>
+                            <button class="matrix-pill active" type="button" data-emf-value="all" onclick="setMatrixFilter('type','all',this)">All types</button>
+                            <button class="matrix-pill" type="button" data-emf-value="calculation" onclick="setMatrixFilter('type','calculation',this)">Calc</button>
+                            <button class="matrix-pill" type="button" data-emf-value="conceptual" onclick="setMatrixFilter('type','conceptual',this)">Concept</button>
+                            <button class="matrix-pill" type="button" data-emf-value="misread" onclick="setMatrixFilter('type','misread',this)">Misread</button>
                         </div>
-                        <!-- Live result feedback — written by matrix.js _updateMatrixMeta() -->
+                        <!-- Live queue feedback (shown only during Daily Fix Queue mode) -->
                         <div class="matrix-meta emf-meta" id="matrix-meta" role="status" aria-live="polite" hidden></div>
                     </div>
 
@@ -1208,6 +1204,8 @@ window.syncDockedEcho = function () {
         var active = document.querySelector('.emf-pill-group[data-emf-filter="' + g + '"] .matrix-pill.active');
         if (active && active.getAttribute('data-emf-value') !== 'all') parts.push(active.textContent.trim());
     });
+    var chap = document.getElementById('filter-chapter');
+    if (chap && chap.value) parts.push(chap.value);
     if (parts.length) bar.setAttribute('data-active', parts.join(' · '));
     else bar.removeAttribute('data-active');
 };
@@ -1245,7 +1243,9 @@ window.clearMatrixFilters = function () {
     });
     var tag = document.getElementById('filter-tag');
     if (tag) tag.value = '';
-    document.querySelectorAll('.error-filters .matrix-pill').forEach(function (p) {
+    var chap = document.getElementById('filter-chapter');
+    if (chap) chap.value = '';
+    document.querySelectorAll('.error-filters .matrix-pill[data-emf-value]').forEach(function (p) {
         p.classList.toggle('active', p.getAttribute('data-emf-value') === 'all');
     });
     window.clearMatrixSearch();
