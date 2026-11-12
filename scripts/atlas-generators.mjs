@@ -1135,63 +1135,557 @@ function genAtmosMicroscope(mode = 'night') {
   const uid = `micro-${mode}`;
   const isDusk = mode === 'dusk';
   const glow = isDusk ? 'cyan' : 'brass';
-  const lensHue = isDusk ? '#8FBFE0' : '#E5C07B';
+  const lensHue = isDusk ? '#8FBFE0' : '#FAF0DC';
+  const rayHue = isDusk ? '#7CC8F2' : '#E5C07B';
+  const anomalyHue = isDusk ? '#E07A52' : '#FAF0DC';
+  const bandHue = isDusk ? '#8FBFE0' : '#FAF0DC';
+
+  const extras = `
+    <linearGradient id="${uid}-brass-cyl" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#3E2B0E"/>
+      <stop offset="16%" stop-color="#B08135"/>
+      <stop offset="38%" stop-color="#FFF5DA"/>
+      <stop offset="58%" stop-color="#E5C07B"/>
+      <stop offset="84%" stop-color="#6B4C1B"/>
+      <stop offset="100%" stop-color="#B68F48"/>
+    </linearGradient>
+    <linearGradient id="${uid}-anodize" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#05070C"/>
+      <stop offset="22%" stop-color="#1A2233"/>
+      <stop offset="44%" stop-color="#2D3952"/>
+      <stop offset="76%" stop-color="#0F141F"/>
+      <stop offset="100%" stop-color="#192131"/>
+    </linearGradient>
+    <linearGradient id="${uid}-chrome-cyl" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#5B564E"/>
+      <stop offset="20%" stop-color="#CFC8B9"/>
+      <stop offset="40%" stop-color="#FFFDF7"/>
+      <stop offset="68%" stop-color="#9E9789"/>
+      <stop offset="100%" stop-color="#514C44"/>
+    </linearGradient>
+    <radialGradient id="${uid}-lens-glass" cx="38%" cy="34%" r="65%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.88"/>
+      <stop offset="36%" stop-color="${lensHue}" stop-opacity="${isDusk ? 0.56 : 0.42}"/>
+      <stop offset="80%" stop-color="${isDusk ? '#2C5C7F' : '#8C6B32'}" stop-opacity="0.34"/>
+      <stop offset="100%" stop-color="#090D16" stop-opacity="0.62"/>
+    </radialGradient>
+    <linearGradient id="${uid}-beam-cone" x1="50%" y1="100%" x2="50%" y2="0%">
+      <stop offset="0%" stop-color="${rayHue}" stop-opacity="${isDusk ? 0.42 : 0.28}"/>
+      <stop offset="48%" stop-color="${rayHue}" stop-opacity="${isDusk ? 0.55 : 0.36}"/>
+      <stop offset="100%" stop-color="${lensHue}" stop-opacity="${isDusk ? 0.14 : 0.09}"/>
+    </linearGradient>
+    <linearGradient id="${uid}-loupe-cone" x1="100%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="${rayHue}" stop-opacity="${isDusk ? 0.30 : 0.20}"/>
+      <stop offset="100%" stop-color="${rayHue}" stop-opacity="0.02"/>
+    </linearGradient>
+    <pattern id="${uid}-hatch-micro" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(38)">
+      <line x1="0" y1="0" x2="0" y2="4" stroke="#E5C07B" stroke-width="0.45" stroke-opacity="0.28"/>
+    </pattern>
+    <clipPath id="${uid}-loupe-clip">
+      <circle cx="128" cy="216" r="59"/>
+    </clipPath>
+    <clipPath id="${uid}-barrel-clip">
+      <rect x="316" y="140" width="52" height="116" rx="2"/>
+    </clipPath>`;
+
+  // Precision linear graduation helper
+  const tickSeries = (x1, y1, x2, y2, dx, dy, count, majorEvery = 5, stroke = '#E5C07B', op = 0.72) => {
+    const out = [];
+    const nx = x2 - x1;
+    const ny = y2 - y1;
+    const len = Math.hypot(nx, ny) || 1;
+    const ux = nx / len, uy = ny / len;
+    for (let i = 0; i <= count; i++) {
+      const p = i / count;
+      const px = x1 + nx * p;
+      const py = y1 + ny * p;
+      const isMajor = i % majorEvery === 0;
+      const scale = isMajor ? 1.0 : 0.56;
+      const tx = px + dx * scale;
+      const ty = py + dy * scale;
+      // Keep parallel knurling/tick helper general by supporting perpendicular normal when dx/dy provided directly
+      out.push(`<line x1="${f(px)}" y1="${f(py)}" x2="${f(tx)}" y2="${f(ty)}" stroke="${stroke}" stroke-width="${isMajor ? 0.95 : 0.55}" stroke-opacity="${f(isMajor ? op : op * 0.65)}"/>`);
+      void ux; void uy;
+    }
+    return out.join('');
+  };
+
+  // Knurling flutes inside a horizontal rectangle band
+  const knurlBand = (x, y, w, h, step = 3.2, stroke = '#FAF0DC', op = 0.42) => {
+    const out = [];
+    for (let px = x + 2; px <= x + w - 2; px += step) {
+      out.push(`<line x1="${f(px)}" y1="${f(y + 1)}" x2="${f(px)}" y2="${f(y + h - 1)}" stroke="${stroke}" stroke-width="0.65" stroke-opacity="${op}"/>`);
+      out.push(`<line x1="${f(px + step * 0.45)}" y1="${f(y + 1)}" x2="${f(px + step * 0.45)}" y2="${f(y + h - 1)}" stroke="#06080E" stroke-width="0.6" stroke-opacity="0.55"/>`);
+    }
+    return out.join('');
+  };
+
+  // Rack-and-pinion machined gear teeth along vertical edge
+  const rackTeeth = (x, yTop, count, pitch = 3.6, depth = 3.5) => {
+    const parts = [];
+    for (let i = 0; i < count; i++) {
+      const y0 = yTop + i * pitch;
+      const y1 = y0 + pitch * 0.48;
+      parts.push(`<rect x="${f(x)}" y="${f(y0)}" width="${f(depth)}" height="${f(y1 - y0)}" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="0.45"/>`);
+    }
+    return parts.join('');
+  };
+
+  // Astrolabe bezel cardinal diamonds (echoing horizon moon astrolabe)
+  const cardinalDiamonds = [0, 90, 180, 270].map(deg => {
+    const [dx, dy] = polar(300, 300, 263, deg);
+    const [ox, oy] = polar(300, 300, 274, deg);
+    const [ix, iy] = polar(300, 300, 252, deg);
+    const [lx, ly] = polar(300, 300, 263, deg - 1.35);
+    const [rx, ry] = polar(300, 300, 263, deg + 1.35);
+    return `<polygon points="${f(ox)},${f(oy)} ${f(lx)},${f(ly)} ${f(ix)},${f(iy)} ${f(rx)},${f(ry)}" fill="#080B12" stroke="#E5C07B" stroke-width="1" stroke-opacity="0.78"/>` +
+      `<circle cx="${f(dx)}" cy="${f(dy)}" r="1.4" fill="#FAF0DC" fill-opacity="0.88"/>`;
+  }).join('');
+
+  // Left Specimen Loupe: bezel screws, cell membrane, stipples, anomalies
+  const loupeScrews = [];
+  for (let i = 0; i < 12; i++) {
+    const deg = i * 30 + 15;
+    const [sx, sy] = polar(128, 216, 68.5, deg);
+    const [a1x, a1y] = polar(sx, sy, 2, deg + 35);
+    const [a2x, a2y] = polar(sx, sy, 2, deg + 215);
+    loupeScrews.push(
+      `<circle cx="${f(sx)}" cy="${f(sy)}" r="2.2" fill="url(#${uid}-brass)" stroke="#090C14" stroke-width="0.7"/>` +
+      `<line x1="${f(a1x)}" y1="${f(a1y)}" x2="${f(a2x)}" y2="${f(a2y)}" stroke="#090C14" stroke-width="0.55"/>`
+    );
+  }
+
+  // Biomorphic striated cellular specimen inside (128, 216)
+  const cellPts = [];
+  const N_CELL = 48;
+  for (let i = 0; i < N_CELL; i++) {
+    const th = (i / N_CELL) * TAU;
+    const rad = 34 + 5.2 * Math.sin(3 * th + 0.6) + 2.8 * Math.cos(5 * th - 0.9) + 1.4 * Math.sin(7 * th);
+    cellPts.push([128 + rad * Math.cos(th), 217 + rad * 0.88 * Math.sin(th)]);
+  }
+  const cellPath = cellPts.map((p, i) => `${i === 0 ? 'M' : 'L'}${f(p[0])} ${f(p[1])}`).join(' ') + ' Z';
+  const cellInnerPath = cellPts.map((p, i) => {
+    const ix = 128 + (p[0] - 128) * 0.86;
+    const iy = 217 + (p[1] - 217) * 0.86;
+    return `${i === 0 ? 'M' : 'L'}${f(ix)} ${f(iy)}`;
+  }).join(' ') + ' Z';
+
+  // Reticulated crystalline filaments & deterministic cytoplasmic stippling
+  const rnd = mulberry32(isDusk ? 914 : 907);
+  const stipples = [];
+  for (let i = 0; i < 64; i++) {
+    const th = rnd() * TAU;
+    const r = 13 + rnd() * 19;
+    const sx = 128 + r * Math.cos(th);
+    const sy = 217 + r * 0.85 * Math.sin(th);
+    const sr = 0.55 + rnd() * 0.95;
+    const sc = rnd() > 0.72 ? rayHue : '#FAF0DC';
+    stipples.push(`<circle cx="${f(sx)}" cy="${f(sy)}" r="${f(sr)}" fill="${sc}" fill-opacity="${f(0.26 + rnd() * 0.45)}"/>`);
+  }
+  const filaments = [];
+  for (let i = 0; i < 7; i++) {
+    const th = (i / 7) * TAU + 0.25;
+    const [nx, ny] = [125 + 9 * Math.cos(th), 217 + 8 * Math.sin(th)];
+    const [mx, my] = [128 + 20 * Math.cos(th + 0.22), 217 + 17 * Math.sin(th + 0.22)];
+    const [ex, ey] = [128 + 31 * Math.cos(th - 0.12), 217 + 27 * Math.sin(th - 0.12)];
+    filaments.push(`<path d="M ${f(nx)} ${f(ny)} Q ${f(mx)} ${f(my)} ${f(ex)} ${f(ey)}" fill="none" stroke="#E5C07B" stroke-width="0.6" stroke-opacity="0.48"/>`);
+  }
+
+  // 3 Highlighted diagnostic error-anomaly reticles inside specimen
+  const anomalies = [
+    [110, 198, 6.5],
+    [146, 206, 5.5],
+    [122, 237, 6.0],
+  ].map(([ax, ay, ar]) => `
+    <circle cx="${ax}" cy="${ay}" r="${ar}" fill="${anomalyHue}" fill-opacity="0.14" stroke="${anomalyHue}" stroke-width="0.85" stroke-opacity="0.85"/>
+    <circle cx="${ax}" cy="${ay}" r="${f(ar * 0.35)}" fill="${anomalyHue}" fill-opacity="0.92"/>
+    <line x1="${ax - ar - 3}" y1="${ay}" x2="${ax - 2.5}" y2="${ay}" stroke="${anomalyHue}" stroke-width="0.7" stroke-opacity="0.78"/>
+    <line x1="${ax + 2.5}" y1="${ay}" x2="${ax + ar + 3}" y2="${ay}" stroke="${anomalyHue}" stroke-width="0.7" stroke-opacity="0.78"/>
+    <line x1="${ax}" y1="${ay - ar - 3}" x2="${ax}" y2="${ay - 2.5}" stroke="${anomalyHue}" stroke-width="0.7" stroke-opacity="0.78"/>
+    <line x1="${ax}" y1="${ay + 2.5}" x2="${ax}" y2="${ay + ar + 3}" stroke="${anomalyHue}" stroke-width="0.7" stroke-opacity="0.78"/>
+  `).join('');
+
+  // Dual Coaxial Focus Micrometer Spur Gears (Coarse @ 418,214 & Fine @ 408,268)
+  const coarseGearOuter = spurGearPath(418, 214, 40, 30.5, 28, 21.5, 4);
+  const fineGearOuter = spurGearPath(408, 268, 28, 19.5, 17.6, 12.5, 9);
+  const trunnionRosette = spurGearPath(368, 412, 16, 12, 10.2, 4, 0);
+
+  // Exact tangent coordinates from slide focus (342, 336) to loupe rim (128, 216, r=73)
+  const lDx = 342 - 128;
+  const lDy = 336 - 216;
+  const lDist = Math.hypot(lDx, lDy);
+  const lPhi = Math.atan2(lDy, lDx);
+  const lAlpha = Math.acos(73 / lDist);
+  const t1x = 128 + 73 * Math.cos(lPhi - lAlpha);
+  const t1y = 216 + 73 * Math.sin(lPhi - lAlpha);
+  const t2x = 128 + 73 * Math.cos(lPhi + lAlpha);
+  const t2y = 216 + 73 * Math.sin(lPhi + lAlpha);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">
-  ${baseDefs(uid)}
-  <circle cx="300" cy="300" r="275" fill="url(#${uid}-glow-${glow})"/>
-  <!-- Astrometric Reticle Surround & Optical Magnification Field -->
-  <circle cx="300" cy="300" r="248" fill="none" stroke="#E5C07B" stroke-width="0.9" stroke-opacity="0.4"/>
-  <circle cx="300" cy="300" r="228" fill="none" stroke="${lensHue}" stroke-width="0.7" stroke-opacity="0.28" stroke-dasharray="4 5"/>
-  ${degreeRing(300, 300, 248, 236, 5, 15, 45, '#E5C07B', 0.55)}
+  ${baseDefs(uid, extras)}
 
-  <!-- Side Optical Specimen Inset Reticle (left) -->
+  <!-- 1. CELESTIAL ASTROLABE FIELD & ATMOSPHERIC AURA -->
+  <circle cx="300" cy="300" r="286" fill="url(#${uid}-glow-${glow})" opacity="0.86"/>
+  <circle cx="342" cy="338" r="118" fill="url(#${uid}-glow-${isDusk ? 'cyan' : 'brass'})" opacity="0.72"/>
+  <circle cx="128" cy="216" r="96" fill="url(#${uid}-glow-${glow})" opacity="0.58"/>
+
+  <!-- Outer Dotted Horizon & Astrometric Bezel Tracks -->
+  <circle cx="300" cy="300" r="272" fill="none" stroke="#E5C07B" stroke-width="0.55" stroke-opacity="0.28" stroke-dasharray="1.5 4.5"/>
+  <circle cx="300" cy="300" r="254" fill="none" stroke="url(#${uid}-brass)" stroke-width="1.35" stroke-opacity="0.62"/>
+  <circle cx="300" cy="300" r="238" fill="none" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.38"/>
+  <circle cx="300" cy="300" r="228" fill="none" stroke="${rayHue}" stroke-width="0.65" stroke-opacity="0.32" stroke-dasharray="2 5"/>
+  <circle cx="300" cy="300" r="190" fill="none" stroke="#E5C07B" stroke-width="0.5" stroke-opacity="0.18"/>
+  <circle cx="300" cy="300" r="154" fill="none" stroke="${rayHue}" stroke-width="0.45" stroke-opacity="0.14" stroke-dasharray="3 6"/>
+  ${degreeRing(300, 300, 254, 240, 2, 10, 30, '#E5C07B', 0.64)}
+  ${cardinalCrosshairs(300, 300, 224, 276, '#E5C07B', 0.44)}
+  ${cardinalDiamonds}
+
+  <!-- Inclined Elliptical Nodal Orbits & Optical Telemetry Nodes -->
   <g opacity="0.88">
-    <circle cx="136" cy="240" r="64" fill="#080B12" stroke="url(#${uid}-brass)" stroke-width="2.2"/>
-    <circle cx="136" cy="240" r="46" fill="none" stroke="${lensHue}" stroke-width="1" stroke-opacity="0.65" stroke-dasharray="3 3"/>
-    <circle cx="136" cy="240" r="22" fill="${lensHue}" fill-opacity="0.14" stroke="#FAF0DC" stroke-width="1"/>
-    <line x1="72" y1="240" x2="200" y2="240" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.45"/>
-    <line x1="136" y1="176" x2="136" y2="304" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.45"/>
-    <line x1="200" y1="240" x2="290" y2="338" stroke="${lensHue}" stroke-width="0.95" stroke-opacity="0.55" stroke-dasharray="4 3"/>
+    <ellipse cx="300" cy="300" rx="246" ry="74" transform="rotate(-21 300 300)" fill="none" stroke="#E5C07B" stroke-width="0.95" stroke-opacity="0.44"/>
+    <ellipse cx="300" cy="300" rx="246" ry="74" transform="rotate(-21 300 300)" fill="none" stroke="${lensHue}" stroke-width="1.6" stroke-opacity="0.55" stroke-dasharray="110 900"/>
+    <ellipse cx="300" cy="300" rx="212" ry="62" transform="rotate(24 300 300)" fill="none" stroke="${rayHue}" stroke-width="0.7" stroke-opacity="0.32" stroke-dasharray="4 4"/>
+    <circle cx="114" cy="356" r="2.6" fill="${lensHue}" fill-opacity="0.9"/>
+    <circle cx="486" cy="244" r="2.2" fill="#E5C07B" fill-opacity="0.85"/>
+    <circle cx="458" cy="378" r="2" fill="${rayHue}" fill-opacity="0.75"/>
+  </g>
+  ${starField(300, 300, 88, 278, 52, isDusk ? 419 : 411, ['#F2EDE3', '#E5C07B', rayHue])}
+  ${starSpark(496, 126, 10, 2.0, lensHue, 0.88)}
+  ${starSpark(98, 430, 8, 1.6, '#FAF0DC', 0.78)}
+  ${starSpark(478, 476, 7.5, 1.5, rayHue, 0.72)}
+
+  <!-- Optical Bench Datum Baseline & Precision Scale -->
+  <g opacity="0.82">
+    <line x1="176" y1="532" x2="502" y2="532" stroke="#E5C07B" stroke-width="0.9" stroke-opacity="0.52"/>
+    <line x1="205" y1="535" x2="475" y2="535" stroke="#E5C07B" stroke-width="0.45" stroke-opacity="0.3"/>
+    ${tickSeries(210, 532, 470, 532, 0, 4, 26, 5, '#E5C07B', 0.52)}
   </g>
 
-  <!-- Horseshoe Brass Base & Substage Condenser Mirror -->
-  <path d="M 190 515 Q 300 475 410 515 L 432 544 Q 300 524 168 544 Z" fill="url(#${uid}-brass-h)" stroke="#090C14" stroke-width="2"/>
-  <rect x="268" y="425" width="64" height="68" rx="6" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="1.8"/>
-  <!-- Gimbaled Mirror -->
-  <ellipse cx="300" cy="442" rx="34" ry="12" transform="rotate(-18 300 442)" fill="url(#${uid}-silver)" stroke="url(#${uid}-brass)" stroke-width="2.2"/>
-  <ellipse cx="300" cy="440" rx="28" ry="8" transform="rotate(-18 300 440)" fill="${lensHue}" fill-opacity="0.55"/>
+  <!-- 2. PROJECTION BEAM & LEFT SPECIMEN INSPECTION LOUPE -->
+  <g>
+    <polygon points="342,336 ${f(t1x)},${f(t1y)} ${f(t2x)},${f(t2y)}" fill="url(#${uid}-loupe-cone)"/>
+    <line x1="342" y1="336" x2="${f(t1x)}" y2="${f(t1y)}" stroke="${rayHue}" stroke-width="0.85" stroke-opacity="0.58" stroke-dasharray="4 3.5"/>
+    <line x1="342" y1="336" x2="${f(t2x)}" y2="${f(t2y)}" stroke="${rayHue}" stroke-width="0.85" stroke-opacity="0.58" stroke-dasharray="4 3.5"/>
+    <path d="M 272 288 A 82 82 0 0 1 256 308" fill="none" stroke="${rayHue}" stroke-width="0.7" stroke-opacity="0.45"/>
+    <path d="M 244 268 A 118 118 0 0 1 220 298" fill="none" stroke="${rayHue}" stroke-width="0.65" stroke-opacity="0.34" stroke-dasharray="2 3"/>
 
-  <!-- Dioptric Light Beam Cone from Mirror to Stage -->
-  <polygon points="274,432 326,432 308,342 292,342" fill="${lensHue}" fill-opacity="${isDusk ? 0.24 : 0.14}" stroke="${lensHue}" stroke-width="0.7" stroke-opacity="0.45"/>
+    <!-- Outer Multi-Bevel Loupe Medallion -->
+    <circle cx="128" cy="216" r="73" fill="#070A10" stroke="url(#${uid}-brass)" stroke-width="2.4"/>
+    <circle cx="128" cy="216" r="66" fill="none" stroke="#E5C07B" stroke-width="0.65" stroke-opacity="0.48"/>
+    <circle cx="128" cy="216" r="60" fill="#06080E" stroke="url(#${uid}-brass-v)" stroke-width="1.4"/>
+    ${degreeRing(128, 216, 66, 60.5, 5, 15, 45, '#E5C07B', 0.7)}
+    <g>${loupeScrews.join('')}</g>
 
-  <!-- Doubled Curved Observatory C-Arm Limb -->
-  <path d="M 332 452 C 425 415, 442 250, 354 195 L 334 222 C 402 262, 392 388, 316 426 Z" fill="url(#${uid}-brass)" stroke="#090C14" stroke-width="2"/>
-  <path d="M 342 428 C 410 390, 422 272, 355 215" fill="none" stroke="#FAF0DC" stroke-width="1.2" stroke-opacity="0.6"/>
+    <!-- Magnified Specimen Cytology & Reticle inside Aperture -->
+    <g clip-path="url(#${uid}-loupe-clip)">
+      <circle cx="128" cy="216" r="59" fill="url(#${uid}-glow-${isDusk ? 'cyan' : 'brass'})" opacity="0.46"/>
+      <!-- Polar & Micrometer Grid -->
+      <circle cx="128" cy="216" r="46" fill="none" stroke="${rayHue}" stroke-width="0.6" stroke-opacity="0.32" stroke-dasharray="2 3"/>
+      <circle cx="128" cy="216" r="30" fill="none" stroke="#E5C07B" stroke-width="0.55" stroke-opacity="0.28"/>
+      <circle cx="128" cy="216" r="14" fill="none" stroke="${rayHue}" stroke-width="0.6" stroke-opacity="0.45"/>
+      <line x1="69" y1="216" x2="118" y2="216" stroke="#E5C07B" stroke-width="0.55" stroke-opacity="0.42"/>
+      <line x1="138" y1="216" x2="187" y2="216" stroke="#E5C07B" stroke-width="0.55" stroke-opacity="0.42"/>
+      <line x1="128" y1="157" x2="128" y2="206" stroke="#E5C07B" stroke-width="0.55" stroke-opacity="0.42"/>
+      <line x1="128" y1="226" x2="128" y2="275" stroke="#E5C07B" stroke-width="0.55" stroke-opacity="0.42"/>
+      <line x1="86" y1="174" x2="170" y2="258" stroke="#E5C07B" stroke-width="0.4" stroke-opacity="0.2" stroke-dasharray="2 4"/>
+      <line x1="170" y1="174" x2="86" y2="258" stroke="#E5C07B" stroke-width="0.4" stroke-opacity="0.2" stroke-dasharray="2 4"/>
+      ${tickSeries(84, 216, 172, 216, 0, -3.5, 22, 5, '#FAF0DC', 0.45)}
 
-  <!-- Milled Coarse & Fine Focus Knobs -->
-  <circle cx="386" cy="242" r="26" fill="url(#${uid}-dark-metal)" stroke="url(#${uid}-brass)" stroke-width="3"/>
-  <circle cx="386" cy="242" r="14" fill="url(#${uid}-brass)"/>
-  <circle cx="378" cy="296" r="17" fill="url(#${uid}-dark-metal)" stroke="url(#${uid}-brass)" stroke-width="2.4"/>
-  <circle cx="378" cy="296" r="7" fill="#FAF0DC"/>
+      <!-- Cellular Striated Specimen & Organelles -->
+      <path d="${cellPath}" fill="${isDusk ? '#1E3C54' : '#352A18'}" fill-opacity="0.42" stroke="${lensHue}" stroke-width="1.25" stroke-opacity="0.86"/>
+      <path d="${cellInnerPath}" fill="url(#${uid}-hatch-micro)" stroke="#E5C07B" stroke-width="0.65" stroke-opacity="0.55"/>
+      <g>${filaments.join('')}</g>
+      <g>${stipples.join('')}</g>
 
-  <!-- Optical Draw-Tube, Ocular Eyepiece & Nosepiece Turret -->
-  <g transform="rotate(8 304 200)">
-    <rect x="280" y="76" width="48" height="32" rx="4" fill="url(#${uid}-dark-metal)" stroke="url(#${uid}-brass)" stroke-width="2.2"/>
-    <rect x="272" y="64" width="64" height="14" rx="4" fill="url(#${uid}-brass-h)"/>
-    <rect x="288" y="108" width="32" height="54" fill="url(#${uid}-silver)" stroke="#090C14" stroke-width="1.4"/>
-    <rect x="274" y="160" width="60" height="122" rx="4" fill="url(#${uid}-brass-h)" stroke="#090C14" stroke-width="2"/>
-    <rect x="270" y="274" width="68" height="22" rx="6" fill="url(#${uid}-dark-metal)" stroke="url(#${uid}-brass)" stroke-width="2"/>
-    <!-- 3 Objective Lenses on Revolving Nosepiece -->
-    <path d="M 294 296 L 314 296 L 310 330 L 298 330 Z" fill="url(#${uid}-brass-h)" stroke="#090C14" stroke-width="1.4"/>
-    <path d="M 268 292 L 284 296 L 274 322 L 260 316 Z" fill="url(#${uid}-brass)" stroke="#090C14" stroke-width="1.2"/>
-    <path d="M 324 296 L 340 292 L 348 318 L 334 324 Z" fill="url(#${uid}-brass)" stroke="#090C14" stroke-width="1.2"/>
+      <!-- Nucleus & Diagnostic Error Loci -->
+      <ellipse cx="126" cy="217" rx="11.5" ry="9" transform="rotate(-18 126 217)" fill="#090D16" stroke="#E5C07B" stroke-width="1.15"/>
+      <ellipse cx="126" cy="217" rx="11.5" ry="9" transform="rotate(-18 126 217)" fill="url(#${uid}-hatch-micro)"/>
+      <circle cx="124" cy="216" r="2.8" fill="${lensHue}" fill-opacity="0.82"/>
+      <g>${anomalies}</g>
+
+      <!-- Concave Glass Specular Catchlight -->
+      <path d="M 78 202 A 54 54 0 0 1 164 176 Q 124 190 88 214 Z" fill="${lensHue}" fill-opacity="0.14"/>
+      <path d="M 82 192 A 50 50 0 0 1 142 169" fill="none" stroke="#FFFFFF" stroke-width="1.2" stroke-opacity="0.38" stroke-linecap="round"/>
+    </g>
   </g>
 
-  <!-- Mechanical Stage & Specimen Slide -->
-  <rect x="218" y="346" width="164" height="14" rx="2" fill="url(#${uid}-dark-metal)" stroke="url(#${uid}-brass)" stroke-width="2.2"/>
-  <rect x="266" y="338" width="68" height="8" rx="1" fill="${lensHue}" fill-opacity="0.55" stroke="#FAF0DC" stroke-width="1"/>
-  <rect x="278" y="360" width="44" height="22" rx="2" fill="url(#${uid}-brass-h)"/>
+  <!-- 3. TRIPOD CLAW PEDESTAL, FLUTED PILLAR & TRUNNION JOINT (X_OPT = 342) -->
+  <!-- Rear Tripod Foot -->
+  <g>
+    <rect x="331" y="476" width="22" height="44" rx="2" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.4"/>
+    <path d="M 326 520 L 358 520 L 362 531 L 322 531 Z" fill="url(#${uid}-anodize)" stroke="#E5C07B" stroke-width="1"/>
+  </g>
+
+  <!-- Sculpted Left & Right Horseshoe Claw Legs -->
+  <g>
+    <!-- Left Arch Foot -->
+    <path d="M 328 474 C 294 476, 260 492, 240 520 L 258 524 C 276 502, 302 490, 329 489 Z" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="1.6"/>
+    <path d="M 250 518 C 274 494, 298 484, 327 481" fill="none" stroke="#FAF0DC" stroke-width="0.9" stroke-opacity="0.62"/>
+    <rect x="234" y="518" width="28" height="4.5" rx="1.5" fill="url(#${uid}-brass-h)" stroke="#090C14" stroke-width="0.9"/>
+    ${knurlBand(235, 518, 26, 4.5, 2.8, '#FAF0DC', 0.45)}
+    <path d="M 232 522.5 L 264 522.5 L 267 531.5 L 229 531.5 Z" fill="url(#${uid}-anodize)" stroke="#E5C07B" stroke-width="1"/>
+    <line x1="238" y1="523" x2="236" y2="531" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.65"/>
+    <line x1="248" y1="523" x2="248" y2="531" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.65"/>
+    <line x1="258" y1="523" x2="260" y2="531" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.65"/>
+
+    <!-- Right Arch Foot -->
+    <path d="M 356 474 C 390 476, 424 492, 444 520 L 426 524 C 408 502, 382 490, 355 489 Z" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="1.6"/>
+    <path d="M 434 518 C 410 494, 386 484, 357 481" fill="none" stroke="#FAF0DC" stroke-width="0.9" stroke-opacity="0.62"/>
+    <rect x="422" y="518" width="28" height="4.5" rx="1.5" fill="url(#${uid}-brass-h)" stroke="#090C14" stroke-width="0.9"/>
+    ${knurlBand(423, 518, 26, 4.5, 2.8, '#FAF0DC', 0.45)}
+    <path d="M 420 522.5 L 452 522.5 L 455 531.5 L 417 531.5 Z" fill="url(#${uid}-anodize)" stroke="#E5C07B" stroke-width="1"/>
+    <line x1="426" y1="523" x2="424" y2="531" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.65"/>
+    <line x1="436" y1="523" x2="436" y2="531" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.65"/>
+    <line x1="446" y1="523" x2="448" y2="531" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.65"/>
+  </g>
+
+  <!-- Central Graduated Pillar Column & Mirror Yoke Anchor -->
+  <g>
+    <rect x="328" y="406" width="28" height="74" rx="2" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.6"/>
+    <rect x="324" y="472" width="36" height="8" rx="2" fill="url(#${uid}-brass-h)" stroke="#090C14" stroke-width="1.2"/>
+    <rect x="324" y="402" width="36" height="8" rx="2" fill="url(#${uid}-brass-h)" stroke="#090C14" stroke-width="1.2"/>
+    ${tickSeries(331, 414, 331, 468, 6, 0, 12, 4, '#090C14', 0.55)}
+    <line x1="337" y1="410" x2="337" y2="472" stroke="#FFF6DE" stroke-width="1.1" stroke-opacity="0.5"/>
+  </g>
+
+  <!-- 4. GIMBALED PARABOLIC MIRROR, LUMINOUS CONE & ABBE CONDENSER -->
+  <g>
+    <!-- Dioptric Condenser Light Cone (Bottom Mirror -> Condenser Neck -> Slide) -->
+    <polygon points="315,447 369,447 352,378 332,378" fill="url(#${uid}-beam-cone)"/>
+    <polygon points="330,378 354,378 368,341 316,341" fill="url(#${uid}-beam-cone)"/>
+    <line x1="322" y1="446" x2="337" y2="378" stroke="${rayHue}" stroke-width="0.75" stroke-opacity="0.65" stroke-dasharray="3 2.5"/>
+    <line x1="362" y1="446" x2="347" y2="378" stroke="${rayHue}" stroke-width="0.75" stroke-opacity="0.65" stroke-dasharray="3 2.5"/>
+    <line x1="337" y1="378" x2="321" y2="340" stroke="${rayHue}" stroke-width="0.75" stroke-opacity="0.6"/>
+    <line x1="347" y1="378" x2="363" y2="340" stroke="${rayHue}" stroke-width="0.75" stroke-opacity="0.6"/>
+    <!-- Optical Center Axis -->
+    <line x1="342" y1="54" x2="342" y2="452" stroke="${lensHue}" stroke-width="0.6" stroke-opacity="0.22" stroke-dasharray="6 4"/>
+
+    <!-- Mirror Gimbal Forked Yoke -->
+    <path d="M 304 452 C 304 484, 380 484, 380 452" fill="none" stroke="url(#${uid}-chrome-cyl)" stroke-width="3.8" stroke-linecap="round"/>
+    <path d="M 304 452 C 304 484, 380 484, 380 452" fill="none" stroke="#090C14" stroke-width="0.8" stroke-opacity="0.6"/>
+    <!-- Tilted 3D Double-Sided Parabolic Mirror -->
+    <g transform="rotate(-21 342 452)">
+      <ellipse cx="342" cy="455" rx="34" ry="11" fill="url(#${uid}-brass-h)" stroke="#090C14" stroke-width="1.4"/>
+      <ellipse cx="342" cy="451" rx="34" ry="10.5" fill="url(#${uid}-anodize)" stroke="url(#${uid}-brass)" stroke-width="1.8"/>
+      <ellipse cx="342" cy="450.5" rx="28.5" ry="7.2" fill="url(#${uid}-lens-glass)"/>
+      <line x1="322" y1="446" x2="338" y2="455" stroke="#FAF0DC" stroke-width="0.7" stroke-opacity="0.5"/>
+      <line x1="332" y1="444.5" x2="352" y2="455.5" stroke="#FAF0DC" stroke-width="0.9" stroke-opacity="0.6"/>
+      <line x1="346" y1="445" x2="361" y2="453" stroke="${rayHue}" stroke-width="0.7" stroke-opacity="0.5"/>
+    </g>
+    <!-- Jewelled Gimbal Pivot Trunnions -->
+    <circle cx="304" cy="452" r="3.6" fill="url(#${uid}-brass)" stroke="#090C14" stroke-width="0.9"/>
+    <circle cx="380" cy="452" r="3.6" fill="url(#${uid}-brass)" stroke="#090C14" stroke-width="0.9"/>
+
+    <!-- Abbe Substage Condenser + Bladed Iris Diaphragm -->
+    <path d="M 322 380 Q 342 396 362 380 Z" fill="url(#${uid}-lens-glass)" stroke="#E5C07B" stroke-width="1"/>
+    <path d="M 330 383 Q 342 390 352 382" fill="none" stroke="#FFFFFF" stroke-width="0.85" stroke-opacity="0.55" stroke-linecap="round"/>
+    <rect x="315" y="366" width="54" height="14" rx="2" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.3"/>
+    ${knurlBand(316, 367, 52, 12, 3.0, '#FAF0DC', 0.35)}
+    <rect x="319" y="352" width="46" height="14" rx="1.5" fill="url(#${uid}-anodize)" stroke="#E5C07B" stroke-width="1.1"/>
+    <!-- Iris Aperture Slider Lever & Scale Arc -->
+    <path d="M 294 374 Q 305 381 315 376" fill="none" stroke="#E5C07B" stroke-width="0.65" stroke-opacity="0.55" stroke-dasharray="1.5 2"/>
+    <line x1="319" y1="369" x2="291" y2="376" stroke="url(#${uid}-brass-v)" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="290" cy="376" r="3.4" fill="#FAF0DC" stroke="#090C14" stroke-width="0.9"/>
+  </g>
+
+  <!-- 5. SCULPTURAL DOUBLED OBSERVATORY C-ARM LIMB & TRUNNION CLAMP -->
+  <g>
+    <!-- Lower Stage Support Strut & C-Arm Outer Brass Frame -->
+    <path d="M 358 344 L 408 344 L 404 358 L 358 354 Z" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="1.2"/>
+    <!-- Outer Limb Body -->
+    <path d="M 360 420 C 464 388, 482 228, 368 170 L 352 198 C 434 242, 424 366, 348 398 Z" fill="url(#${uid}-brass)" stroke="#090C14" stroke-width="1.9"/>
+    <!-- Deep Hatched Recessed Inner C-Channel -->
+    <path d="M 366 406 C 446 376, 460 238, 368 184 L 359 195 C 436 244, 426 362, 355 393 Z" fill="#070A10" stroke="#E5C07B" stroke-width="0.9" stroke-opacity="0.75"/>
+    <path d="M 366 406 C 446 376, 460 238, 368 184 L 359 195 C 436 244, 426 362, 355 393 Z" fill="url(#${uid}-hatch-micro)"/>
+    <!-- Central Machined Spine Rib inside C-Channel -->
+    <path d="M 363 400 C 441 370, 448 242, 364 190" fill="none" stroke="url(#${uid}-brass-v)" stroke-width="4.2" stroke-linecap="round"/>
+    <path d="M 363 398.5 C 439 369, 446 242, 364 189" fill="none" stroke="#FAF0DC" stroke-width="0.85" stroke-opacity="0.65"/>
+    <!-- Outer Rim Specular Highlight -->
+    <path d="M 364 416 C 461 384, 478 231, 369 173" fill="none" stroke="#FFF6DE" stroke-width="1.15" stroke-opacity="0.68"/>
+
+    <!-- Engraved Maker's Cartouche Plate on Vertical Spine -->
+    <g transform="rotate(-10 436 318)">
+      <rect x="429" y="294" width="14" height="48" rx="3" fill="#070A10" stroke="url(#${uid}-brass)" stroke-width="1.3"/>
+      <rect x="431.5" y="297" width="9" height="42" rx="1.5" fill="none" stroke="#E5C07B" stroke-width="0.5" stroke-opacity="0.6"/>
+      <circle cx="436" cy="300" r="1.1" fill="#FAF0DC"/>
+      <circle cx="436" cy="336" r="1.1" fill="#FAF0DC"/>
+      <line x1="433.5" y1="312" x2="438.5" y2="312" stroke="#E5C07B" stroke-width="0.7"/>
+      <line x1="433.5" y1="318" x2="438.5" y2="318" stroke="#FAF0DC" stroke-width="0.8"/>
+      <line x1="433.5" y1="324" x2="438.5" y2="324" stroke="#E5C07B" stroke-width="0.7"/>
+    </g>
+
+    <!-- Trunnion Hinge Clevis & Clamping Rosette Toggle -->
+    <circle cx="368" cy="412" r="16" fill="url(#${uid}-anodize)" stroke="url(#${uid}-brass)" stroke-width="2"/>
+    <path d="${trunnionRosette}" fill="url(#${uid}-brass)" fill-rule="evenodd" stroke="#090C14" stroke-width="0.8"/>
+    <line x1="368" y1="412" x2="396" y2="429" stroke="url(#${uid}-brass-v)" stroke-width="3.6" stroke-linecap="round"/>
+    <circle cx="397" cy="430" r="3.4" fill="#FAF0DC" stroke="#090C14" stroke-width="0.9"/>
+    <circle cx="368" cy="412" r="4.5" fill="#FAF0DC" stroke="#090C14" stroke-width="1"/>
+  </g>
+
+  <!-- 6. RACK-AND-PINION COLUMN & COAXIAL MICROMETER FOCUS DRUMS -->
+  <g>
+    <!-- Vertical Dovetail Guideway Rail & 32 Machined Rack Teeth -->
+    <rect x="355" y="144" width="12" height="126" rx="1.5" fill="url(#${uid}-anodize)" stroke="#E5C07B" stroke-width="1.1"/>
+    ${rackTeeth(365, 148, 33, 3.6, 3.6)}
+    <!-- Upper Arm Bracket Housing Bridging Body Tube to Coarse Pinion -->
+    <rect x="342" y="168" width="38" height="22" rx="2.5" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="1.4"/>
+    <circle cx="352" cy="179" r="2.2" fill="#090C14" stroke="#FAF0DC" stroke-width="0.7"/>
+    <circle cx="372" cy="179" r="2.2" fill="#090C14" stroke="#FAF0DC" stroke-width="0.7"/>
+    <!-- Pinion Axle Sleeves -->
+    <rect x="366" y="207" width="34" height="14" rx="2" fill="url(#${uid}-chrome-cyl)" stroke="#090C14" stroke-width="1.1"/>
+    <rect x="366" y="262" width="32" height="12" rx="2" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="1"/>
+
+    <!-- Coarse Focus Knurled Micrometer Wheel (cx=418, cy=214) -->
+    <circle cx="418" cy="214" r="31" fill="#070A10" stroke="#090C14" stroke-width="1.5"/>
+    <path d="${coarseGearOuter}" fill="url(#${uid}-brass)" fill-rule="evenodd" stroke="#090C14" stroke-width="0.8"/>
+    <circle cx="418" cy="214" r="23.5" fill="url(#${uid}-anodize)" stroke="#E5C07B" stroke-width="1.2"/>
+    ${degreeRing(418, 214, 23, 19, 15, 45, 90, '#FAF0DC', 0.58)}
+    <circle cx="418" cy="214" r="16.5" fill="url(#${uid}-brass)" stroke="#090C14" stroke-width="1.2"/>
+    <!-- Recessed Radial Spokes / Guilloche Detail -->
+    <line x1="406" y1="214" x2="430" y2="214" stroke="#090C14" stroke-width="1.2" stroke-opacity="0.55"/>
+    <line x1="418" y1="202" x2="418" y2="226" stroke="#090C14" stroke-width="1.2" stroke-opacity="0.55"/>
+    <circle cx="418" cy="214" r="8.2" fill="url(#${uid}-chrome-cyl)" stroke="#090C14" stroke-width="1.1"/>
+    <line x1="413.5" y1="211" x2="422.5" y2="217" stroke="#090C14" stroke-width="1.2"/>
+
+    <!-- Fine Micrometer Graduated Wheel (cx=408, cy=268) -->
+    <circle cx="408" cy="268" r="20" fill="#070A10" stroke="#090C14" stroke-width="1.2"/>
+    <path d="${fineGearOuter}" fill="url(#${uid}-brass)" fill-rule="evenodd" stroke="#090C14" stroke-width="0.7"/>
+    <circle cx="408" cy="268" r="14.5" fill="url(#${uid}-anodize)" stroke="#FAF0DC" stroke-width="0.9"/>
+    ${degreeRing(408, 268, 14.2, 10.8, 15, 45, 90, '#E5C07B', 0.72)}
+    <circle cx="408" cy="268" r="8.5" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="1"/>
+    <circle cx="408" cy="268" r="3.4" fill="#FAF0DC"/>
+    <!-- Vernier Index Pointer Arrow -->
+    <polygon points="384,268 391,265.5 391,270.5" fill="${lensHue}"/>
+  </g>
+
+  <!-- 7. VERNIER MECHANICAL STAGE, X-Y MICROMETER DRUMS & PREPARED SLIDE -->
+  <g>
+    <!-- Main Black Anodized Stage Deck -->
+    <rect x="236" y="341" width="180" height="12" rx="2" fill="url(#${uid}-anodize)" stroke="url(#${uid}-brass)" stroke-width="1.8"/>
+    <line x1="238" y1="342" x2="414" y2="342" stroke="#FAF0DC" stroke-width="0.75" stroke-opacity="0.58"/>
+    <!-- Stage Vernier Millimeter Graduation Bar -->
+    <rect x="256" y="343.5" width="140" height="4.5" fill="#0A0E18" fill-opacity="0.9"/>
+    ${tickSeries(260, 343.5, 392, 343.5, 0, 3.8, 30, 5, '#E5C07B', 0.65)}
+
+    <!-- Left Coaxial X-Y Stage Micrometer Drums -->
+    <rect x="226" y="344.5" width="11" height="5" fill="url(#${uid}-chrome-cyl)" stroke="#090C14" stroke-width="0.8"/>
+    <rect x="213" y="339" width="14" height="16" rx="1.8" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="1.1"/>
+    ${tickSeries(214, 340.5, 226, 340.5, 0, 13, 5, 2, '#090C14', 0.55)}
+    <rect x="202" y="342" width="11" height="10" rx="1.5" fill="url(#${uid}-anodize)" stroke="#E5C07B" stroke-width="0.9"/>
+    <circle cx="199" cy="347" r="3" fill="url(#${uid}-brass)" stroke="#090C14" stroke-width="0.8"/>
+    <!-- Right Stage Tension Knob -->
+    <rect x="415" y="342" width="9" height="10" rx="1.5" fill="url(#${uid}-brass-v)" stroke="#090C14" stroke-width="1"/>
+
+    <!-- Twin Curved Spring-Steel Slide Clips -->
+    <path d="M 272 341 C 276 332, 290 333, 302 337" fill="none" stroke="url(#${uid}-chrome-cyl)" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="272" cy="341" r="2.2" fill="#E5C07B" stroke="#090C14" stroke-width="0.7"/>
+    <path d="M 404 341 C 400 332, 386 333, 376 337" fill="none" stroke="url(#${uid}-chrome-cyl)" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="404" cy="341" r="2.2" fill="#E5C07B" stroke="#090C14" stroke-width="0.7"/>
+
+    <!-- Glass Specimen Slide & Coverslip + Glowing Focal Hotspot -->
+    <rect x="292" y="335.5" width="96" height="5.5" rx="0.8" fill="${lensHue}" fill-opacity="${isDusk ? 0.42 : 0.28}" stroke="#FAF0DC" stroke-width="0.95"/>
+    <rect x="293" y="336" width="18" height="4.5" fill="#FAF0DC" fill-opacity="0.34"/>
+    <rect x="328" y="333" width="28" height="2.5" rx="0.5" fill="#FFFFFF" fill-opacity="0.58" stroke="${rayHue}" stroke-width="0.5"/>
+    <circle cx="342" cy="336" r="4.5" fill="${rayHue}" fill-opacity="0.38" filter="url(#${uid}-softglow)"/>
+    ${starSpark(342, 336, 6.5, 1.3, '#FFFFFF', 0.94)}
+  </g>
+
+  <!-- 8. CUTAWAY OPTICAL BODY TUBE, DRAW-TUBE, OCULAR & REVOLVING NOSEPIECE -->
+  <g>
+    <!-- Ocular Eyepiece Assembly (top) -->
+    <path d="M 322 92 L 362 92 L 357 104 L 327 104 Z" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.3"/>
+    <rect x="319" y="75" width="46" height="17" rx="2" fill="url(#${uid}-anodize)" stroke="url(#${uid}-brass)" stroke-width="1.4"/>
+    <rect x="319" y="81" width="46" height="6" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="0.8"/>
+    ${knurlBand(320, 81, 44, 6, 2.8, '#FAF0DC', 0.4)}
+    <!-- Flared Ocular Cup & Recessed Eye-Lens -->
+    <path d="M 314 66 L 370 66 L 365 75 L 319 75 Z" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.4"/>
+    <line x1="315" y1="67" x2="369" y2="67" stroke="#FFF6DE" stroke-width="0.9" stroke-opacity="0.72"/>
+    <ellipse cx="342" cy="66" rx="18" ry="3.2" fill="#06080E" stroke="#E5C07B" stroke-width="0.8"/>
+    <ellipse cx="342" cy="65.8" rx="14" ry="2.2" fill="url(#${uid}-lens-glass)"/>
+
+    <!-- Graduated Brushed Silver Draw-Tube -->
+    <rect x="327" y="104" width="30" height="36" fill="url(#${uid}-chrome-cyl)" stroke="#090C14" stroke-width="1.3"/>
+    <line x1="336" y1="104" x2="336" y2="139" stroke="#FFFFFF" stroke-width="1" stroke-opacity="0.55"/>
+    ${tickSeries(356, 108, 356, 134, -5.5, 0, 10, 5, '#090C14', 0.65)}
+    <rect x="322" y="135" width="40" height="5.5" rx="1.5" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.1"/>
+
+    <!-- Main Brass Optical Body Barrel with Technical Cutaway Window -->
+    <rect x="316" y="140" width="52" height="116" rx="2.5" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.7"/>
+    <!-- Stepped Upper & Lower Knurled Barrel Collars -->
+    <rect x="313" y="140" width="58" height="10" rx="2" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.3"/>
+    ${knurlBand(314, 140.5, 56, 9, 3.0, '#FAF0DC', 0.42)}
+    <rect x="313" y="246" width="58" height="10" rx="2" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.3"/>
+    ${knurlBand(314, 246.5, 56, 9, 3.0, '#FAF0DC', 0.42)}
+    <line x1="316" y1="155" x2="368" y2="155" stroke="#090C14" stroke-width="0.9" stroke-opacity="0.6"/>
+    <line x1="316" y1="241" x2="368" y2="241" stroke="#090C14" stroke-width="0.9" stroke-opacity="0.6"/>
+
+    <!-- Master Watchmaker Optical Cutaway Aperture -->
+    <g>
+      <rect x="323" y="159" width="38" height="78" rx="4" fill="#05070C" stroke="url(#${uid}-brass)" stroke-width="1.5"/>
+      <rect x="323" y="159" width="38" height="78" rx="4" fill="url(#${uid}-hatch-micro)" opacity="0.55"/>
+      <!-- Anti-Reflection Internal Baffle Ridges -->
+      <path d="M 323 166 L 327 167.5 L 323 169 M 323 185 L 327 186.5 L 323 188 M 323 206 L 327 207.5 L 323 209 M 323 227 L 327 228.5 L 323 230" fill="none" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.55"/>
+      <path d="M 361 166 L 357 167.5 L 361 169 M 361 185 L 357 186.5 L 361 188 M 361 206 L 357 207.5 L 361 209 M 361 227 L 357 228.5 L 361 230" fill="none" stroke="#E5C07B" stroke-width="0.7" stroke-opacity="0.55"/>
+
+      <!-- Internal Ray-Trace Paths Crossing at Intermediate Image Plane -->
+      <polygon points="335,236 349,236 342,197" fill="${rayHue}" fill-opacity="${isDusk ? 0.24 : 0.16}"/>
+      <polygon points="342,197 332,160 352,160" fill="${rayHue}" fill-opacity="${isDusk ? 0.20 : 0.13}"/>
+      <line x1="333" y1="236" x2="351" y2="160" stroke="${lensHue}" stroke-width="0.75" stroke-opacity="0.78"/>
+      <line x1="351" y1="236" x2="333" y2="160" stroke="${lensHue}" stroke-width="0.75" stroke-opacity="0.78"/>
+
+      <!-- Internal Doublet Achromat Lens (lower, y=219) -->
+      <path d="M 327 219 Q 342 213 357 219 Q 342 225 327 219 Z" fill="url(#${uid}-lens-glass)" stroke="${lensHue}" stroke-width="0.85"/>
+      <rect x="325" y="217" width="3.5" height="4" fill="url(#${uid}-brass)"/>
+      <rect x="355.5" y="217" width="3.5" height="4" fill="url(#${uid}-brass)"/>
+
+      <!-- Internal Field Lens (upper, y=175) -->
+      <path d="M 328 175 Q 342 169.5 356 175 Q 342 180.5 328 175 Z" fill="url(#${uid}-lens-glass)" stroke="${lensHue}" stroke-width="0.85"/>
+      <rect x="325" y="173" width="3.5" height="4" fill="url(#${uid}-brass)"/>
+      <rect x="355.5" y="173" width="3.5" height="4" fill="url(#${uid}-brass)"/>
+
+      <!-- Intermediate Optical Focus Flare -->
+      ${starSpark(342, 197, 5, 1.0, '#FFFFFF', 0.88)}
+    </g>
+
+    <!-- Revolving Nosepiece Dome, Knurled Collar & 3 Parfocal Objectives -->
+    <path d="M 314 256 L 370 256 L 376 268 L 308 268 Z" fill="url(#${uid}-anodize)" stroke="url(#${uid}-brass)" stroke-width="1.3"/>
+    <rect x="306" y="268" width="72" height="10" rx="2.5" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.3"/>
+    ${knurlBand(307, 268.5, 70, 9, 2.8, '#FAF0DC', 0.44)}
+    <path d="M 308 278 Q 342 290 376 278 L 368 286 Q 342 294 316 286 Z" fill="url(#${uid}-anodize)" stroke="#E5C07B" stroke-width="1"/>
+    <circle cx="342" cy="283" r="2.4" fill="#FAF0DC" stroke="#090C14" stroke-width="0.8"/>
+
+    <!-- Left Objective (Angled +27 deg, Low-Power Wide Brass) -->
+    <g transform="rotate(27 342 276)">
+      <rect x="333" y="286" width="18" height="6" rx="1" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1"/>
+      ${knurlBand(334, 286.5, 16, 5, 2.6, '#FAF0DC', 0.42)}
+      <rect x="334" y="292" width="16" height="17" fill="url(#${uid}-anodize)" stroke="#E5C07B" stroke-width="0.9"/>
+      <rect x="334" y="303" width="16" height="2.6" fill="#E5C07B" fill-opacity="0.9"/>
+      <path d="M 335 309 L 349 309 L 346.5 317 L 337.5 317 Z" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1"/>
+      <ellipse cx="342" cy="317.5" rx="3.8" ry="1.4" fill="url(#${uid}-lens-glass)"/>
+    </g>
+
+    <!-- Right Objective (Angled -27 deg, High-NA Slender Oil-Immersion) -->
+    <g transform="rotate(-27 342 276)">
+      <rect x="334" y="286" width="16" height="6" rx="1" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1"/>
+      ${knurlBand(335, 286.5, 14, 5, 2.5, '#FAF0DC', 0.42)}
+      <rect x="335.5" y="292" width="13" height="20" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1"/>
+      <rect x="335.5" y="306" width="13" height="2.4" fill="${isDusk ? '#A9C9A4' : '#FAF0DC'}" fill-opacity="0.9"/>
+      <path d="M 336 312 L 348 312 L 345 324 L 339 324 Z" fill="url(#${uid}-chrome-cyl)" stroke="#090C14" stroke-width="0.9"/>
+      <ellipse cx="342" cy="324.5" rx="2.6" ry="1.1" fill="url(#${uid}-lens-glass)"/>
+    </g>
+
+    <!-- Center Active Objective (Engaged over Slide at X=342) -->
+    <g>
+      <rect x="331" y="285" width="22" height="6.5" rx="1" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.1"/>
+      ${knurlBand(332, 285.5, 20, 5.5, 2.5, '#FAF0DC', 0.45)}
+      <rect x="332.5" y="291.5" width="19" height="19" fill="url(#${uid}-brass-cyl)" stroke="#090C14" stroke-width="1.2"/>
+      <rect x="332.5" y="304.5" width="19" height="3.2" fill="${bandHue}" fill-opacity="0.92"/>
+      <path d="M 333.5 310.5 L 350.5 310.5 L 347.5 326 L 336.5 326 Z" fill="url(#${uid}-chrome-cyl)" stroke="#090C14" stroke-width="1.1"/>
+      <ellipse cx="342" cy="326.5" rx="4.2" ry="1.6" fill="url(#${uid}-lens-glass)" stroke="#FAF0DC" stroke-width="0.5"/>
+      <!-- Converging Light Coupling from Coverslip into Front Lens -->
+      <polygon points="338,327 346,327 343.5,335 340.5,335" fill="${rayHue}" fill-opacity="${isDusk ? 0.55 : 0.36}"/>
+    </g>
+  </g>
 </svg>`;
 }
 
