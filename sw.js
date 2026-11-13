@@ -197,7 +197,9 @@
 //        slider-resident.js + slider-resident.css join shell precache.
 // v101 - FLOW UNTOUCHED-ONLY: Flow/Hardcore offer only untouched questions
 //        (solved/attempted never served, mode exits when pool drains).
-const VERSION = 'jeemax-v101';
+// v102 - M11 SERVICE WORKER CACHE COMPLETENESS + DEAD CODE CLEANUP:
+//        Added cortex.js, styles-dashboard.css, and styles-practice-fullscreen.css?v=10 to SHELL.
+const VERSION = 'jeemax-v102';
 
 const SHELL = [
   './',
@@ -232,6 +234,8 @@ const SHELL = [
   './observatory.css',
   './styles-telemetry.css',
   './styles-modes.css',
+  './styles-dashboard.css',
+  './styles-practice-fullscreen.css?v=10',
   './atmosphere.js',
   './glyphs.js',
   './matrix.js',
@@ -247,6 +251,7 @@ const SHELL = [
   './deload.js',
   './lifeline.js',
   './nightguard.js',
+  './cortex.js',
   './vendor/three/three.module.min.js',
   './icons/icon.svg',
   './icons/icon-192.png',

@@ -351,14 +351,16 @@ console.log('── Flow/Hardcore: top-left Skip advances after answer, Continue
     ok(secondId !== firstId, 'Top-left ⏭ advances directly to next question when current is answered');
     ok(currentSubmitted() === false, 'New question starts unanswered');
 
-    // Selecting an MCQ option and holding screen grades the option and keeps Continue hidden + Skip visible
+    // Selecting an MCQ option reveals Lock-In and shows Continue after graded submit in Flow
+    appMod.toggleMcqOption(document.createElement('div'), 'A');
+    ok(document.getElementById('practice-submit-btn').style.display !== 'none', '#practice-submit-btn appears once MCQ option selected');
     AppState.selectedMcq = 'A';
     appMod.practiceSubmit();
-    ok(currentSubmitted() === true, 'MCQ hold-submit with selection grades answer');
-    ok(document.getElementById('practice-continue-btn').style.display === 'none', '#practice-continue-btn stays hidden after graded MCQ in Flow');
+    ok(currentSubmitted() === true, 'MCQ lock-in with selection grades answer');
+    ok(document.getElementById('practice-continue-btn').style.display !== 'none', '#practice-continue-btn shown after graded MCQ in Flow');
     ok(document.getElementById('practice-skip-btn').style.display === '', '#practice-skip-btn stays visible after graded MCQ in Flow');
-    globalThis.openSkipPopover();
-    ok(currentId() !== secondId, 'Top-left ⏭ advances after graded MCQ in Flow');
+    globalThis.continuePractice();
+    ok(currentId() !== secondId, 'continuePractice() advances after graded MCQ in Flow');
 }
 
 console.log('\nAll practice-nav assertions passed (' + passed + ' checks).');

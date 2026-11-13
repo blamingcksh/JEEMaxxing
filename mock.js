@@ -39,6 +39,7 @@ import {
     saveAllAsync,
     MARKS_SCHEMES,
     CONFIDENCE_ANCHORS,
+    CALIBRATION_LOG_CAP,
     getPatternForQuestion,
     getSchemeIdForQuestion,
     recordCloudTombstone,
@@ -47,6 +48,8 @@ import {
     isMockQuestion,
     _invalidateMatrixCtx,
 } from './storage.js';
+
+import { Directive } from './directive.js';
 
 // Smart Mistake Report engine — post-mock tag × difficulty autopsy (pure).
 import { buildMockAutopsy } from './report.js';
@@ -158,8 +161,10 @@ export function computeMockScorecard(mock, qById) {
         for (const qid of sec.questionIds) {
             const q = qById[qid];
             if (!q) continue;
-            row.max += 4;
-            maxTotal += 4;
+            const sch = MARKS_SCHEMES[getSchemeIdForQuestion(q)];
+            const qMax = sch ? _num(sch.full ?? sch.correct, 4) : 4;
+            row.max += qMax;
+            maxTotal += qMax;
             const g = gradeAnswer(q, answers[qid] && answers[qid].value, keys[qid]);
             row.marks += g.marks;
             total += g.marks;
@@ -172,7 +177,7 @@ export function computeMockScorecard(mock, qById) {
                 brierSum += Math.pow(CONFIDENCE_ANCHORS[conf] - (g.correct ? 1 : 0), 2); brierN++;
             }
             if (AppState.elo && typeof AppState.elo[subj] !== 'undefined') {
-                predicted += 4 * pWin(AppState.elo[subj], q.qElo);
+                predicted += qMax * pWin(AppState.elo[subj], q.qElo);
             }
         }
         sections.push(row);
@@ -278,6 +283,13 @@ export function mockChapterFor(mockId) {
     return mockChapterName(m.name);
 }
 
+function _isBorrowedQuestion(q) {
+    if (!q) return false;
+    if (q.borrowedFromBank) return true;
+    const ch = String(q.chapter == null ? '' : q.chapter).trim();
+    return !!ch && !isMockChapterName(ch);
+}
+
 function unlinkQuestion(mockId, qid) {
     const m = getMock(mockId); if (!m) return;
     for (const s of SUBJECTS) {
@@ -286,9 +298,10 @@ function unlinkQuestion(mockId, qid) {
         if (i >= 0) {
             sec.questionIds.splice(i, 1); delete sec.keys[qid];
             const q = qById(qid);
-            if (q) { delete q.reservedForMock; delete q.mockSource; }
+            if (q) { delete q.reservedForMock; delete q.mockSource; delete q.borrowedFromBank; }
         }
     }
+    _invalidateMatrixCtx();
     persist();
 }
 
@@ -319,22 +332,27 @@ function deleteMock(id) {
         if (o.id === id) continue;
         for (const qid of allQuestionIds(o)) liveIds.add(String(qid));
     }
-    // Deleting a paper deletes its questions from the bank (plus a cloud
-    // tombstone so stale snapshots can't resurrect them). The single guard:
-    // a question still referenced by ANOTHER paper is kept — only its stamps
-    // for the deleted paper are cleared.
+    // Deleting a paper removes ONLY mock-exclusive uploads (plus cloud tombstones
+    // so stale snapshots can't resurrect them). Questions borrowed from the real
+    // syllabus bank stay intact in their chapter grids; questions still referenced
+    // by another paper simply transfer/clear stamps for the deleted paper.
     for (const qid of allQuestionIds(m)) {
         const q = qById(qid);
         if (!q) continue;
         if (liveIds.has(String(qid))) {
-            delete q.reservedForMock;
+            if (q.reservedForMock === id) delete q.reservedForMock;
             if (q.mockSource === id) delete q.mockSource;
+            continue;
+        }
+        if (_isBorrowedQuestion(q)) {
+            delete q.reservedForMock;
+            delete q.mockSource;
+            delete q.borrowedFromBank;
+            _invalidateMatrixCtx();
             continue;
         }
         const i = AppState.questionBank.indexOf(q);
         if (i >= 0) {
-            // A mock paper can reserve a question the user already solved in
-            // the vault — its counter credit must be handed back on delete.
             _purgeDeletedQuestion(AppState.questionBank[i], q.id);
             AppState.questionBank.splice(i, 1);
         }
@@ -385,6 +403,16 @@ export function cleanupMockOrphans() {
             const q = bank[i];
             const stamp = q && (q.mockSource || q.reservedForMock);
             if (!stamp) continue;
+            if (_isBorrowedQuestion(q)) {
+                const owner = byId[stamp] || byId[q.mockSource];
+                if (!owner) {
+                    delete q.reservedForMock;
+                    delete q.mockSource;
+                    delete q.borrowedFromBank;
+                    relabeled++;
+                }
+                continue;
+            }
             const owner = byId[stamp] || byId[q.mockSource];
             if (!owner) {
                 _purgeDeletedQuestion(q, q.id);
@@ -437,6 +465,7 @@ export function countGhostQuestions(subject) {
         for (const o of (AppState.mocks || [])) live[o.id] = true;
         for (const q of bank) {
             if (!q || q.subject !== subject) continue;
+            if (_isBorrowedQuestion(q)) continue;
             const stamp = q.mockSource || q.reservedForMock;
             if (stamp && !live[stamp] && !live[q.mockSource]) { out.stamped++; continue; }
             if (_isGhostQuestion(q, subject)) out.blank++;
@@ -459,6 +488,7 @@ export function purgeGhostQuestions(subject) {
         for (let i = bank.length - 1; i >= 0; i--) {
             const q = bank[i];
             if (!q || q.subject !== subject) continue;
+            if (_isBorrowedQuestion(q)) continue;
             const stamp = q.mockSource || q.reservedForMock;
             const orphanStamp = stamp && !live[stamp] && !live[q.mockSource];
             const blank = !orphanStamp && _isGhostQuestion(q, subject);
@@ -606,6 +636,7 @@ function startMock(id) {
         m.status = 'in-progress';
     }
     persist();
+    try { Directive.refreshMockDay(); } catch (_) {}
     openRunner(m);
 }
 
@@ -734,7 +765,8 @@ win.mrPick = function (el) {
         el.classList.add('sel');
     }
     a.tSec = Math.round((Date.now() - m.run.startedAt) / 1000);
-    m.run.events[_curQid].push({ t: 'ans', at: Date.now(), value: a.value });
+    m.run.events = m.run.events || {};
+    (m.run.events[_curQid] = m.run.events[_curQid] || []).push({ t: 'ans', at: Date.now(), value: a.value });
     persistThrottled(); renderMrPalette();
 };
 
@@ -742,7 +774,16 @@ win.mrNum = function (v) {
     const m = mrActive(); if (!m || !_curQid) return;
     const a = m.run.answers[_curQid] = m.run.answers[_curQid] || {};
     a.value = v; a.tSec = Math.round((Date.now() - m.run.startedAt) / 1000);
-    persistThrottled();
+    m.run.events = m.run.events || {};
+    const evs = m.run.events[_curQid] = m.run.events[_curQid] || [];
+    const now = Date.now();
+    if (evs.length && evs[evs.length - 1].t === 'ans' && now - evs[evs.length - 1].at < 1500) {
+        evs[evs.length - 1].value = v;
+        evs[evs.length - 1].at = now;
+    } else {
+        evs.push({ t: 'ans', at: now, value: v });
+    }
+    persistThrottled(); renderMrPalette();
 };
 
 win.mrConf = function (level) {
@@ -831,12 +872,89 @@ win.mrDoSubmit = function (auto) {
     m.scorecard = computeMockScorecard(m, qByIdMap());
     m.status = 'done';
     m.scorecardStale = false;
-    // Feed the self-correcting loop: chapter::pattern loss mass.
+    // Feed the self-correcting loop: chapter::pattern loss mass + Brier calibration.
     try { accumulateMockFocus(m); } catch (_) {}
+    try { _recordMockCalibration(m); } catch (_) {}
     persist();
+    try { Directive.refreshMockDay(); } catch (_) {}
     if (auto) _toast('⏰ Time was up — the paper was auto-submitted.');
     showResults(m);
+    _playMockRecap(m);
 };
+
+function _recordMockCalibration(m) {
+    if (!m || m.calibrationLogged) return;
+    ensureState();
+    if (!Array.isArray(AppState.calibrationLog)) AppState.calibrationLog = [];
+    const answers = (m.run && m.run.answers) || {};
+    const map = qByIdMap();
+    const stamp = m.finishedAt || Date.now();
+    let added = 0;
+    for (const subj of SUBJECTS) {
+        const sec = (m.sections && m.sections[subj]) || { questionIds: [], keys: {} };
+        const keys = sec.keys || {};
+        for (const qid of (sec.questionIds || [])) {
+            const q = map[String(qid)];
+            const a = answers[qid];
+            if (!q || !a || !a.confidence || CONFIDENCE_ANCHORS[a.confidence] == null) continue;
+            const g = gradeAnswer(q, a.value, keys[qid]);
+            if (!g.attempted) continue;
+            AppState.calibrationLog.push({
+                t: stamp,
+                p: CONFIDENCE_ANCHORS[a.confidence],
+                s: g.correct ? 1 : 0,
+                source: 'mock',
+            });
+            added++;
+        }
+    }
+    if (AppState.calibrationLog.length > CALIBRATION_LOG_CAP) {
+        AppState.calibrationLog = AppState.calibrationLog.slice(-CALIBRATION_LOG_CAP);
+    }
+    if (added > 0) m.calibrationLogged = true;
+}
+
+function _playMockRecap(m) {
+    try {
+        const SR = win.SessionRecap;
+        if (!SR || typeof SR.reset !== 'function' || typeof SR.play !== 'function') return;
+        const sc = m && m.scorecard;
+        if (!sc) return;
+        const order = (m.run && m.run.order && m.run.order.length) ? m.run.order : allQuestionIds(m);
+        const rows = order.map((qid, i) => _gradeRow(m, qid, i)).filter(Boolean);
+        if (!rows.length) return;
+        SR.reset();
+        for (const r of rows) {
+            if (r.st === 'skip') {
+                SR.recordSkip(r.q, { mode: 'standard' });
+            } else {
+                SR.record(r.q, {
+                    correct: !!r.g.correct,
+                    secs: Math.max(1, _num(r.ans && r.ans.tSec, 30)),
+                    targetSecs: _num(r.q && r.q.targetTimeMins, 3) * 60,
+                    eloDelta: null,
+                    fastBonus: 0,
+                    mode: 'standard',
+                });
+            }
+        }
+        const pct = sc.max > 0 ? (sc.total / sc.max) * 100 : 0;
+        const tone = pct >= 60 ? 'win' : pct >= 35 ? 'night' : 'rough';
+        const accPct = sc.attempted > 0 ? Math.round(sc.accuracy * 100) : 0;
+        const brierTxt = sc.brier != null ? ('Brier ' + sc.brier.toFixed(3)) : null;
+        SR.play({
+            tone,
+            nonBlocking: true,
+            mock: { id: m.id, total: sc.total, max: sc.max, accuracy: sc.accuracy },
+            extras: {
+                badgeText: '📝 ' + sc.total + '/' + sc.max + ' marks · ' + accPct + '% acc',
+                airDeltaText: brierTxt,
+                run3Label: sc.wrongIds.length ? ('⚔️ Rematch ' + sc.wrongIds.length + ' Wrong') : null,
+                onRun3More: sc.wrongIds.length ? () => win.mockRematchWrong(m.id) : null,
+            },
+        });
+    } catch (_) {}
+}
 
 function accumulateMockFocus(m) {
     ensureState();
@@ -1025,6 +1143,16 @@ function showResults(m) {
         ? '<div class="mr-res-line">Calibration Brier: <b>' + sc.brier.toFixed(3) + '</b> over ' + sc.brierN + ' confidence-tagged answers (lower = honest)</div>'
         : '';
 
+    const unsweptCount = _revRows.filter(r => (r.st === 'bad' || r.st === 'skip') && r.q && r.q.status !== 'error').length;
+    const sweepBtn = (nBad + nSkip) > 0
+        ? (unsweptCount > 0
+            ? '<button class="mr-sweepbtn" onclick="window.mockSweepToVault(\'' + m.id + '\')" type="button">🗂 Sweep All Wrong &amp; Skipped to Vault (' + unsweptCount + ')</button>'
+            : '<span class="mr-invault">✓ All wrong &amp; skipped in Vault</span>')
+        : '';
+    const rematchBtn = nBad > 0
+        ? '<button class="mr-rematchbtn" onclick="window.mockRematchWrong(\'' + m.id + '\')" type="button">⚔️ Rematch Wrong Now (' + nBad + ')</button>'
+        : '';
+
     const ov = document.createElement('div');
     ov.className = 'mock-runner';
     ov.innerHTML = '<div class="mr-shell results">' +
@@ -1034,6 +1162,7 @@ function showResults(m) {
         (sc.wrongIds.length
             ? '<div class="mr-res-line"><span class="sig-chip bad">❌ ' + sc.wrongIds.length + ' wrong — review below and log them to The Vault.</span></div>'
             : '<div class="mr-res-line"><span class="sig-chip good">Clean paper. 😤</span></div>') +
+        ((sweepBtn || rematchBtn) ? '<div class="mr-res-actions">' + sweepBtn + rematchBtn + '</div>' : '') +
         '</div>' +
         '<div class="mr-res-body">' + brierLine +
         '<div class="mr-subjgrid">' + subjRows + '</div>' +
@@ -1079,6 +1208,50 @@ win.mrVault = function (qid) {
     AppState.pendingWrongQ = q;
     if (typeof win.openModal === 'function') win.openModal('error-reason-modal');
     else _toast('Open The Vault from the sidebar to log this question.');
+};
+
+win.mockSweepToVault = function (mockId) {
+    const m = getMock(mockId); if (!m) return;
+    const order = (m.run && m.run.order && m.run.order.length) ? m.run.order : allQuestionIds(m);
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+    let swept = 0;
+    for (let i = 0; i < order.length; i++) {
+        const r = _gradeRow(m, order[i], i);
+        if (!r || !r.q || (r.st !== 'bad' && r.st !== 'skip') || r.q.status === 'error') continue;
+        const q = r.q;
+        q.status = 'error';
+        if (!q.errorReason) q.errorReason = r.st === 'bad' ? 'conceptual' : 'misread';
+        q.lastReviewedAt = nowIso;
+        if (!(typeof q.createdAt === 'string' && q.createdAt && !isNaN(Date.parse(q.createdAt)))) {
+            q.createdAt = nowIso;
+        }
+        if (typeof q.easeFactor !== 'number' || !isFinite(q.easeFactor)) q.easeFactor = 2.5;
+        q.srUpdatedAt = nowMs;
+        swept++;
+    }
+    if (!swept) { _toast('All wrong & skipped questions are already in The Vault.'); return; }
+    _invalidateMatrixCtx();
+    persist();
+    try { if (typeof win.renderErrorMatrixFromBank === 'function') win.renderErrorMatrixFromBank(); } catch (_) {}
+    try { if (typeof win.renderChapterDecayGrid === 'function') win.renderChapterDecayGrid(); } catch (_) {}
+    _toast('🗂 Swept ' + swept + ' wrong/skipped question' + (swept === 1 ? '' : 's') + ' to The Vault.');
+    if (document.querySelector('.mock-runner')) showResults(m);
+};
+
+win.mockRematchWrong = function (mockId) {
+    const m = getMock(mockId); if (!m) return;
+    const order = (m.run && m.run.order && m.run.order.length) ? m.run.order : allQuestionIds(m);
+    const rows = order.map((qid, i) => _gradeRow(m, qid, i)).filter(Boolean);
+    let targets = rows.filter(r => r.st === 'bad').map(r => r.q).filter(Boolean);
+    if (!targets.length) targets = rows.filter(r => r.st === 'skip').map(r => r.q).filter(Boolean);
+    if (!targets.length) { _toast('Clean paper — nothing missed to rematch!'); return; }
+    targets.forEach(q => { if (q.modeRetired) delete q.modeRetired; });
+    win.mockCloseResults();
+    try { if (win.SessionRecap && typeof win.SessionRecap.dismiss === 'function') win.SessionRecap.dismiss(); } catch (_) {}
+    if (typeof win.startPracticeWithQuestion === 'function') {
+        win.startPracticeWithQuestion(targets, 0);
+    }
 };
 
 /** Clipboard copy of the last rendered autopsy text (with legacy fallback). */
@@ -1266,7 +1439,7 @@ win.mockAutoBuildGo = function () {
         const picked = sampleByMix(eligiblePool(s), want, mix);
         for (const q of picked) {
             m.sections[s].questionIds.push(q.id);
-            q.reservedForMock = m.id; q.mockSource = m.id;
+            q.reservedForMock = m.id; q.mockSource = m.id; q.borrowedFromBank = true;
             const k = prefillKeyFor(q);
             if (k) m.sections[s].keys[q.id] = k;
         }
@@ -1295,8 +1468,13 @@ win.mockOpenBuilder = function (id) {
 win.mockDelete = function (id) {
     if (_pk && _pk.mockId === id) _closePicker();
     const m = getMock(id);
-    const n = m ? totalQuestions(m) : 0;
-    if (confirm('Delete this mock? Its ' + n + ' linked question' + (n === 1 ? '' : 's') + ' will be permanently removed from your bank.')) { deleteMock(id); if (_studioMode.mockId === id) _studioMode = { view: 'home' }; renderMocksView(); }
+    const ids = m ? allQuestionIds(m) : [];
+    const mockOwned = ids.filter(qid => { const q = qById(qid); return q && !_isBorrowedQuestion(q); }).length;
+    const borrowed = Math.max(0, ids.length - mockOwned);
+    const msg = mockOwned > 0
+        ? ('Delete this mock? Its ' + mockOwned + ' mock-uploaded question' + (mockOwned === 1 ? '' : 's') + ' will be removed' + (borrowed ? ' (' + borrowed + ' bank question' + (borrowed === 1 ? '' : 's') + ' stay safe in your Vault/chapters).' : '.'))
+        : ('Delete this mock?' + (borrowed ? ' Its ' + borrowed + ' bank question' + (borrowed === 1 ? '' : 's') + ' will stay safe in your Vault/chapters.' : ''));
+    if (confirm(msg)) { deleteMock(id); if (_studioMode.mockId === id) _studioMode = { view: 'home' }; renderMocksView(); }
 };
 win.mockStart = function (id) { startMock(id); };
 win.mockKeysFor = function (id) {
@@ -1497,7 +1675,7 @@ win.mockPickCommit = function () {
         if (sec.questionIds.includes(qid)) continue;
         const q = qById(qid);
         if (!q) continue;
-        q.reservedForMock = m.id; q.mockSource = m.id;
+        q.reservedForMock = m.id; q.mockSource = m.id; q.borrowedFromBank = true;
         sec.questionIds.push(qid);
         const k = prefillKeyFor(q);
         if (k) sec.keys[qid] = k;
@@ -1830,7 +2008,7 @@ win.mockBuildFromWeakPoints = function () {
         const picked = sampleByMix(pool, 8, DIFF_MIX_PRESETS.balanced);
         for (const q of picked) {
             m.sections[s].questionIds.push(q.id);
-            q.reservedForMock = m.id; q.mockSource = m.id;
+            q.reservedForMock = m.id; q.mockSource = m.id; q.borrowedFromBank = true;
             const k = prefillKeyFor(q);
             if (k) m.sections[s].keys[q.id] = k;
         }
@@ -1879,15 +2057,15 @@ function bootMockUI() {
 
 if (typeof document !== 'undefined' && document.getElementById('view-mocks')) {
     bootMockUI();
-    win.MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions, pruneEmptyMockChapters, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
+    win.MockEngine = { linkQuestion, mockChapterFor, isMockQuestion, cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions, pruneEmptyMockChapters, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
 } else if (typeof document !== 'undefined') {
     // DOM present but view not yet parsed (module import order) — retry once DOM settles.
     document.addEventListener('DOMContentLoaded', () => {
-        if (document.getElementById('view-mocks')) { bootMockUI(); win.MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions, pruneEmptyMockChapters, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey }; }
+        if (document.getElementById('view-mocks')) { bootMockUI(); win.MockEngine = { linkQuestion, mockChapterFor, isMockQuestion, cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions, pruneEmptyMockChapters, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey }; }
     });
 }
 
 // Default export surface for app.js Save-All hook (works even pre-boot).
-const MockEngine = { linkQuestion, mockChapterFor, cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions, pruneEmptyMockChapters, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
+const MockEngine = { linkQuestion, mockChapterFor, isMockQuestion, cleanupMockOrphans, countGhostQuestions, purgeGhostQuestions, pruneEmptyMockChapters, computeMockScorecard, gradeAnswer, normalizeAnswerInput, parseBulkKey };
 export default MockEngine;
 

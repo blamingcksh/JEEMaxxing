@@ -870,8 +870,7 @@ body:not(.immersive-active) .pq-qa-media {
 }
 
 /* ── Result Banners & Feedback ── */
-#practice-modal[data-practice-mode="flow"] #practice-continue-btn,
-#practice-modal[data-practice-mode="hardcore"] #practice-continue-btn,
+#practice-modal[data-pq-state="solving"] #practice-continue-btn,
 #practice-modal[data-practice-mode="flow"] #practice-next-btn,
 #practice-modal[data-practice-mode="hardcore"] #practice-next-btn {
   display: none !important;
@@ -1013,6 +1012,85 @@ body.immersive-active #practice-modal[data-pq-state="answered"] .streak-visualiz
   font-weight: 700;
 }
 .pq-mini-status .elo-header-slot { display: flex; }
+
+.ck-hud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--font-num, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--pq-ink-soft);
+  border: 1px solid var(--pq-border);
+  background: transparent;
+  white-space: nowrap;
+}
+.ck-hud-pill:empty { display: none; }
+.ck-hud-pill.is-crit {
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.12);
+}
+body.immersive-active .ck-hud-pill.is-crit {
+  color: #fbbf24;
+}
+.ck-hud-pill.is-overheat {
+  color: #ea580c;
+  border-color: rgba(249, 115, 22, 0.65);
+  background: rgba(249, 115, 22, 0.14);
+}
+body.immersive-active .ck-hud-pill.is-overheat {
+  color: #fb923c;
+}
+.sr-footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#sr-practice-overlay .sr-streak-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pq-pill-bg, rgba(140, 98, 57, 0.09));
+  border: 1px solid var(--pq-border);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pq-ink);
+}
+#sr-practice-overlay .sr-streak-pill .streak-visualizer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+#sr-practice-overlay #sr-streak-canvas {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+#sr-practice-overlay .elo-header-slot {
+  display: inline-flex;
+  align-items: center;
+}
+#practice-modal[data-ck-surge="crit"] .pq-shell,
+#sr-practice-overlay[data-ck-surge="crit"] .sr-practice-modal {
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.42), 0 0 28px -8px rgba(245, 158, 11, 0.35);
+}
+#practice-modal[data-ck-surge="overheat"] .pq-shell,
+#sr-practice-overlay[data-ck-surge="overheat"] .sr-practice-modal {
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.55), 0 0 32px -6px rgba(249, 115, 22, 0.45);
+}
+#practice-modal[data-ck-surge="crit"] .pq-submit,
+#practice-modal[data-ck-surge="crit"] .pq-continue-btn {
+  box-shadow: 0 0 14px -2px rgba(245, 158, 11, 0.5);
+}
 
 /* ── Popovers & Solution Modal Theme Integration ── */
 #solution-modal {
@@ -1801,7 +1879,8 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
 }
 
 /* Chrome auto-fade on idle */
-#sr-practice-overlay.pq-stage.pq-chrome-hidden .pq-corner {
+#sr-practice-overlay.pq-stage.pq-chrome-hidden .pq-corner,
+#sr-practice-overlay.pq-stage.pq-chrome-faded .pq-corner {
   opacity: 0;
   pointer-events: none;
   transition: opacity 3.5s ease;

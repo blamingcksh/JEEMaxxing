@@ -602,6 +602,9 @@ export function selectCortexQueue(candidates, ctx, opts) {
     const picked = [];
     const rest = pool.slice();
     const overflow = scored.slice(pool.length);
+    if (o.anchorTop && rest.length && picked.length < want) {
+        picked.push(rest.shift().q);
+    }
     while (picked.length < want && (rest.length || overflow.length)) {
         const source = rest.length ? rest : overflow;
         let total = 0;

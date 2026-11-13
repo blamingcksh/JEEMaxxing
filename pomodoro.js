@@ -1,5 +1,5 @@
 // ==================== POMODORO MODULE ====================
-import { formatTime, formatStudyDuration, saveAllAsync, studySecs, SessionFocus } from './storage.js';
+import { formatTime, formatStudyDuration, saveAllAsync, studySecs, SessionFocus, MODE_TUNING } from './storage.js';
 import { GalleryBreak } from './gallery-break.js';
 import { NightGuard } from './nightguard.js';
 import {
@@ -96,16 +96,34 @@ export function getFocusLedger() {
     return { ...focusLedger };
 }
 
-function _ledgerCompleteBlock(secsDeep) {
+function _ledgerCompleteBlock(secsDeep, opts) {
+    const escrowMul = Math.max(1, Number(opts && opts.escrowMul) || 1);
+    const subj = (opts && opts.subject) || (typeof studySubject !== 'undefined' ? studySubject : null);
     focusLedger.done += 1;
     focusLedger.chain += 1;
     focusLedger.best = Math.max(focusLedger.best, focusLedger.chain);
     focusLedger.deep += Math.max(0, secsDeep | 0);
+    if (escrowMul >= 2) {
+        focusLedger.hardcoreBlocks = (focusLedger.hardcoreBlocks | 0) + 1;
+    }
     _saveFocusLedger();
-    // Daily Directive: a completed deep-focus block pays +2 LU to the active
-    // subject (capped at 3 blocks/day/subject inside directive.js).
+    if (escrowMul >= 2) {
+        try {
+            if (window.CK_ENGINE && typeof window.CK_ENGINE.addShield === 'function') {
+                window.CK_ENGINE.addShield(1);
+            } else if (typeof localStorage !== 'undefined') {
+                const cur = parseInt(localStorage.getItem('jeemax_ck_shields') || '0', 10) || 0;
+                localStorage.setItem('jeemax_ck_shields', String(cur + 1));
+            }
+            if (typeof window.__jmaxAppToast === 'function') {
+                window.__jmaxAppToast('⚡ Hardcore Escrow 2× Sealed · +1 Streak Shield & Doubled Drop!');
+            }
+        } catch (_) {}
+    }
+    // Daily Directive: a completed deep-focus block pays +2 LU (2× in Hardcore)
+    // to the active subject (capped at 3 blocks/day/subject inside directive.js).
     import('./directive.js').then(m => {
-        try { m.Directive.awardFocus(typeof studySubject !== 'undefined' ? studySubject : null); } catch (_) {}
+        try { m.Directive.awardFocus(subj, { mul: escrowMul }); } catch (_) {}
     }).catch(() => {});
 }
 
@@ -126,6 +144,70 @@ function _setDeepWorkActive(on) {
         if (document.body) document.body.classList.toggle('pomo-active', !!on);
     } catch (_) {}
     window._pomoRunning = !!on;
+    _updateDeepWorkBeacon();
+}
+
+/** Sync #deep-work-beacon in top/side navigation chrome (hidden when idle). */
+function _updateDeepWorkBeacon() {
+    try {
+        const b = $('deep-work-beacon');
+        if (!b || typeof b.setAttribute !== 'function') return;
+        if (!b._dwBound && typeof b.addEventListener === 'function') {
+            b._dwBound = true;
+            b.addEventListener('click', () => {
+                try {
+                    const pm = document.getElementById('practice-modal');
+                    if (lockinSession.active && pm && typeof window.openModal === 'function') {
+                        window.openModal('practice-modal');
+                    } else if (lockinSession.active) {
+                        const hud = document.getElementById('lockin-break-hud');
+                        if (hud && lockinSession.phase === 'BREAK') hud.classList.add('active');
+                    } else if (typeof window.openLockinSetupModal === 'function') {
+                        openLockinSetupModal(lockinSession.mode || 'flow');
+                    }
+                } catch (_) {}
+            });
+        }
+        if (lockinSession.active) {
+            b.hidden = false;
+            const mmss = formatTime(Math.max(0, _lockinLeftSecs));
+            const rTag = `R${lockinSession.currentSession}/${lockinSession.totalSessions}`;
+            if (lockinSession.phase === 'BREAK') {
+                b.textContent = `☕ BREAK · ${mmss} · ${rTag}`;
+                b.setAttribute('data-state', 'break');
+            } else if (!lockinSession.running) {
+                b.textContent = `⏸ PAUSED · ${mmss}`;
+                b.setAttribute('data-state', 'paused');
+            } else {
+                const mulTag = lockinSession.mode === 'hardcore' ? '🔥 ×1.8 HARDCORE' : '⚡ ×1.5 DEEP';
+                const sr = lockinSession.streakInRun || 0;
+                const hotTag = sr >= 4 ? ' · HOT ZONE' : (sr > 0 ? ` · ${sr}/4🔥` : '');
+                b.textContent = `${mulTag} · ${mmss} · ${rTag}${hotTag}`;
+                b.setAttribute('data-state', sr >= 4 ? 'hot' : 'study');
+            }
+            return;
+        }
+        if (pomoState !== 'IDLE') {
+            b.hidden = false;
+            if (isPaused) {
+                b.textContent = `⏸ PAUSED · ${formatTime(Math.max(0, secondsLeft))}`;
+                b.setAttribute('data-state', 'paused');
+            } else if (pomoState === 'BREAK') {
+                b.textContent = `☕ BREAK · ${formatTime(Math.max(0, secondsLeft))}`;
+                b.setAttribute('data-state', 'break');
+            } else if (pomoState === 'STOPWATCH') {
+                b.textContent = `⏱ FLOW · ${formatTime(Math.max(0, secondsLeft))}`;
+                b.setAttribute('data-state', 'study');
+            } else {
+                b.textContent = `⚡ ×1.5 DEEP · ${formatTime(Math.max(0, secondsLeft))}`;
+                b.setAttribute('data-state', 'study');
+            }
+            return;
+        }
+        b.hidden = true;
+        b.textContent = '';
+        if (typeof b.removeAttribute === 'function') b.removeAttribute('data-state');
+    } catch (_) {}
 }
 
 // ── Ambient Sprint Widget helpers ─────────────────────────────────────────
@@ -965,12 +1047,14 @@ export function executeTimerTick() {
 
         // Update study seconds and save periodically
         creditStudySeconds(studySubject, deltaSecs);
+        _updateDeepWorkBeacon();
 
     } else {
         // Countdown: recalc remaining from true elapsed time
         secondsLeft = Math.max(0, timerTotalSeconds - elapsed);
         $('timer-display').textContent = formatTime(secondsLeft);
         $('mini-time').textContent = formatTime(secondsLeft);
+        _updateDeepWorkBeacon();
 
         const percent = timerTotalSeconds ? ((timerTotalSeconds - secondsLeft) / timerTotalSeconds) * 100 : 0;
         if (visualMode === 'bar') {
@@ -1205,6 +1289,7 @@ export function transitionToStopwatch() {
 }
 
 export function transitionToStudy() {
+    try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') window.Metro.resumeAfterInterruption(); } catch (_) {}
     pomoState = 'STUDY';
     const studyVal = parseInt($('pomo-study').value) || 50;
     timerTotalSeconds = studyVal * 60;
@@ -1247,6 +1332,7 @@ export function transitionToStudy() {
 }
 
 export function transitionToBreak() {
+    try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.pauseForInterruption === 'function') window.Metro.pauseForInterruption(); } catch (_) {}
     pomoState = 'BREAK';
     const breakVal = parseInt($('pomo-break').value) || 10;
     timerTotalSeconds = breakVal * 60;
@@ -1337,6 +1423,7 @@ export function resumeTimer() {
     }
     updateMiniSubject();
     if (pomoState === 'STUDY' || pomoState === 'STOPWATCH') _setDeepWorkActive(true);
+    else _updateDeepWorkBeacon();
     syncWidgetPaused(false);
     _updateMiniEnd();
 
@@ -1358,6 +1445,7 @@ export function quitTimer(force) {
 }
 
 export function resetPomoUI() {
+    try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') window.Metro.resumeAfterInterruption(); } catch (_) {}
     pomoState = 'IDLE';
     syncFilterLock();
     GalleryBreak.abort();
@@ -1473,6 +1561,7 @@ export const lockinSession = {
     phase: 'STUDY',                 // 'STUDY' | 'BREAK'
     expiredPendingTransition: false,
     solvedInRun: 0,
+    streakInRun: 0,
     startElo: 1200,
     running: false,
     voided: false,
@@ -1611,9 +1700,9 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
     _lockinOnConfirm = typeof onConfirmStart === 'function' ? onConfirmStart : null;
 
     // Seed the draft from the last-used config so returning users land on
-    // their habitual block length.
+    // their habitual block length (preserving explicit 1-round runs).
     const cfg = readPomoConfig();
-    const defRounds = cfg && cfg.sessions >= 2 ? cfg.sessions : 2;
+    const defRounds = (cfg && Number.isFinite(Number(cfg.sessions)) && cfg.sessions >= 1) ? cfg.sessions : 2;
     _setInputVal('lockin-grind', _clamp(cfg ? cfg.study : 50, 5, 180));
     _setInputVal('lockin-chill', _clamp(cfg ? cfg.break : 10, 1, 60));
     _setInputVal('lockin-rounds', _clamp(defRounds, 1, 8));
@@ -1623,6 +1712,19 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
 
     _syncLockinPresetActive();
     _renderLockinTimeline();
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function' &&
+        typeof window !== 'undefined' && !window._lockinEscBound) {
+        window._lockinEscBound = true;
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            const el = document.getElementById('lockin-setup-modal');
+            if (el && el.classList && el.classList.contains('active')) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeLockinSetupModal();
+            }
+        }, true);
+    }
     const modal = document.getElementById('lockin-setup-modal');
     if (modal) {
         modal.style.display = 'flex';
@@ -1654,6 +1756,7 @@ export function confirmLockinSetup() {
     lockinSession.currentSession = 1;
     lockinSession.active = true;
     lockinSession.solvedInRun = 0;
+    lockinSession.streakInRun = 0;
     lockinSession.startElo = _currentSubjectElo(lockinSession.subject);
     studySubject = lockinSession.subject;
     try {
@@ -1759,9 +1862,11 @@ function _lockinTick() {
     _lockinLeftSecs = left;
     if (lockinSession.phase === 'STUDY') {
         _lockinCreditedSecs += delta;
+        _updateDeepWorkBeacon();
         if (left <= 0) { _onLockinStudyExpire(); return; }
     } else {
         _updateLockinBreakHud();
+        _updateDeepWorkBeacon();
         if (left <= 0) { _onLockinBreakExpire(); return; }
     }
 }
@@ -1777,13 +1882,30 @@ function _commitCompletedStudyBlock() {
     _lockinCreditedSecs = 0;
     if (secs <= 0) return 0;
     const subj = lockinSession.subject;
+    const mode = lockinSession.mode || 'flow';
+    const escrowMul = (MODE_TUNING[mode] && MODE_TUNING[mode].escrowBonusMultiplier) || 1.0;
     studySubject = subj;
     studySecs[subj] += secs;
     try { updateStudyTimeHeader(); } catch (_) {}
-    _ledgerCompleteBlock(secs);
+    _ledgerCompleteBlock(secs, { escrowMul, subject: subj });
     try { saveAllAsync().catch(() => {}); } catch (_) {}
-    try { window.dispatchEvent(new CustomEvent('jmax:pomo-block-done')); } catch (_) {}
+    try {
+        window.dispatchEvent(new CustomEvent('jmax:pomo-block-done', {
+            detail: { mode, escrowBonusMultiplier: escrowMul, subject: subj, secs }
+        }));
+    } catch (_) {}
     return secs;
+}
+
+/** Sync live intensity slider flips across Flow/Hardcore into active Lock-In session. */
+export function syncLockinMode(mode) {
+    if (!lockinSession.active || !LOCKIN_MODES.includes(mode)) return;
+    if (lockinSession.mode === mode) return;
+    lockinSession.mode = mode;
+    _syncLockinIntensityUI(mode);
+    if (lockinSession.phase === 'BREAK') {
+        _updateLockinBreakHud();
+    }
 }
 
 function _onLockinStudyExpire() {
@@ -1811,7 +1933,19 @@ function _advanceToBreakOrFinish() {
     }
 }
 
+function _afterPendingRecap(fn) {
+    try {
+        const p = (typeof window !== 'undefined') ? window.__jmaxPendingRecapPromise : null;
+        if (p && typeof p.then === 'function') {
+            Promise.resolve(p).finally(() => { try { fn(); } catch (e) { console.warn('[lockin] post-recap fault', e); } });
+            return;
+        }
+    } catch (_) {}
+    fn();
+}
+
 function _startLockinBreak() {
+    try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.pauseForInterruption === 'function') window.Metro.pauseForInterruption(); } catch (_) {}
     lockinSession.phase = 'BREAK';
     lockinSession.running = true;
     _lockinTotalSecs = Math.max(1, lockinSession.breakMins) * 60;
@@ -1823,19 +1957,28 @@ function _startLockinBreak() {
     playBell();
     try { GalleryBreak.begin(); } catch (e) { console.warn('[lockin] GalleryBreak failed', e); }
     _showLockinBreakHud();
+    _updateDeepWorkBeacon();
 }
 
 function _onLockinBreakExpire() {
     _clearLockinTick();
     lockinSession.running = false;
-    _endLockinBreak();
+    _hideLockinBreakHud();
+    playBell();
+    try {
+        if (GalleryBreak.isActive()) {
+            GalleryBreak.finish(() => _endLockinBreak(true));
+            return;
+        }
+    } catch (_) {}
+    _endLockinBreak(true);
 }
 
 export function skipLockinRest() {
     if (!lockinSession.active || lockinSession.phase !== 'BREAK') return;
     _clearLockinTick();
     lockinSession.running = false;
-    _endLockinBreak();
+    _endLockinBreak(false);
 }
 
 export function addLockinRest(mins) {
@@ -1847,9 +1990,12 @@ export function addLockinRest(mins) {
     _updateLockinBreakHud();
 }
 
-function _endLockinBreak() {
-    try { GalleryBreak.abort(); } catch (_) {}
+function _endLockinBreak(natural = false) {
+    if (!natural) {
+        try { GalleryBreak.abort(); } catch (_) {}
+    }
     _hideLockinBreakHud();
+    try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') window.Metro.resumeAfterInterruption(); } catch (_) {}
     if (!lockinSession.active) return;
     lockinSession.currentSession += 1;
     _startLockinStudy();
@@ -1872,16 +2018,23 @@ export function endLockinSession() {
     lockinSession.running = false;
     try { GalleryBreak.abort(); } catch (_) {}
     _hideLockinBreakHud();
+    try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') window.Metro.resumeAfterInterruption(); } catch (_) {}
     _setDeepWorkActive(false);
     _resetLockinState();
-    try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal(); } catch (_) {}
+    try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal({ skipLockinCheck: true }); } catch (_) {}
 }
 
 function _finishLockinCycle() {
+    const summary = {
+        blocks: Math.max(1, lockinSession.totalSessions),
+        solved: lockinSession.solvedInRun | 0,
+        netElo: _currentSubjectElo(lockinSession.subject) - lockinSession.startElo,
+        mode: lockinSession.mode,
+    };
     _removePaceGlow();
     _resetLockinState();
-    try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal(); } catch (_) {}
-    showLockinComplete();
+    try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal({ skipLockinCheck: true }); } catch (_) {}
+    _afterPendingRecap(() => showLockinComplete(summary));
 }
 
 function _resetLockinState() {
@@ -1892,10 +2045,12 @@ function _resetLockinState() {
     lockinSession.phase = 'STUDY';
     lockinSession.currentSession = 1;
     lockinSession.solvedInRun = 0;
+    lockinSession.streakInRun = 0;
     _lockinCreditedSecs = 0;
     _lockinLeftSecs = 0;
     _lockinTotalSecs = 0;
     _removePaceGlow();
+    _updateDeepWorkBeacon();
 }
 
 // ── Public queries / hooks consumed by app.js ─────────────────────────────
@@ -1904,9 +2059,28 @@ export function isLockinStudyRunning() {
         lockinSession.running && !lockinSession.expiredPendingTransition && _lockinLeftSecs > 0);
 }
 
-/** Count a solved question toward the run's telemetry receipt. */
-export function noteLockinSolve() {
-    if (lockinSession.active) lockinSession.solvedInRun += 1;
+/** Count a solved question toward the run's telemetry receipt + 4-solve Hot-Zone streak. */
+export function noteLockinSolve(isCorrect = true) {
+    if (!lockinSession.active) return { hotZone: false, streakInRun: 0 };
+    lockinSession.solvedInRun += 1;
+    if (isCorrect === false) {
+        lockinSession.streakInRun = 0;
+        _updateDeepWorkBeacon();
+        return { hotZone: false, streakInRun: 0 };
+    }
+    lockinSession.streakInRun = (lockinSession.streakInRun || 0) + 1;
+    const hitHotZone = lockinSession.streakInRun > 0 && lockinSession.streakInRun % 4 === 0;
+    _updateDeepWorkBeacon();
+    if (hitHotZone) {
+        try {
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+                window.dispatchEvent(new CustomEvent('jmax:lockin-hotzone', {
+                    detail: { streakInRun: lockinSession.streakInRun, solvedInRun: lockinSession.solvedInRun, mode: lockinSession.mode }
+                }));
+            }
+        } catch (_) {}
+    }
+    return { hotZone: hitHotZone, streakInRun: lockinSession.streakInRun };
 }
 
 /**
@@ -1921,9 +2095,9 @@ export function consumePendingLockinExpiry() {
     lockinSession.expiredPendingTransition = false;
     _removePaceGlow();
     _commitCompletedStudyBlock();
-    // Close the practice stage first so the earned painting can bloom unblocked.
-    try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal(); } catch (_) {}
-    _advanceToBreakOrFinish();
+    // Close the practice stage first so any SessionRecap plays cleanly BEFORE Break / Complete overlays.
+    try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal({ skipLockinCheck: true }); } catch (_) {}
+    _afterPendingRecap(() => _advanceToBreakOrFinish());
     return true;
 }
 
@@ -1941,15 +2115,15 @@ export function completeLockinOnPoolExhausted() {
     lockinSession.running = false;
     _setDeepWorkActive(false);
     _resetLockinState();
-    const pm = document.getElementById('practice-modal');
-    if (pm && !pm.classList.contains('hidden')) {
+    if (_isPracticeOpen()) {
         if (typeof window.closePracticeModal === 'function') {
             try { window.closePracticeModal({ skipLockinCheck: true }); } catch (_) {}
         } else {
-            pm.classList.add('hidden');
+            const pm = document.getElementById('practice-modal');
+            if (pm) pm.classList.remove('active');
         }
     }
-    showLockinVictory({ elapsed, solved, netElo, chain, mode });
+    _afterPendingRecap(() => showLockinVictory({ elapsed, solved, netElo, chain, mode }));
     return true;
 }
 
@@ -1988,6 +2162,7 @@ export function voidLockinBlock() {
     _removePaceGlow();
     try { GalleryBreak.abort(); } catch (_) {}
     _hideLockinBreakHud();
+    try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') window.Metro.resumeAfterInterruption(); } catch (_) {}
     if (wasActive) {
         _ledgerForfeit(0);
         try { window.dispatchEvent(new CustomEvent('jmax:pomo-forfeit')); } catch (_) {}
@@ -2037,11 +2212,13 @@ export function showLockinVictory(data) {
     $('notify-message').textContent = 'You conquered every eligible question before the clock ran out. The lock-in timer stops here — all elapsed time has been banked.';
     const receipt = $('notify-receipt');
     if (receipt) {
+        const isHc = d.mode === 'hardcore';
         receipt.innerHTML = _receiptRows([
             { k: 'Elapsed grind credited', v: formatStudyDuration(d.elapsed || 0) },
             { k: 'Questions solved', v: String(d.solved || 0) },
             { k: 'Net subject ELO', v: `${(d.netElo || 0) >= 0 ? '+' : ''}${d.netElo || 0}` },
             { k: 'Focus chain', v: String(d.chain || 0) },
+            { k: 'Escrow payout', v: isHc ? '2.0× Hardcore Bonus (+1 🛡)' : '1.0× Flow' },
         ]);
         receipt.hidden = false;
     }
@@ -2076,15 +2253,23 @@ export function showLockinBreach() {
     $('timer-notify-modal').classList.add('active');
 }
 
-export function showLockinComplete() {
+export function showLockinComplete(data) {
+    const d = data || {};
     _setNotifyVariant('complete');
     $('notify-icon').textContent = '🎉';
     $('notify-title').textContent = 'Lock-In Cycle Complete';
     $('notify-message').textContent = 'Every block sealed. Time banked, chain grown. Take the win — you earned the rest.';
     const receipt = $('notify-receipt');
     if (receipt) {
+        const blocks = Math.max(1, d.blocks || lockinSession.totalSessions || 1);
+        const solved = d.solved != null ? d.solved : (lockinSession.solvedInRun | 0);
+        const netElo = d.netElo != null ? d.netElo : 0;
+        const isHc = (d.mode || lockinSession.mode) === 'hardcore';
         receipt.innerHTML = _receiptRows([
-            { k: 'Blocks sealed', v: String(Math.max(1, lockinSession.totalSessions)) },
+            { k: 'Blocks sealed', v: String(blocks) },
+            { k: 'Questions solved', v: String(solved) },
+            { k: 'Net subject ELO', v: `${netElo >= 0 ? '+' : ''}${netElo}` },
+            { k: 'Escrow payout', v: isHc ? '2.0× Hardcore Bonus (+1 🛡)' : '1.0× Flow' },
             { k: 'Deep today', v: formatStudyDuration(focusLedger.deep) },
             { k: 'Focus chain', v: String(focusLedger.chain) },
         ]);

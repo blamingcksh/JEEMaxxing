@@ -59,7 +59,7 @@ const _tabId = (typeof crypto !== 'undefined' && crypto && typeof crypto.randomU
 
 function _broadcastTabSaved() {
     try {
-        if (typeof BroadcastChannel === 'undefined') return;
+        if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
         if (!_tabChannel) _tabChannel = new BroadcastChannel(TAB_SYNC_CHANNEL);
         _tabChannel.postMessage({
             type: 'jmax-saved',
@@ -73,7 +73,7 @@ function _broadcastTabSaved() {
 
 function _listenTabSync() {
     try {
-        if (typeof BroadcastChannel === 'undefined') return;
+        if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
         const ch = new BroadcastChannel(TAB_SYNC_CHANNEL);
         ch.onmessage = async (e) => {
             const msg = e && e.data;
@@ -1146,8 +1146,15 @@ export function isMockChapterName(ch) {
 }
 export function isMockQuestion(q) {
     if (!q) return false;
+    if (q.isMock) return true;
+    if (isMockChapterName(q.chapter)) return true;
+    // Syllabus questions pulled into a mock carry borrowedFromBank (or a real non-Mock chapter);
+    // keep them visible in Chapter Decay Grid, Matrix, Bridge, and SR instead of hiding them.
+    if (q.borrowedFromBank) return false;
+    const ch = String(q.chapter == null ? '' : q.chapter).trim();
+    if (ch) return false;
     if (q.mockSource || q.reservedForMock) return true;
-    return isMockChapterName(q.chapter);
+    return false;
 }
 export const monthNamesCal = [
     "January", "February", "March", "April", "May", "June",

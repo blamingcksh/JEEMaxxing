@@ -29,6 +29,14 @@
     transition: opacity 180ms ease;
 }
 
+#mario-recap.is-nonblocking {
+    pointer-events: none;
+}
+
+#mario-recap.is-nonblocking .mr-pill {
+    pointer-events: auto;
+}
+
 html[data-mode="dusk"] #mario-recap {
     background: rgba(38, 42, 60, 0.24);
 }
@@ -140,15 +148,26 @@ html[data-mode="parchment"] #mario-recap {
 }
 
 #mario-recap .mr-elo.is-zero {
-    color: #94a3b8;
+    color: #fbbf24;
 }
 
 #mario-recap .mr-pill-summary {
     display: none;
 }
 
+#mario-recap .mr-pill-extras {
+    display: none;
+}
+
 #mario-recap .mr-pill.is-summary {
     max-width: min(46rem, calc(100vw - 24px));
+}
+
+#mario-recap .mr-pill.is-summary.has-extras {
+    flex-direction: column;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 18px;
 }
 
 #mario-recap .mr-pill.is-summary .mr-pill-run {
@@ -158,6 +177,67 @@ html[data-mode="parchment"] #mario-recap {
 #mario-recap .mr-pill.is-summary .mr-pill-summary {
     display: inline;
     animation: mr-fade-in 140ms ease-out both;
+}
+
+#mario-recap .mr-pill.is-summary.has-extras .mr-pill-extras {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px 8px;
+    font-size: 10.5px;
+    color: var(--text-muted, #94a3b8);
+    animation: mr-fade-in 180ms ease-out both;
+}
+
+#mario-recap .mr-extra-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: normal;
+}
+
+#mario-recap .mr-extra-sep {
+    opacity: 0.45;
+}
+
+#mario-recap .mr-extra-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#mario-recap .mr-action-btn {
+    appearance: none;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary, #eef1f6);
+    font-family: inherit;
+    font-size: 10.5px;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: background-color 140ms ease, border-color 140ms ease, transform 120ms ease;
+}
+
+#mario-recap .mr-action-btn:hover,
+#mario-recap .mr-action-btn:focus-visible {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(251, 191, 36, 0.55);
+    outline: none;
+}
+
+#mario-recap .mr-action-btn.is-primary {
+    background: rgba(249, 115, 22, 0.22);
+    border-color: rgba(251, 146, 60, 0.55);
+    color: #fed7aa;
+}
+
+#mario-recap .mr-action-btn.is-primary:hover,
+#mario-recap .mr-action-btn.is-primary:focus-visible {
+    background: rgba(249, 115, 22, 0.34);
 }
 
 #mario-recap [hidden] {
@@ -228,7 +308,25 @@ html[data-mode="parchment"] #mario-recap .mr-elo.is-neg {
 html[data-theme="light"] #mario-recap .mr-elo.is-zero,
 html[data-theme="parchment"] #mario-recap .mr-elo.is-zero,
 html[data-mode="parchment"] #mario-recap .mr-elo.is-zero {
-    color: #64748b;
+    color: #b45309;
+}
+
+#mario-recap.is-parchment .mr-action-btn,
+html[data-theme="light"] #mario-recap .mr-action-btn,
+html[data-theme="parchment"] #mario-recap .mr-action-btn,
+html[data-mode="parchment"] #mario-recap .mr-action-btn {
+    background: rgba(59, 52, 41, 0.08);
+    border-color: rgba(73, 60, 42, 0.25);
+    color: #24211c;
+}
+
+#mario-recap.is-parchment .mr-action-btn.is-primary,
+html[data-theme="light"] #mario-recap .mr-action-btn.is-primary,
+html[data-theme="parchment"] #mario-recap .mr-action-btn.is-primary,
+html[data-mode="parchment"] #mario-recap .mr-action-btn.is-primary {
+    background: rgba(234, 88, 12, 0.14);
+    border-color: rgba(234, 88, 12, 0.42);
+    color: #9a3412;
 }
 
 @media (max-width: 520px) {

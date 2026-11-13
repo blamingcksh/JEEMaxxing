@@ -134,6 +134,8 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         </ul>
 
         <!-- app.js injects #global-mmr-row into .user-profile -->
+        <button type="button" id="bio-guard-beacon" class="deep-work-beacon bio-guard-beacon" hidden title="Bio Guard status" onclick="window.onBioGuardBeaconClick && window.onBioGuardBeaconClick()"></button>
+        <button type="button" id="deep-work-beacon" class="deep-work-beacon" hidden title="Deep Work Block active — click to open session"></button>
         <div class="user-profile">
             <img id="display-pfp" class="pfp-img" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='64' height='64'><defs><radialGradient id='g' cx='50%25' cy='45%25' r='60%25'><stop offset='0%25' stop-color='%23181D2B'/><stop offset='100%25' stop-color='%2307090E'/></radialGradient></defs><circle cx='32' cy='32' r='31' fill='url(%23g)' stroke='%23D4AF37' stroke-opacity='0.45' stroke-width='1.2'/><circle cx='32' cy='32' r='26' fill='none' stroke='%23E5C07B' stroke-opacity='0.35' stroke-width='0.9' stroke-dasharray='1.5 3.2'/><circle cx='32' cy='32' r='19' fill='none' stroke='%23E5C07B' stroke-opacity='0.75' stroke-width='1.1'/><circle cx='32' cy='26' r='11' fill='none' stroke='%237DD3FC' stroke-opacity='0.45' stroke-width='0.85'/><ellipse cx='32' cy='32' rx='24' ry='9.5' transform='rotate(-26 32 32)' fill='none' stroke='%23E5C07B' stroke-opacity='0.75' stroke-width='1'/><ellipse cx='32' cy='32' rx='24' ry='9.5' transform='rotate(26 32 32)' fill='none' stroke='%23E5C07B' stroke-opacity='0.3' stroke-width='0.8'/><path d='M32 4v8M32 52v8M4 32h8M52 32h8' stroke='%23E5C07B' stroke-opacity='0.65' stroke-width='1.1' stroke-linecap='round'/><circle cx='32' cy='32' r='4.2' fill='%2307090E' stroke='%23F3D999' stroke-width='1.3'/><circle cx='32' cy='32' r='1.8' fill='%23F3D999'/><circle cx='49' cy='22' r='1.5' fill='%237DD3FC'/></svg>" alt="Profile">
             <span class="username-txt" id="display-username">Grindset</span>
@@ -199,6 +201,11 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         <div class="dv-head-left">
                             <h2 class="dv-title">Consistency</h2>
                             <span class="dv-streak" id="dv-streak" hidden></span>
+                            <div class="mom-toggle" role="tablist" aria-label="Consistency lens">
+                                <button type="button" class="mom-tab active" data-var-lens="heatmap" role="tab" aria-selected="true" onclick="window.setVarianceLens('heatmap')">Heatmap</button>
+                                <button type="button" class="mom-tab" data-var-lens="candles" role="tab" aria-selected="false" onclick="window.setVarianceLens('candles')">Candlesticks</button>
+                                <button type="button" class="mom-tab" data-var-lens="isle" role="tab" aria-selected="false" onclick="window.setVarianceLens('isle')">Sprout Isle</button>
+                            </div>
                         </div>
                         <span class="daily-variance-legend" aria-hidden="true">
                             <span class="daily-variance-legend-label">Less</span>
@@ -213,6 +220,21 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     <div class="daily-variance-scroll">
                         <div id="daily-variance-months" class="daily-variance-months" aria-hidden="true"></div>
                         <div id="daily-variance-grid" class="daily-variance-grid" role="img" aria-label="Daily solved questions relative to your daily target, one cell per day. Denser colour means more output."></div>
+                    </div>
+                    <div class="mom-body" id="var-candles-body" hidden>
+                        <div class="graph-display"><svg id="dynamic-graph"></svg></div>
+                        <div class="mom-legend" aria-hidden="true">
+                            <span><i style="background:#10b981"></i>Above target yield</span>
+                            <span><i style="background:#ef4444"></i>Below target / Protocol Zero</span>
+                            <span><i style="background:#3ddcff"></i>Target lock</span>
+                            <span><i style="background:#a78bfa"></i>5-day trajectory</span>
+                        </div>
+                    </div>
+                    <div class="dash-card-momentum mom-card" id="mom-card" hidden>
+                        <div class="isle-hud" id="isle-hud" data-isle-keep="1">
+                            <button type="button" class="isle-seed-pill" id="isle-seed-pill" aria-expanded="false" aria-controls="isle-store-pop">🌰 <span id="isle-seed-count">0</span> <span class="isle-store-lbl">Store</span></button>
+                            <div class="isle-store-pop" id="isle-store-pop" hidden></div>
+                        </div>
                     </div>
                 </div>
 
@@ -416,6 +438,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <!-- ── Hemingway Bridge & Tuck-In banners (fixed mounts above the Arena) ── -->
                 <div id="bridge-banner" hidden></div>
                 <div id="tuckin-door-banner" hidden></div>
+                <div id="arena-orders-strip" class="arena-orders-strip" hidden></div>
                 <div class="subject-cards">
                     <div class="subject-col" data-subject="physics">
                         <div class="subject-card subject-card--phys" onclick="selectSubject('physics')">
@@ -522,9 +545,8 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
         <!-- ═══════════════════════════════════════════
              VIEW · CONFIG
-             NOTE: The Anti-Slump / Checkpoint system builds its ENTIRE UI
-             (#cp-hub, #cp-control-panel, lockdown overlays, toasts) at
-             runtime via checkpoint.js — no static markup here, or IDs collide.
+             NOTE: Checkpoint / Protocol Zero lockdown overlays and toasts (if armed)
+             live in checkpoint.js — dead #cp-control-panel / #cp-ignite-float DOM was retired.
         ════════════════════════════════════════════ -->
         <!-- ═══════════════════════════════════════════
              VIEW · MOCKS (exam simulation)
@@ -1036,9 +1058,9 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         </div>
 
         <div class="pq-conf-ghost" id="pq-conf-ghost" role="group" aria-label="Pre-lock confidence">
-            <button type="button" data-conf="guess" aria-pressed="false">1 · GUESS</button>
-            <button type="button" data-conf="likely" aria-pressed="false">2 · LIKELY</button>
-            <button type="button" data-conf="sure" aria-pressed="false">3 · SURE</button>
+            <button type="button" data-conf="guess" aria-pressed="false">[1] Shaky</button>
+            <button type="button" data-conf="likely" aria-pressed="false">[2] Solid</button>
+            <button type="button" data-conf="sure" aria-pressed="false">[3] Lock-In 💎</button>
         </div>
 
         <!-- Result & action strip (visible when answered / revealed) -->
@@ -1052,6 +1074,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     <canvas id="streak-canvas" width="16" height="16"></canvas>
                     <span class="streak-number" id="streak-number">0</span>
                 </div>
+                <span class="ck-hud-pill" id="pq-ck-hud" aria-label="Combo and Crit status"></span>
                 <div id="elo-header-slot" class="elo-header-slot"></div>
             </div>
         </footer>
@@ -1630,45 +1653,71 @@ window.clearMatrixFilters = function () {
 <script src="forest-bg.js" defer></script>
 <script src="sprout-isle.js" defer></script>
 
-<!-- ── MOMENTUM VIEW TOGGLE — the Momentum card carries two lenses: the
-     living Isle (sprout-isle.js) and the pace chart (#dynamic-graph).
-     Flips .mom-pace on the card + persists the choice device-local. The
-     isle bridge auto-pauses its render loop whenever #isle-root leaves the
-     screen, so no engine coupling lives here. Charts re-render on switch
-     (they were drawn into a hidden container while the Isle was up). ── -->
+<!-- ── CONSISTENCY / WORLD LENS TOGGLE — Heatmap (default), Candlesticks (#dynamic-graph),
+     and Sprout Isle (sprout-isle.js). Pauses WebGL when not visible; re-renders SVG on switch. ── -->
 <script>
 (function () {
     var KEY = 'jeemax_momentum_view';
-    function apply(view, rerender) {
-        var card = document.getElementById('mom-card');
-        if (!card) return;
-        var pace = view === 'pace';
-        card.classList.toggle('mom-pace', pace);
-        card.querySelectorAll('.mom-tab').forEach(function (t) {
-            var on = t.getAttribute('data-mom-view') === view;
+    function normLens(v) {
+        if (v === 'pace' || v === 'candles') return 'candles';
+        if (v === 'isle') return 'isle';
+        return 'heatmap';
+    }
+    function apply(lens, rerender) {
+        lens = normLens(lens);
+        var host = document.querySelector('#view-dashboard .dash-card-variance');
+        if (!host) return;
+        host.classList.toggle('is-candles', lens === 'candles');
+        host.classList.toggle('is-isle', lens === 'isle');
+        var hmScroll = host.querySelector('.daily-variance-scroll');
+        var hmLegend = host.querySelector('.daily-variance-legend');
+        var candles = document.getElementById('var-candles-body');
+        var mom = document.getElementById('mom-card');
+        if (hmScroll) hmScroll.hidden = (lens !== 'heatmap');
+        if (hmLegend) hmLegend.hidden = (lens !== 'heatmap');
+        if (candles) candles.hidden = (lens !== 'candles');
+        if (mom) {
+            mom.hidden = (lens !== 'isle');
+            mom.classList.toggle('mom-pace', lens === 'candles');
+        }
+        host.querySelectorAll('.mom-tab').forEach(function (t) {
+            var on = t.getAttribute('data-var-lens') === lens;
             t.classList.toggle('active', on);
             t.setAttribute('aria-selected', on ? 'true' : 'false');
         });
-        if (rerender) {
+        if (lens !== 'isle') {
+            try { if (window.Isle && typeof window.Isle.stop === 'function') window.Isle.stop(); } catch (e) {}
+            var pop = document.getElementById('isle-store-pop');
+            if (pop) pop.hidden = true;
+        }
+        if (rerender || lens !== 'heatmap') {
             requestAnimationFrame(function () {
-                try { if (typeof window.renderGraph === 'function') window.renderGraph(); } catch (e) {}
-                try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (e) {}
+                if (lens === 'candles') {
+                    try { if (typeof window.renderGraph === 'function') window.renderGraph(); } catch (e) {}
+                    try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (e) {}
+                } else if (lens === 'isle') {
+                    try { if (window.Isle && typeof window.Isle.fit === 'function') window.Isle.fit(); } catch (e) {}
+                    try { if (window.Isle && typeof window.Isle.start === 'function') window.Isle.start(); } catch (e) {}
+                    try { if (window.Isle && typeof window.Isle.syncHud === 'function') window.Isle.syncHud(); } catch (e) {}
+                }
             });
         }
     }
     function saved() {
         var v = null;
         try { v = localStorage.getItem(KEY); } catch (e) {}
-        return v === 'pace' ? 'pace' : 'isle';
+        return normLens(v);
     }
-    window.setMomentumView = function (view) {
-        apply(view, true);
-        try { localStorage.setItem(KEY, view === 'pace' ? 'pace' : 'isle'); } catch (e) {}
+    window.setVarianceLens = function (lens) {
+        var n = normLens(lens);
+        apply(n, true);
+        try { localStorage.setItem(KEY, n); } catch (e) {}
     };
+    window.setMomentumView = window.setVarianceLens;
     function boot() {
         apply(saved(), false);
-        // Late re-assert: candlestick engine may register after DOMContentLoaded.
-        if (saved() === 'pace') { setTimeout(function () { apply('pace', true); }, 900); }
+        if (saved() === 'candles') { setTimeout(function () { apply('candles', true); }, 900); }
+        if (saved() === 'isle') { setTimeout(function () { apply('isle', true); }, 900); }
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();

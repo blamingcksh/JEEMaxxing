@@ -230,7 +230,7 @@ function markPending(detail) {
 
 // ── Non-solve LU sources ────────────────────────────────────────────────────
 
-function awardFocus(subject) {
+function awardFocus(subject, opts) {
     // Rehydrate first — a fresh-day/empty recoverable state must not turn a
     // focus block into a silent no-op (same midnight-settle hazard as
     // onSolveLogged).
@@ -238,8 +238,9 @@ function awardFocus(subject) {
     if (!state) return;
     const sub = SUBJECTS.indexOf(subject) >= 0 ? subject : 'physics';
     if (state.focusBlocks[sub] >= 3) return; // focus can't replace solving
+    const mul = Math.max(1, Number(opts && opts.mul) || 1);
     state.focusBlocks[sub] += 1;
-    state.lu[sub] = _round1(state.lu[sub] + (state.taxActive ? 1 : 2));
+    state.lu[sub] = _round1(state.lu[sub] + (state.taxActive ? 1 : 2) * mul);
     _afterActivity('focus');
 }
 
@@ -521,6 +522,21 @@ function _detectMockDay() {
     } catch (_) { return null; }
 }
 
+/** Sync live mockDay state immediately when a mock paper starts or submits. */
+function refreshMockDay() {
+    try {
+        _ensureTodaySync();
+        if (!state) return;
+        state.mockDay = _detectMockDay() || state.mockDay;
+        if (state.mockDay && state.mockDay.done && !state.fullCleared) {
+            state.fullCleared = true;
+            state.spinPending = true;
+        }
+        _save();
+        renderDashboardCard();
+    } catch (_) {}
+}
+
 async function _computeContract(preserveQuests) {
     const due = _dueCountBySubject();
     const capacity = _clamp(AppState.moodMultiplier || 1.0, 0.6, 1.25);
@@ -544,6 +560,8 @@ async function _computeContract(preserveQuests) {
     if (!preserveQuests) {
         state.headline = _pickHeadline();
         state.quests = _drawQuests(SUBJECTS.reduce((a, s) => a + due[s], 0));
+    } else if (!state.headline) {
+        state.headline = _pickHeadline();
     }
     if (over) meta.overcharge = null; // consumed
 }
@@ -820,6 +838,7 @@ function _headlineLine() {
 }
 
 function renderDashboardCard() {
+    try { if (typeof window !== 'undefined' && typeof window.renderArenaOrdersStrip === 'function') window.renderArenaOrdersStrip(); } catch (_) {}
     const host = document.getElementById('directive-card-body');
     if (!host || !state) return;
     const night = isNightCalm();
@@ -954,6 +973,7 @@ function _openSpin(reason) {
 
 const Directive = {
     ensureToday,
+    refreshMockDay,
     recalibrateCapacity,
     settle,
     onSolveLogged,

@@ -48,6 +48,10 @@ import { Directive } from './directive.js';
 // Mario recap — same singleton the Arena stage uses. Zero-dependency module.
 import { SessionRecap } from './mario-recap.js';
 
+// CNS Load & Night/Junk-rep guard — pure leaf module (used for abort rollback
+// when closing an unlogged Vault solve before submitPracticeLog runs).
+import { CNSLoad } from './cns-load.js';
+
 // Memory Kernel v2 — canonical pure implementation (imported directly; the
 // kernel has zero dependencies so this cannot form a cycle).
 import {
@@ -73,6 +77,7 @@ import {
     normalizeTag,
     preReviewSnapshot,
     scheduleNextReview,
+    selectCortexQueue,
     suggestTags,
 } from './cortex.js';
 
@@ -80,6 +85,7 @@ import {
 //  Daily Core Queue state
 // ---------------------------------------------------------------------------
 let _dailyQueueActive = false;
+let _dailyQueueCelebratedDate = null;
 
 const DAILY_QUEUE_LIMITS = {
     physics: 5,
@@ -552,6 +558,8 @@ const _BRIDGE_WRITTEN_FIELDS = [
     'easeFactor', 'solveCount',
     'qElo', 'qEloSource', 'qEloStampedAt', 'qEloStampedBy', 'isAnomaly',
     '_lifelineAssisted',                              // lifeline flag (conditional write)
+    '_solvedCredit',                                  // overheat credit tracking
+    'status', 'firstAttemptResult', 'errorReason',    // question verdict status fields
     'srUpdatedAt',                                      // merge clock
 ];
 
@@ -699,12 +707,12 @@ let _srIdleTimer = null;
 function _srArmChromeFade(overlay) {
     if (!overlay) return;
     const resetIdle = () => {
-        overlay.classList.remove('pq-chrome-faded');
+        overlay.classList.remove('pq-chrome-faded', 'pq-chrome-hidden');
         if (_srIdleTimer) { clearTimeout(_srIdleTimer); _srIdleTimer = null; }
         if (!_drawerState.resultLocked) {
             _srIdleTimer = setTimeout(() => {
                 if (!_drawerState.resultLocked) {
-                    overlay.classList.add('pq-chrome-faded');
+                    overlay.classList.add('pq-chrome-faded', 'pq-chrome-hidden');
                 }
             }, 3500);
         }
@@ -820,10 +828,20 @@ function _srBindKeys(overlay) {
                 e.preventDefault();
                 srRevealAnswer();
             }
-        } else if (e.key === 'Enter' && _drawerState.resultLocked) {
+        } else if ((e.key === 'Enter' || e.key === ' ') && _drawerState.resultLocked) {
+            // Do not hijack Spacebar when focus sits on an interactive button/pill
+            // inside the result/tagging UI — let the user toggle buttons natively.
+            if (e.key === ' ' && e.target && e.target.closest && e.target.closest('button, a, .sr-toggle-btn, .sr-friction-pill, .sr-tagedit-chip-del')) {
+                return;
+            }
             const canSubmit = _drawerState.result && _drawerState.autonomy;
             if (canSubmit) {
                 e.preventDefault();
+                // 1-key clean auto-commit: flawless correct solve with no friction
+                // tags defaults to ['PERFECT'] automatically so 1 keypress logs & advances.
+                if (_drawerState.result === 'correct' && _drawerState.frictionTypes.length === 0) {
+                    _drawerState.frictionTypes = ['PERFECT'];
+                }
                 submitPracticeLogAndNext();
             }
         }
@@ -905,6 +923,9 @@ export function srOpenSolution() {
     solZone.style.display = isHidden ? 'block' : 'none';
     const btn = document.getElementById('sr-peep-sol-btn');
     if (btn) btn.classList.toggle('active', isHidden);
+    if (isHidden && _drawerState.autonomy !== 'solution_read') {
+        srSetAutonomy('solution_read');
+    }
     if (isHidden && window.katex) {
         _renderKatexIn(solZone);
     }
@@ -1000,7 +1021,7 @@ export function openPracticeDrawer(qId, opts) {
             </svg>
         </div>
 
-        <!-- Hidden compatibility bridge for timer, HUD & test runner metrics -->
+        <!-- Hidden compatibility bridge for timer, title & test runner metrics -->
         <div class="pq-sr-bridge" aria-hidden="true">
             <div class="sr-stopwatch" id="sr-stopwatch-btn" onclick="srToggleStopwatch()" role="button" tabindex="0" title="Click to pause/resume">
                 <span id="sr-stopwatch-display">00:00</span>
@@ -1008,8 +1029,6 @@ export function openPracticeDrawer(qId, opts) {
             </div>
             <span class="sr-drawer-title" id="sr-stage-ch-title">${_esc(shortChapterName(q.chapter || 'Unknown'))}</span>
             <span class="sr-drawer-sub" id="sr-stage-sub-title">${_esc(q.subject || '')}${dueInfo.label ? ' · ' + _esc(dueInfo.label) : ''}</span>
-            <div class="streak-visualizer" id="sr-streak-visualizer"><canvas id="sr-streak-canvas" width="16" height="16"></canvas></div>
-            <div id="sr-elo-header-slot" class="elo-header-slot"></div>
         </div>
 
         <!-- Ghost corners -->
@@ -1069,7 +1088,15 @@ export function openPracticeDrawer(qId, opts) {
                 </div>
 
                 <div class="sr-drawer-footer pq-result-strip">
-                    <div class="sr-footer-summary" id="sr-footer-summary"></div>
+                    <div class="sr-footer-meta">
+                        <div class="sr-streak-pill" title="Current solve streak">
+                            <div class="streak-visualizer" id="sr-streak-visualizer"><canvas id="sr-streak-canvas" width="22" height="22"></canvas></div>
+                            <span class="streak-number sr-streak-number" id="sr-streak-number">${AppState.practiceCorrectStreak || 0}</span>
+                        </div>
+                        <div id="sr-elo-header-slot" class="elo-header-slot"></div>
+                        <div class="sr-footer-summary" id="sr-footer-summary"></div>
+                        <span class="ck-hud-pill" id="sr-ck-hud" aria-label="Combo and Crit status"></span>
+                    </div>
                     <div class="sr-footer-actions">
                         <button class="sr-submit-next-btn" id="sr-submit-next-btn" onclick="submitPracticeLogAndNext()" disabled>Log &amp; Next →</button>
                         <button class="sr-submit-btn" id="sr-submit-btn" onclick="submitPracticeLog()" disabled>Log Attempt</button>
@@ -1126,12 +1153,47 @@ export function closePracticeDrawer(opts) {
     if (_snap) {
         try {
             const _q = _findQByHandlerId(_drawerState.qId);
-            if (_q) {
-                for (const k of Object.keys(_snap)) {
-                    if (_snap[k] === undefined) delete _q[k]; else _q[k] = _snap[k];
+            const _qSnap = _snap.qFields || _snap;
+            if (_q && _qSnap) {
+                for (const k of Object.keys(_qSnap)) {
+                    if (_qSnap[k] === undefined) delete _q[k]; else _q[k] = _qSnap[k];
                 }
-                saveAllAsync().catch(console.error);
             }
+            if (_snap.elo && AppState && AppState.elo) {
+                const { safeSubject, subjElo, globalElo, rdSubj, thetaKey, chapterThetaNode, calibrationLogLen } = _snap.elo;
+                if (safeSubject) {
+                    if (subjElo === undefined) delete AppState.elo[safeSubject];
+                    else AppState.elo[safeSubject] = subjElo;
+                    if (!AppState.elo.rd || typeof AppState.elo.rd !== 'object') AppState.elo.rd = {};
+                    if (rdSubj === undefined) delete AppState.elo.rd[safeSubject];
+                    else AppState.elo.rd[safeSubject] = rdSubj;
+                }
+                if (globalElo !== undefined) AppState.elo.global = globalElo;
+                if (thetaKey) {
+                    if (!AppState.chapterTheta || typeof AppState.chapterTheta !== 'object') AppState.chapterTheta = {};
+                    if (chapterThetaNode) AppState.chapterTheta[thetaKey] = { ...chapterThetaNode };
+                    else delete AppState.chapterTheta[thetaKey];
+                }
+                if (Array.isArray(AppState.calibrationLog) && Number.isFinite(Number(calibrationLogLen))) {
+                    const len = Math.max(0, Number(calibrationLogLen) | 0);
+                    if (AppState.calibrationLog.length > len) AppState.calibrationLog = AppState.calibrationLog.slice(0, len);
+                }
+            }
+            if (_snap.cnsLogged && _snap.elo && _snap.elo.safeSubject) {
+                try { CNSLoad.popLastSolve(_snap.elo.safeSubject); } catch (_) {}
+            }
+            if (typeof _snap.preStreak === 'number') AppState.practiceCorrectStreak = _snap.preStreak;
+            if ('preComboBreak' in _snap) AppState._ckComboBreak = _snap.preComboBreak;
+            if ('preJustWonBounty' in _snap) window._justWonBounty = _snap.preJustWonBounty;
+            if (_snap.preBountyPayoff != null && AppState.bounty) AppState.bounty.payoffCount = _snap.preBountyPayoff;
+            if (_snap.overheatDelta > 0 && _snap.overheatSubj) {
+                try { changeCount(_snap.overheatSubj, -_snap.overheatDelta); } catch (_) {}
+            }
+            if (_snap.preOverheatActive && !document.body.classList.contains('overheat-active') && typeof window.activateOverheat === 'function') {
+                try { window.activateOverheat(); } catch (_) {}
+            }
+            if (typeof window.updateStreakVisualizer === 'function') window.updateStreakVisualizer();
+            saveAllAsync().catch(console.error);
         } catch (err) {
             console.error('[matrix] abort rollback failed:', err);
         }
@@ -1513,7 +1575,7 @@ function _renderAnswerStage(q) {
             // Enter/Space mirror the click so the drawer is completable from
             // the keyboard alone (role="button" + tabindex="0" advertise
             // that) — same activation contract as .rh-row / .cpx-row.
-            return `<div class="sr-mcq-option" data-letter="${_esc(letter)}" data-option="${_esc(opt)}" onclick="srSelectOption(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();srSelectOption(this);}" role="button" tabindex="0">
+            return `<div class="sr-mcq-option" data-letter="${_esc(letter)}" data-option="${_esc(opt)}" onclick="srSelectOption(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();srSelectOption(this);}" role="button" tabindex="0">
                 <span class="sr-mcq-letter">${_esc(letter)}</span>
                 <span class="sr-mcq-text">${_esc(opt)}</span>
                 ${optImg}
@@ -1740,7 +1802,7 @@ function _applyResult(result, source, q) {
     const overlay = document.getElementById('sr-practice-overlay');
     if (overlay) {
         overlay.setAttribute('data-pq-state', 'answered');
-        overlay.classList.remove('pq-chrome-faded');
+        overlay.classList.remove('pq-chrome-faded', 'pq-chrome-hidden');
     }
 
     const zone = document.getElementById('sr-result-zone');
@@ -1772,9 +1834,9 @@ function _applyResult(result, source, q) {
         if (result === 'correct') {
             const oh = document.body.classList.contains('overheat-active');
             const pendingDelta = (q && q.status !== 'solved') ? (oh ? 3 : 1) : (oh ? 2 : 0);
-            zone.innerHTML = `<div class="sr-result-banner correct">VERIFIED${suffix}</div>${_keepGoingHTML(q, pendingDelta)}${solImg}${solPeepBtn}`;
+            zone.innerHTML = `<div class="sr-result-banner correct">VERIFIED${suffix}</div>${_keepGoingHTML(q, pendingDelta)}${solPeepBtn}`;
         } else {
-            zone.innerHTML = `<div class="sr-result-banner incorrect">FAILED${suffix}</div>${solImg}${solPeepBtn}`;
+            zone.innerHTML = `<div class="sr-result-banner incorrect">FAILED${suffix}</div>${solPeepBtn}`;
         }
     }
 
@@ -1840,9 +1902,43 @@ function _applyResult(result, source, q) {
     // The frozen time + eloResult are stashed on _drawerState so the later
     // submitPracticeLog() reuses them instead of recomputing/double-counting.
     // ═══════════════════════════════════════════════════════════════════════
+    const _safeSubjSnap = normSubjKeyStrict(q && q.subject);
+    const _thetaKeySnap = (_safeSubjSnap && q && q.chapter)
+        ? (_safeSubjSnap + '::' + String(q.chapter).trim().toLowerCase())
+        : null;
+    const _qSnap = {};
+    for (const k of _BRIDGE_WRITTEN_FIELDS) _qSnap[k] = q[k];
+    let _thetaNodeSnap = null;
+    try {
+        const node = _thetaKeySnap && AppState.chapterTheta && AppState.chapterTheta[_thetaKeySnap];
+        if (node && isFinite(node.e)) _thetaNodeSnap = { e: node.e, n: node.n };
+    } catch (_) {}
+    const _abortSnap = {
+        qFields: _qSnap,
+        elo: {
+            safeSubject: _safeSubjSnap,
+            subjElo: (_safeSubjSnap && AppState.elo) ? AppState.elo[_safeSubjSnap] : undefined,
+            globalElo: AppState.elo ? AppState.elo.global : undefined,
+            rdSubj: (_safeSubjSnap && AppState.elo && AppState.elo.rd) ? AppState.elo.rd[_safeSubjSnap] : undefined,
+            thetaKey: _thetaKeySnap,
+            chapterThetaNode: _thetaNodeSnap,
+            calibrationLogLen: Array.isArray(AppState.calibrationLog) ? AppState.calibrationLog.length : 0,
+        },
+        cnsLogged: false,
+        preStreak: Number(AppState.practiceCorrectStreak) || 0,
+        preComboBreak: !!AppState._ckComboBreak,
+        preJustWonBounty: !!window._justWonBounty,
+        preBountyPayoff: (AppState.bounty && Number.isFinite(Number(AppState.bounty.payoffCount))) ? Number(AppState.bounty.payoffCount) : null,
+        preOverheatActive: document.body.classList.contains('overheat-active'),
+        overheatDelta: 0,
+        overheatSubj: null,
+    };
+    _drawerState.preBridgeSnapshot = _abortSnap;
+
     if (_drawerState.result === 'incorrect') {
         if (typeof window.triggerRedFlash === 'function') window.triggerRedFlash();
         if (typeof window.playWrongSound === 'function') window.playWrongSound();
+        AppState._ckComboBreak = true;
         if (Math.random() < 0.2) {
             if (typeof window.triggerStreakShield === 'function') window.triggerStreakShield();
         } else {
@@ -1865,6 +1961,8 @@ function _applyResult(result, source, q) {
             if (_overheatKey) {
                 changeCount(_overheatKey, 2);
                 q._solvedCredit = (Number(q._solvedCredit) || 0) + 2;
+                _abortSnap.overheatDelta += 2;
+                _abortSnap.overheatSubj = _overheatKey;
             }
             if (typeof window.showSupercharged === 'function') window.showSupercharged();
             if (typeof window.deactivateOverheat === 'function') window.deactivateOverheat();
@@ -1885,17 +1983,6 @@ function _applyResult(result, source, q) {
     // ── Cognitive MMR / Elo migration (uses the FROZEN decision time) ──
     let _eloResult = null;
     if (typeof window.calculateEloMigration === 'function' && q.subject) {
-        // Snapshot the exact field set the Elo bridge + memory kernel write
-        // (app.js calculateEloMigration: updateMemoryOnReview → stability/
-        // difficultyD/reps/lapses, plus lastReviewedAt, easeFactor, solveCount,
-        // qElo/qEloSource/isAnomaly and the srUpdatedAt merge clock). If the
-        // user abandons the drawer without pressing Log Attempt, this snapshot
-        // is what closePracticeDrawer rolls back — otherwise the mutation is
-        // persisted with NO historyLog and NO schedule, and srUpdatedAt makes
-        // that phantom review authoritative across devices and tabs.
-        const _snap = {};
-        for (const k of _BRIDGE_WRITTEN_FIELDS) _snap[k] = q[k];
-        _drawerState.preBridgeSnapshot = _snap;
         try {
             // Calibration capture: publish the pre-reveal confidence for the
             // engine to consume synchronously inside this solve, then clear it
@@ -1913,6 +2000,7 @@ function _applyResult(result, source, q) {
                 _health,
                 q
             );
+            if (_safeSubjSnap && _eloResult) _abortSnap.cnsLogged = true;
         } catch (_eloErr) {
             console.error('Elo migration fault in _applyResult:', _eloErr);
         } finally {
@@ -1947,8 +2035,8 @@ function _applyResult(result, source, q) {
         }
 
         // ── Tier transition celebration — cascading emoji burst + fanfare,
-        // fired from the SR drawer's centre while it's still on screen. ──
-        if (_eloResult.tierChanged) {
+        // fired from the SR drawer's centre ONLY on genuine promotions. ──
+        if (_eloResult.tierChanged && (_eloResult.deltaSubject || 0) > 0) {
             try {
                 let originX = window.innerWidth / 2;
                 let originY = window.innerHeight / 2;
@@ -2210,6 +2298,9 @@ export function srToggleHint() {
     body.style.display = hidden ? 'block' : 'none';
     const btn = document.getElementById('sr-hint-toggle');
     if (btn) btn.classList.toggle('revealed', hidden);
+    if (hidden && _drawerState.autonomy === 'independent') {
+        srSetAutonomy('hint_used');
+    }
 }
 
 // ── Drawer Interaction Handlers (exposed to window) ────────────────────────
@@ -2428,6 +2519,7 @@ export function submitPracticeLog(opts) {
     // runs — so reading q.reps here would make EVERY item look kernel-owned
     // on its very first review.
     const _preReps = Number(_drawerState.preSolveReps) || 0;
+    const _preInterval = Number.isFinite(Number(q.currentInterval)) ? Number(q.currentInterval) : 0;
 
     // Baseline: pure SM-2 output. Written FIRST so the cortex block below
     // expresses a genuine override, and so the mastery re-derivation there
@@ -2697,6 +2789,21 @@ export function submitPracticeLog(opts) {
         } catch (_) { /* recap must never block the log */ }
     }
 
+    const _fmtIvl = (d) => {
+        if (!Number.isFinite(d) || d <= 0) return 'now';
+        if (d < 1) return Math.max(1, Math.round(d * 24)) + 'h';
+        return (Math.round(d * 10) / 10) + 'd';
+    };
+    let _postRecallStr = '';
+    try {
+        const _rPost = currentRetrievability(q);
+        if (Number.isFinite(_rPost)) _postRecallStr = ' · Recall ' + Math.round(_rPost * 100) + '%';
+    } catch (_) {}
+    const _receiptToast = (_drawerState.result === 'correct' ? '✓ Logged' : '↻ Reset')
+        + ' · Next: ' + _fmtIvl(_preInterval) + ' → ' + _fmtIvl(Number(q.currentInterval) || 0)
+        + _postRecallStr
+        + (q.isMastered ? ' · 👑 Mastered' : '');
+
     // The bridge snapshot is CONSUMED: this log records the historyLog, the
     // schedule and the merge clock that the moment-of-truth write needed.
     // closePracticeDrawer must not roll it back. Capture the bounty verdict
@@ -2707,6 +2814,47 @@ export function submitPracticeLog(opts) {
     if (!opts?.keepOpenForNext) {
         closePracticeDrawer();
     }
+    if (typeof window !== 'undefined' && typeof window.__jmaxAppToast === 'function') {
+        try { window.__jmaxAppToast(_receiptToast); } catch (_) {}
+    }
+    // Check if today's Daily Fix Queue was just 100% cleared — celebrate once per day.
+    // Read ONLY an already-locked snapshot so background logs never prematurely lock Layer 2 queue IDs.
+    try {
+        const _todayQ = _todayKey();
+        if (_dailyQueueCelebratedDate !== _todayQ) {
+            let _snapIds = null;
+            if (_dailyQueueSnapshot.date === _todayQ && Array.isArray(_dailyQueueSnapshot.ids)) {
+                _snapIds = _dailyQueueSnapshot.ids;
+            } else if (typeof localStorage !== 'undefined') {
+                try {
+                    const _rawSnap = localStorage.getItem(DAILY_QUEUE_LS_KEY);
+                    if (_rawSnap) {
+                        const _parsedSnap = JSON.parse(_rawSnap);
+                        if (_parsedSnap && _parsedSnap.date === _todayQ && Array.isArray(_parsedSnap.ids)) {
+                            _snapIds = _parsedSnap.ids;
+                        }
+                    }
+                } catch (_) {}
+            }
+            if (Array.isArray(_snapIds) && _snapIds.length > 0) {
+                const _byId = _bankByIdMap();
+                const _targets = _snapIds.map(id => _byId.get(String(id))).filter(Boolean);
+                if (_targets.length > 0 && _targets.every(_isCompletedToday)) {
+                    _dailyQueueCelebratedDate = _todayQ;
+                    if (typeof window !== 'undefined') {
+                        if (typeof window.__jmaxAppToast === 'function') {
+                            window.__jmaxAppToast('👑 Daily Core Queue cleared! Every fix stabilized today.');
+                        }
+                        if (typeof window.playSuperSound === 'function') window.playSuperSound();
+                        if (typeof window.burstEmojis === 'function') {
+                            window.burstEmojis(window.innerWidth / 2, window.innerHeight * 0.35, 36,
+                                ['👑', '🔥', '✨', '⚡', '🎯', '💯'], 1.5);
+                        }
+                    }
+                }
+            }
+        }
+    } catch (_) {}
     // Bounty drawer convergence: the SR drawer wrote the schedule above, so
     // the bounty state machine still owns the win/loss bookkeeping. Without
     // this the bounty stayed live after a drawer solve (no payoff, no lock).
@@ -3128,6 +3276,15 @@ export function activateDailyQueue() {
     _showDailyQueue();
 }
 
+/** Open the Vault drawer directly on the highest-priority pending Daily Queue card. */
+export function startDailyFixQueue() {
+    if (!_dailyQueueActive) activateDailyQueue();
+    const byId = _bankByIdMap();
+    const targets = _getDailyQueueSnapshot().map(id => (id == null ? null : (byId.get(String(id)) || null))).filter(Boolean);
+    const nextQ = targets.find(q => !_isCompletedToday(q)) || targets[0];
+    if (nextQ) openPracticeDrawer(nextQ.id);
+}
+
 function _getDailyQueueSnapshot() {
     const today = _todayKey();
 
@@ -3195,7 +3352,10 @@ function _getDailyQueueSnapshot() {
         // must never blank the queue.
         const ctx = _cortexCtx();
         if (ctx) {
-            bySubject[subj].sort((a, b) => _prioOf(b, ctx) - _prioOf(a, ctx));
+            bySubject[subj] = selectCortexQueue(bySubject[subj], ctx, {
+                count: DAILY_QUEUE_LIMITS[subj],
+                anchorTop: true,
+            });
             return;
         }
         // Legacy fallback: weakest-memory-first with a Memory-Kernel tiebreak.
@@ -3275,6 +3435,27 @@ function _renderDailyQueueCards() {
     // ── Batch: collect all HTML fragments into an array, then assign in a
     //    single innerHTML write. Avoids N sequential DOM mutations. ──
     const fragments = [];
+    const totalDone = targets.filter(_isCompletedToday).length;
+    const totalLeft = targets.length - totalDone;
+    if (totalLeft > 0) {
+        fragments.push(`
+            <div class="dq-banner">
+                <div class="dq-banner-copy">
+                    <strong>${totalDone}/${targets.length} cleared today</strong>
+                    <span>Cortex priority queue · leakiest &amp; most overdue first</span>
+                </div>
+                <button class="dq-start-btn" id="dq-start-fix-btn" type="button" onclick="startDailyFixQueue()">▶ Start Daily Fix Queue (${totalLeft} left)</button>
+            </div>`);
+    } else {
+        fragments.push(`
+            <div class="dq-banner dq-banner--cleared">
+                <div class="dq-banner-copy">
+                    <strong>👑 Daily Core Cleared · ${targets.length}/${targets.length} done</strong>
+                    <span>Every scheduled fix stabilized for today.</span>
+                </div>
+                <button class="btn btn-primary" type="button" onclick="toggleDailyQueue()">Back to Matrix</button>
+            </div>`);
+    }
     let currentSubject = null;
     targets.forEach(q => {
         const subjKey = _normSubj(q.subject);
@@ -3466,6 +3647,11 @@ function _buildErrorCardHTML(q, dueInfo, opts) {
     const subLineParts = [];
     if (showChapterInCard) subLineParts.push(`<span class="vrow-sub-chap">${_esc(chapDisplay)}</span>`);
     subLineParts.push(`<span class="vrow-sub-type">${subTypeLabel}</span>`);
+    const ivlLabel = ivlDays >= 1
+        ? (Math.round(ivlDays * 10) / 10) + 'd'
+        : (ivlDays > 0 ? Math.max(1, Math.round(ivlDays * 24)) + 'h' : 'new');
+    const recallDisplay = (rPct != null ? rPct : mem.pct) + '%';
+    subLineParts.push(`<span class="vrow-sub-mem vrow-mem--${mem.tier}" title="${_esc(memTooltip)}">${recallDisplay} · ${ivlLabel}</span>`);
     if (subTagsHtml) subLineParts.push(`<span class="vrow-sub-tags">${subTagsHtml}</span>`);
     if (isCurrentBounty) subLineParts.push(`<span class="vrow-sub-bounty">Bounty</span>`);
 
@@ -3972,9 +4158,11 @@ export function toggleCardHistory(qId) {
 
 // ==================== LAZY LOADING ====================
 
-waitForDriveToken(() => {
-    if (typeof initErrorLazyLoaders === 'function') initErrorLazyLoaders();
-});
+if (typeof document !== 'undefined') {
+    waitForDriveToken(() => {
+        if (typeof initErrorLazyLoaders === 'function') initErrorLazyLoaders();
+    });
+}
 
 // Tiny SVG used both as the initial placeholder AND as the "unloaded" state
 // for cards that have scrolled out of the viewport (frees the decoded bitmap).
@@ -4458,8 +4646,12 @@ function _injectDecayDrilldownStyles() {
 .decay-item:last-child { border-bottom: none; }
 .dd-r { font-family:'Space Grotesk',monospace; font-weight:700; font-size:13px; width:44px; flex:none; text-align:right; }
 .dd-spark { flex:none; }
-.dd-meta { font-size: 10.5px; color:#8aa0c8; line-height: 1.45; }
+.dd-meta { font-size: 10.5px; color:#8aa0c8; line-height: 1.45; flex: 1; }
 .dd-meta b { color:#cdd9f2; font-weight:600; }
+.decay-item--actionable { cursor: pointer; border-radius: 8px; transition: background 0.14s ease; }
+.decay-item--actionable:hover, .decay-item--actionable:focus-visible { background: rgba(56, 189, 248, 0.1); outline: none; }
+.dd-go { font-size: 10.5px; font-weight: 700; color: #38bdf8; opacity: 0.72; flex: none; margin-left: auto; }
+.decay-item--actionable:hover .dd-go { opacity: 1; }
 `;
     document.head.appendChild(style);
 }
@@ -4568,7 +4760,7 @@ export function openDecayDrilldown(subjectEnc, chapEnc) {
                 return d <= 0 ? 'today' : d + 'd ago';
             } catch (_) { return 'never'; }
         })();
-        return '<div class="decay-item">' +
+        return '<div class="decay-item decay-item--actionable" data-qid="' + _esc(q.id) + '" role="button" tabindex="0" title="Open practice drawer for this item">' +
             '<div class="dd-r" style="color:' + col + '">' + rpct + '%</div>' +
             _decaySparkline(q, examMs) +
             '<div class="dd-meta"><b>S</b> ' + Number(q.stability || 0).toFixed(1) + 'd' +
@@ -4576,6 +4768,7 @@ export function openDecayDrilldown(subjectEnc, chapEnc) {
             ' · <b>' + (q.lapses || 0) + '</b>L/<b>' + (q.reps || 0) + '</b>R' +
             ' · EF ' + _numOr(q.easeFactor, 2.5).toFixed(2) +
             ' · ' + _esc(rel) + '</div>' +
+            '<span class="dd-go" aria-hidden="true">Fix →</span>' +
             '</div>';
     }).join('');
 
@@ -4597,12 +4790,32 @@ export function openDecayDrilldown(subjectEnc, chapEnc) {
         cortexExtras +
         '<div class="decay-drill-list">' + rows + '</div>' +
         '</div>';
-    // Cortex leak rows → hunt that tag in the vault.
+    // Cortex leak rows → hunt that tag; decay items → open drawer directly on that question.
     overlay.addEventListener('click', (e) => {
         const huntRow = e.target.closest && e.target.closest('.dd-tagleak-row');
         if (huntRow && typeof window.__cortexHuntTag === 'function') {
             close();
             window.__cortexHuntTag(huntRow.getAttribute('data-hunt'));
+            return;
+        }
+        const itemRow = e.target.closest && e.target.closest('.decay-item[data-qid]');
+        if (itemRow) {
+            const qid = itemRow.getAttribute('data-qid');
+            if (qid) {
+                close();
+                openPracticeDrawer(qid);
+            }
+        }
+    });
+    overlay.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const itemRow = e.target.closest && e.target.closest('.decay-item[data-qid]');
+        if (!itemRow) return;
+        e.preventDefault();
+        const qid = itemRow.getAttribute('data-qid');
+        if (qid) {
+            close();
+            openPracticeDrawer(qid);
         }
     });
     const close = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); document.removeEventListener('keydown', onKey, true); };
@@ -5036,4 +5249,5 @@ if (typeof window !== 'undefined') {
     window.toggleVaultGrouping = toggleVaultGrouping;
     window.toggleVaultChapter = toggleVaultChapter;
     window.practiceVaultChapter = practiceVaultChapter;
+    window.startDailyFixQueue = startDailyFixQueue;
 }

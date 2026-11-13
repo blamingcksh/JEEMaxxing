@@ -536,6 +536,40 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
 }
 
 /* Pace lens — swap the canvas for the candlestick chart. */
+#view-dashboard .dash-card-variance.is-candles .daily-variance-legend,
+#view-dashboard .dash-card-variance.is-isle .daily-variance-legend,
+#view-dashboard .dash-card-variance.is-candles .daily-variance-scroll,
+#view-dashboard .dash-card-variance.is-isle .daily-variance-scroll { display: none; }
+#view-dashboard .dash-card-variance .mom-body[hidden],
+#view-dashboard .dash-card-variance .dash-card-momentum[hidden] { display: none !important; }
+#view-dashboard .dash-card-variance .mom-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+#view-dashboard .dash-card-variance .graph-display {
+    position: relative;
+    flex: 1;
+    min-height: 220px;
+    border-radius: var(--r-lg) !important;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg-inset) 60%, transparent);
+    overflow: hidden;
+}
+#view-dashboard .dash-card-variance .graph-display svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+#view-dashboard .dash-card-variance .dash-card-momentum.mom-card {
+    position: relative;
+    min-height: 340px;
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    border: 1px solid var(--line);
+}
 #view-dashboard .dash-card-momentum.mom-pace,
 #view-dashboard .dash-card-momentum.isle-active.mom-pace {
     display: block;

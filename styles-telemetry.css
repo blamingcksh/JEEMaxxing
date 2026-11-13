@@ -508,7 +508,7 @@ html[data-theme="observatory"] {
   justify-content: center;
   gap: 6px;
   margin: 16px auto 0;
-  opacity: .24;
+  opacity: .68;
   transition: opacity .2s ease;
 }
 .pq-conf-ghost button {
@@ -527,10 +527,12 @@ html[data-theme="observatory"] {
 .pq-conf-ghost button[aria-pressed="true"] {
   border-color: var(--pq-accent);
   color: var(--pq-ink);
+  background: rgba(180, 132, 60, .12);
 }
+.pq-conf-ghost:has(button[aria-pressed="true"]),
 .pq-conf-ghost:focus-within,
 .pq-conf-ghost:hover {
-  opacity: .9;
+  opacity: 1;
 }
 #practice-modal[data-pq-state="answered"] .pq-conf-ghost {
   display: none !important;
@@ -554,12 +556,33 @@ html[data-theme="observatory"] {
   to { opacity: 1; transform: translateY(0); }
 }
 .pq-diag-kicker {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   color: var(--pq-ink-soft);
   font-size: 9px;
   font-weight: 500;
   letter-spacing: .18em;
   text-transform: uppercase;
-  opacity: .7;
+  opacity: .85;
+}
+.pq-diag-cal {
+  font-weight: 700;
+  letter-spacing: .12em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--pq-border);
+}
+.pq-diag-cal.pq-cal-snipe {
+  color: var(--tele-green, #16a34a);
+  border-color: rgba(22, 163, 74, .45);
+  background: rgba(22, 163, 74, .08);
+}
+.pq-diag-cal.pq-cal-trap {
+  color: var(--tele-red, #dc2626);
+  border-color: rgba(220, 38, 38, .45);
+  background: rgba(220, 38, 38, .08);
 }
 .pq-diag-grid {
   display: grid;
