@@ -5,7 +5,6 @@
  *   - lockTargetsOnly  → from settings.js (or ui.js)
  *   - updateUI         → from ui.js
  *   - updateStudyTimeHeader → from ui.js
- *   - renderGraph      → from ui.js
  *   - renderErrorMatrixFromBank → from ui.js
  *
  * These are imported lazily via getUiCallbacks() so the module can be
@@ -119,7 +118,6 @@ function _listenTabSync() {
                 if (changed) {
                     _ui('updateUI');
                     _ui('updateStudyTimeHeader');
-                    _ui('renderGraph');
                     _ui('renderErrorMatrixFromBank');
                 }
             } catch (_) { /* a bad message must never crash the receiving tab */ }
@@ -1177,7 +1175,6 @@ export function changeCount(subject, delta) {
     // ⚡ INSTANT DASHBOARD HOT-RELOAD: Push data updates live to the UI without forcing a page refresh
     _ui('updateUI');
     _ui('updateStudyTimeHeader');
-    _ui('renderGraph');
     _ui('renderErrorMatrixFromBank');
 }
 
@@ -2776,7 +2773,7 @@ export async function executeUnifiedSync() {
         await idbSet('jeemax_solved', solved);
         await idbSet('jeemax_study_secs', studySecs);
         await updateDailyHistory();
-        _ui('updateUI'); _ui('updateStudyTimeHeader'); _ui('renderGraph'); _ui('renderErrorMatrixFromBank');
+        _ui('updateUI'); _ui('updateStudyTimeHeader'); _ui('renderErrorMatrixFromBank');
 
         if (subText) subText.textContent = "Uploading consolidated data...";
         const localTotal = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
@@ -3086,7 +3083,7 @@ export async function loadStateFromCloud(isBackground = false) {
             // else: stale cloud date — LOCAL WINS. Intentionally no-op.
             // The daily counters belong to the current local day; a
             // yesterday-cloud snapshot has no authority to zero them out.
-            _ui('updateUI'); _ui('updateStudyTimeHeader'); _ui('renderGraph'); _ui('renderErrorMatrixFromBank');
+            _ui('updateUI'); _ui('updateStudyTimeHeader'); _ui('renderErrorMatrixFromBank');
         }
     } catch (e) { console.error("Failed to download state from cloud:", e); } finally { if (!isBackground) hideLoading(); }
 }

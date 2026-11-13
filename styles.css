@@ -815,21 +815,6 @@ body {
     border: 1px solid var(--line);
 }
 .graph-svg { width: 100%; height: 80px; overflow: visible; }
-#dynamic-graph {
-    width: 100%;
-    height: 190px;
-    overflow: visible;
-    cursor: crosshair;
-    display: block;
-}
-.candle-tooltip { font-family: var(--font-num), monospace; }
-.candle-hyper-charged { animation: candleHyper 1.5s ease-in-out infinite; }
-@keyframes candleHyper { 0%, 100% { opacity: 1; } 50% { opacity: 0.72; } }
-
-/* Trend states toggled by renderGraph() slope flasher */
-#view-dashboard.trend-bull-market       { box-shadow: inset 0 0 90px rgba(34, 197, 94, 0.06); }
-#view-dashboard.trend-under-liquidation { box-shadow: inset 0 0 90px rgba(248, 113, 113, 0.07); }
-#dynamic-graph.graph-bull-run { filter: drop-shadow(0 0 14px rgba(34, 197, 94, 0.18)); }
 
 /* The stage-top stat strip (.vault-erm: per-subject bars + sparkline) was
    removed — its markup is gone and renderErrorResolutionDashboard() only
@@ -8575,68 +8560,6 @@ body.fi-full-open { overflow: hidden; }
 }
 
 /* ════════════════════════════════════════════════════════════════════════
-   SPROUT ISLE — living study island on the dashboard (sprout-isle.js,
-   replaces Grove Islands). The engine takes over the Momentum card: its
-   original children get .isle-orig (hidden) and #isle-root fills the card.
-   ════════════════════════════════════════════════════════════════════════ */
-#view-dashboard .dash-card-momentum.isle-active {
-  position: relative;
-  padding: 0 !important;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-#view-dashboard .dash-card-momentum.isle-active .isle-orig { display: none !important; }
-#view-dashboard .dash-card-momentum.isle-active::before { z-index: 6; }
-
-#isle-root.isle-host {
-  position: relative;
-  flex: 1;
-  min-height: 340px;
-  width: 100%;
-  background: #BDE3FF;
-  overflow: hidden;
-}
-#isle-root.isle-host canvas { position: absolute; inset: 0; display: block; touch-action: none; }
-
-.isle-vignette { position: absolute; inset: 0; pointer-events: none; z-index: 5;
-  background: radial-gradient(ellipse at 50% 42%, rgba(0,0,0,0) 55%, rgba(120,80,40,.10) 100%); }
-
-.isle-fallback { position: absolute; inset: 0; z-index: 99; display: flex; align-items: center;
-  justify-content: center; background: #FFF6E9; color: #8A7460; font-size: 14px; font-weight: 700;
-  text-align: center; padding: 24px; line-height: 1.6; }
-.isle-fallback small { font-weight: 500; font-size: 11px; opacity: .85; }
-
-/* Debug/demo panel — hidden in-app via Isle.setPanelVisible(false);
-   re-show from the console with window.Isle.setPanelVisible(true). */
-.isle-panel { position: fixed; right: 14px; bottom: 14px; z-index: 30; width: 300px; user-select: none; -webkit-user-select: none; }
-.isle-card { background: rgba(255,252,246,.93); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  border-radius: 22px; border: 1px solid rgba(255,201,77,.4); padding: 12px 12px 11px;
-  box-shadow: 0 12px 32px rgba(120,90,60,.20), inset 0 2px 0 rgba(255,255,255,.85); }
-.isle-head { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 0 2px; }
-.isle-title { font-weight: 800; color: #7A6350; font-size: 14px; letter-spacing: .3px; }
-.isle-caret { color: #C9A15E; font-size: 12px; transition: transform .25s ease; }
-.isle-panel.isle-closed .isle-body { display: none; }
-.isle-panel.isle-closed .isle-caret { transform: rotate(-90deg); }
-.isle-body { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.isle-group { grid-column: 1/-1; font-size: 9.5px; letter-spacing: 1.4px; text-transform: uppercase;
-  color: #C9A15E; font-weight: 800; margin: 3px 2px -1px; }
-.isle-btn { appearance: none; border: none; border-radius: 999px; padding: 8px 6px; font-size: 12px; font-weight: 700;
-  color: #6B5847; background: #FFF1DC; box-shadow: 0 2px 0 rgba(160,120,80,.28); cursor: pointer;
-  transition: transform .08s ease, background .2s ease; font-family: inherit; }
-.isle-btn:hover { background: #FFE9CC; }
-.isle-btn:active { transform: translateY(1px); }
-.isle-btn.isle-gold { background: #FFE7AE; color: #7A5A2B; }
-.isle-btn.isle-gold:hover { background: #FFDF98; }
-.isle-btn.isle-on { background: #C9E8CF; color: #3F6B4F; box-shadow: 0 2px 0 rgba(90,140,100,.35); }
-.isle-status { grid-column: 1/-1; font-size: 11.5px; font-weight: 600; color: #8A7460; background: #FBF3E4;
-  border-radius: 14px; padding: 7px 9px; text-align: center; line-height: 1.35; }
-
-@media (max-width: 700px) {
-  #isle-root.isle-host { min-height: 280px; }
-}
-html.fx-effects-off .isle-vignette { display: none; }
-/* ════════════════════════════════════════════════════════════════════════
    GEM DIAGRAM AUTO-CROP MAP (🗺 Gem Diagram Map)
    Upload one image per tagged source screenshot; cropBox coordinates baked
    into the dump auto-crop every referenced diagram. See app.js
@@ -14974,97 +14897,6 @@ body:has(#view-pomodoro.active) #pomo-mini-widget {
     color: #6ee7b7;
     background: rgba(16, 185, 129, 0.15);
     border-color: rgba(16, 185, 129, 0.42);
-}
-
-/* ── M10: Sprout Isle Seed Pill + 7-Item Store Popover ── */
-.isle-hud {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    z-index: 12;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 8px;
-}
-.isle-seed-pill {
-    appearance: none;
-    border: 1px solid rgba(160, 120, 80, 0.35);
-    background: rgba(255, 250, 240, 0.92);
-    color: #5c4632;
-    font-family: var(--font-num), sans-serif;
-    font-size: 12px;
-    font-weight: 700;
-    padding: 5px 11px;
-    border-radius: 999px;
-    cursor: pointer;
-    box-shadow: 0 3px 10px rgba(80, 55, 30, 0.16);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-}
-.isle-seed-pill:hover { background: #fff4dd; }
-.isle-store-lbl { margin-left: 4px; opacity: 0.78; font-weight: 600; }
-.isle-store-pop[hidden] { display: none !important; }
-.isle-store-pop {
-    width: 248px;
-    background: rgba(255, 251, 244, 0.96);
-    color: #4b3828;
-    border: 1px solid rgba(160, 120, 80, 0.32);
-    border-radius: 14px;
-    padding: 10px;
-    box-shadow: 0 14px 32px rgba(55, 38, 22, 0.22);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-}
-.isle-store-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #8a6c4e;
-    margin-bottom: 8px;
-}
-.isle-store-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.isle-store-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 12px;
-    padding: 5px 7px;
-    border-radius: 9px;
-    background: rgba(240, 224, 198, 0.45);
-}
-.isle-store-meta {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.2;
-}
-.isle-store-name { font-weight: 600; text-transform: capitalize; }
-.isle-store-kind { font-size: 10px; opacity: 0.7; }
-.isle-store-buy {
-    appearance: none;
-    border: none;
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-    background: #f5c352;
-    color: #4a3312;
-}
-.isle-store-buy[disabled] {
-    opacity: 0.52;
-    cursor: default;
-    background: #d8cdb8;
-    color: #6b5d4d;
 }
 
 /* ── M6: Arena "Today's Orders" Contract Strip ── */
