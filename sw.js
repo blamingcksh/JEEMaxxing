@@ -199,7 +199,8 @@
 //        (solved/attempted never served, mode exits when pool drains).
 // v102 - M11 SERVICE WORKER CACHE COMPLETENESS + DEAD CODE CLEANUP:
 //        Added cortex.js, styles-dashboard.css, and styles-practice-fullscreen.css?v=10 to SHELL.
-const VERSION = 'jeemax-v102';
+// v103 - Remove candlestick graph and Sprout Isle from Dashboard and precache.
+const VERSION = 'jeemax-v103';
 
 const SHELL = [
   './',
@@ -244,9 +245,7 @@ const SHELL = [
   './theme.js',
   './dashboard-clean.js',
   './forest-bg.js',
-  './sprout-isle.js',
   './gallery-break.js',
-  './candlestick-engine.js',
   './cns-load.js',
   './deload.js',
   './lifeline.js',

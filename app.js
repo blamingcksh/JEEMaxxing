@@ -190,9 +190,6 @@ import {
     openChapterProgress,
 } from './matrix.js';
 
-// ── Candlestick engine (powers both home-section graphs) ──
-import { drawCandlesticks, extractCountsFromSvg } from './candlestick-engine.js';
-
 
 // ── Inline-onclick bridges: index.html buttons call these in global scope ──
 window.toggleDailyQueue = toggleDailyQueue;           // Daily Fix Queue button
@@ -1242,16 +1239,11 @@ export async function switchTab(viewId, element) {
         renderErrorMatrixFromBank();
         filterErrors();
         renderErrorResolutionDashboard(); // NEW: refresh error dashboard when viewing errors
-        if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
     }
     if (viewId === 'dashboard') {
-        try { await renderGraph(); } catch (e) { console.warn('[renderGraph]', e); }
         try { void renderDailyVarianceHeatmap(); } catch (_) {}
         try { renderChapterDecayGrid(); } catch (_) {}
         try { renderChapterProgressList(); } catch (_) {}
-        try { if (typeof window.setVarianceLens === 'function') window.setVarianceLens(localStorage.getItem('jeemax_momentum_view') || 'heatmap'); } catch (_) {}
-    } else {
-        try { if (window.Isle && typeof window.Isle.stop === 'function') window.Isle.stop(); } catch (_) {}
     }
     try { _updateBioGuardBeacon(); } catch (_) {}
     try { _renderCalibrationReport(); } catch (_) {}
@@ -1315,20 +1307,6 @@ function _resetMoodCapacity() {
         _start();
     }
 })();
-
-/** Push normalized real question difficulty onto Sprout Isle's FIFO queue (consumed per new tree). */
-function _pushSproutSolveDifficulty(subject, qElo) {
-    try {
-        if (typeof window === 'undefined') return;
-        const qMap = window.__sproutSolveQueue || (window.__sproutSolveQueue = { physics: [], chemistry: [], maths: [] });
-        const bucket = qMap[subject];
-        if (!Array.isArray(bucket)) return;
-        const elo = Number(qElo);
-        const norm = isFinite(elo) ? Math.max(0.05, Math.min(1, (elo - 900) / 1100)) : 0.45;
-        bucket.push(norm);
-        while (bucket.length > 16) bucket.shift();
-    } catch (_) {}
-}
 
 /** Sync #bio-guard-beacon in sidebar chrome (hidden when healthy <30% CNS and daytime). */
 function _updateBioGuardBeacon() {
@@ -2046,325 +2024,6 @@ export async function updateStreakDisplay() {
     }
     // Live bridge for headless consumers — see note above.
     try { window.__jmaxStreak = { days: streak, label: streakLabel }; } catch (_) {}
-}
-
-// ==================== FRICTION-INVERSE COGNITIVE YIELD (Y_day) ====================
-//
-// Replaces the raw scalar question counters fed to the candlestick momentum
-// engine. Every solved problem is weighed by its running implied difficulty
-// (qElo), temporal divergence (τ = actual / chapter-average time) and a vault
-// re-attempt coefficient, then aggregated through the asymmetric Model B
-// subject portfolio:
-//
-//   W_i   = (qElo_i / 1200) · (2 / (1 + τ_i)) · W_vault
-//   Y_day = 0.50 · ΣW_Math + 0.30 · ΣW_Phys + 0.20 · ΣW_Chem
-//
-// Vault rules:
-//   • Spaced-Repetition re-attempt (active errorReason + firstAttemptResult) → 0.25
-//   • Fresh, cold problem → 1.0
-//
-// ── State & Sync Integrity ──
-// This module is a PURE READ over AppState.questionBank. It NEVER mutates the
-// bank, the `solved` counters, `studySecs`, or any Cloud/IndexedDB serialised
-// shape — the yield is synthesised on the fly inside renderGraph() so the sync
-// schema definitions remain uncorrupted.
-const YIELD_SUBJECT_WEIGHTS = { maths: 0.50, physics: 0.30, chemistry: 0.20 };
-
-/**
- * Vault re-attempt coefficient — mirrors the re-solve decay rule inside
- * calculateEloMigration(). A question that already carries an `errorReason`
- * AND a locked `firstAttemptResult` is a Spaced-Repetition vault re-attempt
- * (you have already seen the solution), so its cognitive footprint collapses
- * to 25%. Fresh, cold problems weigh in at full strength (1.0).
- */
-function _vaultWeight(q) {
-    return (q && q.errorReason && q.firstAttemptResult) ? 0.25 : 1.0;
-}
-
-/**
- * Individual cognitive footprint of a single solved problem.
- *
- *   W_i = (qElo_i / 1200) · (2 / (1 + τ_i)) · W_vault
- *
- * where τ_i = actual time / chapter average time. Untimed solves (timeTaken
- * ≤ 0) collapse τ to 1 (neutral), so they neither inflate nor deflate the
- * friction-inverse term instead of doubling it.
- */
-function _cognitiveItemWeight(q, chapterAgg) {
-    const qElo = (typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0)
-        ? q.qElo : 1200;
-    const difficulty = qElo / 1200;
-
-    const T_act = Math.max(0, Number(q.timeTaken) || 0);
-    // With a prebuilt chapter-aggregate index the per-item cost is a Map
-    // lookup instead of a full-bank rescan (identical arithmetic).
-    const T_avg = Math.max(1, chapterAgg
-        ? _chapterAvgTimeFromAgg(chapterAgg, q.subject, q.chapter)
-        : _getChapterAvgTime(q.subject, q.chapter));
-    const tau = T_act > 0 ? (T_act / T_avg) : 1;        // temporal divergence
-    const frictionInverse = 2 / (1 + Math.max(0, tau));  // 2/(1+τ)
-
-    return difficulty * frictionInverse * _vaultWeight(q);
-}
-
-/**
- * One-pass cognitive-yield index over the whole bank.
- *
- * renderGraph() used to call _computeYieldForDate() once PER history day,
- * each call rescanning the entire bank — O(days × questions) ≈ millions of
- * iterations on mature accounts, paid at boot and on every dashboard-visible
- * solve. This builds the same data in ONE pass: Map<YYYY-MM-DD, bucket>.
- *
- * @returns {Map<string,{maths:number,physics:number,chemistry:number,matched:number}>}
- */
-function _buildYieldIndex() {
-    const byDate = new Map();
-    const chapterAgg = _buildChapterAggIndex();
-    for (const q of AppState.questionBank) {
-        if (!q || q.status !== 'solved') continue;
-        // Resolve the solve date from lastReviewedAt. The field is an ISO
-        // string stamped at solve/review time (see calculateEloMigration /
-        // practiceSubmit); slicing the first 10 chars yields YYYY-MM-DD.
-        const stamp = q.lastReviewedAt;
-        if (!stamp || typeof stamp !== 'string' || stamp.length < 10) continue;
-        const subj = normSubjKeyStrict(q.subject);
-        if (!subj) continue;
-        const dateStr = stamp.slice(0, 10);
-        let bucket = byDate.get(dateStr);
-        if (!bucket) {
-            bucket = { maths: 0, physics: 0, chemistry: 0, matched: 0 };
-            byDate.set(dateStr, bucket);
-        }
-        bucket[subj] += _cognitiveItemWeight(q, chapterAgg);
-        bucket.matched++;
-    }
-    return byDate;
-}
-
-/**
- * Granular Friction-Inverse Cognitive Yield for one calendar date, read from
- * a prebuilt index (see _buildYieldIndex) instead of rescanning the bank.
- */
-function _computeYieldForDate(dateStr, byDate) {
-    if (!byDate) byDate = _buildYieldIndex();
-    const bucket = byDate.get(dateStr) || { maths: 0, physics: 0, chemistry: 0, matched: 0 };
-
-    const yieldVal =
-        YIELD_SUBJECT_WEIGHTS.maths     * bucket.maths +
-        YIELD_SUBJECT_WEIGHTS.physics   * bucket.physics +
-        YIELD_SUBJECT_WEIGHTS.chemistry * bucket.chemistry;
-
-    return { yield: yieldVal, hasGranular: bucket.matched > 0, bySubject: bucket, matched: bucket.matched };
-}
-
-/**
- * Historical Log Imputation Protocol — global macro conversion scalar.
- *
- * When a daily-history log entry lacks granular subject breakdowns (i.e. no
- * live bank question can be dated to it), we do NOT fall back to the raw
- * scalar count. Instead we synthesise a global conversion factor from the
- * live solved-bank state:
- *
- *   C_macro = 0.50·β_Math·(Q̄_Math/1200)
- *           + 0.30·β_Phys·(Q̄_Phys/1200)
- *           + 0.20·β_Chem·(Q̄_Chem/1200)
- *
- * where β_s is the solved-count distribution ratio and Q̄_s the average qElo of
- * solved questions in subject s. Every legacy flat count is then multiplied by
- * C_macro so it lands on the same value matrix as the live yield points.
- *
- * @returns {number} C_macro (≥0). Returns 1 when the bank has no solved items,
- *                   preserving the legacy count verbatim so rendering never
- *                   fails on a totally fresh install.
- */
-function _computeMacroImputationScalar() {
-    const counts = { maths: 0, physics: 0, chemistry: 0 };
-    const eloSums = { maths: 0, physics: 0, chemistry: 0 };
-    let total = 0;
-
-    for (const q of AppState.questionBank) {
-        if (!q || q.status !== 'solved') continue;
-        const subj = normSubjKeyStrict(q.subject);
-        if (!subj) continue;
-        counts[subj]++;
-        eloSums[subj] += (typeof q.qElo === 'number' && isFinite(q.qElo) && q.qElo > 0)
-            ? q.qElo : 1200;
-        total++;
-    }
-
-    if (total === 0) return 1; // empty bank → keep raw counts (safe baseline)
-
-    const beta = {
-        maths: counts.maths / total,
-        physics: counts.physics / total,
-        chemistry: counts.chemistry / total,
-    };
-    const qBar = {
-        maths: counts.maths > 0 ? eloSums.maths / counts.maths : 1200,
-        physics: counts.physics > 0 ? eloSums.physics / counts.physics : 1200,
-        chemistry: counts.chemistry > 0 ? eloSums.chemistry / counts.chemistry : 1200,
-    };
-
-    return (
-        YIELD_SUBJECT_WEIGHTS.maths     * beta.maths     * (qBar.maths     / 1200) +
-        YIELD_SUBJECT_WEIGHTS.physics   * beta.physics   * (qBar.physics   / 1200) +
-        YIELD_SUBJECT_WEIGHTS.chemistry * beta.chemistry * (qBar.chemistry / 1200)
-    );
-}
-
-// ==================== PREDICTIVE MOMENTUM ENGINE (candlestick edition) ====================
-export async function renderGraph() {
-    const svg = document.getElementById('dynamic-graph');
-    if (!svg) return;
-
-    // ── Pull daily history (same data source as the original line graph) ──
-    let history = await getDailyHistory();
-    if (!history || !history.length) return;
-
-    // ── Protocol Zero overlay (Pillar 4) ──
-    // Force a HARD ZERO on any day in the penalty log, overriding real solves.
-    let penaltyDates = [];
-    try {
-        const raw = JSON.parse(localStorage.getItem('checkpoint:protocolZero') || '[]');
-        penaltyDates = Array.isArray(raw) ? raw : [];
-    } catch (e) {
-        console.warn('[protocolZero] Corrupt penalty log in localStorage — treating as empty:', e);
-        try { localStorage.removeItem('checkpoint:protocolZero'); } catch (_) {}
-    }
-    const penaltySet = new Set(penaltyDates);
-    const penaltyFlags = history.map(h => penaltySet.has(h.date));
-
-    // ── Friction-Inverse Cognitive Yield series (Y_day) ──
-    // Replaces the legacy raw scalar `h.count` counters. For every history
-    // entry we attempt a granular yield computation from the live solved
-    // question bank (questions whose lastReviewedAt falls on that date);
-    // entries with NO bank backing (legacy / pre-yield logs) are normalised
-    // through the macro-imputation scalar C_macro so they land on the same
-    // value matrix as the live yield points instead of reverting to raw
-    // integer tallies. P0 enforcement is still applied inside drawCandlesticks.
-    const C_macro = _computeMacroImputationScalar();
-    const yieldByDate = _buildYieldIndex(); // one O(n) pass — was O(days × n)
-    const counts = history.map(h => {
-        const granular = _computeYieldForDate(h.date, yieldByDate);
-        if (granular.hasGranular) return granular.yield;          // live Y_day
-        return (Number(h.count) || 0) * C_macro;                  // imputed Y_day
-    });
-
-    // ── Label formatter: "Mon 12" style ──
-    const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const labelFn = (i) => {
-        const h = history[i];
-        if (!h || !h.date) return `Day ${i + 1}`;
-        const d = new Date(h.date + 'T00:00:00');
-        if (isNaN(d.getTime())) return h.date;
-        return `${DOW[d.getDay()]} ${d.getDate()}`;
-    };
-
-    // ── Equivalent Target Lock Adjustment ──
-    // The cyan LOCK line must match the value matrix of the new daily yield
-    // points, so the legacy arithmetic target sum is replaced by the
-    // equivalently scaled yield boundary:
-    //   Target_Yield = 0.50·maths + 0.30·physics + 0.20·chemistry
-    const targetYield =
-        YIELD_SUBJECT_WEIGHTS.maths     * baseTargets.maths +
-        YIELD_SUBJECT_WEIGHTS.physics   * baseTargets.physics +
-        YIELD_SUBJECT_WEIGHTS.chemistry * baseTargets.chemistry;
-
-    // ── Render as OHLC candlesticks ──
-    // Internal coordinate space is wider/taller than the old 320x80 so candles
-    // are legible. The SVG's viewBox is set by drawCandlesticks; CSS on
-    // #dynamic-graph stretches it to fill the card.
-    //
-    // Target Compliance: the scaled yield target becomes the green/red
-    // threshold for every candle, and the tooltip formats the OHLC values as
-    // "Yield Points" (2-dp precision) rather than raw integer tallies.
-    const metrics = drawCandlesticks(svg, counts, {
-        width: 360,
-        height: 170,
-        penaltyFlags,
-        showPrediction: true,
-        predDays: 5,
-        compact: false,
-        invert: false,
-        valueLabel: 'Yield Points',
-        valuePrecision: 2,
-        labelFn,
-        targetValue: targetYield,
-    });
-
-    // ── Loss Aversion / Projection Slope Flasher ──
-    // Reads the regression { slope, r2 } returned by the engine and toggles
-    // dashboard-level trend classes that drive the gamified CSS feedback layer.
-    const mainGraphContainer = document.getElementById('view-dashboard');
-    if (mainGraphContainer && metrics && typeof metrics.slope === 'number') {
-        if (metrics.slope < -0.1) {
-            mainGraphContainer.classList.add('trend-under-liquidation');
-            mainGraphContainer.classList.remove('trend-bull-market');
-            svg.classList.remove('graph-bull-run');
-        } else if (metrics.slope > 0.1 && metrics.r2 > 0.7) {
-            mainGraphContainer.classList.add('trend-bull-market');
-            mainGraphContainer.classList.remove('trend-under-liquidation');
-            svg.classList.add('graph-bull-run');
-        } else {
-            // Neutral zone — clear any stale trend state from previous renders.
-            mainGraphContainer.classList.remove('trend-bull-market');
-            mainGraphContainer.classList.remove('trend-under-liquidation');
-            svg.classList.remove('graph-bull-run');
-        }
-    }
-}
-
-// ==================== 15-DAY ERROR MOMENTUM (candlestick edition) ====================
-/**
- * Re-renders #error-momentum-svg-container as a compact candlestick chart.
- *
- * Strategy: matrix.js's renderErrorResolutionDashboard() already draws a
- * sparkline (polyline / bars / dots) into the container. We run AFTER it (via
- * requestAnimationFrame), read the data points back out with
- * extractCountsFromSvg(), and replace the contents with candlesticks.
- *
- * This means zero changes to matrix.js and no need to know its internal data
- * structures — whatever it plotted becomes candles.
- */
-export function renderMomentumCandles() {
-    const container = document.getElementById('error-momentum-svg-container');
-    if (!container) return;
-
-    // Defer one frame so matrix.js's render completes first.
-    requestAnimationFrame(() => {
-        const counts = extractCountsFromSvg(container);
-        if (!counts || counts.length < 2) return;
-
-        const w = Math.max(container.clientWidth || 320, 240);
-        const h = 70;
-
-        // Reset container & build a fresh SVG.
-        container.innerHTML = '';
-        const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svgEl.setAttribute('viewBox', `0 0 ${w} ${h}`);
-        svgEl.setAttribute('preserveAspectRatio', 'none');
-        svgEl.style.width = '100%';
-        svgEl.style.height = h + 'px';
-        svgEl.style.display = 'block';
-        container.appendChild(svgEl);
-
-        drawCandlesticks(svgEl, counts, {
-            width: w,
-            height: h,
-            compact: true,
-            invert: true,           // green = errors fell (good), red = rose (bad)
-            valueLabel: 'errors',
-            showPrediction: false,
-            labelFn: (i) => `Day ${i + 1}`,
-        });
-
-        // Refresh the avg/day label above the chart, if present.
-        const avgLbl = document.getElementById('erm-avg-label');
-        if (avgLbl) {
-            const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
-            avgLbl.textContent = `avg ${avg.toFixed(1)}/day`;
-        }
-    });
 }
 
 // ==================== CALENDAR ====================
@@ -7588,38 +7247,6 @@ function _getChapterAvgTime(subject, chapter) {
 }
 
 /**
- * One-pass chapter aggregates over the whole bank, keyed by
- * `<raw q.subject>::<normalized chapter>` — exactly the membership predicate
- * the per-chapter helpers above use (`q.subject === safeSubject` strict +
- * `_chaptersMatch` normalized). Consumers read O(1) buckets instead of
- * rescanning the bank per call; arithmetic is identical by construction.
- */
-function _buildChapterAggIndex() {
-    const agg = new Map();
-    for (const q of AppState.questionBank) {
-        if (!q) continue;
-        const key = q.subject + '::' + String(q.chapter || '').trim().toLowerCase();
-        let a = agg.get(key);
-        if (!a) { a = { tSum: 0, tCnt: 0, eSum: 0, eCnt: 0 }; agg.set(key, a); }
-        if (!q.isAnomaly) {
-            if (q.timeTaken > 0) { a.tSum += (q.timeTaken || 0); a.tCnt++; }
-            a.eSum += _safeQElo(q); a.eCnt++;
-        }
-    }
-    return agg;
-}
-
-/** `_getChapterAvgTime` read from a prebuilt `_buildChapterAggIndex()` map. */
-function _chapterAvgTimeFromAgg(agg, subject, chapter) {
-    const safeSubject = _normalizeSubjectKey(subject);
-    const baseline = ELO_SUBJECT_BASELINES[safeSubject];
-    if (!baseline) return 180;
-    const a = agg.get(safeSubject + '::' + String(chapter || '').trim().toLowerCase());
-    if (!a || a.tCnt === 0) return baseline.defaultTime;
-    return a.tSum / a.tCnt;
-}
-
-/**
  * Running average qElo across a chapter's non-anomalous questions.
  */
 function _getChapterAvgElo(subject, chapter) {
@@ -10094,7 +9721,6 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
 // 'correct' was ALWAYS false, so CNS telemetry logged every solve as incorrect
 // (accuracy-collapse component dead, anti-cheat veto trivially satisfied).
         CNSLoad.logSolve(safeSubject, S_in >= 0.999, actualTime || 0, T_avg);
-        _pushSproutSolveDifficulty(safeSubject, oldQ);
         _updateBioGuardBeacon();
     } catch (_) { /* never block ELO migration */ }
 
@@ -12340,7 +11966,6 @@ async function initApp() {
         updateStudyTimeHeader: () => {
             import('./pomodoro.js').then(m => m.updateStudyTimeHeader());
         },
-        renderGraph: () => { if (_viewActive('dashboard')) renderGraph(); },
         renderErrorMatrixFromBank: () => {
             if (_viewActive('errors')) import('./matrix.js').then(m => m.renderErrorMatrixFromBank());
         },
@@ -12401,7 +12026,6 @@ async function initApp() {
                 toast: (msg) => { if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast(msg); },
                 sound: (name) => { try { window.FX && window.FX.sound && window.FX.sound(name); } catch (_) {} },
                 haptic: (name) => { try { window.FX && window.FX.haptic && window.FX.haptic(name); } catch (_) {} },
-                isleEvent: (ev, data) => (window.Isle && typeof window.Isle.event === 'function' ? window.Isle.event(ev, data) : false),
             });
         }
     } catch (e) { console.warn('[TuckIn] configure error:', e); }
@@ -12466,7 +12090,6 @@ async function initApp() {
         topDate.textContent = `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
     }
 
-    try { await renderGraph(); } catch (e) { console.warn('[renderGraph]', e); }
     updateUI();
 
     // ── Daily Bounty: assign today's (if due) and surface the rail trigger.
@@ -12492,15 +12115,13 @@ async function initApp() {
     // never abort initApp (the global math watchdog attaches independently).
     try {
         renderErrorResolutionDashboard();
-        if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
     } catch (_) { /* never block initApp */ }
 
-    // Listen for Protocol Zero penalty events from checkpoint.js → re-render
-    // the main predictive graph so the red valley appears immediately.
+    // Listen for Protocol Zero penalty events from checkpoint.js → refresh
+    // error resolution dashboard and heatmap immediately.
     window.addEventListener('checkpoint:penalty', function () {
-        if (typeof renderGraph === 'function') renderGraph();
         if (typeof renderErrorResolutionDashboard === 'function') renderErrorResolutionDashboard();
-        if (typeof renderMomentumCandles === 'function') renderMomentumCandles();
+        if (typeof renderDailyVarianceHeatmap === 'function') renderDailyVarianceHeatmap();
     });
 
     // Initialize Google Drive
@@ -12944,7 +12565,6 @@ window.evaluateBountyOutcome = evaluateBountyOutcome;
 window.startBountySessionFromModal = startBountySessionFromModal;
 window.changeCount = changeCount;
 window.updateUI = updateUI;
-window.renderGraph = renderGraph;
 window.openErrorMatrix = openErrorMatrix;
 window.deleteError = removeErrorLog;
 window.filterErrors = filterErrors;
@@ -13334,7 +12954,6 @@ window.renderErrorResolutionDashboard = renderErrorResolutionDashboard;
 window.renderChapterDecayGrid = renderChapterDecayGrid;
 window.renderChapterProgressList = renderChapterProgressList;
 window.openChapterProgress = openChapterProgress;
-window.renderMomentumCandles = renderMomentumCandles;
 
 // Expose state for debugging / cross-module access
 window.bounty = AppState.bounty;

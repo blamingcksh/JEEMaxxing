@@ -2871,8 +2871,8 @@ export function submitPracticeLog(opts) {
     // canvas flame, and the Elo chip injection all need compositor frames to
     // animate smoothly. Running renderErrorMatrixFromBank (N-card innerHTML
     // wipe), filterErrors (forced layout reads), renderErrorResolutionDashboard
-    // (SVG sparkline rebuild), updateUI (full HUD recompute), renderGraph
-    // (candlestick SVG rebuild), and renderEloMatrix (MMR grid rebuild) ALL in
+    // (SVG sparkline rebuild), updateUI (full HUD recompute), and
+    // renderEloMatrix (MMR grid rebuild) ALL in
     // one synchronous frame hijacks the main thread for 80-200ms on mobile
     // WebKit, dropping the close-transition + flash frames.
     //
@@ -2891,11 +2891,6 @@ export function submitPracticeLog(opts) {
                 () => {
                     filterErrors();
                     renderErrorResolutionDashboard();
-                    // The dashboard just re-drew its PLAIN sparkline into the
-                    // momentum container — without this re-chain the card
-                    // regressed from candles to sparkline until the next tab
-                    // switch / focus / rollover (same fix as app.js's chains).
-                    if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles();
                 },
                 () => {
                     // updateUI() already calls renderEloMatrix() internally, but
@@ -2987,7 +2982,6 @@ export function removeErrorLog(id) {
                     () => {
                         filterErrors();
                         renderErrorResolutionDashboard();
-                        if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles();
                     },
                     () => { try { renderChapterDecayGrid(); } catch (_) {} },
                 ]);
@@ -5098,12 +5092,6 @@ export function refreshErrorDashboardIfStale() {
         if (_dailyQueueActive) {
             try { _renderDailyQueueCards(); _updateDailyQueueMeta(); } catch (_) {}
         }
-        // The sparkline we just drew is only the intermediate data carrier —
-        // app.js's candlestick renderer (renderMomentumCandles) reads the
-        // points back and replaces the container. Re-chain it so the rollover
-        // watcher / focus / visibility re-renders don't leave the sparkline
-        // permanently clobbering the candles.
-        try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (_) {}
     }
 }
 
@@ -5183,7 +5171,6 @@ function _startRolloverWatcher() {
 
 // The stage-top stat strip (per-subject bars + 15-day sparkline) was removed;
 // this function now maintains ONLY the rail's squashed-today readout.
-// app.js renderMomentumCandles() still no-ops safely without its container.
 export function renderErrorResolutionDashboard() {
     _startRolloverWatcher();
     const todayStr = _todayKey();

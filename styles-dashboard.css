@@ -478,147 +478,6 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
 #view-dashboard .dir-box-btn { animation: none; }
 #view-dashboard .dir-box-btn.dir-box-btn { font-size: 12.5px; padding: 8px 18px; }
 
-/* ── 5 · MOMENTUM — isle + pace chart in one card ──────────────────────── */
-
-#view-dashboard .dash-card-momentum.mom-card { display: flex; flex-direction: column; }
-
-/* Head survives the isle takeover via [data-isle-keep]; it reads as a
-   media-card header bar. */
-#view-dashboard .mom-card .mom-head {
-    margin-bottom: 0;
-    padding: 18px 20px 14px;
-    border-bottom: 1px solid var(--line);
-    flex: 0 0 auto;
-}
-#view-dashboard .mom-card .mom-head .dv-title { font-size: 15px; }
-
-#view-dashboard .mom-toggle {
-    display: flex;
-    gap: 2px;
-    padding: 3px;
-    border-radius: var(--r-full);
-    background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-}
-#view-dashboard .mom-tab {
-    appearance: none;
-    border: none;
-    background: transparent;
-    padding: 5px 13px;
-    border-radius: var(--r-full);
-    font-family: var(--font-display);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.4px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: color 0.18s var(--ease), background 0.18s var(--ease);
-}
-#view-dashboard .mom-tab:hover { color: var(--text-primary); }
-#view-dashboard .mom-tab.active {
-    background: color-mix(in srgb, var(--accent) 17%, transparent);
-    color: var(--accent);
-}
-#view-dashboard .mom-tab:focus-visible { outline: none; box-shadow: var(--ring-focus); }
-
-/* Isle lens — the canvas fills the card body under the head. */
-#view-dashboard #isle-root.isle-host { min-height: 320px; flex: 1; }
-#view-dashboard #isle-root.isle-host::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 6;
-    pointer-events: none;
-    box-shadow: inset 0 0 0 1px rgba(10, 12, 20, 0.14);
-}
-#view-dashboard .isle-fallback {
-    background: var(--bg-raise);
-    color: var(--text-muted);
-}
-
-/* Pace lens — swap the canvas for the candlestick chart. */
-#view-dashboard .dash-card-variance.is-candles .daily-variance-legend,
-#view-dashboard .dash-card-variance.is-isle .daily-variance-legend,
-#view-dashboard .dash-card-variance.is-candles .daily-variance-scroll,
-#view-dashboard .dash-card-variance.is-isle .daily-variance-scroll { display: none; }
-#view-dashboard .dash-card-variance .mom-body[hidden],
-#view-dashboard .dash-card-variance .dash-card-momentum[hidden] { display: none !important; }
-#view-dashboard .dash-card-variance .mom-body {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-#view-dashboard .dash-card-variance .graph-display {
-    position: relative;
-    flex: 1;
-    min-height: 220px;
-    border-radius: var(--r-lg) !important;
-    border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--bg-inset) 60%, transparent);
-    overflow: hidden;
-}
-#view-dashboard .dash-card-variance .graph-display svg {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-#view-dashboard .dash-card-variance .dash-card-momentum.mom-card {
-    position: relative;
-    min-height: 340px;
-    border-radius: var(--r-lg);
-    overflow: hidden;
-    border: 1px solid var(--line);
-}
-#view-dashboard .dash-card-momentum.mom-pace,
-#view-dashboard .dash-card-momentum.isle-active.mom-pace {
-    display: block;
-    overflow: visible;
-    padding: 26px 28px !important;
-}
-#view-dashboard .dash-card-momentum.mom-pace .mom-head {
-    padding: 0 0 16px;
-    border-bottom: none;
-    margin-bottom: 16px;
-}
-#view-dashboard .dash-card-momentum.mom-pace #isle-root.isle-host { display: none !important; }
-#view-dashboard .dash-card-momentum.mom-pace .mom-body {
-    display: flex !important;
-    flex-direction: column;
-    gap: 12px;
-}
-#view-dashboard .mom-body .graph-display {
-    position: relative;
-    flex: 1;
-    min-height: 296px;
-    border-radius: var(--r-lg) !important;
-    border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--bg-inset) 60%, transparent);
-    overflow: hidden;
-}
-#view-dashboard .mom-body .graph-display svg {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-#view-dashboard .mom-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
-    font-size: 10.5px;
-    color: var(--text-secondary);
-}
-#view-dashboard .mom-legend span { display: inline-flex; align-items: center; gap: 6px; }
-#view-dashboard .mom-legend i { width: 12px; height: 3px; border-radius: 2px; }
-#view-dashboard .mom-legend .lg-bull   { background: var(--glow-green); }
-#view-dashboard .mom-legend .lg-bear   { background: var(--glow-red); }
-#view-dashboard .mom-legend .lg-target { background: var(--accent); }
-#view-dashboard .mom-legend .lg-proj {
-    background: repeating-linear-gradient(90deg, #8b5cf6 0 3px, transparent 3px 6px);
-}
-
 /* ── 6 · CONSISTENCY — the year grid ───────────────────────────────────── */
 
 /* Accent ramp replaces the fixed green: the year reads in the theme's
@@ -831,10 +690,6 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
     #view-dashboard .tp-reading { flex-wrap: wrap; }
     #view-dashboard .dv-head { margin-bottom: 16px; }
     #view-dashboard .dv-legend { gap: 10px; }
-    #view-dashboard .mom-card .mom-head { padding: 16px 16px 12px; }
-    #view-dashboard #isle-root.isle-host { min-height: 260px; }
-    #view-dashboard .mom-body .graph-display { min-height: 240px; }
-    #view-dashboard .dash-card-momentum.mom-pace { padding: 20px !important; }
     #view-dashboard .elo-monitor-tier { display: none; }
     .main-content .badge.calib-strip { gap: 9px; }
     .main-content .calib-strip .calib-meter { display: none; }
@@ -846,7 +701,6 @@ html[data-mode] #view-dashboard .dash-card-tracker .compact-subject-card.lowest-
     #view-dashboard .tp-caption { display: none; }
     #view-dashboard .dir-item { gap: 9px; }
     #view-dashboard .dir-item-meta { font-size: 10px; }
-    #view-dashboard .mom-toggle .mom-tab { padding: 5px 10px; }
 }
 
 /* ── Narrow thirds (iPad 10" landscape ≈ 330px/card): reclaim tracker row ──

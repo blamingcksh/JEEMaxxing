@@ -182,9 +182,6 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                  into .tp-row-top, .tp-pace ticks into the meters.
                · directive.js     → #directive-card-body
                · matrix.js        → #chapter-progress-list, #chapter-decay-grid
-               · candlestick/app  → #dynamic-graph
-               · sprout-isle.js   → takes over .dash-card-momentum (children
-                 with [data-isle-keep] survive the takeover)
               Skin lives in styles-dashboard.css (loaded just before styles-ipad.css,
               which stays last so the iPad standalone hardening wins).
         ════════════════════════════════════════════ -->
@@ -197,15 +194,10 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <!-- ── CONSISTENCY — a year of daily output vs target
                      (app.js renderDailyVarianceHeatmap fills months + grid). ── -->
                 <div class="dash-card dash-card-variance" data-bento-span="12">
-                    <div class="dv-head dv-head-wrap">
+                    <div class="dv-head">
                         <div class="dv-head-left">
                             <h2 class="dv-title">Consistency</h2>
                             <span class="dv-streak" id="dv-streak" hidden></span>
-                            <div class="mom-toggle" role="tablist" aria-label="Consistency lens">
-                                <button type="button" class="mom-tab active" data-var-lens="heatmap" role="tab" aria-selected="true" onclick="window.setVarianceLens('heatmap')">Heatmap</button>
-                                <button type="button" class="mom-tab" data-var-lens="candles" role="tab" aria-selected="false" onclick="window.setVarianceLens('candles')">Candlesticks</button>
-                                <button type="button" class="mom-tab" data-var-lens="isle" role="tab" aria-selected="false" onclick="window.setVarianceLens('isle')">Sprout Isle</button>
-                            </div>
                         </div>
                         <span class="daily-variance-legend" aria-hidden="true">
                             <span class="daily-variance-legend-label">Less</span>
@@ -220,21 +212,6 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                     <div class="daily-variance-scroll">
                         <div id="daily-variance-months" class="daily-variance-months" aria-hidden="true"></div>
                         <div id="daily-variance-grid" class="daily-variance-grid" role="img" aria-label="Daily solved questions relative to your daily target, one cell per day. Denser colour means more output."></div>
-                    </div>
-                    <div class="mom-body" id="var-candles-body" hidden>
-                        <div class="graph-display"><svg id="dynamic-graph"></svg></div>
-                        <div class="mom-legend" aria-hidden="true">
-                            <span><i style="background:#10b981"></i>Above target yield</span>
-                            <span><i style="background:#ef4444"></i>Below target / Protocol Zero</span>
-                            <span><i style="background:#3ddcff"></i>Target lock</span>
-                            <span><i style="background:#a78bfa"></i>5-day trajectory</span>
-                        </div>
-                    </div>
-                    <div class="dash-card-momentum mom-card" id="mom-card" hidden>
-                        <div class="isle-hud" id="isle-hud" data-isle-keep="1">
-                            <button type="button" class="isle-seed-pill" id="isle-seed-pill" aria-expanded="false" aria-controls="isle-store-pop">🌰 <span id="isle-seed-count">0</span> <span class="isle-store-lbl">Store</span></button>
-                            <div class="isle-store-pop" id="isle-store-pop" hidden></div>
-                        </div>
                     </div>
                 </div>
 
@@ -1283,7 +1260,7 @@ window.clearMatrixFilters = function () {
      PERF: async (not defer) — a network CDN script must never sit on the
      DOMContentLoaded critical path; initDrive() waits briefly for it. -->
 <script async src="https://accounts.google.com/gsi/client"></script>
-<!-- Main controller module — imports storage / pomodoro / matrix / candlestick -->
+<!-- Main controller module — imports storage / pomodoro / matrix -->
 <script type="module" src="./app.js"></script>
 <!-- 4-Pillar Accountability Checkpoint System — self-mounting (hub, control
      panel, lockdown overlays, toasts are all injected at runtime) -->
@@ -1332,8 +1309,7 @@ window.clearMatrixFilters = function () {
     const IDS = ['tracker', 'variance', 'progress', 'decay'];
     const DEFAULT_ORDER = ['variance', 'tracker', 'decay', 'progress'];  // screenshot default: Consistency on top, thirds below
     // 'directive' + 'momentum' cards were removed from the dashboard markup —
-    // their backends (directive.js, sprout-isle.js, candlestick engine) still
-    // run; only the dashboard boxes are gone, so they stay untracked here.
+    // their UI slots stay untracked here.
 
     const wide     = () => window.matchMedia(`(min-width: ${BP}px)`).matches;
     const twoCol   = () => window.matchMedia(`(min-width: ${BP2}px)`).matches;
@@ -1394,8 +1370,6 @@ window.clearMatrixFilters = function () {
     function settle(){
         clearTimeout(settleT);
         settleT = setTimeout(() => {
-            try { if (typeof window.renderGraph === 'function') window.renderGraph(); } catch (e) {}
-            try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (e) {}
             try { if (typeof window.renderChapterDecayGrid === 'function') window.renderChapterDecayGrid(); } catch (e) {}
             scheduleRelayout();
         }, 180);
@@ -1651,78 +1625,6 @@ window.clearMatrixFilters = function () {
 </script>
 
 <script src="forest-bg.js" defer></script>
-<script src="sprout-isle.js" defer></script>
-
-<!-- ── CONSISTENCY / WORLD LENS TOGGLE — Heatmap (default), Candlesticks (#dynamic-graph),
-     and Sprout Isle (sprout-isle.js). Pauses WebGL when not visible; re-renders SVG on switch. ── -->
-<script>
-(function () {
-    var KEY = 'jeemax_momentum_view';
-    function normLens(v) {
-        if (v === 'pace' || v === 'candles') return 'candles';
-        if (v === 'isle') return 'isle';
-        return 'heatmap';
-    }
-    function apply(lens, rerender) {
-        lens = normLens(lens);
-        var host = document.querySelector('#view-dashboard .dash-card-variance');
-        if (!host) return;
-        host.classList.toggle('is-candles', lens === 'candles');
-        host.classList.toggle('is-isle', lens === 'isle');
-        var hmScroll = host.querySelector('.daily-variance-scroll');
-        var hmLegend = host.querySelector('.daily-variance-legend');
-        var candles = document.getElementById('var-candles-body');
-        var mom = document.getElementById('mom-card');
-        if (hmScroll) hmScroll.hidden = (lens !== 'heatmap');
-        if (hmLegend) hmLegend.hidden = (lens !== 'heatmap');
-        if (candles) candles.hidden = (lens !== 'candles');
-        if (mom) {
-            mom.hidden = (lens !== 'isle');
-            mom.classList.toggle('mom-pace', lens === 'candles');
-        }
-        host.querySelectorAll('.mom-tab').forEach(function (t) {
-            var on = t.getAttribute('data-var-lens') === lens;
-            t.classList.toggle('active', on);
-            t.setAttribute('aria-selected', on ? 'true' : 'false');
-        });
-        if (lens !== 'isle') {
-            try { if (window.Isle && typeof window.Isle.stop === 'function') window.Isle.stop(); } catch (e) {}
-            var pop = document.getElementById('isle-store-pop');
-            if (pop) pop.hidden = true;
-        }
-        if (rerender || lens !== 'heatmap') {
-            requestAnimationFrame(function () {
-                if (lens === 'candles') {
-                    try { if (typeof window.renderGraph === 'function') window.renderGraph(); } catch (e) {}
-                    try { if (typeof window.renderMomentumCandles === 'function') window.renderMomentumCandles(); } catch (e) {}
-                } else if (lens === 'isle') {
-                    try { if (window.Isle && typeof window.Isle.fit === 'function') window.Isle.fit(); } catch (e) {}
-                    try { if (window.Isle && typeof window.Isle.start === 'function') window.Isle.start(); } catch (e) {}
-                    try { if (window.Isle && typeof window.Isle.syncHud === 'function') window.Isle.syncHud(); } catch (e) {}
-                }
-            });
-        }
-    }
-    function saved() {
-        var v = null;
-        try { v = localStorage.getItem(KEY); } catch (e) {}
-        return normLens(v);
-    }
-    window.setVarianceLens = function (lens) {
-        var n = normLens(lens);
-        apply(n, true);
-        try { localStorage.setItem(KEY, n); } catch (e) {}
-    };
-    window.setMomentumView = window.setVarianceLens;
-    function boot() {
-        apply(saved(), false);
-        if (saved() === 'candles') { setTimeout(function () { apply('candles', true); }, 900); }
-        if (saved() === 'isle') { setTimeout(function () { apply('isle', true); }, 900); }
-    }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-    else boot();
-})();
-</script>
 
 <!-- ── View identity: the header H1, document.title and nav aria-current
      follow the active view. Pure observation — no app.js contract touched. -->
