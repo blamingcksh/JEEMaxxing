@@ -92,8 +92,11 @@ let _state = {
     /** ISO date when override count was last reset */
     overrideCountResetDate: null,
 
-    /** Whether the current tier was dismissed (Tier 1/2 only) */
+    /** Legacy whole-night dismissal flag (kept true for override / test compatibility) */
     dismissed: false,
+
+    /** Per-tier dismissals so dismissing Tier 1/2 never suppresses Tier 3 at 03:00+ */
+    dismissedTiers: {},
 
     /** ISO timestamp of last dismissal */
     dismissedAt: null,
@@ -121,6 +124,9 @@ function _load() {
             const parsed = JSON.parse(raw);
             // Merge with defaults for forward-compat
             _state = { ..._state, ...parsed };
+            if (!_state.dismissedTiers || typeof _state.dismissedTiers !== 'object') {
+                _state.dismissedTiers = {};
+            }
         }
     } catch (e) { /* use defaults */ }
 }
@@ -249,6 +255,15 @@ export function checkClockCheat() {
  *
  * @returns {{ tier: object, active: boolean, forceCns: boolean, skyBlue: boolean } | null}
  */
+function _isTierDismissed(tierName) {
+    if (_state.dismissedTiers && _state.dismissedTiers[tierName]) return true;
+    // Preserve legacy `{ dismissed: true }` override when no per-tier map is populated.
+    if (_state.dismissed && (!(_state.dismissedTiers && Object.keys(_state.dismissedTiers).length))) {
+        return true;
+    }
+    return false;
+}
+
 export function resolveTier() {
     // Cache for 10 seconds (reduced from 60s to avoid tier-entry delays)
     const now = Date.now();
@@ -263,7 +278,7 @@ export function resolveTier() {
     if (cheating) {
         // An explicit user override (3s hold) still takes effect; it is
         // cleared again by the daily reset at midnight.
-        if (_state.dismissed) {
+        if (_isTierDismissed('tier3')) {
             _state._cachedTier = null;
             _state._cachedTierTs = now;
             return null;
@@ -305,9 +320,8 @@ export function resolveTier() {
                 return null;
             }
 
-            // Check if dismissed (any tier — override or regular dismiss,
-            // resets daily at midnight via resetDaily)
-            if (_state.dismissed) {
+            // Per-tier dismissal: auto-dismissing Tier 2 after 5s must never suppress Tier 3 at 03:00+.
+            if (_isTierDismissed(tier.name)) {
                 _state._cachedTier = null;
                 _state._cachedTierTs = now;
                 return null;
@@ -377,7 +391,10 @@ export function dismissCurrentTier() {
     if (!tier) return { ok: false, reason: 'No active tier' };
     if (!tier.dismissible) return { ok: false, reason: 'This tier requires long-press override (3s)' };
 
-    _state.dismissed = true;
+    if (!_state.dismissedTiers || typeof _state.dismissedTiers !== 'object') {
+        _state.dismissedTiers = {};
+    }
+    _state.dismissedTiers[tier.tier.name] = true;
     _state.dismissedAt = new Date().toISOString();
     _state._cachedTier = null; // invalidate cache
     _save();
@@ -409,6 +426,7 @@ export function recordOverride() {
     }
 
     _state.lateOverrideCount++;
+    _state.dismissedTiers = { ...(_state.dismissedTiers || {}), tier3: true };
     _state.dismissed = true;
     _state.dismissedAt = new Date().toISOString();
     _state._cachedTier = null;
@@ -604,6 +622,7 @@ export function getOverrideWarning() {
  */
 export function resetDaily() {
     _state.dismissed = false;
+    _state.dismissedTiers = {};
     _state.dismissedAt = null;
     _state.forcedCnsActive = false;
     _state._cachedTier = null;
@@ -693,7 +712,7 @@ export const NightGuard = {
     get state() { return _state; },
 };
 
-window.__nightGuard = NightGuard;
+if (typeof window !== 'undefined') window.__nightGuard = NightGuard;
 
 // Auto-load persisted state
 _load();

@@ -195,7 +195,10 @@ function begin() {
   // Fresh organic texture each break so no two blooms look alike
   _seedTexture();
 
-  _buildDom();
+  if (_buildDom() === false) {
+    _active = false;
+    return;
+  }
   _painting = _pickPainting();
   _loadArt(_painting).then(img => {
     if (myGen !== _gen) return;   // aborted/rebuilt meanwhile — drop the stale art
@@ -346,7 +349,12 @@ function _buildDom() {
   document.body.appendChild(_overlay);
 
   _canvas = _overlay.querySelector('#gb-canvas');
-  _ctx = _canvas.getContext('2d');
+  _ctx = _canvas && typeof _canvas.getContext === 'function' ? _canvas.getContext('2d') : null;
+  if (!_ctx) {
+    if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+    _overlay = null; _canvas = null;
+    return false;
+  }
   _quoteBox = _overlay.querySelector('#gb-quote-box');
   _overlay.querySelector('#gb-continue').addEventListener('click', _onContinueClick);
 
@@ -995,8 +1003,15 @@ function _wantSound() {
   try { return !(window.FX && !window.FX.wantSound()); } catch (_) { return true; }
 }
 
+function _fxVol() {
+  try {
+    const v = window.FX && window.FX.prefs && window.FX.prefs.volume;
+    return (typeof v === 'number' && isFinite(v)) ? Math.max(0, Math.min(1, v)) : 0.7;
+  } catch (_) { return 0.7; }
+}
+
 function _startCrackle() {
-  if (_reduceMotion || !_wantSound()) return;
+  if (_reduceMotion || !_wantSound() || _fxVol() <= 0) return;
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
@@ -1026,8 +1041,8 @@ function _startCrackle() {
 
 function _setCrackleIntensity(burnRate) {
   if (!_audio) return;
-  // Louder while actively spreading, near-silent when frozen/finished
-  const level = Math.min(1, burnRate * 30) * TUNING.crackleGain;
+  // Louder while actively spreading, near-silent when frozen/finished; scaled by FX volume
+  const level = Math.min(1, burnRate * 30) * TUNING.crackleGain * (_fxVol() / 0.7);
   try {
     _audio.gain.gain.setTargetAtTime(level, _audio.ctx.currentTime, 0.25);
   } catch (_) { /* ignore */ }
@@ -1044,7 +1059,8 @@ function _stopCrackle() {
 }
 
 function _chime() {
-  if (!_wantSound()) return;
+  const peak = 0.06 * (_fxVol() / 0.7);
+  if (!_wantSound() || peak <= 0.0002) return;
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
@@ -1056,7 +1072,7 @@ function _chime() {
       o.type = 'sine';
       o.frequency.value = f;
       g.gain.setValueAtTime(0.0001, now + i * 0.12);
-      g.gain.exponentialRampToValueAtTime(0.06, now + i * 0.12 + 0.03);
+      g.gain.exponentialRampToValueAtTime(peak, now + i * 0.12 + 0.03);
       g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.12 + 1.4);
       o.connect(g); g.connect(ctx.destination);
       o.start(now + i * 0.12);

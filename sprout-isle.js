@@ -1293,7 +1293,9 @@ function setState(input){
   let guard=0;
   while(W.plantedToday<total&&guard<14){
     const subj=SUBJECTS[W.fallbackCycle++%3];
-    setTimeout(()=>plantTree({subject:subj,difficulty:0.3+Math.random()*0.4,gold:W.golden}),guard*180);
+    const qArr=window.__sproutSolveQueue&&window.__sproutSolveQueue[subj];
+    const qDiff=(Array.isArray(qArr)&&qArr.length)?qArr.shift():0.45;
+    setTimeout(()=>plantTree({subject:subj,difficulty:qDiff,gold:W.golden}),guard*180);
     W.plantedToday++; guard++;
   }
   /* quests → flowers */
@@ -1318,6 +1320,7 @@ function setState(input){
   /* exam sign */
   if(s.daysToExam!=null&&s.daysToExam!==lastExam){ lastExam=s.daysToExam; paintSign(s.daysToExam); }
   queueSave();
+  try{ syncHud(); }catch(e){}
 }
 function markDroopers(){
   const recent=W.trees.filter(t=>!t.gold).slice(-3);
@@ -1392,7 +1395,7 @@ function isleEvent(name,data){
       const n=Math.max(0,Math.round(+data.n||0));
       W.seeds+=n;
       floater('+'+n+' 🌰 '+(data.reason||''),new THREE.Vector3(POS.stall[0],4.5,POS.stall[1]),0.9);
-      sfx.buy(); queueSave(); break; }
+      sfx.buy(); queueSave(); syncHud(); break; }
   }
   return true;
 }
@@ -1405,7 +1408,7 @@ function buy(itemId){
     if(W.seeds<item.price){ floater('need '+item.price+' 🌰',new THREE.Vector3(0,6,0),0.8); return false; }
     W.seeds-=item.price; cand.progress=1; cand.fast=true; onMature(cand);
     floater('instant bloom! 🌸',new THREE.Vector3(cand.x,6,cand.z),0.9);
-    queueSave(); return true;
+    queueSave(); syncHud(); return true;
   }
   if(W.owned.includes(itemId)){ floater('already yours 💛',new THREE.Vector3(0,6,0),0.8); return false; }
   if(W.seeds<item.price){ floater('need '+item.price+' 🌰',new THREE.Vector3(0,6,0),0.8); return false; }
@@ -1413,7 +1416,7 @@ function buy(itemId){
   applyCosmetic(itemId);
   if(item.kind==='hat') setHat(itemId);
   floater(item.label+' ✓',new THREE.Vector3(POS.stall[0],4.5,POS.stall[1]),0.9);
-  sfx.buy(); queueSave(); return true;
+  sfx.buy(); queueSave(); syncHud(); return true;
 }
 function debug(){
   const st=W.appState||{};
@@ -1438,6 +1441,24 @@ function weekFocus(){
   return sum;
 }
 /* embed hooks — the §5 contract stays frozen, these are additive */
+function syncHud(){
+  const cnt=$id('isle-seed-count'); if(cnt) cnt.textContent=String(W.seeds||0);
+  const pop=$id('isle-store-pop'); if(!pop) return;
+  const rows=Object.keys(ITEMS).map(id=>{
+    const it=ITEMS[id];
+    const owned=(it.kind!=='consumable'&&W.owned.includes(id));
+    const afford=(W.seeds||0)>=it.price;
+    const btnText=owned?'Owned':('🌰 '+it.price);
+    const dis=(owned||!afford)?' disabled':'';
+    return '<div class="isle-store-row">'+
+      '<div class="isle-store-meta"><span class="isle-store-name">'+it.label+'</span>'+
+      '<span class="isle-store-kind">'+it.kind+'</span></div>'+
+      '<button type="button" class="isle-store-buy" data-isle-item="'+id+'"'+dis+'>'+btnText+'</button>'+
+    '</div>';
+  }).join('');
+  pop.innerHTML='<div class="isle-store-head"><span>Seed Store</span><span>🌰 '+(W.seeds||0)+'</span></div>'+
+    '<div class="isle-store-grid">'+rows+'</div>';
+}
 function mount(el){
   if(!el||!renderer) return false;
   if(renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
@@ -1628,7 +1649,11 @@ function endPointer(e){
             const name=(r.gold?SPECIES.golden:SPECIES[r.subject]).name;
             floater(name+' · '+Math.round(r.progress*100)+'% grown',new THREE.Vector3(r.x,groundY(r.x,r.z)+3.5,r.z),0.75); }
           if(hit.type==='sign') floater((lastExam!=null?lastExam:'—')+' days to go ✨',new THREE.Vector3(POS.sign[0],5,POS.sign[1]),0.8);
-          if(hit.type==='stall') floater('seeds buy cute things only 🌰',new THREE.Vector3(POS.stall[0],4.5,POS.stall[1]),0.8);
+          if(hit.type==='stall'){
+            const pop=$id('isle-store-pop'), pill=$id('isle-seed-pill');
+            if(pop){ pop.hidden=!pop.hidden; if(pill) pill.setAttribute('aria-expanded',pop.hidden?'false':'true'); syncHud(); }
+            floater('seed store 🌰',new THREE.Vector3(POS.stall[0],4.5,POS.stall[1]),0.8);
+          }
           if(hit.type==='cloud') floater('cloud '+Math.round(cloudFill*100)+'% full 💧',new THREE.Vector3(0,19,0),0.8);
         }
       }
@@ -1644,6 +1669,7 @@ dom.addEventListener('wheel',e=>{ e.preventDefault();
 /* ---------- resize ---------- */
 let ro=null;
 function fit(){
+  if(rootEl&&rootEl!==document.body&&(rootEl.clientWidth<=0||rootEl.clientHeight<=0)) return;
   const w=rootEl.clientWidth||window.innerWidth, h=rootEl.clientHeight||window.innerHeight;
   renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix();
 }
@@ -1803,7 +1829,7 @@ function update(dt,now){
         W.seeds+=1;
         floater('+1 🌰',new THREE.Vector3(t.x,groundY(t.x,t.z)+3.5,t.z),0.7);
         Petals.spawn(4,[t.x,groundY(t.x,t.z)+2.5,t.z],0.6,[4]);
-        sfx.harvest(); queueSave();
+        sfx.harvest(); queueSave(); syncHud();
       },i*260);
     });
   }
@@ -1856,9 +1882,9 @@ function loop(now){
   update(dt,now);
   renderer.render(scene,camera);
 }
-function start(){ if(running) return; running=true; last=performance.now(); raf=requestAnimationFrame(loop); }
+function start(){ if(running) return; running=true; fit(); last=performance.now(); raf=requestAnimationFrame(loop); }
 function stop(){ running=false; cancelAnimationFrame(raf); }
-document.addEventListener('visibilitychange',()=>{ if(document.hidden){ stop(); save(); } else start(); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden){ stop(); save(); } else if(!rootEl||rootEl===document.body||rootEl.offsetParent!==null){ start(); } });
 window.addEventListener('beforeunload',save);
 
 /* ---------- boot ---------- */
@@ -1866,9 +1892,26 @@ paintSky(1,0); lastSkyF=1; lastGoldF=0;
 scatter();
 { const fb=$id('isleFallback'); if(fb) fb.style.display='none'; }
 W.ready=true;
-/* start/stop are ADDITIVE embed hooks — the app pauses the loop while the
+/* start/stop/fit/syncHud are ADDITIVE embed hooks — the app pauses the loop while the
    dashboard card is off-screen (IntersectionObserver in the bridge). */
-window.Isle=Object.freeze({setState,event:isleEvent,buy,debug,mount,setPanelVisible,start,stop});
+window.Isle=Object.freeze({setState,event:isleEvent,buy,debug,mount,setPanelVisible,start,stop,fit,syncHud});
+{
+  const pill=$id('isle-seed-pill'), pop=$id('isle-store-pop');
+  if(pill&&!pill._wired){
+    pill._wired=true;
+    pill.addEventListener('click',()=>{ if(!pop) return; pop.hidden=!pop.hidden; pill.setAttribute('aria-expanded',pop.hidden?'false':'true'); syncHud(); });
+  }
+  if(pop&&!pop._wired){
+    pop._wired=true;
+    pop.addEventListener('click',e=>{
+      const b=e.target&&e.target.closest?e.target.closest('[data-isle-item]'):null;
+      if(!b) return;
+      AudioKit.unlock();
+      buy(b.getAttribute('data-isle-item'));
+    });
+  }
+  syncHud();
+}
 /* APP BUILD: no demo state at boot — the bridge pushes the real app state. */
 if(AudioKit.on){ const sb=panel.querySelector('[data-a="sound"]'); if(sb) sb.textContent='🔊 sound'; }
 const freshDay=!SAVE||!SAVE.day||SAVE.day!==W.dayKey;
@@ -1879,10 +1922,10 @@ if(!freshDay){
   setTimeout(()=>floater('welcome to sprout isle 🌱',new THREE.Vector3(0,10,0),1.1),600);
 }
 console.log('🌱 sprout isle booted');
-start();
+if(!rootEl||rootEl===document.body||rootEl.offsetParent!==null) start();
 /* resilience: if the render loop never got scheduled (e.g. the pane was
    mid-init at boot), kick it once the page is visibly alive */
-setTimeout(()=>{ if(!document.hidden&&!(window.__loopTicks>0)){ running=false; start(); } },3000);
+setTimeout(()=>{ if(!document.hidden&&!(window.__loopTicks>0)&&(!rootEl||rootEl===document.body||rootEl.offsetParent!==null)){ running=false; start(); } },3000);
 }
 
 
@@ -2029,7 +2072,9 @@ function startBridge() {
       var s = SUBJECTS[i];
       var d = now[s] - lastSeen[s];
       while (d > 0 && fired < 8) {
-        try { window.Isle.event('solve', { subject: s, difficulty: 0.3 + Math.random() * 0.4 }); } catch (e) { break; }
+        var qQueue = (window.__sproutSolveQueue && window.__sproutSolveQueue[s]) || null;
+        var realDiff = (Array.isArray(qQueue) && qQueue.length) ? qQueue.shift() : 0.45;
+        try { window.Isle.event('solve', { subject: s, difficulty: realDiff }); } catch (e) { break; }
         d--; fired++;
       }
     }
@@ -2093,6 +2138,8 @@ function startBridge() {
 
   /* ── boot + cadence ── */
   pushState(true);
+  try { if (window.TuckIn && typeof window.TuckIn.flushPendingSeeds === 'function') window.TuckIn.flushPendingSeeds(); } catch (e) {}
+  try { if (window.Isle && typeof window.Isle.syncHud === 'function') window.Isle.syncHud(); } catch (e) {}
   if (computeState().missedDays > 0 && !sessionStorage.getItem('sproutIsle.missedNoted')) {
     try { window.Isle.event('missedDay', {}); sessionStorage.setItem('sproutIsle.missedNoted', '1'); } catch (e) {}
   }

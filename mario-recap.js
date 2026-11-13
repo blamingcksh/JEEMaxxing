@@ -725,7 +725,7 @@ function eloDeltaColor(delta) {
     const d = Math.round(Number(delta));
     if (d > 0) return '#34d399';
     if (d < 0) return '#fb7185';
-    return '#cbd5e1';
+    return '#fbbf24';
 }
 
 function summarizeItems(items) {
@@ -933,21 +933,49 @@ export const SessionRecap = {
         return this._items.length > 0;
     },
 
+    setContextProvider(fn) {
+        this._contextProvider = typeof fn === 'function' ? fn : null;
+    },
+
     play(options = {}) {
         const items = this._items.slice();
         this.reset();
+        let ctxOpts = null;
+        if (typeof this._contextProvider === 'function') {
+            const provider = this._contextProvider;
+            this._contextProvider = null;
+            try { ctxOpts = provider(options, items); } catch (_) {}
+        }
         if (!items.length) return null;
         if (typeof document === 'undefined' || !document.body) return null;
         if (activeScene) {
             activeScene.destroy();
             activeScene = null;
         }
-        const derivedMode = items.some((i) => i && i.mode === 'hardcore') ? 'hardcore' : 'standard';
-        const sceneOptions = Object.assign({ mode: derivedMode }, options);
+        const merged = ctxOpts ? Object.assign({}, ctxOpts, options) : options;
+        const derivedMode = merged.mode || (items.some((i) => i && i.mode === 'hardcore') ? 'hardcore' : 'standard');
+        const sceneOptions = Object.assign({ mode: derivedMode }, merged);
+        try {
+            if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.pauseForInterruption === 'function') {
+                window.Metro.pauseForInterruption();
+            }
+        } catch (_) {}
         return new Promise((resolve) => {
+            const finishRecap = () => {
+                try {
+                    const pApi = typeof window !== 'undefined' ? window.POMO_API : null;
+                    const sess = pApi && typeof pApi.getLockinSession === 'function' ? pApi.getLockinSession() : null;
+                    if (!sess || sess.phase !== 'BREAK') {
+                        if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') {
+                            window.Metro.resumeAfterInterruption();
+                        }
+                    }
+                } catch (_) {}
+                resolve();
+            };
             let scene = null;
             try {
-                scene = new MarioRecapScene(items, resolve, sceneOptions);
+                scene = new MarioRecapScene(items, finishRecap, sceneOptions);
                 activeScene = scene;
                 scene.mount();
             } catch (err) {
@@ -956,7 +984,7 @@ export const SessionRecap = {
                     try { scene.destroy(); } catch (_) {}
                 }
                 activeScene = null;
-                resolve();
+                finishRecap();
             }
         });
     }
@@ -1203,6 +1231,7 @@ class RetroSoundEngine {
     }
 
     stopJingle() {
+        this._jingleEndAt = 0;
         if (this._jingle) {
             try { this._jingle.stop(); } catch (_) {}
             this._jingle = null;
@@ -1217,6 +1246,8 @@ class RetroSoundEngine {
         this.stopJingle();
         try {
             this._jingle = playSmbJingle(ctx, id, v);
+            const dur = this._jingle && Number.isFinite(this._jingle.duration) ? this._jingle.duration : 0;
+            this._jingleEndAt = dur > 0 ? (performance.now() + dur * 1000) : 0;
         } catch (_) {}
     }
 
@@ -1262,14 +1293,34 @@ class MarioRecapScene {
         this.items = items;
         this.resolve = resolve;
         this.parchment = options.tone === 'parchment';
-        this.sessionMode = options.mode === 'hardcore' ? 'hardcore' : 'standard';
+        this.bounty = options.bounty || null;
+        this.mock = options.mock || null;
+        this.extras = options.extras || null;
+        this.nonBlocking = !!options.nonBlocking;
+        this.sessionMode = (options.mode === 'hardcore' || this.bounty) ? 'hardcore' : 'standard';
         const isHardcore = this.sessionMode === 'hardcore';
         this.summary = summarizeItems(items);
         this.verdict = resolveSessionVerdict(this.summary);
+        if (this.bounty) {
+            const won = !!this.bounty.won;
+            this.verdict = Object.assign({}, this.verdict, {
+                hasVictory: won,
+                castleMood: won ? 'positive' : 'negative',
+                flagColor: won ? 'green' : 'red',
+                megaOutcome: won ? 'green' : 'red',
+                popText: won
+                    ? (this.verdict.popText && this.verdict.popText !== '±0' ? this.verdict.popText : 'BOUNTY')
+                    : (this.verdict.popText && this.verdict.popText !== '±0' ? this.verdict.popText : 'COOKED'),
+                popColor: won ? '#34d399' : '#fb7185',
+            });
+        }
         this.destroyed = false;
         this.overlay = null;
         this.canvas = null;
         this.ctx = null;
+        this.extrasEl = null;
+        this._hoverPaused = false;
+        this._focusPaused = false;
         this.width = 1;
         this.height = 1;
         this.dpr = 1;
@@ -1429,14 +1480,25 @@ class MarioRecapScene {
         this.onKeyDown = this.onKeyDown.bind(this);
         this.onResize = this.onResize.bind(this);
         this.onVisibility = this.onVisibility.bind(this);
+        this.onPillEnter = this.onPillEnter.bind(this);
+        this.onPillLeave = this.onPillLeave.bind(this);
+        this.onPillFocusIn = this.onPillFocusIn.bind(this);
+        this.onPillFocusOut = this.onPillFocusOut.bind(this);
     }
 
     mount() {
         this.buildDom();
         if (this.parchment) this.overlay.classList.add('is-parchment');
+        if (this.nonBlocking) this.overlay.classList.add('is-nonblocking');
         document.body.appendChild(this.overlay);
         this.resize();
         this.overlay.addEventListener('click', this.onClick);
+        if (this.pillEl) {
+            this.pillEl.addEventListener('mouseenter', this.onPillEnter);
+            this.pillEl.addEventListener('mouseleave', this.onPillLeave);
+            this.pillEl.addEventListener('focusin', this.onPillFocusIn);
+            this.pillEl.addEventListener('focusout', this.onPillFocusOut);
+        }
         window.addEventListener('keydown', this.onKeyDown, true);
         window.addEventListener('resize', this.onResize);
         document.addEventListener('visibilitychange', this.onVisibility);
@@ -1473,6 +1535,7 @@ class MarioRecapScene {
                     <span class="mr-count is-grey" id="mario-recap-wrap-grey" hidden><i></i><b id="mario-recap-count-grey">0</b></span>
                 </span>
                 <span class="mr-pill-summary" id="mario-recap-summary" hidden></span>
+                <div class="mr-pill-extras" id="mario-recap-extras" hidden></div>
             </div>
         `;
         this.overlay = el;
@@ -1482,6 +1545,7 @@ class MarioRecapScene {
         this.pillEl = el.querySelector('#mario-recap-pill');
         this.runEl = el.querySelector('#mario-recap-run');
         this.summaryEl = el.querySelector('#mario-recap-summary');
+        this.extrasEl = el.querySelector('#mario-recap-extras');
         this.hudGreen = el.querySelector('#mario-recap-count-green');
         this.hudPurple = el.querySelector('#mario-recap-count-purple');
         this.hudRed = el.querySelector('#mario-recap-count-red');
@@ -1513,22 +1577,56 @@ class MarioRecapScene {
         this.resize();
     }
 
-    onVisibility() {
-        this.lastTime = performance.now();
+    _pauseAutoFade() {
+        if (this.autoFadeTimer) {
+            this.autoFadeRemaining = Math.max(0, this.autoFadeRemaining - (performance.now() - this.autoFadeStartedAt));
+            clearTimeout(this.autoFadeTimer);
+            this.autoFadeTimer = 0;
+        }
+    }
+
+    _resumeAutoFade() {
         if (!this.run.summaryShown || this.destroyed) return;
-        if (document.hidden) {
-            if (this.autoFadeTimer) {
-                this.autoFadeRemaining = Math.max(0, this.autoFadeRemaining - (performance.now() - this.autoFadeStartedAt));
-                clearTimeout(this.autoFadeTimer);
-                this.autoFadeTimer = 0;
-            }
-        } else if (!this.autoFadeTimer && this.autoFadeRemaining > 0) {
+        if (document.hidden || this._hoverPaused || this._focusPaused) return;
+        if (!this.autoFadeTimer && this.autoFadeRemaining > 0) {
             this.scheduleAutoFade(this.autoFadeRemaining);
         }
     }
 
-    onClick() {
+    onPillEnter() {
+        this._hoverPaused = true;
+        if (this.run.summaryShown && !this.destroyed) this._pauseAutoFade();
+    }
+
+    onPillLeave() {
+        this._hoverPaused = false;
+        this._resumeAutoFade();
+    }
+
+    onPillFocusIn() {
+        this._focusPaused = true;
+        if (this.run.summaryShown && !this.destroyed) this._pauseAutoFade();
+    }
+
+    onPillFocusOut(e) {
+        if (this.pillEl && e && e.relatedTarget && this.pillEl.contains(e.relatedTarget)) return;
+        this._focusPaused = false;
+        this._resumeAutoFade();
+    }
+
+    onVisibility() {
+        this.lastTime = performance.now();
+        if (!this.run.summaryShown || this.destroyed) return;
+        if (document.hidden) {
+            this._pauseAutoFade();
+        } else {
+            this._resumeAutoFade();
+        }
+    }
+
+    onClick(e) {
         if (this.destroyed) return;
+        if (e && e.target && e.target.closest && e.target.closest('button, a, [data-mr-interactive]')) return;
         if (this.run.summaryShown) this.dismiss();
         else this.skipToSummary();
     }
@@ -2157,7 +2255,11 @@ class MarioRecapScene {
             return;
         }
 
-        // Neutral / all-skipped: shrug -> sit -> sleep Z's
+        // Neutral / all-skipped: ±0 draw shrugs awake; all-skipped shrugs -> sits -> sleep Z's
+        if (this.summary && this.summary.total > 0) {
+            this.setMarioPose('shrug');
+            return;
+        }
         const prevIdle = this.mario.idleTimer;
         this.mario.idleTimer += fdt;
         const curIdle = this.mario.idleTimer;
@@ -2573,7 +2675,8 @@ class MarioRecapScene {
         const bottomY = mb.baseY + MEGA_BLOCK_SIZE;
         const ratio = comboRatio(this.run.combo);
         const boosted = effectsOn();
-        const coinCount = outcome === 'green'
+        const isTieNeutral = this.verdict.castleMood === 'neutral' && this.summary.total > 0;
+        const coinCount = (outcome === 'green' && !isTieNeutral)
             ? (this.verdict.hasVictory && Math.random() < 0.2 ? 5 : (Math.random() < 0.5 ? 3 : 2))
             : 0;
 
@@ -2584,18 +2687,20 @@ class MarioRecapScene {
         mb.scaleY = 0.78;
         mb.glowIntensity = 1.65;
 
-        const shakePx = outcome === 'green' || outcome === 'red' ? MEGA_SHAKE_PX : 1.5;
+        const shakePx = (outcome === 'green' || outcome === 'red') && !isTieNeutral ? MEGA_SHAKE_PX : 1.5;
         this.run.hitStopFrames = 2;
         this.run.shakeIntensity = (boosted ? shakePx : 1.0) / (0.225 * this.pixel);
-        this.sfx.playMegaHit(outcome, this.run.combo, coinCount);
+        this.sfx.playMegaHit(isTieNeutral ? 'grey' : outcome, this.run.combo, coinCount);
 
         const theme = BLOCK_THEMES[outcome] || BLOCK_THEMES.green;
+        const flashColor = isTieNeutral ? '#fef08a' : theme.light;
+        const waveColor = isTieNeutral ? '#fbbf24' : theme.lightHex;
         this.impactFlashes.push({
             x: centerX,
             y: bottomY,
             width: MEGA_BLOCK_SIZE * 1.35,
             life: 1.0,
-            color: theme.light
+            color: flashColor
         });
 
         this.shockwaves.push({
@@ -2604,10 +2709,12 @@ class MarioRecapScene {
             size: MEGA_BLOCK_SIZE * 0.75,
             speed: 1.7,
             alpha: 1.0,
-            color: theme.lightHex
+            color: waveColor
         });
 
-        if (outcome === 'green') {
+        if (isTieNeutral) {
+            this.spawnPixelParticles(centerX, topY + 12, ['#fbbf24', '#f59e0b', '#fef08a'], 18, 1.5, false);
+        } else if (outcome === 'green') {
             const offsets = [-8, 8, 0, -11, 11];
             for (let i = 0; i < coinCount; i++) {
                 this.launchSingleCoin(centerX + offsets[i % offsets.length], topY, ratio, true, i * 3.5);
@@ -3952,6 +4059,8 @@ class MarioRecapScene {
                 this.goomba.y = 0;
             }
             if (!this.smokePuffs.length) this.spawnChimneySmoke(true);
+        } else if (this.summary && this.summary.total > 0) {
+            this.setMarioPose('shrug');
         } else {
             this.setMarioPose('shrug');
             this.setMarioPose('sit1');
@@ -4037,6 +4146,7 @@ class MarioRecapScene {
         this.runEl.hidden = true;
         this.summaryEl.hidden = false;
         this.pillEl.classList.add('is-summary');
+        this._renderExtras();
 
         if (!this.reducedMotion) {
             const style = this.pillEl.style;
@@ -4056,7 +4166,58 @@ class MarioRecapScene {
             });
         }
 
-        this.scheduleAutoFade(5000);
+        const jingleRem = (this.sfx && this.sfx._jingleEndAt) ? Math.max(0, this.sfx._jingleEndAt - performance.now()) : 0;
+        const fadeMs = jingleRem > 0 ? Math.max(5000, Math.ceil(jingleRem + 450)) : 5000;
+        this.scheduleAutoFade(fadeMs);
+    }
+
+    _renderExtras() {
+        if (!this.extrasEl || !this.extras || typeof this.extras !== 'object') return;
+        const ex = this.extras;
+        const metaParts = [ex.badgeText, ex.airDeltaText, ex.tierDeltaText].filter(Boolean);
+        const hasActions = typeof ex.onRun3More === 'function' || typeof ex.onSealNight === 'function';
+        if (!metaParts.length && !hasActions) return;
+
+        this.extrasEl.innerHTML = '';
+        if (metaParts.length) {
+            const metaSpan = document.createElement('span');
+            metaSpan.className = 'mr-extra-meta';
+            metaParts.forEach((txt, idx) => {
+                if (idx > 0) {
+                    const sep = document.createElement('span');
+                    sep.className = 'mr-extra-sep';
+                    sep.textContent = '·';
+                    metaSpan.appendChild(sep);
+                }
+                const item = document.createElement('span');
+                item.textContent = String(txt);
+                metaSpan.appendChild(item);
+            });
+            this.extrasEl.appendChild(metaSpan);
+        }
+        if (hasActions) {
+            const actWrap = document.createElement('span');
+            actWrap.className = 'mr-extra-actions';
+            const mkBtn = (id, label, cls, fn) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.id = id;
+                btn.className = 'mr-action-btn' + (cls ? ' ' + cls : '');
+                btn.textContent = label;
+                btn.setAttribute('data-mr-interactive', '1');
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.dismiss();
+                    try { fn(); } catch (err) { console.warn('[recap] action failed:', err); }
+                });
+                actWrap.appendChild(btn);
+            };
+            if (typeof ex.onRun3More === 'function') mkBtn('mr-act-run3', ex.run3Label || '🔥 Run 3 More', 'is-primary', ex.onRun3More);
+            if (typeof ex.onSealNight === 'function') mkBtn('mr-act-seal', '🌙 Seal Night', '', ex.onSealNight);
+            this.extrasEl.appendChild(actWrap);
+        }
+        this.extrasEl.hidden = false;
+        this.pillEl.classList.add('has-extras');
     }
 
     scheduleAutoFade(ms) {
@@ -4066,7 +4227,7 @@ class MarioRecapScene {
             this.autoFadeTimer = 0;
         }
         this.autoFadeRemaining = Math.max(0, ms);
-        if (document.hidden || this.autoFadeRemaining === 0) return;
+        if (document.hidden || this._hoverPaused || this._focusPaused || this.autoFadeRemaining === 0) return;
         this.autoFadeStartedAt = performance.now();
         this.autoFadeTimer = window.setTimeout(() => {
             this.autoFadeTimer = 0;
@@ -4078,7 +4239,7 @@ class MarioRecapScene {
     onKeyDown(e) {
         if (this.destroyed) return;
         if (this.run.summaryShown) {
-            if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+            if (e.key === 'Escape' || ((e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') && !(e.target && e.target.closest && e.target.closest('button, a')))) {
                 e.preventDefault();
                 e.stopPropagation();
                 this.dismiss();
@@ -4111,6 +4272,12 @@ class MarioRecapScene {
         if (this.autoFadeTimer) {
             clearTimeout(this.autoFadeTimer);
             this.autoFadeTimer = 0;
+        }
+        if (this.pillEl) {
+            this.pillEl.removeEventListener('mouseenter', this.onPillEnter);
+            this.pillEl.removeEventListener('mouseleave', this.onPillLeave);
+            this.pillEl.removeEventListener('focusin', this.onPillFocusIn);
+            this.pillEl.removeEventListener('focusout', this.onPillFocusOut);
         }
         window.removeEventListener('keydown', this.onKeyDown, true);
         window.removeEventListener('resize', this.onResize);

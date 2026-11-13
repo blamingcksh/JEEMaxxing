@@ -54,6 +54,7 @@ import {
     setAiChapterWeight,
     // ── Mock-test chapter labelling (vault tiles + dashboard filters) ──
     isMockChapterName,
+    isMockQuestion,
     // ── Canonical parsers shared with matrix.js / cortex.js / report.js ──
     // normSubjKeyStrict: counter/pricing/time writes MUST use this and skip
     //   on null — normSubjKey's 'physics' catch-all misfiles out-of-domain
@@ -157,6 +158,7 @@ import {
     // ── Integrated Lock-In Ritual Engine (Flow / Hardcore background timer) ──
     openLockinSetupModal, consumePendingLockinExpiry, isLockinStudyRunning,
     completeLockinOnPoolExhausted, requestLockinEarlyExitConfirm, noteLockinSolve,
+    syncLockinMode,
 } from './pomodoro.js';
 
 // Replace the existing matrix.js import block with:
@@ -1247,7 +1249,11 @@ export async function switchTab(viewId, element) {
         try { void renderDailyVarianceHeatmap(); } catch (_) {}
         try { renderChapterDecayGrid(); } catch (_) {}
         try { renderChapterProgressList(); } catch (_) {}
+        try { if (typeof window.setVarianceLens === 'function') window.setVarianceLens(localStorage.getItem('jeemax_momentum_view') || 'heatmap'); } catch (_) {}
+    } else {
+        try { if (window.Isle && typeof window.Isle.stop === 'function') window.Isle.stop(); } catch (_) {}
     }
+    try { _updateBioGuardBeacon(); } catch (_) {}
     try { _renderCalibrationReport(); } catch (_) {}
 }
 
@@ -1295,6 +1301,7 @@ function _resetMoodCapacity() {
                 }
             }
         } catch (_) {}
+        try { _updateBioGuardBeacon(); } catch (_) {}
     }
 
     function _start() {
@@ -1308,6 +1315,90 @@ function _resetMoodCapacity() {
         _start();
     }
 })();
+
+/** Push normalized real question difficulty onto Sprout Isle's FIFO queue (consumed per new tree). */
+function _pushSproutSolveDifficulty(subject, qElo) {
+    try {
+        if (typeof window === 'undefined') return;
+        const qMap = window.__sproutSolveQueue || (window.__sproutSolveQueue = { physics: [], chemistry: [], maths: [] });
+        const bucket = qMap[subject];
+        if (!Array.isArray(bucket)) return;
+        const elo = Number(qElo);
+        const norm = isFinite(elo) ? Math.max(0.05, Math.min(1, (elo - 900) / 1100)) : 0.45;
+        bucket.push(norm);
+        while (bucket.length > 16) bucket.shift();
+    } catch (_) {}
+}
+
+/** Sync #bio-guard-beacon in sidebar chrome (hidden when healthy <30% CNS and daytime). */
+function _updateBioGuardBeacon() {
+    try {
+        const b = document.getElementById('bio-guard-beacon');
+        if (!b) return;
+        const deload = (typeof DeloadEngine !== 'undefined' && DeloadEngine.getTodayDeloadStatus)
+            ? DeloadEngine.getTodayDeloadStatus() : null;
+        if (deload && deload.active) {
+            b.hidden = false;
+            b.dataset.tier = 'deload';
+            b.textContent = '🌿 Deload · Protected';
+            b.title = deload.label || 'Recovery deload day active — streak preserved';
+            return;
+        }
+        const ng = (typeof NightGuard !== 'undefined' && NightGuard.getStatus) ? NightGuard.getStatus() : { active: false };
+        if (ng && ng.active) {
+            b.hidden = false;
+            b.dataset.tier = 'night';
+            b.textContent = `☾ ${ng.badge || 'Night'} ×${ng.multiplier}`;
+            b.title = ng.label || 'Night Guard active';
+            return;
+        }
+        const maxCns = (typeof CNSLoad !== 'undefined' && CNSLoad.getMaxCnsReading) ? CNSLoad.getMaxCnsReading() : 0;
+        if (maxCns >= 0.30) {
+            const pct = Math.round(maxCns * 100);
+            const [badge, mult, tier] = maxCns >= 0.90 ? ['🌑', '0.20', 'cns-high']
+                : maxCns >= 0.75 ? ['🪦', '0.40', 'cns-high']
+                : maxCns >= 0.55 ? ['🥀', '0.65', 'cns-high']
+                : ['🪴', '0.85', 'cns-warn'];
+            b.hidden = false;
+            b.dataset.tier = tier;
+            b.textContent = `${badge} CNS ${pct}% · ×${mult}`;
+            b.title = `Central nervous fatigue (${pct}%). Pacing solves protects ELO yield.`;
+            return;
+        }
+        const sd = (typeof NightGuard !== 'undefined' && NightGuard.getSleepDebtMoodPenalty)
+            ? NightGuard.getSleepDebtMoodPenalty() : 1.0;
+        if (sd < 1.0) {
+            b.hidden = false;
+            b.dataset.tier = 'night';
+            b.textContent = `☾ Sleep Debt · ×${sd}`;
+            b.title = 'Sleep-debt mood ceiling active until rest recovers';
+            return;
+        }
+        b.hidden = true;
+    } catch (_) {}
+}
+
+window.onBioGuardBeaconClick = function () {
+    try {
+        const deload = DeloadEngine.getTodayDeloadStatus?.();
+        if (deload && deload.active) {
+            window.__jmaxAppToast?.(DeloadEngine.getDeloadFrame?.() || 'Recovery deload active today.');
+            return;
+        }
+        const check = DeloadEngine.canScheduleManualDeload?.();
+        if (check && check.ok) {
+            window.scheduleDeloadFromUi?.();
+            return;
+        }
+        const ng = NightGuard.getStatus?.();
+        if (ng && ng.active) {
+            window.__jmaxAppToast?.(ng.label || 'Night Guard active — consider sealing the night.');
+            return;
+        }
+        const maxCns = Math.round((CNSLoad.getMaxCnsReading?.() || 0) * 100);
+        window.__jmaxAppToast?.(`Bio Guard: CNS ${maxCns}%${check && check.reason ? ' · ' + check.reason : ''}`);
+    } catch (_) {}
+};
 
 /** Pace tick: "where you'd want to be by now" marker on a progress bar.
  *  Purely cosmetic — never blocks the counters. */
@@ -1340,7 +1431,6 @@ function updateQuickLaunchAndArena() {
         const attackLbl = document.getElementById('dq-attack-label');
         const vaultBtn = document.getElementById('dq-vault-btn');
         const vaultLbl = document.getElementById('dq-vault-label');
-        const focusBtn = document.getElementById('dq-focus-btn');
 
         let weakest = null;
         let lowestAcc = 1.1;
@@ -1399,14 +1489,6 @@ function updateQuickLaunchAndArena() {
                 if (typeof window.switchTab === 'function') window.switchTab('errors', nav);
             };
         }
-
-        if (focusBtn && !focusBtn.dataset.bound) {
-            focusBtn.dataset.bound = '1';
-            focusBtn.onclick = () => {
-                const nav = document.querySelector('[data-tab="pomodoro"]');
-                if (typeof window.switchTab === 'function') window.switchTab('pomodoro', nav);
-            };
-        }
     } catch (_) {}
 
     try {
@@ -1439,7 +1521,112 @@ function updateQuickLaunchAndArena() {
             }
         });
     } catch (_) {}
+    try { renderArenaOrdersStrip(); } catch (_) {}
 }
+
+/**
+ * Render the compact "Today's Orders" strip inside #practice-subject-view
+ * combining Daily Bounty Boss, Directive Conquest Headline (1.5x LU),
+ * 2 side quests, and any pending Voltage Spin reward — keeping idle state clean.
+ */
+export function renderArenaOrdersStrip() {
+    const strip = document.getElementById('arena-orders-strip');
+    if (!strip) return;
+    let dirState = null;
+    try { dirState = Directive && Directive.getState ? Directive.getState() : null; } catch (_) {}
+    const hasBounty = !!(AppState.bounty && !AppState.bounty.done && AppState.bounty.active && AppState.bounty.questionId);
+    if (!dirState && !hasBounty) {
+        strip.hidden = true;
+        strip.innerHTML = '';
+        return;
+    }
+
+    const chips = [];
+    if (hasBounty) {
+        const bq = (AppState.questionBank || []).find(item => item && item.id != null && String(item.id) === String(AppState.bounty.questionId));
+        const bPlace = bq ? (bq.chapter || bq.subject || 'Boss') : 'Boss';
+        const bTime = AppState.bounty.timeLimit ? formatTime(AppState.bounty.timeLimit) : '';
+        chips.push(`<button type="button" class="orders-chip orders-chip--bounty" onclick="openDailyBounty()" title="Launch Daily Bounty Boss for 3× payoff">` +
+            `<span class="oc-ico">⚔️</span><span class="oc-label">Bounty: ${escapeHtml(bPlace)}</span>` +
+            `${bTime ? `<span class="oc-meta">${escapeHtml(bTime)}</span>` : ''}</button>`);
+    }
+
+    if (dirState) {
+        if (dirState.mockDay) {
+            chips.push(`<span class="orders-chip orders-chip--conquest ${dirState.mockDay.done ? 'is-done' : ''}">` +
+                `<span class="oc-ico">${dirState.mockDay.done ? '✓' : '📝'}</span>` +
+                `<span class="oc-label">${dirState.mockDay.done ? 'Mock Day Cleared' : 'Mock Day Target'}</span></span>`);
+        } else {
+            const h = dirState.headline;
+            if (h && h.chapter) {
+                const need = Math.max(1, Number(h.luNeeded) || 1);
+                const prog = Math.min(need, Math.round(Number(h.prog) || 0));
+                const meta = h.done ? '✓ Secured' : `${prog}/${need} LU · 1.5×`;
+                chips.push(`<button type="button" class="orders-chip orders-chip--conquest ${h.done ? 'is-done' : ''}" ` +
+                    `onclick="window.__jumpToConquestChapter && window.__jumpToConquestChapter()" title="Jump to Conquest Chapter (pays 1.5× LU today)">` +
+                    `<span class="oc-ico">${h.done ? '✓' : '🎯'}</span>` +
+                    `<span class="oc-label">${escapeHtml(h.chapter)}</span>` +
+                    `<span class="oc-meta">${escapeHtml(meta)}</span></button>`);
+            }
+            const qs = Array.isArray(dirState.quests) ? dirState.quests : [];
+            qs.forEach(q => {
+                if (!q) return;
+                const tgt = Math.max(1, Number(q.target) || 1);
+                const pr = Math.min(tgt, Number(q.prog) || 0);
+                const meta = q.done ? '✓' : `${pr}/${tgt}`;
+                chips.push(`<span class="orders-chip orders-chip--quest ${q.done ? 'is-done' : ''}">` +
+                    `<span class="oc-ico">${q.done ? '✓' : '◇'}</span>` +
+                    `<span class="oc-label">${escapeHtml(q.label || '')}</span>` +
+                    `<span class="oc-meta">${escapeHtml(meta)}</span></span>`);
+            });
+        }
+    }
+
+    if (chips.length === 0 && !(dirState && dirState.spinPending)) {
+        strip.hidden = true;
+        strip.innerHTML = '';
+        return;
+    }
+
+    let remText = '';
+    if (dirState) {
+        if (dirState.fullCleared) remText = 'CLEARED ✓';
+        else if (dirState.recoveryDay) remText = 'RECOVERY DAY';
+        else {
+            const rem = Directive && Directive.problemsRemaining ? Directive.problemsRemaining() : 0;
+            remText = rem > 0 ? `~${rem} left` : 'DONE ✓';
+        }
+    } else if (hasBounty) {
+        remText = 'BOSS ACTIVE';
+    }
+
+    const spinBtn = (dirState && dirState.spinPending)
+        ? `<button type="button" class="orders-spin-btn" onclick="window.DIRECTIVE_UI && window.DIRECTIVE_UI.spin()">🎁 Voltage Spin</button>`
+        : '';
+
+    strip.innerHTML =
+        `<div class="orders-head">` +
+            `<span class="orders-kicker">TODAY'S ORDERS</span>` +
+            `<span class="orders-rem ${dirState && dirState.fullCleared ? 'is-cleared' : ''}">${escapeHtml(remText)}</span>` +
+        `</div>` +
+        `<div class="orders-chips">${chips.join('')}</div>` +
+        `${spinBtn ? `<div class="orders-actions">${spinBtn}</div>` : ''}`;
+    strip.hidden = false;
+}
+window.renderArenaOrdersStrip = renderArenaOrdersStrip;
+window.__jumpToConquestChapter = function () {
+    try {
+        const s = Directive && Directive.getState ? Directive.getState() : null;
+        const h = s && s.headline;
+        if (!h || !h.subject || !h.chapter) return;
+        const subj = normSubjKeyStrict(h.subject) || String(h.subject || '').trim().toLowerCase();
+        selectSubject(subj);
+        const list = (AppState.chapters && AppState.chapters[subj]) || [];
+        const target = String(h.chapter).trim().toLowerCase();
+        const match = list.find(c => String(c || '').trim().toLowerCase() === target) || h.chapter;
+        openChapterDetail(match);
+    } catch (_) {}
+};
 
 export async function updateUI() {
     // ── Daily Directive heat (v2): meters are denominated in Load Units once
@@ -1479,6 +1666,7 @@ export async function updateUI() {
             if (_sdPenalty < 1.0) AppState.moodMultiplier = Math.min(AppState.moodMultiplier, _sdPenalty);
         }
     } catch (_) {}
+    try { _updateBioGuardBeacon(); } catch (_) {}
 
     let totalSolved = solved.physics + solved.chemistry + solved.maths;
     let totalTgt = AppState.activeTargets.physics + AppState.activeTargets.chemistry + AppState.activeTargets.maths;
@@ -5520,7 +5708,8 @@ export function startPracticeWithQuestion(questions, index, opts = null) {
     }
     // Standard list entry — a mode left armed (e.g. ✕-closed mid-run) must not
     // leak its footer/nav state into this session.
-    SessionRecap.reset();
+    const firstQ = Array.isArray(questions) ? questions[index] || questions[0] : null;
+    _resetSessionRecap({ subject: firstQ && firstQ.subject, chapter: firstQ && firstQ.chapter, mode: 'standard' });
     AppState.practiceFlowMode = 'standard';
     AppState._flowSessionActive = false;
     _stampServedMode('standard');
@@ -5564,9 +5753,11 @@ export function getHistoricalBountyTimeLimit(q) {
  */
 export function refreshBountyRail() {
     const btn = document.getElementById('bounty-rail-btn');
-    if (!btn) return;
-    const pending = !AppState.bounty.done && AppState.bounty.active && !!AppState.bounty.questionId;
-    btn.style.display = pending ? 'inline-block' : 'none';
+    if (btn) {
+        const pending = !AppState.bounty.done && AppState.bounty.active && !!AppState.bounty.questionId;
+        btn.style.display = pending ? 'inline-block' : 'none';
+    }
+    try { renderArenaOrdersStrip(); } catch (_) {}
 }
 
 /** User-facing opener — explains itself when nothing is live instead of dying quietly. */
@@ -5614,7 +5805,7 @@ export function tryAssignDailyBounty(questionId) {
     window._bountyQuestion = q;
     window._bountyTimeLimit = AppState.bounty.timeLimit;
     AppState.bountyMode = true;
-    SessionRecap.reset();
+    _resetSessionRecap({ subject: q && q.subject, chapter: q && q.chapter, mode: 'hardcore' });
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
 
@@ -5635,6 +5826,8 @@ export function tryAssignDailyBounty(questionId) {
             AppState.currentQ.status = 'wrong';
             saveAllAsync().catch(console.error);
             AppState.practiceSubmittedFlags[0] = true;
+            _recordSessionRecap(q, false, AppState.practiceSeconds);
+            try { SessionRecap.noteElo(q, -15); } catch (_) {}
             // ⏱ Converge the timed-out bounty attempt's practice time into the
             // daily/subjective study counters (runs exactly once — flag is true).
             _injectPracticeTimeIntoStudySecs();
@@ -5684,6 +5877,8 @@ export function evaluateBountyOutcome(wasCorrect) {
     const q = window._bountyQuestion;
     if (!q) return;
     window._bountyQuestion = null;
+    window._lastBountyRecap = { won: !!wasCorrect };
+    try { SessionRecap.noteElo(q, wasCorrect ? 30 : -15); } catch (_) {}
     AppState.bountyMode = false;
     if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
 
@@ -5768,7 +5963,7 @@ function _armBountySession(q) {
     window._bountyQuestion = q;
     window._bountyTimeLimit = AppState.bounty.timeLimit;
     AppState.bountyMode = true;
-    SessionRecap.reset();
+    _resetSessionRecap({ subject: q && q.subject, chapter: q && q.chapter, mode: 'hardcore' });
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
 
@@ -5789,6 +5984,8 @@ function _armBountySession(q) {
             AppState.currentQ.status = 'wrong';
             saveAllAsync().catch(console.error);
             AppState.practiceSubmittedFlags[0] = true;
+            _recordSessionRecap(q, false, AppState.practiceSeconds);
+            try { SessionRecap.noteElo(q, -15); } catch (_) {}
             // ⏱ Converge the timed-out bounty attempt's practice time into the
             // daily/subjective study counters (runs exactly once — flag is true).
             _injectPracticeTimeIntoStudySecs();
@@ -6089,7 +6286,7 @@ function _pqSyncState() {
             try { _ensureStreakLoop(); } catch (_) {}
         }
         const isFreeResponse = (!q || (q.type !== 'mcq' && q.type !== 'numeric'));
-        modal.classList.toggle('pq-is-free-response', (!q || q.type !== 'numeric'));
+        modal.classList.toggle('pq-is-free-response', isFreeResponse);
 
         const hintEl = document.getElementById('pq-hold-hint');
         if (hintEl) {
@@ -6098,7 +6295,7 @@ function _pqSyncState() {
             } else if (isFreeResponse) {
                 hintEl.textContent = 'HOLD 800MS // DECRYPT';
             } else {
-                hintEl.textContent = 'HOLD 800MS // LOCK-IN';
+                hintEl.textContent = 'HOLD 800MS · OR TAP LOCK-IN';
             }
         }
     } catch (_) {}
@@ -6153,14 +6350,58 @@ function _pqBindConfidence() {
 
     document.addEventListener('keydown', (e) => {
         if (e.defaultPrevented || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
-        if (!/^[1-3]$/.test(e.key)) return;
         const tag = (e.target && e.target.tagName) || '';
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
         const modal = document.getElementById('practice-modal');
         if (!modal || !modal.classList.contains('active') || _pqChromeOverlayOpen()) return;
-        e.preventDefault();
-        if (modal.getAttribute('data-pq-state') === 'answered') _pqApplyGrade(Number(e.key));
-        else _pqSetConfidence(_PQ_CONF_LEVEL[e.key]);
+        if (document.body.classList.contains('session-recap-open')) return;
+        const state = modal.getAttribute('data-pq-state');
+
+        if (/^[1-3]$/.test(e.key)) {
+            e.preventDefault();
+            if (state === 'answered') _pqApplyGrade(Number(e.key));
+            else _pqSetConfidence(_PQ_CONF_LEVEL[e.key]);
+            return;
+        }
+
+        const q = AppState.currentQ;
+        if (state === 'solving' && q && q.type === 'mcq' && /^[a-d]$/i.test(e.key)) {
+            const idx = e.key.toUpperCase().charCodeAt(0) - 65;
+            const opts = document.querySelectorAll('#practice-modal-content .mcq-option');
+            if (opts[idx]) {
+                e.preventDefault();
+                opts[idx].click();
+            }
+            return;
+        }
+
+        if (e.key === 'Enter' || e.key === ' ') {
+            const isBtn = tag === 'BUTTON' || (e.target && e.target.getAttribute && e.target.getAttribute('role') === 'button');
+            if (isBtn) return;
+            if (state === 'solving') {
+                const isMulti = Array.isArray(q && q.correctAnswer);
+                const hasMcqSel = q && q.type === 'mcq' && (isMulti ? (Array.isArray(AppState.selectedMcq) && AppState.selectedMcq.length > 0) : !!AppState.selectedMcq);
+                const numEl = document.getElementById('numeric-answer-input');
+                const hasNumVal = q && q.type === 'numeric' && numEl && numEl.value.trim().length > 0;
+                if (hasMcqSel || hasNumVal) {
+                    e.preventDefault();
+                    practiceSubmit();
+                }
+            } else if (state === 'answered' && !document.getElementById('text-correct-btn')) {
+                e.preventDefault();
+                if (typeof window.continuePractice === 'function') window.continuePractice();
+            }
+        }
+    });
+
+    document.addEventListener('dblclick', (e) => {
+        const optEl = e.target && e.target.closest && e.target.closest('#practice-modal-content .mcq-option');
+        if (!optEl) return;
+        const modal = document.getElementById('practice-modal');
+        if (!modal || !modal.classList.contains('active') || modal.getAttribute('data-pq-state') !== 'solving') return;
+        const q = AppState.currentQ;
+        if (!q || q.type !== 'mcq' || Array.isArray(q.correctAnswer) || !AppState.selectedMcq) return;
+        practiceSubmit();
     });
 
     document.addEventListener('click', (e) => {
@@ -6210,10 +6451,18 @@ function _pqRenderDiag() {
         ? `${before}% → ${Math.round(after)}%`
         : (after != null ? `${Math.round(after)}%` : '—');
     const grade = q.selfGrade && Number(q.selfGrade.g);
+    const calCall = elo && elo.calibrationCall;
+    const calTag = calCall === 'snipe'
+        ? '<span class="pq-diag-cal pq-cal-snipe">CALIBRATED SNIPE (+12%)</span>'
+        : calCall === 'trap'
+            ? '<span class="pq-diag-cal pq-cal-trap">OVERCONFIDENT TRAP (−18%)</span>'
+            : (elo && elo.confidenceUsed != null)
+                ? `<span class="pq-diag-cal">${calCall === 'shaky' ? 'SHAKY SAVE (−5%)' : 'CALIBRATED'}</span>`
+                : '';
     const gradeBtn = (g, label) =>
         `<button type="button" data-pq-grade="${g}" class="${grade === g ? 'is-set' : ''}" aria-pressed="${grade === g}"><span class="t-num">[${g}]</span> ${label}</button>`;
     el.innerHTML = `
-        <div class="pq-diag-kicker">DIAGNOSTIC AUDIT</div>
+        <div class="pq-diag-kicker"><span>DIAGNOSTIC AUDIT</span>${calTag}</div>
         <div class="pq-diag-grid">
             <span class="pq-diag-field"><i>TIME</i><b>${timeTxt}</b></span>
             <span class="pq-diag-field"><i>ELO</i><b>${eloTxt}</b></span>
@@ -6991,6 +7240,21 @@ export function renderPracticeQuestionModal() {
             toggleMcqOption(this, optionText);
         });
     });
+    const _numInputEl = document.getElementById('numeric-answer-input');
+    if (_numInputEl) {
+        const _submitBtn = document.getElementById('practice-submit-btn');
+        const _syncNumReady = () => {
+            if (_submitBtn) _submitBtn.classList.toggle('is-ready', _numInputEl.value.trim().length > 0);
+        };
+        _syncNumReady();
+        _numInputEl.addEventListener('input', _syncNumReady);
+        _numInputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                practiceSubmit();
+            }
+        });
+    }
     try { _updatePracticeHUD(); } catch (_) {}
     try { _pqArmChromeFade(); } catch (_) {}
     try { _pqSyncState(); } catch (_) {}
@@ -7011,6 +7275,18 @@ export function toggleMcqOption(element, optionText) {
         element.classList.toggle('selected');
         const allSelected = document.querySelectorAll('.mcq-option.selected');
         AppState.selectedMcq = Array.from(allSelected).map(el => el.dataset.option);
+    }
+
+    const submitBtn = document.getElementById('practice-submit-btn');
+    if (submitBtn && AppState.currentQ && AppState.currentQ.type === 'mcq' && Array.isArray(AppState.currentQ.options) && AppState.currentQ.options.length > 0) {
+        const hasSel = isMulti ? (Array.isArray(AppState.selectedMcq) && AppState.selectedMcq.length > 0) : !!AppState.selectedMcq;
+        submitBtn.style.display = hasSel ? 'inline-block' : 'none';
+        if (hasSel) {
+            submitBtn.innerText = 'Lock In Answer';
+            submitBtn.classList.add('is-ready');
+        } else {
+            submitBtn.classList.remove('is-ready');
+        }
     }
 }
 
@@ -7848,18 +8124,51 @@ function _eloTargetSeconds(q) {
     return mins * 60;
 }
 
+function _resetSessionRecap(ctx) {
+    try { SessionRecap.reset(); } catch (_) {}
+    AppState._pqPendingSelfReportByIdx = {};
+    window._lastBountyRecap = null;
+    const c = ctx || {};
+    const subj = c.subject ? _normalizeSubjectKey(c.subject) : null;
+    const globalElo = Number(AppState.elo && AppState.elo.global) || 1200;
+    const subjElo = subj && AppState.elo ? (Number(AppState.elo[subj]) || 1200) : globalElo;
+    AppState._recapBaseline = {
+        subject: subj || 'physics',
+        chapter: c.chapter || null,
+        mode: c.mode || 'standard',
+        subjectElo: subjElo,
+        globalElo,
+        air: _computeJeeAdvAir(globalElo),
+    };
+}
+
 function _noteSessionSkip(q) {
-    if (!q || AppState.bountyMode) return;
+    if (!q) return;
+    if (AppState.bountyMode) {
+        try { SessionRecap.recordSkip(q, { mode: 'hardcore' }); } catch (_) {}
+        return;
+    }
     try { SessionRecap.recordSkip(q, { mode: _activeModeForQuestion(q) }); } catch (_) {}
 }
 
 function _noteSessionElo(q, eloResult) {
-    if (!q || !eloResult || AppState.bountyMode) return;
+    if (!q || !eloResult) return;
     try { SessionRecap.noteElo(q, eloResult.deltaSubject); } catch (_) {}
 }
 
 function _recordSessionRecap(q, correct, secs) {
-    if (!q || AppState.bountyMode) return;
+    if (!q) return;
+    if (AppState.bountyMode) {
+        try {
+            SessionRecap.record(q, {
+                correct: !!correct,
+                secs: Number(secs) || 0,
+                targetSecs: Number(_eloTargetSeconds(q)) || 0,
+                mode: 'hardcore',
+            });
+        } catch (_) {}
+        return;
+    }
     try {
         SessionRecap.record(q, {
             correct: !!correct,
@@ -7868,6 +8177,73 @@ function _recordSessionRecap(q, correct, secs) {
             mode: _activeModeForQuestion(q),
         });
     } catch (_) {}
+}
+
+function _buildRecapPlayOptions(tone) {
+    const base = AppState._recapBaseline || null;
+    const bounty = window._lastBountyRecap || null;
+    window._lastBountyRecap = null;
+    const curGlobal = Number(AppState.elo && AppState.elo.global) || 1200;
+    const airAfter = _computeJeeAdvAir(curGlobal);
+    let airDeltaText = '';
+    if (base && isFinite(base.air) && isFinite(airAfter)) {
+        const beforeRounded = Math.round(base.air);
+        const afterRounded = Math.round(airAfter);
+        if (beforeRounded !== afterRounded) {
+            const diff = beforeRounded - afterRounded;
+            const arrow = diff > 0 ? `↑${Math.abs(diff).toLocaleString('en-IN')}` : `↓${Math.abs(diff).toLocaleString('en-IN')}`;
+            airDeltaText = `AIR ${_formatAir(airAfter)} (${arrow})`;
+        } else {
+            airDeltaText = `AIR ${_formatAir(airAfter)}`;
+        }
+    }
+    const subj = (base && base.subject) || _normalizeSubjectKey(AppState.practiceFilterSubject || (AppState.currentQ && AppState.currentQ.subject) || 'physics') || 'physics';
+    const rating = (AppState.elo && Number(AppState.elo[subj])) || curGlobal;
+    const nextThresh = _getNextTierThreshold(rating);
+    const curTier = getRankTierDetails(rating);
+    const nextName = _getNextTierName(rating);
+    let tierDeltaText = '';
+    if (nextThresh != null) {
+        const gap = Math.max(0, Math.ceil(nextThresh - rating));
+        tierDeltaText = `+${gap} to ${nextName}`;
+    } else {
+        tierDeltaText = `👑 ${curTier.name}`;
+    }
+    const badgeText = bounty
+        ? (bounty.won ? '⚔️ Bounty Claimed' : '⚔️ Bounty Failed')
+        : '';
+
+    const extras = {
+        badgeText,
+        airDeltaText,
+        tierDeltaText,
+        onRun3More: () => {
+            const bank = Array.isArray(AppState.questionBank) ? AppState.questionBank : [];
+            const _isMockQ = (q) => (typeof Mocks !== 'undefined' && Mocks && typeof Mocks.isMockQuestion === 'function')
+                ? Mocks.isMockQuestion(q)
+                : !!(q && (q.isMock || q.mockId || q.source === 'mock'));
+            const candidates = bank.filter(q => {
+                if (!q || _isMockQ(q) || q.modeRetired) return false;
+                if (base && base.subject && _normalizeSubjectKey(q.subject) !== base.subject) return false;
+                if (base && base.chapter && q.chapter !== base.chapter) return false;
+                return q.status !== 'error' && q.status !== 'wrong';
+            });
+            const pool = candidates.length ? candidates : bank.filter(q => q && !_isMockQ(q) && q.status !== 'error' && q.status !== 'wrong');
+            if (!pool.length) {
+                (window.__jmaxAppToast || alert)('No more queued practice questions right now!');
+                return;
+            }
+            const unsolved = pool.filter(q => q.status !== 'solved');
+            const ordered = (unsolved.length ? unsolved : pool).slice(0, 3);
+            startPracticeWithQuestion(ordered, 0);
+        },
+        onSealNight: () => {
+            try { if (window.TuckIn && typeof window.TuckIn.open === 'function') window.TuckIn.open({ source: 'recap' }); } catch (_) {}
+        },
+    };
+    const opts = { tone: tone || 'night', extras };
+    if (bounty) opts.bounty = bounty;
+    return opts;
 }
 
 /**
@@ -8131,6 +8507,7 @@ function _applyFlowSlider(value, opts) {
     if (AppState._flowSessionActive) {
         AppState.practiceFlowMode = mode;
         _modeAdaptive.targetPwin = _flowPWinForValue(next);
+        try { syncLockinMode(mode); } catch (_) {}
     }
     window.__flowSliderMode = mode;
 
@@ -8648,15 +9025,13 @@ function _renderModeFooter() {
 }
 
 function _showModeContinueButton() {
-    const _contBtn = document.getElementById('practice-continue-btn');
-    if (_contBtn) _contBtn.style.display = 'none';
-    const _skipBtn = document.getElementById('practice-skip-btn');
-    if (_skipBtn) { _skipBtn.style.display = ''; _skipBtn.title = 'Next Question'; }
-    if (false) {
     const cont = document.getElementById('practice-continue-btn');
-    if (cont) cont.style.display = '';
+    if (cont) {
+        cont.textContent = 'Next Question →';
+        cont.style.display = '';
+    }
     const skip = document.getElementById('practice-skip-btn');
-    if (skip) skip.style.display = 'none'; }
+    if (skip) { skip.style.display = ''; skip.title = 'Next Question'; }
 }
 
 function _hideModeContinueButton() {
@@ -8778,7 +9153,7 @@ function _setPracticeMode(mode) {
     const value = _applyFlowSlider(requested);
     const resolved = _flowModeForValue(value);
 
-    SessionRecap.reset();
+    _resetSessionRecap({ subject: AppState.practiceFilterSubject || (AppState.currentQ && AppState.currentQ.subject) || 'physics', mode: resolved });
     AppState._flowSessionActive = true;
     AppState.practiceFlowMode = resolved;
     _stampServedMode(resolved);
@@ -8829,7 +9204,7 @@ function _setPracticeMode(mode) {
 
 /** Exit practice mode back to standard filter-by-status. */
 function _exitPracticeMode() {
-    SessionRecap.reset();
+    _resetSessionRecap();
     AppState.practiceFlowMode = 'standard';
     AppState._flowSessionActive = false;
     _stampServedMode('standard');
@@ -9307,8 +9682,13 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
             result.confidenceUsed = confPF;
             if (dr.rawSubjectDelta < 0 && confPF >= CONFIDENCE_ANCHORS.sure) {
                 dr.rawSubjectDelta = Math.round(dr.rawSubjectDelta * 1.18);
+                result.calibrationCall = 'trap';
+            } else if (dr.rawSubjectDelta > 0 && confPF >= CONFIDENCE_ANCHORS.sure) {
+                dr.rawSubjectDelta = Math.round(dr.rawSubjectDelta * 1.12);
+                result.calibrationCall = 'snipe';
             } else if (dr.rawSubjectDelta > 0 && confPF <= CONFIDENCE_ANCHORS.guess) {
                 dr.rawSubjectDelta = Math.round(dr.rawSubjectDelta * 0.95);
+                result.calibrationCall = 'shaky';
             }
         }
 
@@ -9321,6 +9701,13 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         }
         result.rAtSolve = gateF.r;
 
+        // Deep Work Block multiplier (1.5× in timed practice / active Lock-In; 0.75× distraction only damps gains)
+        const _muBlockF = _getDeepWorkBlockMultiplier();
+        if (_muBlockF > 1 || (_muBlockF < 1 && dr.rawSubjectDelta > 0)) {
+            dr.rawSubjectDelta = Math.round(dr.rawSubjectDelta * _muBlockF);
+        }
+        result.deepWorkMultiplier = _muBlockF;
+
         // Applied BEFORE the AppState.elo mutation — previously the rating was
         // written with the UN-multiplied delta and the multiplier only mutated
         // the local dr object afterwards, so Hardcore 1.8× never landed.
@@ -9332,14 +9719,14 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         const oldE_s = E_s;
         let newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + dr.rawSubjectDelta));
 
-        // ── CNS Load: stepped yield multiplier on subject ELO gain only (NOT qElo drift) ──
+        // ── CNS Load: stepped yield multiplier on POSITIVE subject ELO gain only (losses stay full!) ──
         // Skip CNS computation when night guard Tier 3 is active — the night guard
         // ×0.20 penalty supersedes CNS and avoids multiplicative stacking to ~0.05×.
         const _nightForceCnsPre = NightGuard.shouldForceCns();
         if (!_nightForceCnsPre) {
             const _cns = CNSLoad.computeCnsLoad(safeSubject, studySecs);
             const _cnsMult = _cns.multiplier;
-            if (_cnsMult < 1.0) {
+            if (_cnsMult < 1.0 && dr.rawSubjectDelta > 0) {
                 const _cnsDelta = Math.round(dr.rawSubjectDelta * _cnsMult);
                 newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + _cnsDelta));
             }
@@ -9350,13 +9737,14 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
             result.cnsTauCap = _cns.tauCap;
         }
 
-        // ── Flow Lifeline: if this solve was lifeline-assisted, multiply
-        // subject ELO gain by 0.65 and tag for telemetry. ──
+        // ── Flow Lifeline: multiply POSITIVE subject ELO gain by 0.65 (never shields losses) ──
         if (window.__lastQuestionPickedWithLifeline) {
-            const _preLifelineElo = AppState.elo[safeSubject];
-            const _lifelineDelta = Math.round((newE_s - E_s) * 0.65);
-            AppState.elo[safeSubject] = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + _lifelineDelta));
-            newE_s = AppState.elo[safeSubject];
+            const _preLifeDelta = newE_s - E_s;
+            if (_preLifeDelta > 0) {
+                const _lifelineDelta = Math.round(_preLifeDelta * 0.65);
+                newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + _lifelineDelta));
+            }
+            AppState.elo[safeSubject] = newE_s;
             result.lifelineActive = true;
             result.lifelineMultiplier = 0.65;
             if (questionObj) questionObj._lifelineAssisted = true;
@@ -9365,11 +9753,14 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
             try { Lifeline.resetAfterSolve(); } catch (_) {}
         }
 
-        // ── Post-23:00 Diminishing Returns Guard: late-night ELO yield degradation ──
+        // ── Post-23:00 Diminishing Returns Guard: damps late-night ELO GAINS only ──
         const _nightMult = NightGuard.getMultiplier();
         if (_nightMult < 1.0) {
-            const _nightDelta = Math.round((newE_s - E_s) * _nightMult);
-            newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + _nightDelta));
+            const _preNightDelta = newE_s - E_s;
+            if (_preNightDelta > 0) {
+                const _nightDelta = Math.round(_preNightDelta * _nightMult);
+                newE_s = Math.max(0, Math.min(ELO_GEM_STAMP_TUNING.ceiling, E_s + _nightDelta));
+            }
             result.nightGuardActive = true;
             result.nightGuardMultiplier = _nightMult;
         }
@@ -9504,8 +9895,16 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
     let confMultL = 1;
     if (confPL != null) {
         result.confidenceUsed = confPL;
-        if (sBlend <= 0.001 && confPL >= CONFIDENCE_ANCHORS.sure) confMultL = 1.18;       // overconfident-wrong
-        else if (sBlend >= 0.999 && confPL <= CONFIDENCE_ANCHORS.guess) confMultL = 0.95; // underconfident-right
+        if (sBlend <= 0.001 && confPL >= CONFIDENCE_ANCHORS.sure) {
+            confMultL = 1.18;       // overconfident-wrong
+            result.calibrationCall = 'trap';
+        } else if (sBlend >= 0.999 && confPL >= CONFIDENCE_ANCHORS.sure) {
+            confMultL = 1.12;       // calibrated-snipe bonus
+            result.calibrationCall = 'snipe';
+        } else if (sBlend >= 0.999 && confPL <= CONFIDENCE_ANCHORS.guess) {
+            confMultL = 0.95;       // underconfident-right
+            result.calibrationCall = 'shaky';
+        }
     }
 
     // ── Step E: Asymmetric Antagonistic Scaling Curves (graded blend) ──
@@ -9559,13 +9958,13 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
 
     let newE_s = Math.max(0, E_s + rawDelta);
 
-    // ── CNS Load: stepped yield multiplier on subject ELO gain only (legacy R_perf path) ──
+    // ── CNS Load: stepped yield multiplier on POSITIVE subject ELO gain only (legacy R_perf path) ──
     // Skip CNS when night guard Tier 3 is active to prevent multiplicative stacking.
     const _ngLegacyForcePre = NightGuard.shouldForceCns();
     if (!_ngLegacyForcePre) {
         const _cnsLegacy = CNSLoad.computeCnsLoad(safeSubject, studySecs);
         const _cnsLgMult = _cnsLegacy.multiplier;
-        if (_cnsLgMult < 1.0) {
+        if (_cnsLgMult < 1.0 && rawDelta > 0) {
             const _cnsLgDelta = Math.round(rawDelta * _cnsLgMult);
             newE_s = Math.max(0, E_s + _cnsLgDelta);
         }
@@ -9576,11 +9975,14 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         result.cnsTauCap = _cnsLegacy.tauCap;
     }
 
-    // ── Post-23:00 Diminishing Returns Guard (legacy path) ──
+    // ── Post-23:00 Diminishing Returns Guard (legacy path: gains only) ──
     const _ngLegacyMult = NightGuard.getMultiplier();
     if (_ngLegacyMult < 1.0) {
-        const _ngLegacyDelta = Math.round(rawDelta * _ngLegacyMult);
-        newE_s = Math.max(0, E_s + _ngLegacyDelta);
+        const _preNgLgDelta = newE_s - E_s;
+        if (_preNgLgDelta > 0) {
+            const _ngLegacyDelta = Math.round(_preNgLgDelta * _ngLegacyMult);
+            newE_s = Math.max(0, E_s + _ngLegacyDelta);
+        }
         result.nightGuardActive = true;
         result.nightGuardMultiplier = _ngLegacyMult;
     }
@@ -9691,7 +10093,9 @@ function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth,
         // scoreOutcome arrives as 1/0 from every caller — comparing it to the string
 // 'correct' was ALWAYS false, so CNS telemetry logged every solve as incorrect
 // (accuracy-collapse component dead, anti-cheat veto trivially satisfied).
-CNSLoad.logSolve(safeSubject, S_in >= 0.999, actualTime || 0, T_avg);
+        CNSLoad.logSolve(safeSubject, S_in >= 0.999, actualTime || 0, T_avg);
+        _pushSproutSolveDifficulty(safeSubject, oldQ);
+        _updateBioGuardBeacon();
     } catch (_) { /* never block ELO migration */ }
 
     // Chapter ability vector + closing uncertainty telemetry.
@@ -10380,9 +10784,10 @@ function injectEloShiftChip(eloResult, options = {}) {
             `<span class="elo-shift-tier">[${label}]</span>`;
         headerSlot.appendChild(headerChip);
 
-        // Auto-remove only in SR-drawer slot; in main practice footer, persist until next question/close
-        if (headerSlot.id === 'sr-elo-header-slot') {
-            headerSlot._chipWipeTimer = setTimeout(() => { headerSlot.innerHTML = ''; headerSlot._chipWipeTimer = null; }, 4200);
+        // Persist header chip in both practice and SR drawers until close / next card
+        if (headerSlot.id === 'sr-elo-header-slot' && headerSlot._chipWipeTimer) {
+            clearTimeout(headerSlot._chipWipeTimer);
+            headerSlot._chipWipeTimer = null;
         }
     }
 
@@ -10446,6 +10851,8 @@ function _enterSelfReportFlow(userSelectedOption) {
     AppState._frozenTextQSeconds = AppState.practiceSeconds;
     if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
     AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
+    AppState._pqPendingSelfReportByIdx = AppState._pqPendingSelfReportByIdx || {};
+    AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex] = true;
     AppState.currentQ.timeTaken = AppState._frozenTextQSeconds;
     // A reveal alone never marks the question — only the self-report does.
     // Reset 'wrong'/'error' to 'unsolved' so the re-render shows the neutral
@@ -10675,10 +11082,10 @@ export function practiceSubmit() {
             userElo: _modePerf.userElo,
         });
         _showModeContinueButton();
-        try { noteLockinSolve(); } catch (_) {}
+        try { noteLockinSolve(isCorrect); } catch (_) {}
     } else {
         const contBtn = document.getElementById('practice-continue-btn');
-        if (contBtn && !AppState.practiceFlowMode) {
+        if (contBtn && (!AppState.practiceFlowMode || AppState.practiceFlowMode === 'standard' || AppState.bountyMode)) {
             contBtn.textContent = 'Next Question →';
             contBtn.style.display = '';
         }
@@ -10696,6 +11103,7 @@ export function addTextQuestionFollowUp() {
     container.appendChild(btnContainer);
 
     document.getElementById('text-correct-btn').onclick = () => {
+        if (AppState._pqPendingSelfReportByIdx) delete AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex];
         const wasAlreadySolved = (AppState.currentQ.status === 'solved');
         const _wasSelfGraded = !!AppState.currentQ.selfGrade;
         if (!AppState.currentQ.selfGrade) AppState.currentQ.selfGrade = { g: 3, t: Date.now() };
@@ -10742,7 +11150,7 @@ export function addTextQuestionFollowUp() {
         if (_modePerfTxt) {
             _modeNextTargetPwin(AppState.practiceFlowMode, { correct: true, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
             _showModeContinueButton();
-            try { noteLockinSolve(); } catch (_) {}
+            try { noteLockinSolve(true); } catch (_) {}
         } else {
             const contBtn = document.getElementById('practice-continue-btn');
             if (contBtn) {
@@ -10755,6 +11163,7 @@ export function addTextQuestionFollowUp() {
     };
 
     document.getElementById('text-wrong-btn').onclick = () => {
+        if (AppState._pqPendingSelfReportByIdx) delete AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex];
         const _wasSelfGraded = !!AppState.currentQ.selfGrade;
         if (!AppState.currentQ.selfGrade) AppState.currentQ.selfGrade = { g: 1, t: Date.now() };
         AppState.currentQ.frictionFlag = false;
@@ -10793,7 +11202,7 @@ export function addTextQuestionFollowUp() {
         if (_modePerfTxt) {
             _modeNextTargetPwin(AppState.practiceFlowMode, { correct: false, tau: _modePerfTxt.secs / _modePerfTxt.targetSecs, qElo: _modePerfTxt.qElo, userElo: _modePerfTxt.userElo });
             _showModeContinueButton();
-            try { noteLockinSolve(); } catch (_) {}
+            try { noteLockinSolve(false); } catch (_) {}
         } else {
             const contBtn = document.getElementById('practice-continue-btn');
             if (contBtn) {
@@ -10874,8 +11283,9 @@ export function practiceNext() {
     // (_modeAdvance) and the Skip action — there is no Next in mode. Guard
     // against stray calls (legacy hooks) so they can't double-advance.
     if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
-    if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) {
-        _noteSessionSkip(AppState.practiceQuestions[AppState.currentPracticeIndex]);
+    const _curIdx = AppState.currentPracticeIndex;
+    if (!AppState.practiceSubmittedFlags[_curIdx] || (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[_curIdx])) {
+        _noteSessionSkip(AppState.practiceQuestions[_curIdx]);
     }
     if (AppState.currentPracticeIndex + 1 < AppState.practiceQuestions.length) {
         AppState.currentPracticeIndex++;
@@ -10894,6 +11304,9 @@ export function practiceNext() {
         }
 
         renderPracticeQuestionModal();
+        if (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex] && !document.getElementById('text-correct-btn')) {
+            addTextQuestionFollowUp();
+        }
     } else {
         if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
         AppState.practiceTimer = null;
@@ -10909,8 +11322,9 @@ export function practicePrev() {
     // Flow / Hardcore mode: no Prev — review happens on the result screen only.
     if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
     if (AppState.currentPracticeIndex > 0) {
-        if (!AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) {
-            _noteSessionSkip(AppState.practiceQuestions[AppState.currentPracticeIndex]);
+        const _curIdx = AppState.currentPracticeIndex;
+        if (!AppState.practiceSubmittedFlags[_curIdx] || (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[_curIdx])) {
+            _noteSessionSkip(AppState.practiceQuestions[_curIdx]);
         }
         AppState.currentPracticeIndex--;
         AppState.practiceSeconds = 0;
@@ -10928,6 +11342,9 @@ export function practicePrev() {
         }
 
         renderPracticeQuestionModal();
+        if (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex] && !document.getElementById('text-correct-btn')) {
+            addTextQuestionFollowUp();
+        }
     }
 }
 
@@ -10956,13 +11373,16 @@ export function parkCurrentPracticeQuestion() {
 }
 window.parkCurrentPracticeQuestion = parkCurrentPracticeQuestion;
 
-export function closePracticeModal() {
+export function closePracticeModal(opts) {
+    const _skipLockinGate = !!(opts && opts.skipLockinCheck);
     // ── Lock-In gate ───────────────────────────────────────────────────────
     // If the block's clock already expired, bank it and hand off to the break
     // (consume returns true and closes the stage itself). Otherwise, closing
     // mid-block is a contract breach — ask before voiding the escrow.
-    if (consumePendingLockinExpiry()) return;
-    if (isLockinStudyRunning() && requestLockinEarlyExitConfirm()) return;
+    if (!_skipLockinGate) {
+        if (consumePendingLockinExpiry()) return;
+        if (isLockinStudyRunning() && requestLockinEarlyExitConfirm()) return;
+    }
     // Check for Hemingway Bridge abandonment candidate before resetting timer / state
     try {
         const _currIdx = AppState.currentPracticeIndex;
@@ -10987,11 +11407,30 @@ export function closePracticeModal() {
         }
     } catch (_) {}
 
+    try {
+        const _curIdx = AppState.currentPracticeIndex;
+        const _curQ = (AppState.practiceQuestions && _curIdx != null) ? AppState.practiceQuestions[_curIdx] : null;
+        if (_curQ && AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[_curIdx]) {
+            _noteSessionSkip(_curQ);
+        }
+    } catch (_) {}
+    AppState._pqPendingSelfReportByIdx = {};
+    try {
+        const _recapCtx = _buildRecapPlayOptions(recapTone);
+        if (typeof SessionRecap.setContextProvider === 'function') SessionRecap.setContextProvider(() => _recapCtx);
+    } catch (_) {}
+
     closeModalStr('practice-modal');
     let recapPromise = null;
-    if (!AppState.bountyMode) {
-        try { recapPromise = SessionRecap.play({ tone: recapTone }); } catch (_) {}
-    }
+    try { recapPromise = SessionRecap.play({ tone: recapTone }); } catch (_) {}
+    try {
+        if (recapPromise && typeof recapPromise.then === 'function') {
+            const tracked = Promise.resolve(recapPromise).finally(() => {
+                if (window.__jmaxPendingRecapPromise === tracked) window.__jmaxPendingRecapPromise = null;
+            });
+            window.__jmaxPendingRecapPromise = tracked;
+        }
+    } catch (_) {}
     _destroyLiveFlowSlider();
     AppState._flowSessionActive = false;
     _stampServedMode('standard');
@@ -11586,6 +12025,8 @@ window._ensureStreakLoop = _ensureStreakLoop;
 export function updateStreakVisualizer() {
     const numberEl = document.getElementById('streak-number');
     if (numberEl) numberEl.textContent = AppState.practiceCorrectStreak;
+    const srNumberEl = document.getElementById('sr-streak-number');
+    if (srNumberEl) srNumberEl.textContent = AppState.practiceCorrectStreak;
 }
 
 // Show the HUD streak badge for 10s after a graded answer (correct or wrong),
@@ -11716,10 +12157,20 @@ export function deactivateOverheat() {
                     showNormalGlow();
                     playCorrectSound();
                     if (overheatActive && !overheatUsed) {
-                        // keep existing overheat logic
+                        const _ohSubj = normSubjKeyStrict(AppState.currentQ && AppState.currentQ.subject);
+                        if (_ohSubj) {
+                            changeCount(_ohSubj, 2);
+                            _pqBumpSolvedDelta(2);
+                            AppState.currentQ._solvedCredit = (Number(AppState.currentQ._solvedCredit) || 0) + 2;
+                        }
+                        showSupercharged();
+                        playSuperSound();
+                        overheatUsed = true;
+                        deactivateOverheat();
                     } else {
                         if (Math.random() < 0.15) {
-                            // keep existing 15% logic
+                            showSupercharged();
+                            playSuperSound();
                         }
                     }
                 }
@@ -11801,8 +12252,6 @@ async function runNewDayCycle(todayStr) {
 
     // Flush tracking parameters for the new daily matrix cycle
     snapshotCumDayStart();
-    // ── CNS Load: reset per-day session tracking at midnight ──
-    try { CNSLoad.resetDaily(); } catch (_) {}
     // ── Night Guard: reset dismissal flag at midnight ──
     try { NightGuard.resetDaily(); } catch (_) {}
     // Fold yesterday's live counters into the permanent ledger BEFORE zeroing
@@ -11821,6 +12270,9 @@ async function runNewDayCycle(todayStr) {
     studySecs.physics = 0;
     studySecs.chemistry = 0;
     studySecs.maths = 0;
+    // Reset CNS AFTER studySecs are zeroed so the new day's baseline snapshots 0, not yesterday's total.
+    try { CNSLoad.resetDaily(); } catch (_) {}
+    try { _updateBioGuardBeacon(); } catch (_) {}
 
     await saveAllAsync().catch(console.error);
     // Mark the day settled ONLY after the zeroing+save committed — a crash
@@ -11922,10 +12374,10 @@ async function initApp() {
                 getElo: (subj) => (AppState.elo && AppState.elo[subj]) || 1200,
                 bountyQid: () => AppState.activeBountyQuestionId,
                 isBountyMode: () => !!AppState.bountyMode,
-                isMockQuestion: (q) => { try { return (typeof Mocks !== 'undefined' && Mocks.isMockQuestion) ? Mocks.isMockQuestion(q) : false; } catch (_) { return false; } },
+                isMockQuestion: (q) => { try { return isMockQuestion(q) || !!(window.MockEngine && typeof window.MockEngine.isMockQuestion === 'function' && window.MockEngine.isMockQuestion(q)); } catch (_) { return false; } },
                 isMockDay: () => { try { const d = Directive.getState(); return !!(d && d.mockDay && !d.mockDay.done); } catch (_) { return false; } },
-                isDeloadToday: () => { try { return (typeof DeloadEngine !== 'undefined' && DeloadEngine.isDeloadActive) ? DeloadEngine.isDeloadActive() : false; } catch (_) { return false; } },
-                maxCns: () => { try { return (typeof CNSLoad !== 'undefined' && CNSLoad.getCurrentLoad) ? CNSLoad.getCurrentLoad() : 0; } catch (_) { return 0; } },
+                isDeloadToday: () => { try { return (typeof DeloadEngine !== 'undefined' && DeloadEngine.isTodayDeload) ? DeloadEngine.isTodayDeload() : false; } catch (_) { return false; } },
+                maxCns: () => { try { return (typeof CNSLoad !== 'undefined' && CNSLoad.getMaxCnsReading) ? CNSLoad.getMaxCnsReading() : 0; } catch (_) { return 0; } },
                 headlineChapter: () => { try { const d = Directive.getState(); return d && d.headline && !d.headline.done ? { subject: d.headline.subject, chapter: d.headline.chapter } : null; } catch (_) { return null; } },
                 startPractice: (qs, idx, opts) => startPracticeWithQuestion(qs, idx, opts),
                 toast: (msg) => { if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast(msg); },
@@ -11988,7 +12440,10 @@ async function initApp() {
         Directive.renderSettingsPanel();
     } catch (e) { console.error('Directive boot fault:', e); }
     try {
-        document.addEventListener('jmax:directive-updated', () => { updateUI().catch(() => {}); });
+        window.addEventListener('jmax:directive-updated', () => {
+            updateUI().catch(() => {});
+            try { renderArenaOrdersStrip(); } catch (_) {}
+        });
     } catch (_) {}
 
     restoreDailyCountsIntoSolved();
@@ -13363,12 +13818,14 @@ document.addEventListener('DOMContentLoaded', function () {
   const CK = {
     built: false, sessionOpen: false,
     combo: 0, sessionCorrect: 0, sessionTarget: 1, lastStreak: 0,
-    crit: 0, critPrimed: false,
+    crit: 0, critPrimed: false, critFlashUntil: 0,
     shields: 0,
     tickerIdx: 0, tickerAt: 0,
     last: {},           // text de-dup cache
     lastP: {}, lastC: {}, // ring --p / --ring-c de-dup caches
     navBuilt: false, slowAt: 0,
+    lastHudKey: '',
+    lastSurgeKey: '',
   };
   try { CK.shields = Math.max(0, parseInt(localStorage.getItem(LS_SHIELDS) || '0', 10) || 0); } catch (e) { CK.shields = 0; }
   const persistShields = () => { try { localStorage.setItem(LS_SHIELDS, String(CK.shields)); } catch (e) {} };
@@ -13404,16 +13861,58 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function critPayout() {
+    CK.critFlashUntil = Date.now() + 2600;
     try { if (typeof window.showSupercharged === 'function') window.showSupercharged(); } catch (e) {}
     try { if (typeof window.playSuperSound === 'function') window.playSuperSound(); } catch (e) {}
+    try {
+      const stage = document.querySelector('#practice-modal.active .pq-shell, #sr-practice-overlay .sr-practice-modal');
+      if (stage && typeof window.burstEmojis === 'function') {
+        const r = stage.getBoundingClientRect();
+        window.burstEmojis(r.left + r.width / 2, r.top + Math.min(260, r.height * 0.45), 24, ['⚡', '🔥', '🛡', '✨'], 1.2);
+      }
+      if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('⚡ CRIT SURGE! +1 Streak Shield');
+    } catch (e) {}
     CK.shields += 1; persistShields();
+  }
+
+  function paintCkHud(practiceModal, srOverlay, active) {
+    const isOverheat = document.body.classList.contains('overheat-active');
+    const surge = !active ? '' : (isOverheat ? 'overheat' : (CK.critPrimed ? 'crit' : ''));
+    if (CK.lastSurgeKey !== surge) {
+      CK.lastSurgeKey = surge;
+      [practiceModal, srOverlay].forEach((el) => {
+        if (!el) return;
+        if (surge) el.setAttribute('data-ck-surge', surge);
+        else el.removeAttribute('data-ck-surge');
+      });
+    }
+    const isCritFlash = CK.critFlashUntil > Date.now();
+    const label = isCritFlash
+      ? '⚡ CRIT SURGE · +1 🛡'
+      : isOverheat
+        ? ('🌡 3× OVERHEAT · 🔥 ×' + CK.combo + ' · 🛡 ×' + CK.shields)
+        : CK.critPrimed
+          ? ('🔥 ×' + CK.combo + ' · ⚡ CRIT ARMED! · 🛡 ×' + CK.shields)
+          : ('🔥 ×' + CK.combo + ' · ⚡ ' + Math.min(100, Math.round(CK.crit)) + '% · 🛡 ×' + CK.shields);
+    const hudKey = label + '|' + (isCritFlash || CK.critPrimed ? '1' : '0') + '|' + (isOverheat ? '1' : '0');
+    if (CK.lastHudKey === hudKey) return;
+    CK.lastHudKey = hudKey;
+    ['pq-ck-hud', 'sr-ck-hud'].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.textContent = label;
+      el.classList.toggle('is-crit', isCritFlash || CK.critPrimed);
+      el.classList.toggle('is-overheat', isOverheat);
+    });
   }
 
   // ---- Fast tick: derives session / combo / crit state from live state ----
   function fastTick() {
     try {
       const modal = $('practice-modal');
-      const modalActive = !!(modal && modal.classList.contains('active'));
+      const srOverlay = $('sr-practice-overlay');
+      const srOpen = !!(srOverlay && srOverlay.parentNode);
+      const modalActive = !!(modal && modal.classList.contains('active')) || srOpen;
 
       if (modalActive) {
         if (!CK.sessionOpen) {
@@ -13422,14 +13921,19 @@ document.addEventListener('DOMContentLoaded', function () {
           CK.sessionTarget = Math.max(1, (AppState.practiceQuestions && AppState.practiceQuestions.length) || 1);
           CK.crit = 0; CK.critPrimed = false;
         }
-        // FIX: event-driven combo break — fires even when a rare streak-freeze
-        // shield saves the flame, so a wrong answer ALWAYS drops the combo.
-        if (AppState._ckComboBreak) {
+        const st = AppState.practiceCorrectStreak || 0;
+        const streakDropped = (st < CK.lastStreak && CK.lastStreak > 0);
+        // Unified miss handler: event-driven _ckComboBreak fires even when a rare
+        // streak-freeze shield saves practiceCorrectStreak, without double-penalizing.
+        if (AppState._ckComboBreak || streakDropped) {
           AppState._ckComboBreak = false;
           CK.combo = 0; CK.critPrimed = false;
-        }
-        const st = AppState.practiceCorrectStreak || 0;
-        if (st > CK.lastStreak) {
+          if (CK.shields > 0) {
+            CK.shields -= 1; persistShields();
+          } else {
+            CK.crit = Math.max(0, CK.crit - 50);
+          }
+        } else if (st > CK.lastStreak) {
           if (CK.critPrimed) { critPayout(); CK.critPrimed = false; CK.crit = 0; }
           const inc = st - CK.lastStreak;
           CK.combo += inc;
@@ -13437,23 +13941,58 @@ document.addEventListener('DOMContentLoaded', function () {
           CK.crit = Math.min(100, CK.crit + 34);
           if (CK.crit >= 100) CK.critPrimed = true;
           if (CK.combo > 0 && CK.combo % 5 === 0) { CK.shields += 1; persistShields(); }
-        } else if (st < CK.lastStreak && CK.lastStreak > 0) {
-          // FIX: a broken streak ALWAYS resets the combo. Persisted shields now
-          // save the CRIT charge, never the combo — previously shields silently
-          // swallowed every miss and the combo never reset.
-          CK.combo = 0; CK.critPrimed = false;
-          if (CK.shields > 0) {
-            CK.shields -= 1; persistShields();
-          } else {
-            CK.crit = Math.max(0, CK.crit - 50);
-          }
         }
         CK.lastStreak = st;
       } else {
         CK.sessionOpen = false;
       }
+      paintCkHud(modal, srOverlay, modalActive);
     } catch (e) { ckErr(e); }
   }
+  window.CK_ENGINE = {
+    state: () => ({
+      combo: CK.combo,
+      crit: CK.crit,
+      critPrimed: CK.critPrimed,
+      shields: CK.shields,
+      sessionOpen: CK.sessionOpen,
+    }),
+    addShield: (n = 1) => {
+      CK.shields = Math.max(0, CK.shields + (Number(n) || 0));
+      persistShields();
+      CK.lastHudKey = '';
+      paintCkHud($('practice-modal'), $('sr-practice-overlay'), CK.sessionOpen);
+      return CK.shields;
+    },
+    armCrit: () => {
+      CK.crit = 100;
+      CK.critPrimed = true;
+      CK.lastHudKey = '';
+      paintCkHud($('practice-modal'), $('sr-practice-overlay'), CK.sessionOpen);
+      return true;
+    },
+    fastTick,
+  };
+  try {
+    if (!window._hotzoneListenerBound) {
+      window._hotzoneListenerBound = true;
+      window.addEventListener('jmax:lockin-hotzone', () => {
+        try { activateOverheat(); } catch (_) {}
+        try { if (window.CK_ENGINE && typeof window.CK_ENGINE.armCrit === 'function') window.CK_ENGINE.armCrit(); } catch (_) {}
+        try { if (window.FX && window.FX.wantSound()) playSuperSound(); } catch (_) {}
+        try {
+          if (typeof burstEmojis === 'function') {
+            burstEmojis(window.innerWidth / 2, window.innerHeight * 0.35, 28, ['⚡', '🔥', '✨', '💥'], 1.4);
+          }
+        } catch (_) {}
+        try {
+          if (typeof window.__jmaxAppToast === 'function') {
+            window.__jmaxAppToast('🔥 4-SOLVE HOT ZONE · Overheat (3×) + Crit Armed!');
+          }
+        } catch (_) {}
+      });
+    }
+  } catch (_) {}
 
   // ---- Navigation helpers ----
   // The nav is static markup — a resolved hit is memoized forever; the

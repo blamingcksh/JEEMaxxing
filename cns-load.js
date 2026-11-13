@@ -91,6 +91,10 @@ function _defaultState() {
 // ==================== PERSISTENCE ====================
 
 function _load() {
+    if (typeof localStorage === 'undefined') {
+        _state = _defaultState();
+        return;
+    }
     try {
         const raw = localStorage.getItem(LS_KEY);
         if (raw) {
@@ -117,6 +121,7 @@ function _load() {
 }
 
 function _save() {
+    if (typeof localStorage === 'undefined') return;
     try { localStorage.setItem(LS_KEY, JSON.stringify(_state)); }
     catch (e) { console.warn('[cns-load] localStorage write failed (quota/private mode):', e); }
 }
@@ -165,7 +170,13 @@ function _tSeverity(subject, studySecsObj) {
     const ns = _normalizeSubjectKey(subject);
     const sub = _state && _state[ns];
     const rawSecs = Math.max(0, Math.floor(Number((studySecsObj && studySecsObj[ns]) || 0)));
-    const baseline = sub ? (sub._sessionBaselineSecs || 0) : 0;
+    let baseline = sub ? (sub._sessionBaselineSecs || 0) : 0;
+    // Self-heal if studySecs reset (e.g., midnight rollover across reload) while an old baseline remained.
+    if (sub && baseline > rawSecs) {
+        baseline = 0;
+        sub._sessionBaselineSecs = 0;
+        _save();
+    }
     const secs = Math.max(0, rawSecs - baseline);
     const mins = secs / 60;
     if (mins <= SESSION_NORMAL_MIN) return 0;
@@ -324,12 +335,12 @@ export function computeCnsLoad(subject, studySecsObj) {
     }
 
     // ── Early-days guard: when rolling windows are too thin to produce a
-    // meaningful accuracy/τ signal, cap CNS_LOAD at 0.55 (×0.85 max). This
-    // prevents false positives from tSeverity alone driving the score. ──
+    // meaningful accuracy/τ signal, cap CNS_LOAD just below 0.55 (< 0.55 => ×0.85 max).
+    // Setting exactly 0.55 fell into YIELD_TABLE[2] ({ lo: 0.55, hi: 0.75, ×0.65 })! ──
     const sub = _state[ns];
     let _effectiveCns = cnsLoad; // may be capped below
-    if (sub && sub.accLog.length < ROLLING_10 && cnsLoad > 0.55) {
-        _effectiveCns = 0.55;
+    if (sub && sub.accLog.length < ROLLING_10 && cnsLoad >= 0.55) {
+        _effectiveCns = 0.549;
         // Re-resolve band under the cap
         for (const b of YIELD_TABLE) {
             if (_effectiveCns >= b.lo && _effectiveCns < b.hi) {
@@ -502,7 +513,7 @@ export function onPomodoroQuit(subject) {
     // subtractable with a Pomodoro quit"). We reach into the imported
     // studySecs via the global bridge set up by app.js.
     sub._sessionBaselineSecs = Math.max(0, Math.floor(
-        Number((window._studySecsForCns && window._studySecsForCns[ns]) || 0)
+        Number((typeof window !== 'undefined' && window._studySecsForCns && window._studySecsForCns[ns]) || 0)
     ));
     sub.sessionStart = null;
     _save();
@@ -537,15 +548,16 @@ export function getMaxCnsReading() {
 
 export function resetDaily() {
     if (!_state) return;
+    const studyMap = (typeof window !== 'undefined' && window._studySecsForCns) ? window._studySecsForCns : null;
     for (const s of SUBJECTS) {
         if (_state[s]) {
             _state[s].sessionStart = null;
-            // SNAPSHOT, don't zero: studySecs keep accruing across midnight,
-            // so a zeroed baseline made every post-midnight solve compute its
-            // "session length" from the WHOLE day's seconds — a spurious CNS
-            // spike for anyone grinding past 00:00.
+            _state[s].cnsReading = 0;
+            _state[s].cnsReadingTs = null;
+            // SNAPSHOT AFTER studySecs reset in runNewDayCycle: keeps intra-day reloads
+            // safe while starting a fresh day from 0 (not yesterday's accumulated secs).
             _state[s]._sessionBaselineSecs = Math.max(0, Math.floor(
-                Number((window._studySecsForCns && window._studySecsForCns[s]) || 0)
+                Number((studyMap && studyMap[s]) || 0)
             ));
         }
     }
@@ -578,4 +590,4 @@ export const CNSLoad = {
 };
 
 // Window global for cross-module and debug access
-window.__cnsLoad = CNSLoad;
+if (typeof window !== 'undefined') window.__cnsLoad = CNSLoad;

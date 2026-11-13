@@ -2270,3 +2270,98 @@ html[data-theme="observatory"] #calibration-report .calib-warmup {
   font-family: var(--font-num) !important;
   font-size: 11px !important;
 }
+
+/* ── Active Surge Exceptions (calm at rest, vivid on Crit / Overheat / Deep Work) ── */
+html[data-theme="observatory"] #practice-modal[data-ck-surge="crit"] .pq-shell,
+html[data-theme="observatory"] #sr-practice-overlay[data-ck-surge="crit"] .sr-practice-modal {
+  box-shadow: 0 0 0 1px rgba(217, 179, 106, 0.55), 0 0 30px -6px rgba(217, 179, 106, 0.38) !important;
+}
+html[data-theme="observatory"] #practice-modal[data-ck-surge="overheat"] .pq-shell,
+html[data-theme="observatory"] #sr-practice-overlay[data-ck-surge="overheat"] .sr-practice-modal {
+  box-shadow: 0 0 0 1px rgba(217, 120, 95, 0.65), 0 0 34px -6px rgba(217, 120, 95, 0.48) !important;
+}
+html[data-theme="observatory"] .ck-hud-pill.is-crit {
+  color: var(--obs-warn) !important;
+  border-color: color-mix(in srgb, var(--obs-warn) 55%, transparent) !important;
+  box-shadow: 0 0 12px -3px rgba(217, 179, 106, 0.4) !important;
+}
+html[data-theme="observatory"] .ck-hud-pill.is-overheat,
+html[data-theme="observatory"] .ck-deepwork-pill.is-active {
+  color: var(--obs-crit) !important;
+  border-color: color-mix(in srgb, var(--obs-crit) 55%, transparent) !important;
+  box-shadow: 0 0 14px -3px rgba(217, 120, 95, 0.45) !important;
+}
+
+/* ── M6: Observatory Deep-Work Beacon + Today's Orders Strip ── */
+html[data-theme="observatory"] #sidebar .deep-work-beacon {
+  margin: 0 10px 0 0 !important;
+  padding: 4px 10px !important;
+  border-radius: 4px !important;
+  font-family: var(--font-num) !important;
+  font-size: 10.5px !important;
+  letter-spacing: .12em !important;
+  color: var(--obs-ink) !important;
+  background: color-mix(in srgb, var(--obs-ink) 8%, transparent) !important;
+  border: 1px solid var(--obs-edge) !important;
+  box-shadow: none !important;
+}
+html[data-theme="observatory"] #sidebar .deep-work-beacon[data-state="hot"] {
+  color: var(--obs-crit) !important;
+  background: color-mix(in srgb, var(--obs-crit) 11%, transparent) !important;
+  border-color: color-mix(in srgb, var(--obs-crit) 55%, transparent) !important;
+  box-shadow: 0 0 14px -4px rgba(217, 120, 95, 0.45) !important;
+}
+html[data-theme="observatory"] #sidebar .deep-work-beacon[data-state="break"] {
+  color: var(--obs-ok) !important;
+  border-color: color-mix(in srgb, var(--obs-ok) 45%, transparent) !important;
+}
+html[data-theme="observatory"] .arena-orders-strip {
+  background: rgba(255, 255, 255, 0.025) !important;
+  border: 1px solid var(--obs-hair) !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  padding: 9px 14px !important;
+  margin: 0 auto 20px !important;
+}
+html[data-theme="observatory"] .orders-kicker {
+  font-family: var(--font-num) !important;
+  font-size: 10px !important;
+  letter-spacing: .2em !important;
+  color: var(--obs-ink) !important;
+}
+html[data-theme="observatory"] .orders-rem {
+  font-family: var(--font-num) !important;
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] .orders-chip {
+  border-radius: 3px !important;
+  font-family: var(--font-num) !important;
+  font-size: 11px !important;
+  letter-spacing: .04em !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-color: var(--obs-hair) !important;
+  color: var(--obs-bone-2) !important;
+}
+html[data-theme="observatory"] .orders-chip--bounty {
+  color: var(--obs-crit) !important;
+  border-color: color-mix(in srgb, var(--obs-crit) 42%, transparent) !important;
+  background: color-mix(in srgb, var(--obs-crit) 7%, transparent) !important;
+}
+html[data-theme="observatory"] .orders-chip--conquest {
+  color: var(--obs-ink) !important;
+  border-color: var(--obs-edge) !important;
+  background: color-mix(in srgb, var(--obs-ink) 6%, transparent) !important;
+}
+html[data-theme="observatory"] .orders-chip.is-done {
+  color: var(--obs-ok) !important;
+  border-color: color-mix(in srgb, var(--obs-ok) 35%, transparent) !important;
+}
+html[data-theme="observatory"] .orders-spin-btn {
+  border-radius: 3px !important;
+  font-family: var(--font-num) !important;
+  letter-spacing: .1em !important;
+  text-transform: uppercase !important;
+  background: var(--obs-ink) !important;
+  border-color: var(--obs-ink) !important;
+  color: #07090e !important;
+}

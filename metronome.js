@@ -205,7 +205,7 @@
   var AHEAD_HIDDEN = 3.2;     // seconds queued while tab is hidden
   var TICK_HIDDEN_MS = 400;
 
-  var running = false, schedTimer = null, rafId = 0;
+  var running = false, schedTimer = null, rafId = 0, pausedByInterrupt = false;
   var nextBeatTime = 0;       // AudioContext time of the next scheduled beat
   var beatIndex = 0;          // absolute beat counter since start
   var drawQueue = [];         // [{ time, accent }] awaiting their visual flash
@@ -265,8 +265,18 @@
     drawQueue.length = 0;
     paintRunning(false);
   }
-  function toggle() { running ? stop() : start(); }
+  function toggle() { pausedByInterrupt = false; running ? stop() : start(); }
   function isRunning() { return running; }
+  function pauseForInterruption() {
+    if (!running) return;
+    pausedByInterrupt = true;
+    stop();
+  }
+  function resumeAfterInterruption() {
+    if (!pausedByInterrupt) return;
+    pausedByInterrupt = false;
+    start();
+  }
 
   function setBpm(n) {
     n = clamp(Math.round(Number(n) || prefs.bpm), BPM_MIN, BPM_MAX);
@@ -569,6 +579,8 @@
     setBpm: setBpm,
     setBeats: setBeats,
     setVoice: function (k) { buildUi(); setVoice(k); },
-    isRunning: isRunning
+    isRunning: isRunning,
+    pauseForInterruption: pauseForInterruption,
+    resumeAfterInterruption: resumeAfterInterruption
   };
 })();
