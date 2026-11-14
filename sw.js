@@ -200,7 +200,8 @@
 // v102 - M11 SERVICE WORKER CACHE COMPLETENESS + DEAD CODE CLEANUP:
 //        Added cortex.js, styles-dashboard.css, and styles-practice-fullscreen.css?v=10 to SHELL.
 // v103 - Remove candlestick graph and Sprout Isle from Dashboard and precache.
-const VERSION = 'jeemax-v103';
+// v104 - Practice modal single-rail layout & MCQ dock sync.
+const VERSION = 'jeemax-v104';
 
 const SHELL = [
   './',
@@ -236,7 +237,7 @@ const SHELL = [
   './styles-telemetry.css',
   './styles-modes.css',
   './styles-dashboard.css',
-  './styles-practice-fullscreen.css?v=10',
+  './styles-practice-fullscreen.css?v=11',
   './atmosphere.js',
   './glyphs.js',
   './matrix.js',

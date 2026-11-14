@@ -1162,7 +1162,7 @@ body #practice-modal.pq-stage .pq-reveal-row .answer-card.is-failed.result-banne
   display: none !important;
 }
 
-#practice-modal.pq-stage[data-pq-phase="grade-pending"] .pq-next-pending {
+#practice-modal.pq-stage[data-pq-phase="grade-pending"]:not([data-pq-type="mcq"]) .pq-next-pending {
   display: inline-flex !important;
   background: var(--bg-elevated) !important;
   color: var(--ink-primary) !important;
