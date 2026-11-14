@@ -452,202 +452,758 @@ html[data-theme="observatory"] {
   .qm-card-edit { opacity: .7; }
 }
 
-#practice-modal[data-pq-state="solving"] .pq-result-strip {
-  opacity: 1;
-  pointer-events: auto;
-  transform: none;
-  justify-content: center;
-  margin-top: 18px;
-  padding: 0;
-  border: 0 !important;
-  border-radius: 0;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-#practice-modal[data-pq-state="solving"] .pq-center-actions {
-  justify-content: center;
-}
-#practice-modal[data-pq-state="solving"] .pq-mini-status {
-  display: none !important;
-}
-#practice-modal[data-pq-state="solving"] .pq-submit {
-  min-height: 44px;
-  padding: 10px 18px !important;
-  border: 1px solid var(--pq-border) !important;
-  border-radius: 2px !important;
-  background: transparent !important;
-  color: var(--pq-ink-soft) !important;
-  font-family: var(--font-num) !important;
-  font-size: 10px !important;
-  font-weight: 500 !important;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-}
-#practice-modal[data-pq-state="solving"] .pq-submit:hover {
-  border-color: var(--pq-accent) !important;
-  color: var(--pq-ink) !important;
-}
-#practice-modal .pq-hold-hint {
-  bottom: 78px;
-  color: var(--pq-ink-soft);
-  font-family: var(--font-num);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: .16em;
-  opacity: .18;
-}
-#practice-modal.pq-stage .pq-hold-hint {
-  opacity: .18;
+/* ── Single-Rail Practice Modal Design Tokens & Layout ── */
+body:not(.immersive-active) #practice-modal.pq-stage {
+  /* Surfaces */
+  --bg-canvas: #f6f1e7;
+  --bg-surface: #efe8d8;
+  --bg-elevated: #e7decb;
+  --border-subtle: #d5cab4;
+  --border-strong: #b8aa90;
+
+  /* Ink */
+  --ink-primary: #1f1d1a;
+  --ink-secondary: #5c5549;
+  --ink-muted: #857c6d;
+
+  /* Semantic Tints (Low-chroma paper washes) */
+  --pass-bg: #e3ece0;
+  --pass-border: #7d9b76;
+  --pass-ink: #274722;
+
+  --fail-bg: #f2e1dc;
+  --fail-border: #c27d70;
+  --fail-ink: #6e2318;
+
+  /* Geometry */
+  --rail-width: 720px;
+  --radius-control: 6px;
+  --radius-card: 10px;
+
+  /* Map legacy --pq-* tokens onto locked palette */
+  --pq-bg: var(--bg-canvas);
+  --pq-ink: var(--ink-primary);
+  --pq-ink-soft: var(--ink-secondary);
+  --pq-border: var(--border-subtle);
+  --pq-opt-bg: var(--bg-surface);
+  --pq-opt-border: var(--border-subtle);
+  --pq-opt-ink: var(--ink-primary);
+  --pq-opt-hover: var(--bg-elevated);
+  --pq-opt-sel-bg: var(--bg-elevated);
+  --pq-opt-sel-border: var(--ink-primary);
+  --pq-input-bg: var(--bg-canvas);
+  --pq-input-border: var(--border-strong);
+  --pq-input-ink: var(--ink-primary);
+  --pq-footer-bg: var(--bg-surface);
+  --pq-footer-border: var(--border-subtle);
+  --pq-btn-bg: var(--bg-surface);
+  --pq-btn-border: var(--border-strong);
+  --pq-btn-ink: var(--ink-primary);
+  --pq-submit-bg: var(--ink-primary);
+  --pq-submit-border: var(--ink-primary);
+  --pq-submit-ink: var(--bg-canvas);
 }
 
-.pq-conf-ghost {
+body.immersive-active #practice-modal.pq-stage {
+  --bg-canvas: #1b130d;
+  --bg-surface: #241a12;
+  --bg-elevated: #2e2117;
+  --border-subtle: rgba(201, 147, 39, 0.28);
+  --border-strong: rgba(201, 147, 39, 0.48);
+
+  --ink-primary: #e8dcc4;
+  --ink-secondary: #b8a384;
+  --ink-muted: #8f7c60;
+
+  --pass-bg: rgba(46, 125, 50, 0.22);
+  --pass-border: rgba(125, 155, 118, 0.55);
+  --pass-ink: #cde7cb;
+
+  --fail-bg: rgba(183, 28, 28, 0.22);
+  --fail-border: rgba(194, 125, 112, 0.55);
+  --fail-ink: #f4c2ba;
+
+  --rail-width: 720px;
+  --radius-control: 6px;
+  --radius-card: 10px;
+
+  --pq-bg: var(--bg-canvas);
+  --pq-ink: var(--ink-primary);
+  --pq-ink-soft: var(--ink-secondary);
+  --pq-border: var(--border-subtle);
+  --pq-opt-bg: var(--bg-surface);
+  --pq-opt-border: var(--border-subtle);
+  --pq-opt-ink: var(--ink-primary);
+  --pq-opt-hover: var(--bg-elevated);
+  --pq-opt-sel-bg: var(--bg-elevated);
+  --pq-opt-sel-border: var(--ink-primary);
+  --pq-input-bg: var(--bg-surface);
+  --pq-input-border: var(--border-strong);
+  --pq-input-ink: var(--ink-primary);
+  --pq-footer-bg: var(--bg-surface);
+  --pq-footer-border: var(--border-subtle);
+  --pq-btn-bg: var(--bg-surface);
+  --pq-btn-border: var(--border-strong);
+  --pq-btn-ink: var(--ink-primary);
+  --pq-submit-bg: var(--ink-primary);
+  --pq-submit-border: var(--ink-primary);
+  --pq-submit-ink: var(--bg-canvas);
+}
+
+#practice-modal.pq-stage.pq-has-media,
+#practice-modal.pq-stage:has(.pq-qa-grid) {
+  --rail-width: 920px;
+}
+
+#practice-modal.pq-stage {
+  background: var(--bg-canvas) !important;
+  color: var(--ink-primary) !important;
+  padding: 0 !important;
+}
+
+#practice-modal.pq-stage .pq-shell {
+  width: min(100% - 48px, var(--rail-width)) !important;
+  max-width: none !important;
+  margin: 0 auto !important;
+  padding: 64px 0 32px !important;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-sizing: border-box;
+}
+
+#practice-modal.pq-stage[data-pq-state="solving"] .pq-shell {
+  padding-bottom: 64px !important;
+}
+
+#practice-modal.pq-stage .pq-body {
+  width: 100%;
+  min-width: 0;
+  margin: auto 0;
+}
+
+#practice-modal.pq-stage[data-pq-state="answered"] .pq-body {
+  margin: 4px 0 auto;
+}
+
+#practice-modal.pq-stage #practice-modal-content {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible !important;
+  text-align: left !important;
+}
+
+#practice-modal.pq-stage .pq-solve-wrap {
+  width: 100%;
+  max-width: 100% !important;
+  margin: 0 !important;
+  text-align: left !important;
+}
+
+#practice-modal.pq-stage #latex-render {
+  max-width: 100% !important;
+  width: 100%;
+  margin: 0 0 16px !important;
+  color: var(--ink-primary) !important;
+}
+
+#practice-modal.pq-stage .mcq-option {
+  border-radius: var(--radius-card) !important;
+}
+
+#practice-modal.pq-stage .pq-opt-letter,
+#practice-modal.pq-stage #numeric-answer-input,
+#practice-modal.pq-stage .pq-override-opt,
+#practice-modal.pq-stage .pq-override-outcome,
+#practice-modal.pq-stage .pq-override-input,
+#practice-modal.pq-stage .pq-override-save,
+#practice-modal.pq-stage .pq-override-cancel,
+#practice-modal.pq-stage .pq-key-updated-badge {
+  border-radius: var(--radius-control) !important;
+}
+
+#practice-modal.pq-stage .pq-override-bar,
+#practice-modal.pq-stage .pq-qa-media,
+#practice-modal.pq-stage .pq-media-block img {
+  border-radius: var(--radius-card) !important;
+}
+
+#practice-modal.pq-stage .question-goal {
+  border-left-color: var(--border-strong);
+  color: var(--ink-primary);
+}
+
+/* ── Pre-Reveal: Confidence Grid, Hold Cue & Submit ── */
+#practice-modal.pq-stage .pq-conf-ghost {
   display: none;
   position: relative;
   z-index: 5010;
-  align-self: center;
-  justify-content: center;
-  gap: 6px;
-  margin: 16px auto 0;
-  opacity: .68;
-  transition: opacity .2s ease;
-}
-.pq-conf-ghost button {
-  min-width: 84px;
-  min-height: 44px;
-  padding: 6px 10px;
-  border: 1px solid var(--pq-border);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--pq-ink-soft);
-  font-size: 9px;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.pq-conf-ghost button[aria-pressed="true"] {
-  border-color: var(--pq-accent);
-  color: var(--pq-ink);
-  background: rgba(180, 132, 60, .12);
-}
-.pq-conf-ghost:has(button[aria-pressed="true"]),
-.pq-conf-ghost:focus-within,
-.pq-conf-ghost:hover {
+  width: 100%;
+  margin: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
   opacity: 1;
 }
-#practice-modal[data-pq-state="answered"] .pq-conf-ghost {
-  display: none !important;
-}
-#practice-modal[data-pq-state="solving"] .pq-conf-ghost {
-  display: flex;
+
+#practice-modal.pq-stage[data-pq-state="solving"] .pq-conf-ghost {
+  display: grid;
 }
 
+#practice-modal.pq-stage[data-pq-state="answered"] .pq-conf-ghost {
+  display: none !important;
+}
+
+#practice-modal.pq-stage .pq-conf-ghost button {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control) !important;
+  background: var(--bg-surface);
+  color: var(--ink-secondary);
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+
+#practice-modal.pq-stage .pq-conf-ghost button:hover {
+  border-color: var(--border-strong);
+  color: var(--ink-primary);
+}
+
+#practice-modal.pq-stage .pq-conf-ghost button[aria-pressed="true"] {
+  border-color: var(--ink-primary);
+  color: var(--ink-primary);
+  background: var(--bg-elevated);
+}
+
+#practice-modal.pq-stage .pq-hold-hint,
+#practice-modal.pq-stage:not(.pq-is-free-response) .pq-hold-hint {
+  bottom: 22px;
+  color: var(--ink-secondary) !important;
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 1 !important;
+}
+
+#practice-modal.pq-stage[data-pq-state="answered"] .pq-hold-hint {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+#practice-modal.pq-stage[data-pq-state="solving"] .pq-result-strip {
+  position: static;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: flex !important;
+  justify-content: center;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+#practice-modal.pq-stage[data-pq-state="solving"] .dock-telemetry,
+#practice-modal.pq-stage[data-pq-state="solving"] .dock-center,
+#practice-modal.pq-stage[data-pq-state="solving"] .pq-next-pending {
+  display: none !important;
+}
+
+#practice-modal.pq-stage[data-pq-state="solving"] .dock-actions {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+#practice-modal.pq-stage[data-pq-state="solving"] .pq-submit {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 20px !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: var(--radius-control) !important;
+  background: var(--bg-surface) !important;
+  color: var(--ink-primary) !important;
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#practice-modal.pq-stage[data-pq-state="solving"] .pq-submit:hover {
+  background: var(--bg-elevated) !important;
+  border-color: var(--ink-primary) !important;
+  transform: none;
+}
+
+#practice-modal.pq-stage[data-pq-state="solving"] .pq-submit.is-ready {
+  background: var(--ink-primary) !important;
+  border-color: var(--ink-primary) !important;
+  color: var(--bg-canvas) !important;
+}
+
+/* ── 1. Top Telemetry Grid (.audit-header) ── */
 #pq-diag {
   display: none;
 }
-#practice-modal[data-pq-state="answered"] #pq-diag {
+
+#practice-modal.pq-stage[data-pq-state="answered"] #pq-diag {
   display: block;
-  margin: 0 0 18px;
+  width: 100%;
+  margin: 0;
   padding: 0 0 14px;
-  border-bottom: 1px solid var(--pq-border);
+  border-bottom: 1px solid var(--border-subtle);
   animation: pqDiagIn 220ms var(--tele-ease) both;
 }
+
 @keyframes pqDiagIn {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.pq-diag-kicker {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  color: var(--pq-ink-soft);
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: .18em;
-  text-transform: uppercase;
-  opacity: .85;
-}
-.pq-diag-cal {
-  font-weight: 700;
-  letter-spacing: .12em;
-  padding: 2px 6px;
-  border-radius: 3px;
-  border: 1px solid var(--pq-border);
-}
-.pq-diag-cal.pq-cal-snipe {
-  color: var(--tele-green, #16a34a);
-  border-color: rgba(22, 163, 74, .45);
-  background: rgba(22, 163, 74, .08);
-}
-.pq-diag-cal.pq-cal-trap {
-  color: var(--tele-red, #dc2626);
-  border-color: rgba(220, 38, 38, .45);
-  background: rgba(220, 38, 38, .08);
-}
-.pq-diag-grid {
+
+#practice-modal.pq-stage .audit-header,
+#practice-modal.pq-stage .pq-diag-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px 14px;
-  margin-top: 10px;
+  gap: 12px;
+  margin: 0;
 }
-.pq-diag-field i {
+
+#practice-modal.pq-stage .pq-diag-field i {
   display: block;
-  margin-bottom: 3px;
-  color: var(--pq-ink-soft);
+  margin-bottom: 4px;
+  color: var(--ink-muted);
   font-style: normal;
-  font-size: 8px;
-  letter-spacing: .15em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  opacity: .65;
+  opacity: 1;
 }
-.pq-diag-field b {
+
+#practice-modal.pq-stage .pq-diag-field b {
   display: block;
   overflow: hidden;
-  color: var(--pq-ink);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: .02em;
+  color: var(--ink-primary);
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.pq-diag-grade {
+
+/* ── 2. Vertical Post-Reveal Stack & Full-Width Answer Card ── */
+#practice-modal.pq-stage .pq-reveal-row {
   display: flex;
-  gap: 6px;
-  margin-top: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  margin-top: 18px;
+  width: 100%;
 }
-.pq-diag-grade button {
-  flex: 1;
-  min-height: 44px;
-  padding: 7px 9px;
-  border: 1px solid var(--pq-border);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--pq-ink-soft);
-  font-family: var(--font-num);
-  font-size: 8px;
-  line-height: 1.35;
-  letter-spacing: .1em;
+
+body #practice-modal.pq-stage .pq-reveal-row .result-banner.answer-card,
+body #practice-modal.pq-stage .pq-reveal-row .result-banner.reveal.answer-card {
+  display: block !important;
+  width: 100% !important;
+  flex: none !important;
+  margin: 0 !important;
+  padding: 16px 20px !important;
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-card) !important;
+  color: var(--ink-primary) !important;
+  font-size: 15.5px;
+  font-weight: 500;
+  line-height: 1.6;
+  text-align: left !important;
+  box-sizing: border-box;
+}
+
+body #practice-modal.pq-stage .pq-reveal-row .answer-card.is-passed.result-banner.correct {
+  background: var(--pass-bg) !important;
+  border-color: var(--pass-border) !important;
+  color: var(--pass-ink) !important;
+}
+
+body #practice-modal.pq-stage .pq-reveal-row .answer-card.is-failed.result-banner.wrong {
+  background: var(--fail-bg) !important;
+  border-color: var(--fail-border) !important;
+  color: var(--fail-ink) !important;
+}
+
+#practice-modal.pq-stage .pq-ans-kicker {
+  display: block;
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  margin-bottom: 4px;
+}
+
+#practice-modal.pq-stage .pq-ans-body {
+  display: block;
+  color: inherit;
+  word-break: break-word;
+}
+
+/* ── 3. Verdict, Diagnostic Segment & Secondary Action Rows ── */
+#practice-modal.pq-stage .verdict-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+  width: 100%;
+}
+
+#practice-modal.pq-stage .verdict-row:not(:has(.show-solution-btn)) {
+  grid-template-columns: 1fr 1fr;
+}
+
+#practice-modal.pq-stage .action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+#practice-modal.pq-stage .btn {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 16px !important;
+  margin: 0 !important;
+  border-radius: var(--radius-control) !important;
+  border: 1px solid var(--border-strong) !important;
+  background: var(--bg-surface) !important;
+  color: var(--ink-primary) !important;
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  box-shadow: none !important;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, filter .15s ease;
+}
+
+#practice-modal.pq-stage .btn:hover:not(:disabled) {
+  background: var(--bg-elevated) !important;
+  border-color: var(--ink-primary) !important;
+  transform: none;
+}
+
+#practice-modal.pq-stage .btn-verify,
+#practice-modal.pq-stage #text-correct-btn {
+  background: var(--pass-bg) !important;
+  border-color: var(--pass-border) !important;
+  color: var(--pass-ink) !important;
+  font-weight: 600 !important;
+}
+
+#practice-modal.pq-stage .btn-verify:hover:not(:disabled),
+#practice-modal.pq-stage #text-correct-btn:hover:not(:disabled) {
+  background: var(--pass-bg) !important;
+  border-color: var(--pass-ink) !important;
+  filter: brightness(0.97);
+}
+
+#practice-modal.pq-stage .btn-fail,
+#practice-modal.pq-stage #text-wrong-btn {
+  background: var(--fail-bg) !important;
+  border-color: var(--fail-border) !important;
+  color: var(--fail-ink) !important;
+  font-weight: 600 !important;
+}
+
+#practice-modal.pq-stage .btn-fail:hover:not(:disabled),
+#practice-modal.pq-stage #text-wrong-btn:hover:not(:disabled) {
+  background: var(--fail-bg) !important;
+  border-color: var(--fail-ink) !important;
+  filter: brightness(0.97);
+}
+
+#practice-modal.pq-stage .pq-vault-btn:not(:disabled) {
+  background: var(--fail-bg) !important;
+  border-color: var(--fail-border) !important;
+  color: var(--fail-ink) !important;
+}
+
+#practice-modal.pq-stage .pq-vault-btn:not(:disabled):hover {
+  background: var(--fail-bg) !important;
+  border-color: var(--fail-ink) !important;
+  filter: brightness(0.97);
+}
+
+#practice-modal.pq-stage .pq-vault-btn:disabled {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--ink-muted) !important;
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+#practice-modal.pq-stage .pq-diag-grade {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+}
+
+#practice-modal.pq-stage .pq-diag-grade button {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control) !important;
+  background: var(--bg-surface);
+  color: var(--ink-secondary);
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color .16s ease, color .16s ease, background-color .16s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: border-color .15s ease, color .15s ease, background-color .15s ease;
 }
-.pq-diag-grade button:hover,
-.pq-diag-grade button:focus-visible {
-  border-color: var(--pq-accent);
-  color: var(--pq-ink);
+
+#practice-modal.pq-stage .pq-diag-grade button:hover,
+#practice-modal.pq-stage .pq-diag-grade button:focus-visible {
+  border-color: var(--border-strong);
+  color: var(--ink-primary);
 }
-.pq-diag-grade button.is-set {
-  border-color: var(--pq-accent);
-  background: var(--pq-accent-soft);
-  color: var(--pq-ink);
+
+#practice-modal.pq-stage .pq-diag-grade button.is-set {
+  border-color: var(--ink-primary) !important;
+  background: var(--bg-elevated) !important;
+  color: var(--ink-primary) !important;
 }
+
+/* ── 4. 3-Slot Bottom Dock (Aligned to 720px Rail) ── */
+#practice-modal.pq-stage[data-pq-state="answered"] .bottom-dock {
+  position: sticky;
+  bottom: 16px;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: auto 0 0 !important;
+  padding: 10px 14px !important;
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: none !important;
+  display: grid !important;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  box-sizing: border-box;
+}
+
+#practice-modal.pq-stage[data-pq-state="answered"] .dock-telemetry {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  min-width: 0;
+}
+
+#practice-modal.pq-stage[data-pq-state="answered"] .streak-visualizer {
+  display: flex !important;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+#practice-modal.pq-stage .sprite-frame {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  flex-shrink: 0;
+}
+
+#practice-modal.pq-stage #streak-canvas {
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+  display: block;
+}
+
+#practice-modal.pq-stage .streak-visualizer .streak-number {
+  display: none !important;
+}
+
+#practice-modal.pq-stage .ck-hud-pill {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  color: var(--ink-secondary) !important;
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+#practice-modal.pq-stage .dock-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+#practice-modal.pq-stage .elo-header-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-control) !important;
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  box-shadow: none !important;
+  animation: none !important;
+}
+
+#practice-modal.pq-stage .elo-header-chip.elo-up {
+  background: var(--pass-bg) !important;
+  border: 1px solid var(--pass-border) !important;
+  color: var(--pass-ink) !important;
+}
+
+#practice-modal.pq-stage .elo-header-chip.elo-down {
+  background: var(--fail-bg) !important;
+  border: 1px solid var(--fail-border) !important;
+  color: var(--fail-ink) !important;
+}
+
+#practice-modal.pq-stage .elo-header-chip .elo-shift-delta {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#practice-modal.pq-stage .elo-header-chip .elo-shift-tier {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+#practice-modal.pq-stage .dock-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#practice-modal.pq-stage .btn-next-primary {
+  height: 36px !important;
+  min-height: 36px;
+  padding: 0 18px !important;
+  border-radius: var(--radius-control) !important;
+  border: none !important;
+  background: var(--ink-primary) !important;
+  color: var(--bg-canvas) !important;
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+#practice-modal.pq-stage .btn-next-primary:hover:not(:disabled) {
+  background: var(--ink-primary) !important;
+  opacity: 0.9;
+}
+
+#practice-modal.pq-stage .pq-next-pending {
+  display: none !important;
+}
+
+#practice-modal.pq-stage[data-pq-phase="grade-pending"] .pq-next-pending {
+  display: inline-flex !important;
+  background: var(--bg-elevated) !important;
+  color: var(--ink-primary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+#practice-modal.pq-stage[data-pq-phase="resolved"] .pq-next-pending {
+  display: none !important;
+}
+
 @media (max-width: 680px) {
-  .pq-diag-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pq-diag-grade button { flex-basis: 100%; }
-  #practice-modal .pq-hold-hint { bottom: 82px; font-size: 9px; }
-  .pq-conf-ghost { margin-top: 12px; }
-  .pq-conf-ghost button { min-width: 74px; }
+  #practice-modal.pq-stage .audit-header,
+  #practice-modal.pq-stage .pq-diag-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #practice-modal.pq-stage .verdict-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  #practice-modal.pq-stage .verdict-row .show-solution-btn {
+    grid-column: 1 / -1;
+  }
+  #practice-modal.pq-stage .pq-diag-grade {
+    grid-template-columns: 1fr;
+  }
+  #practice-modal.pq-stage[data-pq-state="answered"] .bottom-dock {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  #practice-modal.pq-stage .dock-actions {
+    justify-content: stretch;
+  }
+  #practice-modal.pq-stage .btn-next-primary {
+    width: 100%;
+  }
+  #practice-modal.pq-stage:not(.pq-is-free-response) .pq-hold-hint {
+    bottom: 84px;
+    font-size: 10px;
+  }
 }
 
 #practice-subject-view .subject-card {
