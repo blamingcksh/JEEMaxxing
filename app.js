@@ -5952,8 +5952,14 @@ function _pqSyncState() {
         const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[idx]);
         const graded = submitted && _pqIsGradedQuestion(q, idx);
         const phase = !submitted ? 'pre-reveal' : (graded ? 'resolved' : 'grade-pending');
+        const qType = (q && q.type) ? String(q.type) : 'text';
         modal.setAttribute('data-pq-state', submitted ? 'answered' : 'solving');
         modal.setAttribute('data-pq-phase', phase);
+        modal.setAttribute('data-pq-type', qType);
+        const pendingBtn = document.getElementById('pq-next-pending');
+        if (pendingBtn) {
+            pendingBtn.style.display = (phase === 'grade-pending' && qType !== 'mcq') ? '' : 'none';
+        }
         if (phase === 'grade-pending') {
             const contBtn = document.getElementById('practice-continue-btn');
             if (contBtn) contBtn.style.display = 'none';
