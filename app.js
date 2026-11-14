@@ -5379,6 +5379,7 @@ export function startPracticeWithQuestion(questions, index, opts = null) {
     AppState.practiceSubmittedFlags = new Array(questions.length).fill(false);
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
+    AppState._pqConfidenceByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
     AppState._pqHealthBefore = null;
@@ -5933,13 +5934,30 @@ function _pqUpdatePace() {
     } catch (_) {}
 }
 
+function _pqIsPendingSelfReport(q, idx) {
+    return !!(AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[idx]);
+}
+
+function _pqIsGradedQuestion(q, idx) {
+    if (!q || _pqIsPendingSelfReport(q, idx)) return false;
+    return q.status === 'solved' || q.status === 'wrong' || q.status === 'error';
+}
+
 function _pqSyncState() {
     try {
         const modal = document.getElementById('practice-modal');
         if (!modal) return;
         const q = AppState.currentQ;
-        const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
+        const idx = AppState.currentPracticeIndex;
+        const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[idx]);
+        const graded = submitted && _pqIsGradedQuestion(q, idx);
+        const phase = !submitted ? 'pre-reveal' : (graded ? 'resolved' : 'grade-pending');
         modal.setAttribute('data-pq-state', submitted ? 'answered' : 'solving');
+        modal.setAttribute('data-pq-phase', phase);
+        if (phase === 'grade-pending') {
+            const contBtn = document.getElementById('practice-continue-btn');
+            if (contBtn) contBtn.style.display = 'none';
+        }
         if (submitted) {
             try { updateStreakVisualizer(); } catch (_) {}
             try { _ensureStreakLoop(); } catch (_) {}
@@ -5962,11 +5980,17 @@ function _pqSyncState() {
 
 const _PQ_GRADE_PERF = { 1: 1.5, 2: 3, 3: 4.5 };
 const _PQ_CONF_LEVEL = { '1': 'guess', '2': 'likely', '3': 'sure' };
+const _PQ_CONF_LABELS = { guess: 'SHAKY', likely: 'SOLID', sure: 'LOCK-IN' };
+const _pqPreTagDiffMap = new WeakMap();
 let _pqConfidenceBound = false;
 
 function _pqSetConfidence(level) {
     if (!level || !['guess', 'likely', 'sure'].includes(level)) return;
     window._pendingSolveConfidence = level;
+    if (AppState.currentPracticeIndex != null) {
+        AppState._pqConfidenceByIdx = AppState._pqConfidenceByIdx || {};
+        AppState._pqConfidenceByIdx[AppState.currentPracticeIndex] = level;
+    }
     document.querySelectorAll('#pq-conf-ghost [data-conf]').forEach(btn => {
         btn.setAttribute('aria-pressed', String(btn.dataset.conf === level));
     });
@@ -5974,6 +5998,9 @@ function _pqSetConfidence(level) {
 
 function _pqResetConfidenceUI() {
     window._pendingSolveConfidence = null;
+    if (AppState.currentPracticeIndex != null && AppState._pqConfidenceByIdx) {
+        delete AppState._pqConfidenceByIdx[AppState.currentPracticeIndex];
+    }
     document.querySelectorAll('#pq-conf-ghost [data-conf]').forEach(btn => {
         btn.setAttribute('aria-pressed', 'false');
     });
@@ -5983,23 +6010,26 @@ function _pqApplyGrade(grade) {
     const g = Number(grade);
     if (!_PQ_GRADE_PERF[g]) return;
     const q = AppState.currentQ;
+    const idx = AppState.currentPracticeIndex;
     if (!q) return;
-    const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
-    if (!submitted || q.selfGrade) return;
-    const isFreeResponse = (q.type !== 'mcq' && q.type !== 'numeric');
+    const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[idx]);
+    if (!submitted || !_pqIsGradedQuestion(q, idx)) return;
+    if (!_pqPreTagDiffMap.has(q)) {
+        _pqPreTagDiffMap.set(q, q.difficultyD);
+    } else {
+        const baseDiff = _pqPreTagDiffMap.get(q);
+        if (baseDiff !== undefined) q.difficultyD = baseDiff;
+        else delete q.difficultyD;
+    }
     q.selfGrade = { g, t: Date.now() };
     q.frictionFlag = (g === 2);
-    if (isFreeResponse || document.getElementById('text-correct-btn') || document.getElementById('text-wrong-btn')) {
-        const target = document.getElementById(g === 1 ? 'text-wrong-btn' : 'text-correct-btn');
-        if (!target) {
-            delete q.selfGrade;
-            delete q.frictionFlag;
-            return;
-        }
-        target.click();
-    }
     try { refineDifficultyAfterTag(q, _PQ_GRADE_PERF[g]); } catch (_) {}
     saveAllAsync().catch(console.error);
+    document.querySelectorAll('#practice-modal .pq-diag-grade [data-pq-grade]').forEach(btn => {
+        const isActive = Number(btn.dataset.pqGrade) === g;
+        btn.classList.toggle('is-set', isActive);
+        btn.setAttribute('aria-pressed', String(isActive));
+    });
     _pqRenderDiag();
 }
 
@@ -6015,11 +6045,38 @@ function _pqBindConfidence() {
         if (!modal || !modal.classList.contains('active') || _pqChromeOverlayOpen()) return;
         if (document.body.classList.contains('session-recap-open')) return;
         const state = modal.getAttribute('data-pq-state');
+        const phase = modal.getAttribute('data-pq-phase') || (state === 'answered' ? 'resolved' : 'pre-reveal');
 
         if (/^[1-3]$/.test(e.key)) {
-            e.preventDefault();
-            if (state === 'answered') _pqApplyGrade(Number(e.key));
-            else _pqSetConfidence(_PQ_CONF_LEVEL[e.key]);
+            if (phase === 'pre-reveal') {
+                e.preventDefault();
+                _pqSetConfidence(_PQ_CONF_LEVEL[e.key]);
+            } else if (phase === 'resolved') {
+                e.preventDefault();
+                _pqApplyGrade(Number(e.key));
+            }
+            return;
+        }
+
+        if (phase === 'grade-pending') {
+            if (e.key === 'y' || e.key === 'Y') {
+                const yesBtn = document.getElementById('text-correct-btn');
+                if (yesBtn) { e.preventDefault(); yesBtn.click(); }
+                return;
+            }
+            if (e.key === 'n' || e.key === 'N') {
+                const noBtn = document.getElementById('text-wrong-btn');
+                if (noBtn) { e.preventDefault(); noBtn.click(); }
+                return;
+            }
+        }
+
+        if (phase === 'resolved' && (e.key === 'v' || e.key === 'V')) {
+            const vaultBtn = modal.querySelector('.pq-vault-btn:not([disabled])');
+            if (vaultBtn) {
+                e.preventDefault();
+                vaultBtn.click();
+            }
             return;
         }
 
@@ -6046,7 +6103,7 @@ function _pqBindConfidence() {
                     e.preventDefault();
                     practiceSubmit();
                 }
-            } else if (state === 'answered' && !document.getElementById('text-correct-btn')) {
+            } else if (phase === 'resolved' && !document.getElementById('text-correct-btn')) {
                 e.preventDefault();
                 if (typeof window.continuePractice === 'function') window.continuePractice();
             }
@@ -6072,7 +6129,7 @@ function _pqBindConfidence() {
             }
             return;
         }
-        const gradeBtn = e.target.closest('#pq-diag [data-pq-grade]');
+        const gradeBtn = e.target.closest('#practice-modal .pq-diag-grade [data-pq-grade]');
         if (gradeBtn) _pqApplyGrade(Number(gradeBtn.dataset.pqGrade));
     });
 }
@@ -6081,12 +6138,12 @@ function _pqRenderDiag() {
     const el = document.getElementById('pq-diag');
     if (!el) return;
     const q = AppState.currentQ;
-    const submitted = !!(q && AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
+    const idx = AppState.currentPracticeIndex;
+    const submitted = !!(q && AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[idx]);
     if (!q || !submitted) {
         el.innerHTML = '';
         return;
     }
-    const idx = AppState.currentPracticeIndex;
     const time = Math.max(0, Number(q.timeTaken) || 0);
     const others = (AppState.questionBank || []).filter(x =>
         x && x !== q &&
@@ -6109,29 +6166,18 @@ function _pqRenderDiag() {
     const retTxt = before != null && after != null
         ? `${before}% → ${Math.round(after)}%`
         : (after != null ? `${Math.round(after)}%` : '—');
-    const grade = q.selfGrade && Number(q.selfGrade.g);
-    const calCall = elo && elo.calibrationCall;
-    const calTag = calCall === 'snipe'
-        ? '<span class="pq-diag-cal pq-cal-snipe">CALIBRATED SNIPE (+12%)</span>'
-        : calCall === 'trap'
-            ? '<span class="pq-diag-cal pq-cal-trap">OVERCONFIDENT TRAP (−18%)</span>'
-            : (elo && elo.confidenceUsed != null)
-                ? `<span class="pq-diag-cal">${calCall === 'shaky' ? 'SHAKY SAVE (−5%)' : 'CALIBRATED'}</span>`
-                : '';
-    const gradeBtn = (g, label) =>
-        `<button type="button" data-pq-grade="${g}" class="${grade === g ? 'is-set' : ''}" aria-pressed="${grade === g}"><span class="t-num">[${g}]</span> ${label}</button>`;
+    const confKey = (AppState._pqConfidenceByIdx && AppState._pqConfidenceByIdx[idx]) || window._pendingSolveConfidence || null;
+    const confTxt = (confKey && _PQ_CONF_LABELS[confKey]) || (
+        elo && elo.confidenceUsed != null
+            ? (elo.confidenceUsed >= 0.85 ? 'LOCK-IN' : elo.confidenceUsed >= 0.6 ? 'SOLID' : 'SHAKY')
+            : '—'
+    );
     el.innerHTML = `
-        <div class="pq-diag-kicker"><span>DIAGNOSTIC AUDIT</span>${calTag}</div>
-        <div class="pq-diag-grid">
+        <div class="pq-diag-grid audit-header">
             <span class="pq-diag-field"><i>TIME</i><b>${timeTxt}</b></span>
             <span class="pq-diag-field"><i>ELO</i><b>${eloTxt}</b></span>
             <span class="pq-diag-field"><i>RETENTION</i><b>${retTxt}</b></span>
-            <span class="pq-diag-field"><i>SELF GRADE</i><b>${grade ? `[${grade}]` : '—'}</b></span>
-        </div>
-        <div class="pq-diag-grade" role="group" aria-label="Process grade">
-            ${gradeBtn(1, 'CRITICAL FAIL')}
-            ${gradeBtn(2, 'FRICTION / SLOW')}
-            ${gradeBtn(3, 'CALIBRATED SOLVE')}
+            <span class="pq-diag-field"><i>CONFIDENCE</i><b>${confTxt}</b></span>
         </div>`;
 }
 
@@ -6316,33 +6362,60 @@ function _pqBuildOverrideBarHTML(q, idx) {
 
 function _pqBuildRevealZoneHTML(q, idx) {
     const correctAns = answerMathHTML(q.correctAnswer || 'N/A');
-    const graded = (q.status === 'solved' || q.status === 'wrong' || q.status === 'error');
+    const graded = _pqIsGradedQuestion(q, idx);
+    const hasSolution = !!(q.solution && String(q.solution).trim().length > 0);
     const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
     const updatedKey = AppState._pqKeyUpdatedByIdx && AppState._pqKeyUpdatedByIdx[idx];
     let html = `<div class="pq-reveal-row">`;
-    if (q.status === 'solved') {
-        html += `<div class="result-banner correct" style="flex:1;">PASSED · answer: ${correctAns}</div>`;
-    } else if (q.status === 'wrong' || q.status === 'error') {
-        html += `<div class="result-banner wrong" style="flex:1;">FAILED · answer: ${correctAns}</div>`;
+    if (graded && q.status === 'solved') {
+        html += `<div class="result-banner correct answer-card is-passed"><span class="pq-ans-kicker">PASSED · ANSWER</span><div class="pq-ans-body">${correctAns}</div></div>`;
+    } else if (graded && (q.status === 'wrong' || q.status === 'error')) {
+        html += `<div class="result-banner wrong answer-card is-failed"><span class="pq-ans-kicker">FAILED · ANSWER</span><div class="pq-ans-body">${correctAns}</div></div>`;
     } else {
-        html += `<div class="result-banner reveal" style="flex:1;">ANSWER REVEALED · ${correctAns}<span class="pq-reveal-ask"> — were you right?</span></div>`;
+        html += `<div class="result-banner reveal answer-card"><span class="pq-ans-kicker">ANSWER REVEALED</span><div class="pq-ans-body">${correctAns}</div></div>`;
     }
-    if (q.solution && String(q.solution).trim().length > 0) {
-        html += `<button class="btn show-solution-btn" style="margin-left:12px;" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
-    }
-    if (q.status === 'wrong' || q.status === 'error') {
-        if (q.status === 'error' && q.errorReason) {
-            html += `<button class="btn btn-danger pq-vault-btn" type="button" disabled title="Already logged to the Vault">LOGGED TO VAULT</button>`;
-        } else {
-            html += `<button class="btn btn-danger pq-vault-btn" type="button">SEND TO THE VAULT (LOG ERROR)</button>`;
+
+    if (!graded) {
+        html += `<div class="verdict-row">`;
+        html += `<button type="button" class="btn btn-verify" id="text-correct-btn">VERIFIED [Y]</button>`;
+        html += `<button type="button" class="btn btn-fail" id="text-wrong-btn">FAILED [N]</button>`;
+        if (hasSolution) {
+            html += `<button type="button" class="btn show-solution-btn" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
+        }
+        html += `</div>`;
+    } else {
+        const autoGrade = q.status === 'solved' ? 3 : 1;
+        const activeGrade = (q.selfGrade && _PQ_GRADE_PERF[Number(q.selfGrade.g)]) ? Number(q.selfGrade.g) : autoGrade;
+        const gradeBtn = (g, label) =>
+            `<button type="button" data-pq-grade="${g}" class="${activeGrade === g ? 'is-set' : ''}" aria-pressed="${activeGrade === g}"><span class="t-num">[${g}]</span> ${label}</button>`;
+        html += `<div class="pq-diag-grade" role="group" aria-label="Process grade">
+            ${gradeBtn(1, 'CRITICAL FAIL')}
+            ${gradeBtn(2, 'FRICTION / SLOW')}
+            ${gradeBtn(3, 'CALIBRATED SOLVE')}
+        </div>`;
+
+        let actionBtns = '';
+        if (hasSolution) {
+            actionBtns += `<button type="button" class="btn show-solution-btn" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
+        }
+        if (q.status === 'wrong' || q.status === 'error') {
+            if (q.status === 'error' && q.errorReason) {
+                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button" disabled title="Already logged to the Vault">LOGGED TO VAULT</button>`;
+            } else {
+                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button">SEND TO THE VAULT [V]</button>`;
+            }
+        }
+        if (snap) {
+            actionBtns += `<button class="btn pq-fix-key-btn" id="pq-fix-key-btn" type="button" aria-expanded="false" aria-controls="pq-override-bar">FIX KEY / OVERRIDE</button>`;
+        }
+        if (updatedKey) {
+            actionBtns += `<span class="pq-key-updated-badge">KEY UPDATED → ${escapeHtml(updatedKey)}</span>`;
+        }
+        if (actionBtns) {
+            html += `<div class="action-row">${actionBtns}</div>`;
         }
     }
-    if (graded && snap) {
-        html += `<button class="btn pq-fix-key-btn" id="pq-fix-key-btn" type="button" aria-expanded="false" aria-controls="pq-override-bar">FIX KEY / OVERRIDE</button>`;
-    }
-    if (updatedKey) {
-        html += `<span class="pq-key-updated-badge">KEY UPDATED → ${escapeHtml(updatedKey)}</span>`;
-    }
+
     html += `</div>`;
     if (graded && snap) html += _pqBuildOverrideBarHTML(q, idx);
     return html;
@@ -6822,7 +6895,7 @@ export function renderPracticeQuestionModal() {
     }
     const _textHtml = _hasText ?
         `<div class="latex" id="latex-render">${_pqDecorateText(AppState.currentQ.extractedText)}</div>` : '';
-    let html = `<div class="pq-solve-wrap" style="text-align:center;">`;
+    let html = `<div class="pq-solve-wrap">`;
     if (_hasMedia && _hasText) {
         html += `<div class="pq-qa-grid"><div class="pq-qa-text">${_textHtml}</div>` +
             `<div class="pq-qa-media">${questionImageHtml}${diagramHtml}</div></div>`;
@@ -6849,6 +6922,15 @@ export function renderPracticeQuestionModal() {
             });
         });
         document.getElementById('practice-submit-btn').style.display = 'none';
+        const _contBtn = document.getElementById('practice-continue-btn');
+        if (_contBtn) {
+            if (_pqIsGradedQuestion(AppState.currentQ, _pqIdx) && !AppState.bountyMode) {
+                _contBtn.textContent = 'NEXT PROBLEM [SPACE]';
+                _contBtn.style.display = '';
+            } else {
+                _contBtn.style.display = 'none';
+            }
+        }
         try { _updatePracticeHUD(); } catch (_) {}
         try { _pqCancelChromeFade(); } catch (_) {}
         try { _pqSyncState(); } catch (_) {}
@@ -8654,7 +8736,7 @@ function _renderModeFooter() {
 function _showModeContinueButton() {
     const cont = document.getElementById('practice-continue-btn');
     if (cont) {
-        cont.textContent = 'Next Question →';
+        cont.textContent = 'NEXT PROBLEM [SPACE]';
         cont.style.display = '';
     }
     const skip = document.getElementById('practice-skip-btn');
@@ -8676,6 +8758,7 @@ function _serveModeEntry(entry) {
     window._pendingSolveConfidence = null;   // fresh item → stale tap discarded
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
+    AppState._pqConfidenceByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
     AppState.practiceQuestions = [entry.q];
@@ -10402,12 +10485,14 @@ function injectEloShiftChip(eloResult, options = {}) {
         headerSlot.innerHTML = '';
         const isClean = options.outcome ? (options.outcome === 'clean') : (delta >= 0);
         const label = isClean ? 'CALIBRATED' : 'OFF-TARGET';
+        const isModalSlot = (headerSlot.id === 'elo-header-slot');
         const headerChip = document.createElement('div');
         headerChip.className = 'elo-header-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
         headerChip.title = `${subjLabel} rating ${sign}${Math.round(delta)} · Rank: ${tier.name} — a live skill estimate shaped by your solve speed, question difficulty and practice mode.`;
         headerChip.innerHTML =
             `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
-            `<span class="elo-shift-tier">[${label}]</span>`;
+            (isModalSlot ? ' ' : '') +
+            `<span class="elo-shift-tier">${isModalSlot ? label : `[${label}]`}</span>`;
         headerSlot.appendChild(headerChip);
 
         // Persist header chip in both practice and SR drawers until close / next card
@@ -10687,6 +10772,11 @@ export function practiceSubmit() {
         return;
     }
 
+    if (_eloResult && AppState.currentPracticeIndex != null) {
+        AppState._pqEloByIdx = AppState._pqEloByIdx || {};
+        AppState._pqEloByIdx[AppState.currentPracticeIndex] = _eloResult;
+    }
+
     renderPracticeQuestionModal();
 
     // ── Elo shift chip (injected AFTER the modal re-render so it survives) ──
@@ -10712,7 +10802,7 @@ export function practiceSubmit() {
     } else {
         const contBtn = document.getElementById('practice-continue-btn');
         if (contBtn && (!AppState.practiceFlowMode || AppState.practiceFlowMode === 'standard' || AppState.bountyMode)) {
-            contBtn.textContent = 'Next Question →';
+            contBtn.textContent = 'NEXT PROBLEM [SPACE]';
             contBtn.style.display = '';
         }
     }
@@ -10721,14 +10811,21 @@ export function practiceSubmit() {
 export function addTextQuestionFollowUp() {
     const container = document.getElementById('practice-modal-content');
     if (!container) return;
-    const btnContainer = document.createElement('div');
-    btnContainer.style.cssText = "display:flex; gap:12px; margin-top:12px; align-items:center; justify-content:center; flex-wrap:nowrap;";
-    btnContainer.innerHTML =
-        `<button class="btn btn-success" id="text-correct-btn" style="flex:1; max-width:170px;">VERIFIED</button>
-         <button class="btn btn-danger" id="text-wrong-btn" style="flex:1; max-width:160px;">FAILED</button>`;
-    container.appendChild(btnContainer);
+    let correctBtn = document.getElementById('text-correct-btn');
+    let wrongBtn = document.getElementById('text-wrong-btn');
+    let verdictRow = (correctBtn && correctBtn.closest('.verdict-row')) || null;
+    if (!correctBtn || !wrongBtn) {
+        verdictRow = document.createElement('div');
+        verdictRow.className = 'verdict-row';
+        verdictRow.innerHTML =
+            `<button type="button" class="btn btn-verify" id="text-correct-btn">VERIFIED [Y]</button>
+             <button type="button" class="btn btn-fail" id="text-wrong-btn">FAILED [N]</button>`;
+        container.appendChild(verdictRow);
+        correctBtn = document.getElementById('text-correct-btn');
+        wrongBtn = document.getElementById('text-wrong-btn');
+    }
 
-    document.getElementById('text-correct-btn').onclick = () => {
+    correctBtn.onclick = () => {
         if (AppState._pqPendingSelfReportByIdx) delete AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex];
         const wasAlreadySolved = (AppState.currentQ.status === 'solved');
         const _wasSelfGraded = !!AppState.currentQ.selfGrade;
@@ -10753,6 +10850,7 @@ export function addTextQuestionFollowUp() {
             );
              } catch (_e) { console.error('Elo migration fault:', _e); }      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
       if (!_wasSelfGraded && AppState.currentQ.selfGrade) {
+          if (!_pqPreTagDiffMap.has(AppState.currentQ)) _pqPreTagDiffMap.set(AppState.currentQ, AppState.currentQ.difficultyD);
           try { refineDifficultyAfterTag(AppState.currentQ, _PQ_GRADE_PERF[AppState.currentQ.selfGrade.g]); } catch (_) {}
       }
       stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
@@ -10768,8 +10866,11 @@ export function addTextQuestionFollowUp() {
             _pqBumpSolvedDelta(1);
         }
         saveAllAsync().catch(console.error);
-        btnContainer.remove();
-        container.querySelector('.pq-reveal-ask')?.remove();
+        if (verdictRow) verdictRow.remove();
+        if (_eloRes && AppState.currentPracticeIndex != null) {
+            AppState._pqEloByIdx = AppState._pqEloByIdx || {};
+            AppState._pqEloByIdx[AppState.currentPracticeIndex] = _eloRes;
+        }
         renderPracticeQuestionModal();
         if (_eloRes) { _noteSessionElo(AppState.currentQ, _eloRes); try { injectEloShiftChip(_eloRes, { outcome: 'clean' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
@@ -10780,7 +10881,7 @@ export function addTextQuestionFollowUp() {
         } else {
             const contBtn = document.getElementById('practice-continue-btn');
             if (contBtn) {
-                contBtn.textContent = 'Next Question →';
+                contBtn.textContent = 'NEXT PROBLEM [SPACE]';
                 contBtn.style.display = '';
             }
         }
@@ -10788,7 +10889,7 @@ export function addTextQuestionFollowUp() {
         try { _pqRenderDiag(); } catch (_) {}
     };
 
-    document.getElementById('text-wrong-btn').onclick = () => {
+    wrongBtn.onclick = () => {
         if (AppState._pqPendingSelfReportByIdx) delete AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex];
         const _wasSelfGraded = !!AppState.currentQ.selfGrade;
         if (!AppState.currentQ.selfGrade) AppState.currentQ.selfGrade = { g: 1, t: Date.now() };
@@ -10812,6 +10913,7 @@ export function addTextQuestionFollowUp() {
             );
              } catch (_e) { console.error('Elo migration fault:', _e); }      applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloRes);
       if (!_wasSelfGraded && AppState.currentQ.selfGrade) {
+          if (!_pqPreTagDiffMap.has(AppState.currentQ)) _pqPreTagDiffMap.set(AppState.currentQ, AppState.currentQ.difficultyD);
           try { refineDifficultyAfterTag(AppState.currentQ, _PQ_GRADE_PERF[AppState.currentQ.selfGrade.g]); } catch (_) {}
       }
       _pqFinishAttemptSnapshot(AppState.currentQ, AppState.currentPracticeIndex, false, _eloRes, 0);
@@ -10820,8 +10922,11 @@ export function addTextQuestionFollowUp() {
           evaluateBountyOutcome(false);
             return;
         }
-        btnContainer.remove();
-        container.querySelector('.pq-reveal-ask')?.remove();
+        if (verdictRow) verdictRow.remove();
+        if (_eloRes && AppState.currentPracticeIndex != null) {
+            AppState._pqEloByIdx = AppState._pqEloByIdx || {};
+            AppState._pqEloByIdx[AppState.currentPracticeIndex] = _eloRes;
+        }
         renderPracticeQuestionModal();
         if (_eloRes) { _noteSessionElo(AppState.currentQ, _eloRes); try { injectEloShiftChip(_eloRes, { outcome: 'skill' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
@@ -10832,7 +10937,7 @@ export function addTextQuestionFollowUp() {
         } else {
             const contBtn = document.getElementById('practice-continue-btn');
             if (contBtn) {
-                contBtn.textContent = 'Next Question →';
+                contBtn.textContent = 'NEXT PROBLEM [SPACE]';
                 contBtn.style.display = '';
             }
         }
@@ -10930,7 +11035,7 @@ export function practiceNext() {
         }
 
         renderPracticeQuestionModal();
-        if (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex] && !document.getElementById('text-correct-btn')) {
+        if (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex] && (!document.getElementById('text-correct-btn') || !document.getElementById('text-correct-btn').onclick)) {
             addTextQuestionFollowUp();
         }
     } else {
@@ -10968,7 +11073,7 @@ export function practicePrev() {
         }
 
         renderPracticeQuestionModal();
-        if (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex] && !document.getElementById('text-correct-btn')) {
+        if (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex] && (!document.getElementById('text-correct-btn') || !document.getElementById('text-correct-btn').onclick)) {
             addTextQuestionFollowUp();
         }
     }
@@ -11080,6 +11185,7 @@ export function closePracticeModal(opts) {
     window._pendingSolveConfidence = null;
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
+    AppState._pqConfidenceByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
     AppState._pqHealthBefore = null;
@@ -13507,12 +13613,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     const isCritFlash = CK.critFlashUntil > Date.now();
     const label = isCritFlash
-      ? '⚡ CRIT SURGE · +1 🛡'
+      ? '⚡ CRIT SURGE · +1 🛡️'
       : isOverheat
-        ? ('🌡 3× OVERHEAT · 🔥 ×' + CK.combo + ' · 🛡 ×' + CK.shields)
+        ? ('🌡️ 3× OVERHEAT · 🔥 ' + CK.combo + ' · 🛡️ ' + CK.shields)
         : CK.critPrimed
-          ? ('🔥 ×' + CK.combo + ' · ⚡ CRIT ARMED! · 🛡 ×' + CK.shields)
-          : ('🔥 ×' + CK.combo + ' · ⚡ ' + Math.min(100, Math.round(CK.crit)) + '% · 🛡 ×' + CK.shields);
+          ? ('🔥 ' + CK.combo + ' · ⚡ CRIT ARMED! · 🛡️ ' + CK.shields)
+          : ('🔥 ' + CK.combo + ' · ⚡ ' + Math.min(100, Math.round(CK.crit)) + '% · 🛡️ ' + CK.shields);
     const hudKey = label + '|' + (isCritFlash || CK.critPrimed ? '1' : '0') + '|' + (isOverheat ? '1' : '0');
     if (CK.lastHudKey === hudKey) return;
     CK.lastHudKey = hudKey;
