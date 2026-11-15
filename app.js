@@ -5379,12 +5379,11 @@ export function startPracticeWithQuestion(questions, index, opts = null) {
     AppState.practiceSubmittedFlags = new Array(questions.length).fill(false);
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
-    AppState._pqConfidenceByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
     AppState._pqHealthBefore = null;
     AppState._pqElo = null;
-    try { _pqResetConfidenceUI(); } catch (_) {}
+    window._pendingSolveConfidence = null;
     if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
     AppState.practiceSeconds = 0;
     AppState.practiceDisplayOffset = (opts && opts.displayOffsetSecs) ? Math.max(0, opts.displayOffsetSecs | 0) : 0;
@@ -5985,32 +5984,8 @@ function _pqSyncState() {
 }
 
 const _PQ_GRADE_PERF = { 1: 1.5, 2: 3, 3: 4.5 };
-const _PQ_CONF_LEVEL = { '1': 'guess', '2': 'likely', '3': 'sure' };
-const _PQ_CONF_LABELS = { guess: 'SHAKY', likely: 'SOLID', sure: 'LOCK-IN' };
 const _pqPreTagDiffMap = new WeakMap();
-let _pqConfidenceBound = false;
-
-function _pqSetConfidence(level) {
-    if (!level || !['guess', 'likely', 'sure'].includes(level)) return;
-    window._pendingSolveConfidence = level;
-    if (AppState.currentPracticeIndex != null) {
-        AppState._pqConfidenceByIdx = AppState._pqConfidenceByIdx || {};
-        AppState._pqConfidenceByIdx[AppState.currentPracticeIndex] = level;
-    }
-    document.querySelectorAll('#pq-conf-ghost [data-conf]').forEach(btn => {
-        btn.setAttribute('aria-pressed', String(btn.dataset.conf === level));
-    });
-}
-
-function _pqResetConfidenceUI() {
-    window._pendingSolveConfidence = null;
-    if (AppState.currentPracticeIndex != null && AppState._pqConfidenceByIdx) {
-        delete AppState._pqConfidenceByIdx[AppState.currentPracticeIndex];
-    }
-    document.querySelectorAll('#pq-conf-ghost [data-conf]').forEach(btn => {
-        btn.setAttribute('aria-pressed', 'false');
-    });
-}
+let _pqStageKeysBound = false;
 
 function _pqApplyGrade(grade) {
     const g = Number(grade);
@@ -6039,9 +6014,9 @@ function _pqApplyGrade(grade) {
     _pqRenderDiag();
 }
 
-function _pqBindConfidence() {
-    if (_pqConfidenceBound) return;
-    _pqConfidenceBound = true;
+function _pqBindStageKeys() {
+    if (_pqStageKeysBound) return;
+    _pqStageKeysBound = true;
 
     document.addEventListener('keydown', (e) => {
         if (e.defaultPrevented || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
@@ -6054,10 +6029,7 @@ function _pqBindConfidence() {
         const phase = modal.getAttribute('data-pq-phase') || (state === 'answered' ? 'resolved' : 'pre-reveal');
 
         if (/^[1-3]$/.test(e.key)) {
-            if (phase === 'pre-reveal') {
-                e.preventDefault();
-                _pqSetConfidence(_PQ_CONF_LEVEL[e.key]);
-            } else if (phase === 'resolved') {
+            if (phase === 'resolved') {
                 e.preventDefault();
                 _pqApplyGrade(Number(e.key));
             }
@@ -6127,14 +6099,6 @@ function _pqBindConfidence() {
     });
 
     document.addEventListener('click', (e) => {
-        const confBtn = e.target.closest('#pq-conf-ghost [data-conf]');
-        if (confBtn) {
-            const modal = document.getElementById('practice-modal');
-            if (modal && modal.classList.contains('active') && modal.getAttribute('data-pq-state') === 'solving') {
-                _pqSetConfidence(confBtn.dataset.conf);
-            }
-            return;
-        }
         const gradeBtn = e.target.closest('#practice-modal .pq-diag-grade [data-pq-grade]');
         if (gradeBtn) _pqApplyGrade(Number(gradeBtn.dataset.pqGrade));
     });
@@ -6172,18 +6136,11 @@ function _pqRenderDiag() {
     const retTxt = before != null && after != null
         ? `${before}% → ${Math.round(after)}%`
         : (after != null ? `${Math.round(after)}%` : '—');
-    const confKey = (AppState._pqConfidenceByIdx && AppState._pqConfidenceByIdx[idx]) || window._pendingSolveConfidence || null;
-    const confTxt = (confKey && _PQ_CONF_LABELS[confKey]) || (
-        elo && elo.confidenceUsed != null
-            ? (elo.confidenceUsed >= 0.85 ? 'LOCK-IN' : elo.confidenceUsed >= 0.6 ? 'SOLID' : 'SHAKY')
-            : '—'
-    );
     el.innerHTML = `
         <div class="pq-diag-grid audit-header">
             <span class="pq-diag-field"><i>TIME</i><b>${timeTxt}</b></span>
             <span class="pq-diag-field"><i>ELO</i><b>${eloTxt}</b></span>
             <span class="pq-diag-field"><i>RETENTION</i><b>${retTxt}</b></span>
-            <span class="pq-diag-field"><i>CONFIDENCE</i><b>${confTxt}</b></span>
         </div>`;
 }
 
@@ -6241,7 +6198,6 @@ function _pqCaptureAttemptSnapshot(q, idx, userSelectedOption) {
             globalElo: AppState.elo.global,
             rdSubj: (safeSubject && AppState.elo.rd) ? AppState.elo.rd[safeSubject] : undefined,
             calibrationLogLen: Array.isArray(AppState.calibrationLog) ? AppState.calibrationLog.length : 0,
-            pendingConfidence: window._pendingSolveConfidence || null,
             chapterThetaNode: thetaNode,
         },
         thetaKey,
@@ -6611,7 +6567,7 @@ function _pqRestoreAttemptImpact(snap, q) {
                 AppState.calibrationLog = AppState.calibrationLog.slice(0, len);
             }
         }
-        window._pendingSolveConfidence = snap.preElo.pendingConfidence || null;
+        window._pendingSolveConfidence = null;
     }
     if (snap.cnsLogged && safeSubject) {
         try { CNSLoad.popLastSolve(safeSubject); } catch (_) {}
@@ -6852,7 +6808,7 @@ export function renderPracticeQuestionModal() {
         catch (_) { AppState._pqHealthByIdx[_pqIdx] = null; }
     }
     if (!submitted) {
-        _pqResetConfidenceUI();
+        window._pendingSolveConfidence = null;
         if (AppState._pqEloByIdx) delete AppState._pqEloByIdx[_pqIdx];
         const _cBtn = document.getElementById('practice-continue-btn');
         if (_cBtn) _cBtn.style.display = 'none';
@@ -6940,7 +6896,7 @@ export function renderPracticeQuestionModal() {
         try { _updatePracticeHUD(); } catch (_) {}
         try { _pqCancelChromeFade(); } catch (_) {}
         try { _pqSyncState(); } catch (_) {}
-        try { _pqBindConfidence(); } catch (_) {}
+        try { _pqBindStageKeys(); } catch (_) {}
         try { _pqBindOverrideEvents(); } catch (_) {}
         try { _pqRenderDiag(); } catch (_) {}
         try { _pqUpdatePace(); } catch (_) {}
@@ -7005,7 +6961,7 @@ export function renderPracticeQuestionModal() {
     try { _updatePracticeHUD(); } catch (_) {}
     try { _pqArmChromeFade(); } catch (_) {}
     try { _pqSyncState(); } catch (_) {}
-    try { _pqBindConfidence(); } catch (_) {}
+    try { _pqBindStageKeys(); } catch (_) {}
     try { _pqRenderDiag(); } catch (_) {}
     try { _pqUpdatePace(); } catch (_) {}
     try { _pqBindHold(); } catch (_) {}
@@ -7591,7 +7547,7 @@ function _guessAdjustedScore(questionObj, S) {
 }
 
 /**
- * Consume the pending pre-reveal confidence (set by the practice modal / SR
+ * Consume the pending pre-reveal confidence (set by the Error Matrix SR
  * drawer just before this solve resolved). Logs a Brier entry for the weekly
  * Calibration Report and returns the anchor probability (or null).
  */
@@ -8764,7 +8720,6 @@ function _serveModeEntry(entry) {
     window._pendingSolveConfidence = null;   // fresh item → stale tap discarded
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
-    AppState._pqConfidenceByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
     AppState.practiceQuestions = [entry.q];
@@ -9836,7 +9791,7 @@ function _renderCalibrationReport() {
     if (log.length < 5) {
         el.innerHTML =
             '<span class="calib-kicker">CALIBRATION</span>' +
-            '<span class="calib-warmup">Tap your confidence before locking in an answer; the honesty readout unlocks after ~5 graded solves.</span>';
+            '<span class="calib-warmup">Tap your confidence in the Error Matrix before confirming; the honesty readout unlocks after ~5 graded solves.</span>';
         return;
     }
     const recent = log.slice(-60);
@@ -11191,7 +11146,6 @@ export function closePracticeModal(opts) {
     window._pendingSolveConfidence = null;
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
-    AppState._pqConfidenceByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
     AppState._pqHealthBefore = null;
