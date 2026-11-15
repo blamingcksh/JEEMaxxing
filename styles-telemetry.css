@@ -19,7 +19,6 @@ html[data-theme="observatory"] {
 .subject-tele-label,
 .subject-card-meta,
 .pq-diag,
-.pq-conf-ghost button,
 .jmax-app-toast {
   font-family: var(--font-num) !important;
   font-variant-numeric: tabular-nums;
@@ -636,56 +635,7 @@ body.immersive-active #practice-modal.pq-stage {
   color: var(--ink-primary);
 }
 
-/* ── Pre-Reveal: Confidence Grid, Hold Cue & Submit ── */
-#practice-modal.pq-stage .pq-conf-ghost {
-  display: none;
-  position: relative;
-  z-index: 5010;
-  width: 100%;
-  margin: 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  opacity: 1;
-}
-
-#practice-modal.pq-stage[data-pq-state="solving"] .pq-conf-ghost {
-  display: grid;
-}
-
-#practice-modal.pq-stage[data-pq-state="answered"] .pq-conf-ghost {
-  display: none !important;
-}
-
-#practice-modal.pq-stage .pq-conf-ghost button {
-  width: 100%;
-  min-width: 0;
-  height: 40px;
-  min-height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control) !important;
-  background: var(--bg-surface);
-  color: var(--ink-secondary);
-  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background .15s ease, border-color .15s ease, color .15s ease;
-}
-
-#practice-modal.pq-stage .pq-conf-ghost button:hover {
-  border-color: var(--border-strong);
-  color: var(--ink-primary);
-}
-
-#practice-modal.pq-stage .pq-conf-ghost button[aria-pressed="true"] {
-  border-color: var(--ink-primary);
-  color: var(--ink-primary);
-  background: var(--bg-elevated);
-}
-
+/* ── Pre-Reveal: Hold Cue & Submit ── */
 #practice-modal.pq-stage .pq-hold-hint,
 #practice-modal.pq-stage:not(.pq-is-free-response) .pq-hold-hint {
   bottom: 22px;
@@ -781,7 +731,7 @@ body.immersive-active #practice-modal.pq-stage {
 #practice-modal.pq-stage .audit-header,
 #practice-modal.pq-stage .pq-diag-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin: 0;
 }
@@ -1179,7 +1129,7 @@ body #practice-modal.pq-stage .pq-reveal-row .answer-card.is-failed.result-banne
 @media (max-width: 680px) {
   #practice-modal.pq-stage .audit-header,
   #practice-modal.pq-stage .pq-diag-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   #practice-modal.pq-stage .verdict-row {
     grid-template-columns: 1fr 1fr;

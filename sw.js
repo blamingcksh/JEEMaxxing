@@ -201,7 +201,8 @@
 //        Added cortex.js, styles-dashboard.css, and styles-practice-fullscreen.css?v=10 to SHELL.
 // v103 - Remove candlestick graph and Sprout Isle from Dashboard and precache.
 // v104 - Practice modal single-rail layout & MCQ dock sync.
-const VERSION = 'jeemax-v104';
+// v105 - Confidence calibration removed from normal practice modal (kept for Error Matrix / mocks).
+const VERSION = 'jeemax-v105';
 
 const SHELL = [
   './',
