@@ -764,8 +764,58 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     </div>
     <div class="lbh-actions">
         <button type="button" class="lbh-btn" onclick="addLockinRest(2)">+2m Rest</button>
-        <button type="button" class="lbh-btn" onclick="skipLockinRest()">Skip Rest →</button>
+        <button type="button" class="lbh-btn lbh-primary" onclick="skipLockinRest()">Skip Rest →</button>
+        <button type="button" class="lbh-btn lbh-switch" id="lbh-switch-btn" onclick="openLockinBreakSwitch()">Switch Subject</button>
         <button type="button" class="lbh-btn lbh-end" onclick="endLockinSession()">End Session</button>
+    </div>
+</div>
+
+<!-- ═══════════════ LOCK-IN SCOPE SWITCHER (pomodoro.js) ═══════════════
+     Shown when switching Subject / Chapter during Break, at Break End, or on
+     mid-block Question Pool Exhaustion (Refill Gate). Sits above GalleryBreak. -->
+<div id="lockin-scope-modal" class="modal-overlay lockin-modal lockin-scope-modal" data-scope-mode="break">
+    <div class="lockin-card lockin-scope-card" role="dialog" aria-modal="true" aria-labelledby="lockin-scope-title">
+        <div class="lockin-head">
+            <h2 class="lockin-title" id="lockin-scope-title">Switch Next Target</h2>
+            <button class="close-btn" id="lockin-scope-close" type="button" onclick="lockinScopeCancel()" aria-label="Close">✕</button>
+        </div>
+
+        <div class="lsc-status-row" id="lockin-scope-status" hidden>
+            <span class="lsc-chip" id="lockin-scope-remaining"></span>
+            <span class="lsc-grace" id="lockin-scope-grace" hidden></span>
+        </div>
+
+        <p class="lsc-sub" id="lockin-scope-sub">Pick the subject and chapter(s) to queue for your next round.</p>
+
+        <div class="lsc-subjects" id="lockin-scope-subjects" role="tablist" aria-label="Subject">
+            <button type="button" class="lsc-subj-btn" data-subject="physics" onclick="lockinScopeSelectSubject('physics')">
+                <span>Physics</span>
+                <span class="lsc-subj-count" id="lsc-count-physics">0</span>
+            </button>
+            <button type="button" class="lsc-subj-btn" data-subject="chemistry" onclick="lockinScopeSelectSubject('chemistry')">
+                <span>Chemistry</span>
+                <span class="lsc-subj-count" id="lsc-count-chemistry">0</span>
+            </button>
+            <button type="button" class="lsc-subj-btn" data-subject="maths" onclick="lockinScopeSelectSubject('maths')">
+                <span>Maths</span>
+                <span class="lsc-subj-count" id="lsc-count-maths">0</span>
+            </button>
+        </div>
+
+        <div class="lsc-chapters-head">
+            <span class="lsc-chapters-label" id="lockin-scope-chapters-label">Chapters</span>
+            <button type="button" class="lsc-select-all" id="lockin-scope-select-all" onclick="lockinScopeSelectAll()">Select all available</button>
+        </div>
+
+        <div class="multi-chapter-options lsc-chapters" id="lockin-scope-chapters"></div>
+
+        <div class="lsc-footer">
+            <span class="lsc-summary" id="lockin-scope-summary">0 eligible questions</span>
+            <div class="lsc-actions">
+                <button type="button" class="lsc-btn-secondary" id="lockin-scope-secondary" onclick="lockinScopeSecondary()">Cancel</button>
+                <button type="button" class="lsc-launch" id="lockin-scope-confirm" onclick="lockinScopeConfirm()">Queue Next Round</button>
+            </div>
+        </div>
     </div>
 </div>
 

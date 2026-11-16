@@ -156,12 +156,21 @@ function _updateDeepWorkBeacon() {
             b._dwBound = true;
             b.addEventListener('click', () => {
                 try {
-                    const pm = document.getElementById('practice-modal');
-                    if (lockinSession.active && pm && typeof window.openModal === 'function') {
-                        window.openModal('practice-modal');
-                    } else if (lockinSession.active) {
-                        const hud = document.getElementById('lockin-break-hud');
-                        if (hud && lockinSession.phase === 'BREAK') hud.classList.add('active');
+                    if (lockinSession.active) {
+                        if (lockinSession.awaitingRefill || lockinSession.awaitingBreakSwitch) {
+                            const sm = document.getElementById('lockin-scope-modal');
+                            if (sm) { sm.style.display = 'flex'; sm.classList.add('active'); }
+                            return;
+                        }
+                        if (lockinSession.phase === 'BREAK') {
+                            const hud = document.getElementById('lockin-break-hud');
+                            if (hud) hud.classList.add('active');
+                            return;
+                        }
+                        const pm = document.getElementById('practice-modal');
+                        if (pm && typeof window.openModal === 'function') {
+                            window.openModal('practice-modal');
+                        }
                     } else if (typeof window.openLockinSetupModal === 'function') {
                         openLockinSetupModal(lockinSession.mode || 'flow');
                     }
@@ -172,7 +181,13 @@ function _updateDeepWorkBeacon() {
             b.hidden = false;
             const mmss = formatTime(Math.max(0, _lockinLeftSecs));
             const rTag = `R${lockinSession.currentSession}/${lockinSession.totalSessions}`;
-            if (lockinSession.phase === 'BREAK') {
+            if (lockinSession.awaitingRefill) {
+                b.textContent = `⏸ REFILL · ${mmss} · ${rTag}`;
+                b.setAttribute('data-state', 'paused');
+            } else if (lockinSession.awaitingBreakSwitch) {
+                b.textContent = `⇄ SWITCHING · ${rTag}`;
+                b.setAttribute('data-state', 'break');
+            } else if (lockinSession.phase === 'BREAK') {
                 b.textContent = `☕ BREAK · ${mmss} · ${rTag}`;
                 b.setAttribute('data-state', 'break');
             } else if (!lockinSession.running) {
@@ -369,6 +384,9 @@ export function applyPomoConfig() {
 document.addEventListener('visibilitychange', async () => {
     if (!document.hidden && lockinSession.active && lockinSession.running) {
         _lockinTick();
+    }
+    if (!document.hidden && lockinSession.active && (lockinSession.awaitingRefill || lockinSession.awaitingBreakSwitch)) {
+        _scopeGraceTick();
     }
     if (document.hidden) return;
     if (pomoState === 'IDLE' || !timerStartTime || isPaused) return;
@@ -1544,6 +1562,10 @@ try { _syncPopControls(); } catch (_) {}
 // ═══════════════════════════════════════════════════════════════════════════
 
 const LOCKIN_MODES = ['flow', 'hardcore'];
+const LOCKIN_REFILL_MIN_LEFT_SECS = 180;      // < 3m left on exhaustion -> finish block directly
+const LOCKIN_REFILL_GRACE_SECS = 120;         // 2m grace window to pick next chapter on exhaustion
+const LOCKIN_BREAK_END_GRACE_SECS = 90;       // 90s grace window if switching at break end
+const LOCKIN_EARLY_EXHAUST_MIN_SECS = 300;    // 5m (or >=50% block) floor for chain/shield on early exhaust
 
 /** Live Lock-In session state (also handed to app.js on confirm / resume). */
 export const lockinSession = {
@@ -1552,6 +1574,12 @@ export const lockinSession = {
     subject: 'physics',
     chapter: '',
     chapterSelection: null,
+    pendingScope: null,             // queued { subject, chapter, chapterSelection } for next round
+    awaitingRefill: false,          // true while STUDY pauses in Refill Gate after pool exhaustion
+    awaitingBreakSwitch: false,     // true while picking new scope at break-end
+    segmentSecs: { physics: 0, chemistry: 0, maths: 0 },
+    startEloBySubject: {},
+    subjectsTouched: [],
     studyMins: 50,
     breakMins: 10,
     totalSessions: 1,
@@ -1559,6 +1587,7 @@ export const lockinSession = {
     phase: 'STUDY',                 // 'STUDY' | 'BREAK'
     expiredPendingTransition: false,
     solvedInRun: 0,
+    solvedInBlock: 0,
     streakInRun: 0,
     startElo: 1200,
     running: false,
@@ -1570,9 +1599,19 @@ let _lockinEndsAt = 0;
 let _lockinTotalSecs = 0;
 let _lockinLeftSecs = 0;
 let _lockinCreditedSecs = 0;       // escrow seconds accrued this STUDY block
+let _lockinFlushedSecs = 0;        // seconds already flushed into segmentSecs this block
 let _lockinPausedLeft = 0;
 let _lockinOnConfirm = null;
 let _lockinSliderApi = null;       // entry intensity rail handle (pomodoro side)
+
+// Scope Switcher modal state (Break / Break-End / Refill Gate)
+let _scopeModalMode = null;        // null | 'break' | 'break-end' | 'refill'
+let _scopeCatalog = null;
+let _scopeSelectedSubject = 'physics';
+let _scopeSelectedChapters = new Set();
+let _scopeGraceTimer = null;
+let _scopeGraceEndsAt = 0;
+let _scopeGraceLeftSecs = 0;
 
 // ── small helpers ─────────────────────────────────────────────────────────
 function _clamp(n, lo, hi) { n = parseInt(n, 10); if (!isFinite(n)) n = lo; return Math.min(hi, Math.max(lo, n)); }
@@ -1693,6 +1732,9 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
         : (isValidSubjectKey(studySubject) ? studySubject : 'physics');
     lockinSession.chapter = ctx.chapter || '';
     lockinSession.chapterSelection = Array.isArray(ctx.chapterSelection) ? ctx.chapterSelection.slice() : null;
+    lockinSession.pendingScope = null;
+    lockinSession.awaitingRefill = false;
+    lockinSession.awaitingBreakSwitch = false;
     lockinSession.startElo = _currentSubjectElo(lockinSession.subject);
     lockinSession.voided = false;
     _lockinOnConfirm = typeof onConfirmStart === 'function' ? onConfirmStart : null;
@@ -1710,25 +1752,35 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
 
     _syncLockinPresetActive();
     _renderLockinTimeline();
-    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function' &&
-        typeof window !== 'undefined' && !window._lockinEscBound) {
-        window._lockinEscBound = true;
-        document.addEventListener('keydown', (e) => {
-            if (e.key !== 'Escape') return;
-            const el = document.getElementById('lockin-setup-modal');
-            if (el && el.classList && el.classList.contains('active')) {
-                e.preventDefault();
-                e.stopPropagation();
-                closeLockinSetupModal();
-            }
-        }, true);
-    }
+    _bindLockinEscOnce();
     const modal = document.getElementById('lockin-setup-modal');
     if (modal) {
         modal.style.display = 'flex';
         modal.classList.add('active');
     }
     return true;
+}
+
+function _bindLockinEscOnce() {
+    if (typeof document === 'undefined' || typeof document.addEventListener !== 'function' ||
+        typeof window === 'undefined' || window._lockinEscBound) return;
+    window._lockinEscBound = true;
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const scopeEl = document.getElementById('lockin-scope-modal');
+        if (scopeEl && scopeEl.classList && scopeEl.classList.contains('active')) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (_scopeModalMode === 'break') lockinScopeCancel();
+            return;
+        }
+        const el = document.getElementById('lockin-setup-modal');
+        if (el && el.classList && el.classList.contains('active')) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeLockinSetupModal();
+        }
+    }, true);
 }
 
 export function closeLockinSetupModal() {
@@ -1753,9 +1805,16 @@ export function confirmLockinSetup() {
     lockinSession.totalSessions = rounds;
     lockinSession.currentSession = 1;
     lockinSession.active = true;
+    lockinSession.pendingScope = null;
+    lockinSession.awaitingRefill = false;
+    lockinSession.awaitingBreakSwitch = false;
     lockinSession.solvedInRun = 0;
+    lockinSession.solvedInBlock = 0;
     lockinSession.streakInRun = 0;
+    lockinSession.startEloBySubject = {};
+    lockinSession.subjectsTouched = [];
     lockinSession.startElo = _currentSubjectElo(lockinSession.subject);
+    _ensureSubjectTracked(lockinSession.subject);
     studySubject = lockinSession.subject;
     try {
         localStorage.setItem(POMO_CONFIG_KEY, JSON.stringify({
@@ -1836,12 +1895,97 @@ function _renderLockinTimeline() {
     }
 }
 
+// ── Multi-subject & scope helpers ─────────────────────────────────────────
+function _subjTag(subj) {
+    const s = isValidSubjectKey(subj) ? subj : 'physics';
+    return s === 'chemistry' ? 'CHEM' : (s === 'maths' ? 'MATH' : 'PHYS');
+}
+
+function _formatScopeLabel(scope) {
+    if (!scope) return '';
+    const tag = _subjTag(scope.subject);
+    const ch = scope.chapter ? String(scope.chapter) : '';
+    if (!ch) return tag;
+    const shortCh = ch.length > 24 ? (ch.slice(0, 23) + '…') : ch;
+    return `${tag} · ${shortCh}`;
+}
+
+function _ensureSubjectTracked(subj) {
+    const s = isValidSubjectKey(subj) ? subj : 'physics';
+    if (!lockinSession.startEloBySubject || typeof lockinSession.startEloBySubject !== 'object') {
+        lockinSession.startEloBySubject = {};
+    }
+    if (!(s in lockinSession.startEloBySubject)) {
+        lockinSession.startEloBySubject[s] = _currentSubjectElo(s);
+    }
+    if (!Array.isArray(lockinSession.subjectsTouched)) lockinSession.subjectsTouched = [];
+    if (!lockinSession.subjectsTouched.includes(s)) lockinSession.subjectsTouched.push(s);
+}
+
+function _applyScopeToLockinSession(scope) {
+    if (!scope || !isValidSubjectKey(scope.subject)) return;
+    lockinSession.subject = scope.subject;
+    lockinSession.chapter = scope.chapter || '';
+    lockinSession.chapterSelection = Array.isArray(scope.chapterSelection) ? scope.chapterSelection.slice() : null;
+    studySubject = lockinSession.subject;
+    _ensureSubjectTracked(lockinSession.subject);
+}
+
+function _flushCurrentLockinSegment() {
+    if (lockinSession.phase !== 'STUDY') return;
+    if (lockinSession.running && _lockinEndsAt > 0) {
+        _lockinLeftSecs = Math.max(0, Math.round((_lockinEndsAt - Date.now()) / 1000));
+    }
+    const totalElapsed = Math.max(0, Math.min(_lockinTotalSecs, _lockinTotalSecs - _lockinLeftSecs));
+    const segDelta = Math.max(0, totalElapsed - _lockinFlushedSecs);
+    if (segDelta > 0) {
+        const subj = isValidSubjectKey(lockinSession.subject) ? lockinSession.subject : 'physics';
+        if (!lockinSession.segmentSecs || typeof lockinSession.segmentSecs !== 'object') {
+            lockinSession.segmentSecs = { physics: 0, chemistry: 0, maths: 0 };
+        }
+        lockinSession.segmentSecs[subj] = (lockinSession.segmentSecs[subj] || 0) + segDelta;
+        _lockinFlushedSecs = totalElapsed;
+    }
+}
+
+function _buildRunNetEloData() {
+    const touched = Array.isArray(lockinSession.subjectsTouched) && lockinSession.subjectsTouched.length
+        ? lockinSession.subjectsTouched
+        : [lockinSession.subject];
+    const startMap = lockinSession.startEloBySubject || {};
+    if (touched.length <= 1) {
+        const s = touched[0] || lockinSession.subject;
+        const base = (s in startMap) ? startMap[s] : lockinSession.startElo;
+        const net = _currentSubjectElo(s) - base;
+        return { netElo: net, eloText: `${net >= 0 ? '+' : ''}${net}` };
+    }
+    let total = 0;
+    const parts = [];
+    for (const s of touched) {
+        const base = (s in startMap) ? startMap[s] : _currentSubjectElo(s);
+        const d = _currentSubjectElo(s) - base;
+        total += d;
+        parts.push(`${_subjTag(s)} ${d >= 0 ? '+' : ''}${d}`);
+    }
+    return {
+        netElo: total,
+        eloText: `${total >= 0 ? '+' : ''}${total} (${parts.join(' · ')})`,
+        multiSubject: true,
+    };
+}
+
 // ── Study / break phase machine ───────────────────────────────────────────
 function _startLockinStudy() {
     lockinSession.phase = 'STUDY';
     lockinSession.running = true;
     lockinSession.expiredPendingTransition = false;
+    lockinSession.awaitingRefill = false;
+    lockinSession.awaitingBreakSwitch = false;
+    lockinSession.solvedInBlock = 0;
+    lockinSession.segmentSecs = { physics: 0, chemistry: 0, maths: 0 };
+    _lockinFlushedSecs = 0;
     studySubject = lockinSession.subject;
+    _ensureSubjectTracked(lockinSession.subject);
     _lockinTotalSecs = Math.max(1, lockinSession.studyMins) * 60;
     _lockinLeftSecs = _lockinTotalSecs;
     _lockinCreditedSecs = 0;
@@ -1856,7 +2000,7 @@ function _startLockinStudy() {
 function _lockinTick() {
     if (!lockinSession.active || !lockinSession.running) return;
     const left = Math.max(0, Math.round((_lockinEndsAt - Date.now()) / 1000));
-    const delta = Math.max(1, _lockinLeftSecs - left);
+    const delta = Math.max(0, _lockinLeftSecs - left);
     _lockinLeftSecs = left;
     if (lockinSession.phase === 'STUDY') {
         _lockinCreditedSecs += delta;
@@ -1875,24 +2019,66 @@ function _elapsedStudySecs() {
 }
 
 /** Deposit the escrowed block into the day's ledger + study-time counters. */
-function _commitCompletedStudyBlock() {
-    const secs = _elapsedStudySecs();
+function _commitCompletedStudyBlock(opts) {
+    _flushCurrentLockinSegment();
     _lockinCreditedSecs = 0;
-    if (secs <= 0) return 0;
-    const subj = lockinSession.subject;
+    const segs = lockinSession.segmentSecs || {};
+    let totalSecs = 0;
+    let dominantSubj = lockinSession.subject;
+    let maxSeg = -1;
+    for (const s of SUBJECT_KEYS) {
+        const v = Math.max(0, segs[s] | 0);
+        if (v > 0) {
+            studySecs[s] += v;
+            totalSecs += v;
+            if (v > maxSeg) {
+                maxSeg = v;
+                dominantSubj = s;
+            }
+        }
+    }
+    const fallbackSecs = _elapsedStudySecs();
+    if (totalSecs <= 0 && fallbackSecs > 0) {
+        const s = isValidSubjectKey(lockinSession.subject) ? lockinSession.subject : 'physics';
+        studySecs[s] += fallbackSecs;
+        totalSecs = fallbackSecs;
+        dominantSubj = s;
+    }
+    if (totalSecs <= 0) return { secs: 0, shieldGranted: false, meetsMinBlock: false };
+
     const mode = lockinSession.mode || 'flow';
     const escrowMul = (MODE_TUNING[mode] && MODE_TUNING[mode].escrowBonusMultiplier) || 1.0;
-    studySubject = subj;
-    studySecs[subj] += secs;
+    const earlyExhaustion = !!(opts && opts.earlyExhaustion);
+    const meetsMinBlock = !earlyExhaustion || (
+        (lockinSession.solvedInBlock | 0) > 0 &&
+        (totalSecs >= LOCKIN_EARLY_EXHAUST_MIN_SECS || totalSecs >= Math.floor(_lockinTotalSecs * 0.5))
+    );
+
+    studySubject = dominantSubj;
     try { updateStudyTimeHeader(); } catch (_) {}
-    _ledgerCompleteBlock(secs, { escrowMul, subject: subj });
+    if (meetsMinBlock) {
+        _ledgerCompleteBlock(totalSecs, { escrowMul, subject: dominantSubj });
+    } else {
+        focusLedger.deep += totalSecs;
+        _saveFocusLedger();
+    }
     try { saveAllAsync().catch(() => {}); } catch (_) {}
     try {
         window.dispatchEvent(new CustomEvent('jmax:pomo-block-done', {
-            detail: { mode, escrowBonusMultiplier: escrowMul, subject: subj, secs }
+            detail: {
+                mode,
+                escrowBonusMultiplier: meetsMinBlock ? escrowMul : 1.0,
+                subject: dominantSubj,
+                secs: totalSecs,
+                segmentSecs: { ...segs },
+            }
         }));
     } catch (_) {}
-    return secs;
+    return {
+        secs: totalSecs,
+        shieldGranted: meetsMinBlock && escrowMul >= 2,
+        meetsMinBlock,
+    };
 }
 
 /** Sync live intensity slider flips across Flow/Hardcore into active Lock-In session. */
@@ -1946,6 +2132,8 @@ function _startLockinBreak() {
     try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.pauseForInterruption === 'function') window.Metro.pauseForInterruption(); } catch (_) {}
     lockinSession.phase = 'BREAK';
     lockinSession.running = true;
+    lockinSession.pendingScope = null;
+    lockinSession.awaitingBreakSwitch = false;
     _lockinTotalSecs = Math.max(1, lockinSession.breakMins) * 60;
     _lockinLeftSecs = _lockinTotalSecs;
     _lockinCreditedSecs = 0;
@@ -1963,9 +2151,24 @@ function _onLockinBreakExpire() {
     lockinSession.running = false;
     _hideLockinBreakHud();
     playBell();
+    if (_scopeModalMode === 'break') {
+        try {
+            if (GalleryBreak.isActive()) {
+                GalleryBreak.finish(null, { shouldHideQuote: () => true });
+            }
+        } catch (_) {}
+        _transitionBreakSwitchToBreakEnd();
+        return;
+    }
     try {
         if (GalleryBreak.isActive()) {
-            GalleryBreak.finish(() => _endLockinBreak(true));
+            const nextTarget = lockinSession.pendingScope || lockinSession;
+            const label = _formatScopeLabel(nextTarget);
+            GalleryBreak.finish(() => _endLockinBreak(true), {
+                continueLabel: label ? `Continue · ${label}` : 'Continue',
+                secondaryLabel: 'Change Subject',
+                onSecondary: () => _openBreakEndScopePicker(),
+            });
             return;
         }
     } catch (_) {}
@@ -1975,6 +2178,7 @@ function _onLockinBreakExpire() {
 export function skipLockinRest() {
     if (!lockinSession.active || lockinSession.phase !== 'BREAK') return;
     _clearLockinTick();
+    _closeScopeModal();
     lockinSession.running = false;
     _endLockinBreak(false);
 }
@@ -1993,8 +2197,17 @@ function _endLockinBreak(natural = false) {
         try { GalleryBreak.abort(); } catch (_) {}
     }
     _hideLockinBreakHud();
+    _closeScopeModal();
+    lockinSession.awaitingBreakSwitch = false;
     try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') window.Metro.resumeAfterInterruption(); } catch (_) {}
     if (!lockinSession.active) return;
+    if (lockinSession.pendingScope) {
+        _applyScopeToLockinSession(lockinSession.pendingScope);
+        lockinSession.pendingScope = null;
+    }
+    if (typeof window !== 'undefined' && typeof window.__applyLockinScopeToAppState === 'function') {
+        try { window.__applyLockinScopeToAppState(lockinSession); } catch (_) {}
+    }
     lockinSession.currentSession += 1;
     _startLockinStudy();
     // Auto-ignition: re-open the practice stage in the exact same mode.
@@ -2013,6 +2226,7 @@ export function endLockinSession() {
         return;
     }
     _clearLockinTick();
+    _closeScopeModal();
     lockinSession.running = false;
     try { GalleryBreak.abort(); } catch (_) {}
     _hideLockinBreakHud();
@@ -2022,11 +2236,13 @@ export function endLockinSession() {
     try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal({ skipLockinCheck: true }); } catch (_) {}
 }
 
-function _finishLockinCycle() {
+function _finishLockinCycle(opts) {
+    const eloData = _buildRunNetEloData();
     const summary = {
-        blocks: Math.max(1, lockinSession.totalSessions),
+        blocks: Math.max(1, (opts && opts.blocksCompleted) || lockinSession.totalSessions || 1),
         solved: lockinSession.solvedInRun | 0,
-        netElo: _currentSubjectElo(lockinSession.subject) - lockinSession.startElo,
+        netElo: eloData.netElo,
+        eloText: eloData.eloText,
         mode: lockinSession.mode,
     };
     _removePaceGlow();
@@ -2037,14 +2253,24 @@ function _finishLockinCycle() {
 
 function _resetLockinState() {
     _clearLockinTick();
+    _closeScopeModal();
     lockinSession.active = false;
     lockinSession.running = false;
     lockinSession.expiredPendingTransition = false;
+    lockinSession.awaitingRefill = false;
+    lockinSession.awaitingBreakSwitch = false;
+    lockinSession.pendingScope = null;
     lockinSession.phase = 'STUDY';
     lockinSession.currentSession = 1;
     lockinSession.solvedInRun = 0;
+    lockinSession.solvedInBlock = 0;
     lockinSession.streakInRun = 0;
+    lockinSession.segmentSecs = { physics: 0, chemistry: 0, maths: 0 };
+    lockinSession.startEloBySubject = {};
+    lockinSession.subjectsTouched = [];
     _lockinCreditedSecs = 0;
+    _lockinFlushedSecs = 0;
+    _lockinPausedLeft = 0;
     _lockinLeftSecs = 0;
     _lockinTotalSecs = 0;
     _removePaceGlow();
@@ -2054,13 +2280,27 @@ function _resetLockinState() {
 // ── Public queries / hooks consumed by app.js ─────────────────────────────
 export function isLockinStudyRunning() {
     return !!(lockinSession.active && lockinSession.phase === 'STUDY' &&
-        lockinSession.running && !lockinSession.expiredPendingTransition && _lockinLeftSecs > 0);
+        lockinSession.running && !lockinSession.expiredPendingTransition &&
+        !lockinSession.awaitingRefill && _lockinLeftSecs > 0);
+}
+
+export function isLockinAwaitingRefill() {
+    return !!(lockinSession.active && lockinSession.awaitingRefill);
+}
+
+export function getLockinLeftSecs() {
+    if (!lockinSession.active) return 0;
+    if (lockinSession.running && _lockinEndsAt > 0) {
+        return Math.max(0, Math.round((_lockinEndsAt - Date.now()) / 1000));
+    }
+    return Math.max(0, _lockinLeftSecs);
 }
 
 /** Count a solved question toward the run's telemetry receipt + 4-solve Hot-Zone streak. */
 export function noteLockinSolve(isCorrect = true) {
     if (!lockinSession.active) return { hotZone: false, streakInRun: 0 };
     lockinSession.solvedInRun += 1;
+    lockinSession.solvedInBlock += 1;
     if (isCorrect === false) {
         lockinSession.streakInRun = 0;
         _updateDeepWorkBeacon();
@@ -2099,16 +2339,74 @@ export function consumePendingLockinExpiry() {
     return true;
 }
 
+/**
+ * Mid-timer answer-pool exhaustion coordinator:
+ *  - If >= 3 min remain and other chapters have untouched questions, pause the
+ *    study block briefly inside the Refill Gate (2:00 grace) so the user can
+ *    pick another chapter/subject and resume seamlessly.
+ *  - Otherwise (< 3 min left or zero eligible chapters anywhere), complete and
+ *    show the Victory banner cleanly.
+ */
+export function handleLockinPoolExhausted(opts) {
+    if (!lockinSession.active || lockinSession.phase !== 'STUDY') {
+        return { handled: false, action: 'none' };
+    }
+    if (lockinSession.expiredPendingTransition) {
+        consumePendingLockinExpiry();
+        return { handled: true, action: 'expired' };
+    }
+    const left = getLockinLeftSecs();
+    _lockinLeftSecs = left;
+    if (left <= 0) {
+        _onLockinStudyExpire();
+        if (lockinSession.expiredPendingTransition) consumePendingLockinExpiry();
+        return { handled: true, action: 'expired' };
+    }
+    const catalog = (opts && opts.catalog)
+        || (typeof window !== 'undefined' && typeof window.__getLockinScopeCatalog === 'function'
+            ? window.__getLockinScopeCatalog(lockinSession.mode)
+            : null);
+    let totalAvail = 0;
+    if (catalog) {
+        for (const s of SUBJECT_KEYS) {
+            totalAvail += (catalog[s] && catalog[s].totalEligible) || 0;
+        }
+    }
+    if (left < LOCKIN_REFILL_MIN_LEFT_SECS || totalAvail <= 0) {
+        completeLockinOnPoolExhausted({ earlyExhaustion: true });
+        return { handled: true, action: 'victory' };
+    }
+
+    // Enter bounded Refill Gate: freeze block timer, preserve accumulated recap/seen history, open Scope Switcher.
+    _flushCurrentLockinSegment();
+    _clearLockinTick();
+    lockinSession.running = false;
+    lockinSession.awaitingRefill = true;
+    _lockinPausedLeft = left;
+    _setDeepWorkActive(false);
+    _removePaceGlow();
+    try {
+        if (typeof window.closePracticeModal === 'function') {
+            window.closePracticeModal({ skipLockinCheck: true, skipRecap: true, keepModeHistory: true });
+        } else {
+            const pm = document.getElementById('practice-modal');
+            if (pm) pm.classList.remove('active');
+        }
+    } catch (_) {}
+    _openScopeModal('refill', { catalog, remainingSecs: left, graceSecs: LOCKIN_REFILL_GRACE_SECS });
+    _updateDeepWorkBeacon();
+    return { handled: true, action: 'refill' };
+}
+
 /** Mid-timer answer-pool exhaustion — bank everything and crown the run. */
-export function completeLockinOnPoolExhausted() {
+export function completeLockinOnPoolExhausted(opts) {
     if (!lockinSession.active) return false;
-    const elapsed = _elapsedStudySecs();
+    const commitRes = _commitCompletedStudyBlock({ earlyExhaustion: !!(opts && opts.earlyExhaustion) });
+    const elapsed = commitRes.secs;
     const solved = lockinSession.solvedInRun | 0;
     const mode = lockinSession.mode;
-    const subject = lockinSession.subject;
-    const netElo = _currentSubjectElo(subject) - lockinSession.startElo;
+    const eloData = _buildRunNetEloData();
     const chain = focusLedger.chain;
-    _commitCompletedStudyBlock();
     _clearLockinTick();
     lockinSession.running = false;
     _setDeepWorkActive(false);
@@ -2120,8 +2418,21 @@ export function completeLockinOnPoolExhausted() {
             const pm = document.getElementById('practice-modal');
             if (pm) pm.classList.remove('active');
         }
+    } else if (typeof window !== 'undefined' && typeof window.__playPendingSessionRecapIfAny === 'function') {
+        try { window.__playPendingSessionRecapIfAny(); } catch (_) {}
     }
-    _afterPendingRecap(() => showLockinVictory({ elapsed, solved, netElo, chain, mode }));
+    _afterPendingRecap(() => showLockinVictory({
+        elapsed,
+        solved,
+        netElo: eloData.netElo,
+        eloText: eloData.eloText,
+        chain,
+        mode,
+        shieldGranted: commitRes.shieldGranted,
+        meetsMinBlock: commitRes.meetsMinBlock,
+        earlyExhaustion: !!(opts && opts.earlyExhaustion),
+        graceExpired: !!(opts && opts.graceExpired),
+    }));
     return true;
 }
 
@@ -2139,7 +2450,7 @@ export function requestLockinEarlyExitConfirm() {
 /** "Stay Locked In" — resume the paused block. */
 export function stayLockedIn() {
     if (!lockinSession.active) return;
-    if (lockinSession.phase !== 'STUDY' || lockinSession.expiredPendingTransition) return;
+    if (lockinSession.phase !== 'STUDY' || lockinSession.expiredPendingTransition || lockinSession.awaitingRefill) return;
     lockinSession.running = true;
     _lockinLeftSecs = Math.max(1, _lockinPausedLeft || _lockinLeftSecs);
     _lockinEndsAt = Date.now() + _lockinLeftSecs * 1000;
@@ -2169,6 +2480,415 @@ export function voidLockinBlock() {
     try { if (typeof window.exitPracticeMode === 'function') window.exitPracticeMode(); } catch (_) {}
 }
 
+// ── Scope Switcher Modal (Break / Break-End / Refill Gate) ────────────────
+function _clearScopeGraceTimer() {
+    if (_scopeGraceTimer) { clearInterval(_scopeGraceTimer); _scopeGraceTimer = null; }
+    _scopeGraceEndsAt = 0;
+    _scopeGraceLeftSecs = 0;
+}
+
+function _startScopeGraceTimer(secs) {
+    _clearScopeGraceTimer();
+    _scopeGraceLeftSecs = Math.max(1, secs | 0);
+    _scopeGraceEndsAt = Date.now() + _scopeGraceLeftSecs * 1000;
+    _renderScopeGraceUI();
+    _scopeGraceTimer = setInterval(_scopeGraceTick, 1000);
+}
+
+function _scopeGraceTick() {
+    if (!_scopeModalMode || (_scopeModalMode !== 'refill' && _scopeModalMode !== 'break-end')) return;
+    if (_scopeGraceEndsAt <= 0) return;
+    const left = Math.max(0, Math.round((_scopeGraceEndsAt - Date.now()) / 1000));
+    _scopeGraceLeftSecs = left;
+    _renderScopeGraceUI();
+    if (left <= 0) {
+        _clearScopeGraceTimer();
+        _onScopeGraceExpired();
+    }
+}
+
+function _renderScopeGraceUI() {
+    const graceEl = document.getElementById('lockin-scope-grace');
+    if (!graceEl) return;
+    if (_scopeModalMode !== 'refill' && _scopeModalMode !== 'break-end') {
+        graceEl.hidden = true;
+        return;
+    }
+    graceEl.hidden = false;
+    graceEl.textContent = `Pick within ${formatTime(_scopeGraceLeftSecs)}`;
+    if (graceEl.classList) graceEl.classList.toggle('is-urgent', _scopeGraceLeftSecs <= 20);
+}
+
+function _onScopeGraceExpired() {
+    const modeWas = _scopeModalMode;
+    if (modeWas === 'refill') {
+        _finalizeRefillExit(true);
+    } else if (modeWas === 'break-end') {
+        _finalizeBreakEndExit(true);
+    }
+}
+
+function _fetchScopeCatalog() {
+    if (typeof window !== 'undefined' && typeof window.__getLockinScopeCatalog === 'function') {
+        try { return window.__getLockinScopeCatalog(lockinSession.mode); } catch (_) {}
+    }
+    return {
+        physics: { totalEligible: 0, chapters: [] },
+        chemistry: { totalEligible: 0, chapters: [] },
+        maths: { totalEligible: 0, chapters: [] },
+    };
+}
+
+function _pickInitialScopeSubject(catalog, preferredSubj) {
+    const pref = isValidSubjectKey(preferredSubj) ? preferredSubj : 'physics';
+    if (catalog && catalog[pref] && catalog[pref].totalEligible > 0) return pref;
+    for (const s of SUBJECT_KEYS) {
+        if (catalog && catalog[s] && catalog[s].totalEligible > 0) return s;
+    }
+    return pref;
+}
+
+function _seedScopeChaptersForSubject(subj) {
+    _scopeSelectedChapters = new Set();
+    const list = (_scopeCatalog && _scopeCatalog[subj] && _scopeCatalog[subj].chapters) || [];
+    const avail = list.filter(c => c.count > 0);
+    if (!avail.length) return;
+    const refScope = lockinSession.pendingScope || lockinSession;
+    if (refScope && refScope.subject === subj) {
+        const refSet = Array.isArray(refScope.chapterSelection) && refScope.chapterSelection.length
+            ? refScope.chapterSelection
+            : (refScope.chapter ? [refScope.chapter] : []);
+        for (const ch of avail) {
+            if (refSet.some(r => String(r || '').trim().toLowerCase() === String(ch.name || '').trim().toLowerCase())) {
+                _scopeSelectedChapters.add(ch.name);
+            }
+        }
+    }
+    if (_scopeSelectedChapters.size === 0) {
+        _scopeSelectedChapters.add(avail[0].name);
+    }
+}
+
+function _renderScopeModal() {
+    const modal = document.getElementById('lockin-scope-modal');
+    if (!modal) return;
+    if (typeof modal.setAttribute === 'function') modal.setAttribute('data-scope-mode', _scopeModalMode || 'break');
+
+    const titleEl = document.getElementById('lockin-scope-title');
+    const subEl = document.getElementById('lockin-scope-sub');
+    const closeBtn = document.getElementById('lockin-scope-close');
+    const statusRow = document.getElementById('lockin-scope-status');
+    const remEl = document.getElementById('lockin-scope-remaining');
+    const secBtn = document.getElementById('lockin-scope-secondary');
+    const confBtn = document.getElementById('lockin-scope-confirm');
+
+    if (_scopeModalMode === 'break') {
+        if (titleEl) titleEl.textContent = 'Switch Next Target';
+        if (subEl) subEl.textContent = 'Break clock keeps running — pick the subject & chapter(s) for your next round.';
+        if (closeBtn) closeBtn.hidden = false;
+        if (statusRow) statusRow.hidden = true;
+        if (secBtn) {
+            secBtn.textContent = 'Cancel';
+            if (secBtn.classList) secBtn.classList.remove('is-danger');
+        }
+        if (confBtn) confBtn.textContent = 'Queue Next Round';
+    } else if (_scopeModalMode === 'break-end') {
+        const nextRound = Math.min(lockinSession.totalSessions, lockinSession.currentSession + 1);
+        if (titleEl) titleEl.textContent = 'Pick Next Target';
+        if (subEl) subEl.textContent = 'Choose a subject and chapter(s) — the timer ignites when the first question loads.';
+        if (closeBtn) closeBtn.hidden = true;
+        if (statusRow) statusRow.hidden = false;
+        if (remEl) remEl.textContent = `Round ${nextRound}/${lockinSession.totalSessions} · ${lockinSession.studyMins}m`;
+        if (secBtn) {
+            secBtn.textContent = 'End Session';
+            if (secBtn.classList) secBtn.classList.add('is-danger');
+        }
+        if (confBtn) confBtn.textContent = `Start Round ${nextRound}`;
+    } else if (_scopeModalMode === 'refill') {
+        if (titleEl) titleEl.textContent = 'Chapter Pool Cleared';
+        if (subEl) subEl.textContent = 'Pick your next chapter(s) to continue this block right where you left off.';
+        if (closeBtn) closeBtn.hidden = true;
+        if (statusRow) statusRow.hidden = false;
+        if (remEl) remEl.textContent = `${formatTime(_lockinPausedLeft || _lockinLeftSecs)} left in Block ${lockinSession.currentSession}/${lockinSession.totalSessions}`;
+        if (secBtn) {
+            secBtn.textContent = 'Bank & End Here';
+            if (secBtn.classList) secBtn.classList.add('is-danger');
+        }
+        if (confBtn) confBtn.textContent = 'Continue Lock-In';
+    }
+
+    _renderScopeGraceUI();
+
+    for (const s of SUBJECT_KEYS) {
+        const cnt = (_scopeCatalog && _scopeCatalog[s] && _scopeCatalog[s].totalEligible) || 0;
+        const cntEl = document.getElementById(`lsc-count-${s}`);
+        if (cntEl) cntEl.textContent = String(cnt);
+        const btn = modal.querySelector ? modal.querySelector(`.lsc-subj-btn[data-subject="${s}"]`) : null;
+        if (btn) {
+            btn.disabled = cnt <= 0;
+            if (btn.classList) btn.classList.toggle('active', s === _scopeSelectedSubject);
+        }
+    }
+
+    const chListEl = document.getElementById('lockin-scope-chapters');
+    const chapters = (_scopeCatalog && _scopeCatalog[_scopeSelectedSubject] && _scopeCatalog[_scopeSelectedSubject].chapters) || [];
+    if (chListEl) {
+        chListEl.innerHTML = '';
+        if (!chapters.length) {
+            const empty = document.createElement('div');
+            empty.className = 'lsc-empty-msg';
+            empty.textContent = 'No chapters in this subject yet.';
+            chListEl.appendChild(empty);
+        } else {
+            for (const ch of chapters) {
+                const label = document.createElement('label');
+                const isAvail = ch.count > 0;
+                const isChecked = isAvail && _scopeSelectedChapters.has(ch.name);
+                label.className = `multi-chapter-option${isAvail ? '' : ' is-empty'}${isChecked ? ' is-selected' : ''}`;
+
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.value = ch.name;
+                input.checked = isChecked;
+                input.disabled = !isAvail;
+                input.addEventListener('change', () => {
+                    if (input.checked) _scopeSelectedChapters.add(ch.name);
+                    else _scopeSelectedChapters.delete(ch.name);
+                    if (label.classList) label.classList.toggle('is-selected', input.checked);
+                    _renderScopeSelectionSummary();
+                });
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'mco-name';
+                nameSpan.textContent = ch.name;
+
+                const countSpan = document.createElement('span');
+                countSpan.className = 'mco-count';
+                countSpan.textContent = String(ch.count);
+
+                label.appendChild(input);
+                label.appendChild(nameSpan);
+                label.appendChild(countSpan);
+                chListEl.appendChild(label);
+            }
+        }
+    }
+    _renderScopeSelectionSummary();
+}
+
+function _renderScopeSelectionSummary() {
+    const chapters = (_scopeCatalog && _scopeCatalog[_scopeSelectedSubject] && _scopeCatalog[_scopeSelectedSubject].chapters) || [];
+    let qCount = 0;
+    for (const ch of chapters) {
+        if (_scopeSelectedChapters.has(ch.name)) qCount += ch.count;
+    }
+    const sumEl = document.getElementById('lockin-scope-summary');
+    if (sumEl) {
+        const chNum = _scopeSelectedChapters.size;
+        sumEl.textContent = chNum
+            ? `${qCount} eligible question${qCount === 1 ? '' : 's'} · ${chNum} chapter${chNum === 1 ? '' : 's'}`
+            : 'Select at least 1 available chapter';
+    }
+    const confBtn = document.getElementById('lockin-scope-confirm');
+    if (confBtn) confBtn.disabled = _scopeSelectedChapters.size === 0 || qCount <= 0;
+}
+
+function _openScopeModal(mode, opts) {
+    if (!lockinSession.active) return false;
+    _bindLockinEscOnce();
+    _scopeModalMode = mode;
+    _scopeCatalog = (opts && opts.catalog) || _fetchScopeCatalog();
+    const prefSubj = (lockinSession.pendingScope && lockinSession.pendingScope.subject) || lockinSession.subject;
+    _scopeSelectedSubject = _pickInitialScopeSubject(_scopeCatalog, prefSubj);
+    _seedScopeChaptersForSubject(_scopeSelectedSubject);
+
+    if (mode === 'refill') {
+        _startScopeGraceTimer((opts && opts.graceSecs) || LOCKIN_REFILL_GRACE_SECS);
+    } else if (mode === 'break-end') {
+        _startScopeGraceTimer((opts && opts.graceSecs) || LOCKIN_BREAK_END_GRACE_SECS);
+    } else {
+        _clearScopeGraceTimer();
+    }
+
+    try { if (SessionFocus && SessionFocus.acquire) SessionFocus.acquire('lockin-scope'); } catch (_) {}
+    _renderScopeModal();
+    const modal = document.getElementById('lockin-scope-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+    }
+    return true;
+}
+
+function _closeScopeModal() {
+    _clearScopeGraceTimer();
+    _scopeModalMode = null;
+    _scopeCatalog = null;
+    try { if (SessionFocus && SessionFocus.release) SessionFocus.release('lockin-scope'); } catch (_) {}
+    const modal = document.getElementById('lockin-scope-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+    }
+}
+
+function _transitionBreakSwitchToBreakEnd() {
+    if (!_scopeModalMode) return;
+    _scopeModalMode = 'break-end';
+    lockinSession.awaitingBreakSwitch = true;
+    _startScopeGraceTimer(LOCKIN_BREAK_END_GRACE_SECS);
+    _renderScopeModal();
+    _updateDeepWorkBeacon();
+}
+
+function _openBreakEndScopePicker() {
+    if (!lockinSession.active) return;
+    lockinSession.awaitingBreakSwitch = true;
+    _openScopeModal('break-end', { graceSecs: LOCKIN_BREAK_END_GRACE_SECS });
+    _updateDeepWorkBeacon();
+}
+
+function _finalizeRefillExit(graceExpired = false) {
+    _closeScopeModal();
+    lockinSession.awaitingRefill = false;
+    completeLockinOnPoolExhausted({ earlyExhaustion: true, graceExpired: !!graceExpired });
+    if (typeof window !== 'undefined' && typeof window.__exitLockinFlowUi === 'function') {
+        try { window.__exitLockinFlowUi(); } catch (_) {}
+    }
+    if (graceExpired && typeof window.__jmaxAppToast === 'function') {
+        window.__jmaxAppToast('Refill window expired — solved progress & study time banked.');
+    }
+}
+
+function _finalizeBreakEndExit(graceExpired = false) {
+    const completed = Math.max(1, lockinSession.currentSession || 1);
+    _closeScopeModal();
+    lockinSession.awaitingBreakSwitch = false;
+    try { GalleryBreak.abort(); } catch (_) {}
+    try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') window.Metro.resumeAfterInterruption(); } catch (_) {}
+    _setDeepWorkActive(false);
+    _finishLockinCycle({ blocksCompleted: completed });
+    if (graceExpired && typeof window.__jmaxAppToast === 'function') {
+        window.__jmaxAppToast('Switch window expired — completed rounds sealed.');
+    }
+}
+
+export function openLockinBreakSwitch() {
+    if (!lockinSession.active || lockinSession.phase !== 'BREAK') return false;
+    const catalog = _fetchScopeCatalog();
+    let totalAvail = 0;
+    for (const s of SUBJECT_KEYS) totalAvail += (catalog[s] && catalog[s].totalEligible) || 0;
+    if (totalAvail <= 0) {
+        if (typeof window.__jmaxAppToast === 'function') {
+            window.__jmaxAppToast('No untouched Flow questions left in any subject.');
+        }
+        return false;
+    }
+    return _openScopeModal('break', { catalog });
+}
+
+export function lockinScopeSelectSubject(subj) {
+    if (!isValidSubjectKey(subj) || !_scopeCatalog) return;
+    if (!_scopeCatalog[subj] || _scopeCatalog[subj].totalEligible <= 0) return;
+    _scopeSelectedSubject = subj;
+    _seedScopeChaptersForSubject(subj);
+    _renderScopeModal();
+}
+
+export function lockinScopeSelectAll() {
+    if (!_scopeCatalog || !_scopeSelectedSubject) return;
+    const chapters = (_scopeCatalog[_scopeSelectedSubject] && _scopeCatalog[_scopeSelectedSubject].chapters) || [];
+    const avail = chapters.filter(c => c.count > 0);
+    if (!avail.length) return;
+    const allPicked = avail.every(c => _scopeSelectedChapters.has(c.name));
+    _scopeSelectedChapters = new Set();
+    if (!allPicked) {
+        for (const c of avail) _scopeSelectedChapters.add(c.name);
+    } else {
+        _scopeSelectedChapters.add(avail[0].name);
+    }
+    _renderScopeModal();
+}
+
+export function lockinScopeConfirm() {
+    if (!_scopeModalMode) return;
+    const chapters = Array.from(_scopeSelectedChapters);
+    if (!chapters.length) return;
+    const chosenScope = {
+        subject: _scopeSelectedSubject,
+        chapter: chapters.length === 1 ? chapters[0] : chapters.join(' • '),
+        chapterSelection: chapters.length === 1 ? null : chapters.slice(),
+    };
+    const mode = _scopeModalMode;
+
+    if (mode === 'break') {
+        lockinSession.pendingScope = chosenScope;
+        _closeScopeModal();
+        _updateLockinBreakHud();
+        if (typeof window.__jmaxAppToast === 'function') {
+            window.__jmaxAppToast(`Next round queued: ${_formatScopeLabel(chosenScope)}`);
+        }
+        return;
+    }
+
+    if (mode === 'break-end') {
+        lockinSession.pendingScope = chosenScope;
+        lockinSession.awaitingBreakSwitch = false;
+        _closeScopeModal();
+        try {
+            if (GalleryBreak.isActive() && typeof GalleryBreak.reverseOut === 'function') {
+                GalleryBreak.reverseOut(() => _endLockinBreak(true));
+                return;
+            }
+        } catch (_) {}
+        _endLockinBreak(false);
+        return;
+    }
+
+    if (mode === 'refill') {
+        const pausedLeft = Math.max(1, _lockinPausedLeft || _lockinLeftSecs || 1);
+        lockinSession.awaitingRefill = false;
+        _applyScopeToLockinSession(chosenScope);
+        _closeScopeModal();
+
+        let launched = false;
+        if (typeof window.__launchLockinScope === 'function') {
+            try {
+                launched = !!window.__launchLockinScope(lockinSession, { preserveRecap: true, preserveSeen: true });
+            } catch (e) { console.warn('[lockin] refill launch failed', e); }
+        }
+        if (!launched) {
+            completeLockinOnPoolExhausted({ earlyExhaustion: true });
+            return;
+        }
+        lockinSession.phase = 'STUDY';
+        lockinSession.running = true;
+        lockinSession.expiredPendingTransition = false;
+        _lockinLeftSecs = pausedLeft;
+        _lockinEndsAt = Date.now() + _lockinLeftSecs * 1000;
+        _setDeepWorkActive(true);
+        _clearLockinTick();
+        _lockinTimer = setInterval(_lockinTick, 1000);
+        _updateDeepWorkBeacon();
+    }
+}
+
+export function lockinScopeSecondary() {
+    if (_scopeModalMode === 'break') {
+        _closeScopeModal();
+    } else if (_scopeModalMode === 'break-end') {
+        _finalizeBreakEndExit(false);
+    } else if (_scopeModalMode === 'refill') {
+        _finalizeRefillExit(false);
+    }
+}
+
+export function lockinScopeCancel() {
+    if (_scopeModalMode === 'break') {
+        _closeScopeModal();
+    }
+}
+
 // ── Break HUD ─────────────────────────────────────────────────────────────
 function _showLockinBreakHud() {
     const hud = document.getElementById('lockin-break-hud');
@@ -2186,10 +2906,17 @@ function _updateLockinBreakHud() {
     const timeEl = document.getElementById('lbh-time');
     if (timeEl) timeEl.textContent = formatTime(Math.max(0, _lockinLeftSecs));
     const nextEl = document.getElementById('lbh-next');
+    const target = lockinSession.pendingScope || lockinSession;
     if (nextEl) {
         const icon = lockinSession.mode === 'hardcore' ? 'Hardcore' : 'Flow State';
-        const chap = lockinSession.chapter ? ` (${lockinSession.chapter})` : '';
-        nextEl.textContent = `Next: Round ${lockinSession.currentSession + 1}/${lockinSession.totalSessions} · ${icon}${chap}`;
+        const scopeStr = _formatScopeLabel(target);
+        nextEl.textContent = `Next: Round ${lockinSession.currentSession + 1}/${lockinSession.totalSessions} · ${icon}${scopeStr ? ` · ${scopeStr}` : ''}`;
+    }
+    const swBtn = document.getElementById('lbh-switch-btn');
+    if (swBtn) {
+        const queued = !!lockinSession.pendingScope;
+        if (swBtn.classList) swBtn.classList.toggle('is-queued', queued);
+        swBtn.textContent = queued ? 'Switch Queued ✓' : 'Switch Subject';
     }
     const arc = document.getElementById('lbh-ring-arc');
     const p = _lockinTotalSecs ? Math.min(1, Math.max(0, 1 - (_lockinLeftSecs / _lockinTotalSecs))) : 0;
@@ -2206,17 +2933,28 @@ export function showLockinVictory(data) {
     const d = data || {};
     _setNotifyVariant('victory');
     $('notify-icon').textContent = '🏆';
-    $('notify-title').textContent = 'Chapter Pool Cleared!';
-    $('notify-message').textContent = 'You conquered every eligible question before the clock ran out. The lock-in timer stops here — all elapsed time has been banked.';
+    $('notify-title').textContent = d.earlyEnded ? 'Block Banked Early' : 'Chapter Pool Cleared!';
+    $('notify-message').textContent = d.graceExpired
+        ? 'The refill timer expired — your worked study time has been banked cleanly.'
+        : 'You conquered every eligible question before the clock ran out. The lock-in timer stops here — all elapsed time has been banked.';
     const receipt = $('notify-receipt');
     if (receipt) {
         const isHc = d.mode === 'hardcore';
+        const eloVal = d.eloText || `${(d.netElo || 0) >= 0 ? '+' : ''}${d.netElo || 0}`;
+        let payoutVal = '1.0× Flow';
+        if (isHc) {
+            payoutVal = d.shieldGranted === false
+                ? 'Elapsed Time Banked (< 5m · no shield)'
+                : '2.0× Hardcore Bonus (+1 🛡)';
+        } else if (d.meetsMinBlock === false) {
+            payoutVal = 'Elapsed Time Banked (< 5m · chain unchanged)';
+        }
         receipt.innerHTML = _receiptRows([
             { k: 'Elapsed grind credited', v: formatStudyDuration(d.elapsed || 0) },
             { k: 'Questions solved', v: String(d.solved || 0) },
-            { k: 'Net subject ELO', v: `${(d.netElo || 0) >= 0 ? '+' : ''}${d.netElo || 0}` },
+            { k: d.multiSubject ? 'Net ELO' : 'Net subject ELO', v: eloVal },
             { k: 'Focus chain', v: String(d.chain || 0) },
-            { k: 'Escrow payout', v: isHc ? '2.0× Hardcore Bonus (+1 🛡)' : '1.0× Flow' },
+            { k: 'Escrow payout', v: payoutVal },
         ]);
         receipt.hidden = false;
     }
@@ -2262,11 +3000,12 @@ export function showLockinComplete(data) {
         const blocks = Math.max(1, d.blocks || lockinSession.totalSessions || 1);
         const solved = d.solved != null ? d.solved : (lockinSession.solvedInRun | 0);
         const netElo = d.netElo != null ? d.netElo : 0;
+        const eloVal = d.eloText || `${netElo >= 0 ? '+' : ''}${netElo}`;
         const isHc = (d.mode || lockinSession.mode) === 'hardcore';
         receipt.innerHTML = _receiptRows([
             { k: 'Blocks sealed', v: String(blocks) },
             { k: 'Questions solved', v: String(solved) },
-            { k: 'Net subject ELO', v: `${netElo >= 0 ? '+' : ''}${netElo}` },
+            { k: d.eloText && d.eloText.includes('(') ? 'Net ELO' : 'Net subject ELO', v: eloVal },
             { k: 'Escrow payout', v: isHc ? '2.0× Hardcore Bonus (+1 🛡)' : '1.0× Flow' },
             { k: 'Deep today', v: formatStudyDuration(focusLedger.deep) },
             { k: 'Focus chain', v: String(focusLedger.chain) },
@@ -2293,6 +3032,12 @@ try {
     window.endLockinSession = endLockinSession;
     window.voidLockinBlock = voidLockinBlock;
     window.stayLockedIn = stayLockedIn;
+    window.openLockinBreakSwitch = openLockinBreakSwitch;
+    window.lockinScopeSelectSubject = lockinScopeSelectSubject;
+    window.lockinScopeSelectAll = lockinScopeSelectAll;
+    window.lockinScopeConfirm = lockinScopeConfirm;
+    window.lockinScopeSecondary = lockinScopeSecondary;
+    window.lockinScopeCancel = lockinScopeCancel;
 } catch (_) {}
 
 // ── Tuck-In / bridge focus-ledger bridge (app.js reads window.POMO_API) ────

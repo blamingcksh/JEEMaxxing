@@ -163,6 +163,7 @@ let _mottle = [];         // seeded fibrous texture dots
 let _motes = [];          // drifting dust particles
 let _grainTile = null;    // lazy noise tile
 let _onContinue = null;
+let _finishOpts = null;
 let _reduceMotion = false;
 let _audio = null;        // { ctx, gain, src }
 let _sheen = 0;           // wet-print luminosity — 1 while spreading, settles down
@@ -187,6 +188,7 @@ function begin() {
   _target = 0;
   _display = 0;
   _onContinue = null;
+  _finishOpts = null;
   _artTint = { r: 255, g: 231, b: 201 };
 
   _reduceMotion = window.matchMedia
@@ -221,11 +223,19 @@ function setProgress(p) {
 }
 
 /** Break timer hit zero: drive to full reveal, then quote → Continue. */
-function finish(onContinue) {
+function finish(onContinue, opts = null) {
   if (!_active) { if (typeof onContinue === 'function') onContinue(); return; }
   _finishing = true;
   _target = 1;
   _onContinue = (typeof onContinue === 'function') ? onContinue : null;
+  _finishOpts = (opts && typeof opts === 'object') ? opts : null;
+}
+
+/** Play the reverse burn out of an active/finished overlay and run onDone. */
+function reverseOut(onDone) {
+  if (!_active) { if (typeof onDone === 'function') onDone(); return; }
+  if (typeof onDone === 'function') _onContinue = onDone;
+  _onContinueClick();
 }
 
 /** Skip break / quit / reset — dissolve out instantly. Safe no-op when idle. */
@@ -234,6 +244,8 @@ function abort(immediate = false) {
   _active = false;
   _gen++;                       // invalidate stale async work (art loads, quote timers)
   _finishing = false;
+  _finishOpts = null;
+  _onContinue = null;
   _stopCrackle();
   if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
   window.removeEventListener('resize', _resize);   // fix listener leak per begin()
@@ -254,7 +266,7 @@ function abort(immediate = false) {
 
 function isActive() { return _active; }
 
-export const GalleryBreak = { begin, setProgress, finish, abort, isActive };
+export const GalleryBreak = { begin, setProgress, finish, reverseOut, abort, isActive };
 window.GalleryBreak = GalleryBreak;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -344,7 +356,10 @@ function _buildDom() {
       <div class="gb-plaque" id="gb-plaque"></div>
       <div class="gb-quote" id="gb-quote"></div>
       <div class="gb-quote-by" id="gb-quote-by"></div>
-      <button type="button" class="gb-continue" id="gb-continue">Continue</button>
+      <div class="gb-actions">
+        <button type="button" class="gb-continue" id="gb-continue">Continue</button>
+        <button type="button" class="gb-switch" id="gb-switch" hidden>Change Subject</button>
+      </div>
     </div>`;
   document.body.appendChild(_overlay);
 
@@ -357,6 +372,8 @@ function _buildDom() {
   }
   _quoteBox = _overlay.querySelector('#gb-quote-box');
   _overlay.querySelector('#gb-continue').addEventListener('click', _onContinueClick);
+  const swBtn = _overlay.querySelector('#gb-switch');
+  if (swBtn) swBtn.addEventListener('click', _onSwitchClick);
 
   // Offscreen alpha mask — the soft edge is composed here, then stamped onto
   // the art with destination-in. Keeps the main canvas free of hard geometry.
@@ -841,6 +858,21 @@ function _easeInOutSine(t) { return -(Math.cos(Math.PI * t) - 1) / 2; }
 function _showQuote() {
   if (!_active || !_quoteBox || _gen !== _showQuoteGen) return;
   _overlay.style.pointerEvents = 'auto';
+  if (_finishOpts && typeof _finishOpts.shouldHideQuote === 'function' && _finishOpts.shouldHideQuote()) {
+    return;
+  }
+  const contBtn = _quoteBox.querySelector('#gb-continue');
+  const swBtn = _quoteBox.querySelector('#gb-switch');
+  if (contBtn) {
+    contBtn.textContent = (_finishOpts && _finishOpts.continueLabel) ? _finishOpts.continueLabel : 'Continue';
+  }
+  if (swBtn) {
+    const hasSec = !!(_finishOpts && typeof _finishOpts.onSecondary === 'function');
+    swBtn.hidden = !hasSec;
+    if (hasSec) {
+      swBtn.textContent = _finishOpts.secondaryLabel || 'Change Subject';
+    }
+  }
   _quoteBox.querySelector('#gb-plaque').textContent =
     `${_painting.title} · ${_painting.artist}, ${_painting.year}`;
   _quoteBox.querySelector('#gb-quote').textContent = _painting.quote;
@@ -850,6 +882,14 @@ function _showQuote() {
   setTimeout(() => {
     if (_active && _quoteBox) _quoteBox.classList.add('gb-ready');
   }, TUNING.continueDelayMs);
+}
+
+function _onSwitchClick() {
+  if (!_active || _reversing) return;
+  const onSec = _finishOpts && _finishOpts.onSecondary;
+  if (typeof onSec !== 'function') return;
+  if (_quoteBox) _quoteBox.classList.remove('gb-visible', 'gb-ready');
+  onSec();
 }
 
 function _onContinueClick() {

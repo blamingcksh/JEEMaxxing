@@ -202,7 +202,9 @@
 // v103 - Remove candlestick graph and Sprout Isle from Dashboard and precache.
 // v104 - Practice modal single-rail layout & MCQ dock sync.
 // v105 - Confidence calibration removed from normal practice modal (kept for Error Matrix / mocks).
-const VERSION = 'jeemax-v105';
+// v106 - LOCK-IN SCOPE SWITCH & REFILL GATE: mid-run subject/chapter switching during/after break,
+//        bounded 2:00 refill gate on pool exhaustion, per-subject segment & ELO accounting.
+const VERSION = 'jeemax-v106';
 
 const SHELL = [
   './',

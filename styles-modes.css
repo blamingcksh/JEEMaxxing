@@ -300,16 +300,177 @@ html[data-theme="observatory"] #lockin-setup-modal .close-btn:hover { color: var
     inset 0 1px 0 rgba(255, 255, 255, .52);
 }
 .lockin-launch:active { transform: translateY(0) scale(.992); filter: brightness(.98); }
+
+/* Lock-in scope switcher modal (sits above GalleryBreak & Break HUD) */
+#lockin-scope-modal {
+  --ritual-amber: #F2BC70;
+  --ritual-focus: #F7D59A;
+  --ritual-ink: #160D05;
+  position: fixed; inset: 0; z-index: 1000800 !important; display: none;
+  align-items: center; justify-content: center;
+  padding:
+    calc(16px + env(safe-area-inset-top))
+    calc(16px + env(safe-area-inset-right))
+    calc(16px + env(safe-area-inset-bottom))
+    calc(16px + env(safe-area-inset-left));
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(18, 22, 33, .22), rgba(4, 5, 8, .82) 68%),
+    rgba(4, 5, 8, .72);
+  backdrop-filter: blur(18px) saturate(.85); -webkit-backdrop-filter: blur(18px) saturate(.85);
+}
+#lockin-scope-modal.active { display: flex; }
+#lockin-scope-modal .lockin-scope-card {
+  width: min(468px, 100%);
+  max-height: calc(100vh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  position: relative; overscroll-behavior: contain; overflow-y: auto;
+  padding: 22px 22px 20px; border-radius: 32px; border: 1px solid transparent;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(242, 188, 112, .09), transparent 42%) padding-box,
+    linear-gradient(164deg, rgba(24, 27, 37, .96) 0%, rgba(12, 15, 23, .98) 48%, rgba(10, 14, 23, .97) 100%) padding-box,
+    linear-gradient(145deg, rgba(245, 191, 113, .9) 0%, rgba(197, 129, 72, .52) 36%, rgba(47, 72, 118, .6) 68%, rgba(82, 119, 180, .88) 100%) border-box;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, .6),
+    0 0 34px rgba(232, 166, 91, .16),
+    0 34px 90px -18px rgba(0, 0, 0, .85),
+    inset 0 1px 0 rgba(255, 235, 203, .1);
+  color: var(--obs-bone, #F2EDE3); font-family: var(--font-body, system-ui, sans-serif);
+}
+#lockin-scope-modal .close-btn {
+  position: absolute; top: 50%; right: -4px; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0; border-radius: 50%;
+  font-family: var(--font-body, system-ui, sans-serif); font-size: 13px; line-height: 1;
+  color: rgba(242, 237, 227, .66);
+  background: rgba(17, 20, 28, .72); border: 1px solid rgba(242, 237, 227, .14);
+  cursor: pointer; z-index: 2;
+}
+html[data-theme="observatory"] #lockin-scope-modal .close-btn {
+  color: rgba(242, 237, 227, .66) !important;
+  background: rgba(17, 20, 28, .72) !important;
+  border: 1px solid rgba(242, 237, 227, .14) !important;
+}
+#lockin-scope-modal .close-btn:hover { color: var(--ritual-amber) !important; border-color: rgba(242, 188, 112, .38) !important; }
+#lockin-scope-modal .close-btn[hidden] { display: none; }
+.lsc-status-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  margin: -4px 0 10px;
+}
+.lsc-status-row[hidden] { display: none; }
+.lsc-chip, .lsc-grace {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font-family: var(--font-num, ui-monospace, monospace); font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.lsc-chip {
+  color: #34d399; background: rgba(16, 185, 129, .12); border: 1px solid rgba(16, 185, 129, .28);
+}
+.lsc-grace {
+  color: #fbbf24; background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .32);
+}
+.lsc-grace.is-urgent {
+  color: #fca5a5; background: rgba(239, 68, 68, .15); border-color: rgba(239, 68, 68, .42);
+}
+.lsc-grace[hidden] { display: none; }
+.lsc-sub {
+  margin: 0 0 13px; text-align: center; font-size: 12.5px; line-height: 1.45;
+  color: rgba(242, 237, 227, .66);
+}
+.lsc-subjects {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;
+  margin: 0 0 12px; padding: 4px; border-radius: 999px;
+  background: rgba(6, 8, 13, .62); border: 1px solid rgba(242, 237, 227, .08);
+}
+.lsc-subj-btn {
+  appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 0; min-height: 36px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid transparent; background: transparent; cursor: pointer;
+  font-family: var(--font-body, system-ui, sans-serif); font-size: 12.5px; font-weight: 500;
+  color: rgba(242, 237, 227, .62); transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+.lsc-subj-btn:hover:not(:disabled) { color: var(--obs-bone, #F2EDE3); background: rgba(242, 237, 227, .06); }
+.lsc-subj-btn.active {
+  color: var(--ritual-ink); font-weight: 600;
+  background: linear-gradient(180deg, #F8D085 0%, #F2B361 100%);
+  border-color: rgba(255, 225, 166, .58);
+}
+.lsc-subj-btn:disabled { opacity: .35; cursor: not-allowed; }
+.lsc-subj-count {
+  font-family: var(--font-num, ui-monospace, monospace); font-size: 10.5px; opacity: .78;
+}
+.lsc-chapters-head {
+  display: flex; align-items: center; justify-content: space-between; margin: 0 0 6px;
+}
+.lsc-chapters-label {
+  font-family: var(--font-num, ui-monospace, monospace); font-size: 10.5px;
+  letter-spacing: .12em; text-transform: uppercase; color: rgba(242, 237, 227, .48);
+}
+.lsc-select-all {
+  appearance: none; background: transparent; border: 0; padding: 2px 4px; cursor: pointer;
+  font-family: var(--font-num, ui-monospace, monospace); font-size: 11px; color: var(--ritual-amber);
+}
+.lsc-select-all:hover { text-decoration: underline; }
+.lsc-chapters {
+  display: flex; flex-direction: column; max-height: 34vh; overflow-y: auto;
+  border-top: 1px solid rgba(242, 237, 227, .1);
+  border-bottom: 1px solid rgba(242, 237, 227, .1);
+}
+.lsc-chapters .multi-chapter-option {
+  display: flex; align-items: center; gap: 11px; padding: 10px 4px;
+  cursor: pointer; user-select: none; border-bottom: 1px solid rgba(242, 237, 227, .07);
+}
+.lsc-chapters .multi-chapter-option:last-child { border-bottom: 0; }
+.lsc-chapters .multi-chapter-option.is-empty { opacity: .38; cursor: not-allowed; }
+.lsc-chapters .multi-chapter-option input { accent-color: var(--ritual-amber); cursor: pointer; }
+.lsc-chapters .multi-chapter-option.is-empty input { cursor: not-allowed; }
+.lsc-empty-msg {
+  padding: 18px 8px; text-align: center; font-size: 12.5px; color: rgba(242, 237, 227, .55);
+}
+.lsc-footer {
+  display: flex; flex-direction: column; gap: 10px; margin-top: 14px;
+}
+.lsc-summary {
+  font-family: var(--font-num, ui-monospace, monospace); font-size: 11.5px;
+  text-align: center; color: rgba(242, 237, 227, .62);
+}
+.lsc-actions {
+  display: flex; align-items: center; gap: 8px;
+}
+.lsc-btn-secondary {
+  flex: 0 0 auto; min-height: 46px; padding: 10px 16px; border-radius: 999px; cursor: pointer;
+  background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .14);
+  color: rgba(242, 237, 227, .82); font-size: 12px; font-weight: 600;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.lsc-btn-secondary:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+.lsc-btn-secondary.is-danger {
+  background: rgba(239, 68, 68, .1); border-color: rgba(239, 68, 68, .28); color: #fca5a5;
+}
+.lsc-btn-secondary.is-danger:hover {
+  background: rgba(239, 68, 68, .2); border-color: rgba(239, 68, 68, .48); color: #fecaca;
+}
+.lsc-launch {
+  flex: 1 1 auto; min-height: 46px; padding: 11px 18px; cursor: pointer;
+  border-radius: 999px; border: 1px solid rgba(255, 224, 167, .66);
+  background: linear-gradient(100deg, #F8D58B 0%, #F2B663 44%, #EF9552 100%);
+  font-family: var(--font-num, ui-monospace, monospace); font-size: 11.5px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ritual-ink);
+  transition: filter .15s ease, transform .15s ease, opacity .15s ease;
+}
+.lsc-launch:hover:not(:disabled) { filter: brightness(1.05); transform: translateY(-1px); }
+.lsc-launch:disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.3); }
 /* Responsive + reduced motion */
 @media (max-width: 640px) {
-  #lockin-setup-modal {
+  #lockin-setup-modal,
+  #lockin-scope-modal {
     padding:
       calc(12px + env(safe-area-inset-top))
       calc(12px + env(safe-area-inset-right))
       calc(12px + env(safe-area-inset-bottom))
       calc(12px + env(safe-area-inset-left));
   }
-  #lockin-setup-modal .lockin-card {
+  #lockin-setup-modal .lockin-card,
+  #lockin-scope-modal .lockin-scope-card {
     padding: 20px 16px;
     border-radius: 32px;
     max-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
@@ -323,10 +484,12 @@ html[data-theme="observatory"] #lockin-setup-modal .close-btn:hover { color: var
   #multi-chapter-mode-modal .multi-chapter-modal { padding: 20px 18px; }
 }
 @media (max-width: 420px) {
-  #lockin-setup-modal .lockin-card { padding: 18px 13px; border-radius: 28px; }
+  #lockin-setup-modal .lockin-card,
+  #lockin-scope-modal .lockin-scope-card { padding: 18px 13px; border-radius: 28px; }
   .lockin-head { min-height: 36px; margin-bottom: 13px; padding: 0 34px; }
   .lockin-title { font-size: 25px; }
-  #lockin-setup-modal .close-btn { right: -2px; width: 32px; height: 32px; font-size: 12px; }
+  #lockin-setup-modal .close-btn,
+  #lockin-scope-modal .close-btn { right: -2px; width: 32px; height: 32px; font-size: 12px; }
   .lockin-presets { padding: 4px; gap: 3px; }
   .lockin-preset { min-height: 38px; font-size: 13px; }
   .lockin-steppers { grid-template-columns: 1fr; gap: 7px; margin-bottom: 12px; }
@@ -339,9 +502,11 @@ html[data-theme="observatory"] #lockin-setup-modal .close-btn:hover { color: var
   .lt-meta { font-size: 11px; }
   .lockin-rule { margin-bottom: 12px; }
   .lockin-launch { min-height: 50px; }
+  .lsc-actions { flex-direction: column-reverse; }
+  .lsc-btn-secondary, .lsc-launch { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .mode-text-btn, .lockin-preset, .lt-block, .lockin-launch,
-  #lockin-setup-modal .close-btn, .ls-btn { transition: none; }
-  .lockin-launch:hover, .lockin-launch:active, .ls-btn:active { transform: none; }
+  .mode-text-btn, .lockin-preset, .lt-block, .lockin-launch, .lsc-launch,
+  #lockin-setup-modal .close-btn, #lockin-scope-modal .close-btn, .ls-btn { transition: none; }
+  .lockin-launch:hover, .lockin-launch:active, .lsc-launch:hover, .ls-btn:active { transform: none; }
 }
