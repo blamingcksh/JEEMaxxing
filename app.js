@@ -157,6 +157,7 @@ import {
     getFocusLedger, widgetPauseToggle,
     // ── Integrated Lock-In Ritual Engine (Flow / Hardcore background timer) ──
     openLockinSetupModal, consumePendingLockinExpiry, isLockinStudyRunning,
+    isLockinAwaitingRefill, handleLockinPoolExhausted,
     completeLockinOnPoolExhausted, requestLockinEarlyExitConfirm, noteLockinSolve,
     syncLockinMode,
 } from './pomodoro.js';
@@ -979,7 +980,7 @@ export function openModal(id) {
 // they intentionally have no dismissal shortcut. The practice modal keeps its
 // live-attempt confirmation. Typing targets never trigger a close.
 try {
-    const ESCAPE_EXEMPT = new Set(['timer-notify-modal', 'nightguard-modal', 'crop-modal']);
+    const ESCAPE_EXEMPT = new Set(['timer-notify-modal', 'nightguard-modal', 'crop-modal', 'lockin-scope-modal']);
     document.addEventListener('keydown', function (e) {
         if (e.key !== 'Escape') return;
         const t = e.target;
@@ -8640,10 +8641,15 @@ function skipQuestion(reason) {
         saveAllAsync().catch(console.error);
     });
 
-    _rebuildPracticeQuestionsForMode(_modeSeenIds);
+    const rebuildRes = _rebuildPracticeQuestionsForMode(_modeSeenIds, { fromSkip: true });
     if (AppState.practiceQuestions.length > 0) {
         _serveModeEntry({ q: AppState.practiceQuestions[0], submitted: false });
         _hideModeContinueButton();
+    } else if (rebuildRes === 'refill' || rebuildRes === 'victory' || rebuildRes === 'expired' || isLockinAwaitingRefill()) {
+        if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+        if (document.getElementById('practice-question-list-view')?.classList.contains('active')) {
+            showQuestionList();
+        }
     } else {
         // Only an empty/unrated chapter lands here — _rebuildPracticeQuestionsForMode
         // already exited the mode. Tear down the modal like _modeAdvance does.
@@ -8666,10 +8672,17 @@ function _modeAdvance() {
     }
     const curQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
     if (curQ) _modeSeenIds.add(curQ);
-    _rebuildPracticeQuestionsForMode(_modeSeenIds);
+    const rebuildRes = _rebuildPracticeQuestionsForMode(_modeSeenIds, { fromSkip: false });
     if (AppState.practiceQuestions.length > 0) {
         _serveModeEntry({ q: AppState.practiceQuestions[0], submitted: false });
         _hideModeContinueButton();
+        return;
+    }
+    if (rebuildRes === 'refill' || rebuildRes === 'victory' || rebuildRes === 'expired' || isLockinAwaitingRefill()) {
+        if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+        if (document.getElementById('practice-question-list-view')?.classList.contains('active')) {
+            showQuestionList();
+        }
         return;
     }
     // Only an empty/unrated chapter lands here — _rebuildPracticeQuestionsForMode
@@ -8746,13 +8759,14 @@ function _serveModeEntry(entry) {
 /**
  * Live eligibility & volume snapshot for ritual modes across a subject or chapter set.
  */
-function _modeSnapshot(mode, chapterNames) {
+function _modeSnapshot(mode, chapterNames, seenSet) {
     const subject = _normalizeSubjectKey(AppState.currentSubject);
     const names = Array.isArray(chapterNames) && chapterNames.length ? chapterNames : null;
     let totalEligible = 0;
     let bossCount = 0;
     for (const q of (AppState.questionBank || [])) {
-        if (q.subject !== subject) continue;
+        if (!q || q.subject !== subject) continue;
+        if (seenSet && seenSet.has(q)) continue;
         if (names && !names.some(ch => _chaptersMatch(q.chapter, ch))) continue;
         // Eligible means untouched: solved / attempted questions do not count.
         if (!_isUnexecutedModeQuestion(q)) continue;
@@ -8768,6 +8782,84 @@ function _modeSnapshot(mode, chapterNames) {
 }
 window.__modeSnapshot = _modeSnapshot;
 window.__getModePoolCount = (m, chs) => _modeSnapshot(m, Array.isArray(chs) ? chs : (chs ? [chs] : null)).count;
+
+function _getLockinScopeCatalog(mode, seenSet) {
+    const seen = seenSet || _modeSeenIds;
+    const out = {};
+    for (const subj of ['physics', 'chemistry', 'maths']) {
+        const known = Array.isArray(AppState.chapters && AppState.chapters[subj]) ? AppState.chapters[subj] : [];
+        const countsByKey = new Map();
+        const displayByKey = new Map();
+        for (const ch of known) {
+            const k = String(ch || '').trim().toLowerCase();
+            if (!k || displayByKey.has(k)) continue;
+            displayByKey.set(k, ch);
+            countsByKey.set(k, 0);
+        }
+        let totalEligible = 0;
+        for (const q of (AppState.questionBank || [])) {
+            if (!q || _normalizeSubjectKey(q.subject) !== subj) continue;
+            if (seen && seen.has(q)) continue;
+            if (!_isUnexecutedModeQuestion(q)) continue;
+            if (typeof q.qElo !== 'number' || !isFinite(q.qElo) || q.isAnomaly || q.modeRetired) continue;
+            const chName = String(q.chapter || '').trim();
+            const k = chName.toLowerCase();
+            if (!k) continue;
+            if (!displayByKey.has(k)) displayByKey.set(k, chName);
+            countsByKey.set(k, (countsByKey.get(k) || 0) + 1);
+            totalEligible++;
+        }
+        const chapters = [];
+        for (const [k, name] of displayByKey.entries()) {
+            chapters.push({ name, count: countsByKey.get(k) || 0 });
+        }
+        out[subj] = { totalEligible, chapters };
+    }
+    return out;
+}
+
+function _applyLockinScopeToAppState(scope) {
+    if (!scope || !scope.subject) return;
+    AppState.currentSubject = scope.subject;
+    AppState.currentChapter = scope.chapter || '';
+    AppState.currentChapterSelection = Array.isArray(scope.chapterSelection) && scope.chapterSelection.length
+        ? scope.chapterSelection.slice() : null;
+    AppState.currentFilter = 'all';
+}
+
+function _clearFlowModeUiOnly() {
+    AppState.practiceFlowMode = 'standard';
+    AppState._flowSessionActive = false;
+    _stampServedMode('standard');
+    _modeAdaptive.targetPwin = null;
+    _destroyLiveFlowSlider();
+    if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+    AppState.practiceQuestions = [];
+    AppState.practiceSubmittedFlags = [];
+    AppState.currentPracticeIndex = 0;
+    AppState.practiceSeconds = 0;
+    _clearModeHistory();
+    _renderModeBadge();
+    _renderModeFooter();
+    saveAllAsync().catch(console.error);
+    try {
+        if (document.getElementById('practice-question-list-view')?.classList.contains('active')) {
+            showQuestionList();
+        }
+        if (document.getElementById('practice-chapters-view')?.classList.contains('active')) {
+            renderChaptersList();
+        }
+    } catch (_) {}
+}
+
+window.__getLockinScopeCatalog = (m) => _getLockinScopeCatalog(m, _modeSeenIds);
+window.__applyLockinScopeToAppState = _applyLockinScopeToAppState;
+window.__exitLockinFlowUi = _clearFlowModeUiOnly;
+window.__launchLockinScope = (scope, opts) => {
+    _applyLockinScopeToAppState(scope);
+    const mode = (scope && scope.mode) || AppState.practiceFlowMode || _flowModeForValue(clampFlowValue(AppState.flowSlider));
+    return _setPracticeMode(mode, opts);
+};
 
 /**
  * Pre-flight for a Lock-In entry: the "is there at least one mode-eligible
@@ -8818,31 +8910,35 @@ function _ensureLockinSetup(mode, customCtx) {
 window.__ensureLockinSetup = _ensureLockinSetup;
 
 /** Set the active practice mode and persist it. */
-function _setPracticeMode(mode) {
-    if (!PRACTICE_MODES.includes(mode)) return;
+function _setPracticeMode(mode, opts) {
+    if (!PRACTICE_MODES.includes(mode)) return false;
+    const preserveRecap = !!(opts && opts.preserveRecap);
+    const preserveSeen = !!(opts && opts.preserveSeen);
     const requested = (mode === 'hardcore') ? 100 : clampFlowValue(AppState.flowSlider);
     const value = _applyFlowSlider(requested);
     const resolved = _flowModeForValue(value);
 
-    _resetSessionRecap({ subject: AppState.practiceFilterSubject || (AppState.currentQ && AppState.currentQ.subject) || 'physics', mode: resolved });
+    if (!preserveRecap) {
+        _resetSessionRecap({
+            subject: AppState.currentSubject || AppState.practiceFilterSubject || (AppState.currentQ && AppState.currentQ.subject) || 'physics',
+            mode: resolved,
+        });
+    }
     AppState._flowSessionActive = true;
     AppState.practiceFlowMode = resolved;
     _stampServedMode(resolved);
     // Fresh run — drop any navigation history left over from a previous mode
-    // and reset the adaptive throttle to the dial's target.
-    _clearModeHistory();
+    // unless continuing a mid-block refill across chapters.
+    if (!preserveSeen) {
+        _clearModeHistory();
+        _modeAdaptive.hist = [];
+    }
     _modeAdaptive.targetPwin = _flowPWinForValue(value);
-    _modeAdaptive.hist = [];
     saveAllAsync().catch(console.error);
-    _rebuildPracticeQuestionsForMode();
+    _rebuildPracticeQuestionsForMode(preserveSeen ? _modeSeenIds : undefined, { skipLockinHandle: true });
     _renderModeBadge();
     _renderModeFooter();
     // ── Open the practice modal with the freshly-picked mode question ──
-    // Previously this block only RE-rendered the modal contents without
-    // calling openModal('practice-modal'), so clicking FLOW / HARDCORE built
-    // the queue and painted the badge but nothing ever appeared on screen —
-    // the classic "the mode buttons don't work" report. Mirrors
-    // startPracticeWithQuestion's open sequence exactly.
     if (AppState.practiceQuestions.length > 0 &&
         typeof renderPracticeQuestionModal === 'function') {
         AppState.practiceSeconds = 0;
@@ -8853,11 +8949,6 @@ function _setPracticeMode(mode) {
         const hideBtn = document.getElementById('hide-photo-toggle');
         if (hideBtn) hideBtn.innerHTML = '🖼&nbsp;&nbsp;Hide Image';
         _mountLiveFlowSlider();
-        // ── Start the practice-question timer ──
-        // Lives INSIDE the non-empty-queue branch: a failed mode refill used
-        // to leave this 1s interval running with no modal — and a non-null
-        // practiceTimer made _getDeepWorkBlockMultiplier hand out a phantom
-        // ×1.5 ELO bonus on unrelated solves until some other path nulled it.
         if (AppState.practiceTimer) clearInterval(AppState.practiceTimer);
         AppState.practiceTimer = setInterval(() => {
             AppState.practiceSeconds++;
@@ -8865,12 +8956,12 @@ function _setPracticeMode(mode) {
                 updatePracticeTimerDisplay();
             }
         }, 1000);
+        return true;
     } else if (AppState.practiceTimer) {
-        // Refill produced nothing (mode exited + queue emptied): make sure no
-        // stale timer from an earlier session survives the bail-out.
         clearInterval(AppState.practiceTimer);
         AppState.practiceTimer = null;
     }
+    return false;
 }
 
 /** Exit practice mode back to standard filter-by-status. */
@@ -8890,9 +8981,6 @@ function _exitPracticeMode() {
     saveAllAsync().catch(console.error);
     _renderModeBadge();
     _renderModeFooter();
-    // Queue is empty now — close any lingering practice modal instead of
-    // re-rendering a blank question (renderPracticeQuestionModal guards
-    // against empty queues, but the modal shell would linger otherwise).
     closeModalStr('practice-modal');
 }
 
@@ -8901,16 +8989,12 @@ function _exitPracticeMode() {
  * question, reset practiceSubmittedFlags, currentPracticeIndex. This is the
  * post-solve auto-refill for Flow / Hardcore.
  *
- * The untouched pool drains as questions are solved: once every candidate
- * has been seen the mode exits to standard (with the Lock-In Arena Cleared
- * banking handoff when a timed block completes first).
- *
  * @param {Set} [seenSet]  Passed through to _pickFlowQuestionInfinite so a
  *   refill never re-serves a question already shown this run.
  */
-function _rebuildPracticeQuestionsForMode(seenSet) {
+function _rebuildPracticeQuestionsForMode(seenSet, opts) {
     const mode = AppState.practiceFlowMode;
-    if (mode === 'standard' || !PRACTICE_MODES.includes(mode)) return;
+    if (mode === 'standard' || !PRACTICE_MODES.includes(mode)) return null;
     const value = _applyFlowSlider(AppState.flowSlider, { syncEntry: false, syncLive: false });
     const servedMode = _flowModeForValue(value);
     const q = _pickFlowQuestionInfinite(
@@ -8920,28 +9004,29 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
         seenSet
     );
     if (!q) {
-        // ── Lock-In: the whole untouched pool was cleared before the clock ran
-        // out. Bank the elapsed block and crown the run with the Arena Cleared
-        // banner instead of the plain "exiting to standard" toast. ──
-        if (completeLockinOnPoolExhausted()) {
-            AppState.practiceFlowMode = 'standard';
-            AppState._flowSessionActive = false;
-            _stampServedMode('standard');
-            _modeAdaptive.targetPwin = null;
-            _destroyLiveFlowSlider();
-            _renderModeBadge();
-            _renderModeFooter();
-            saveAllAsync().catch(console.error);
-            AppState.practiceQuestions = [];
-            AppState.practiceSubmittedFlags = [];
-            AppState.currentPracticeIndex = 0;
-            AppState.practiceSeconds = 0;
-            _clearModeHistory();
-            return;
+        if (!(opts && opts.skipLockinHandle)) {
+            const lockinRes = handleLockinPoolExhausted({
+                catalog: _getLockinScopeCatalog(servedMode, seenSet),
+                fromSkip: !!(opts && opts.fromSkip),
+            });
+            if (lockinRes && lockinRes.handled) {
+                if (lockinRes.action === 'refill') {
+                    if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+                    AppState.practiceQuestions = [];
+                    AppState.practiceSubmittedFlags = [];
+                    AppState.currentPracticeIndex = 0;
+                    AppState.practiceSeconds = 0;
+                    return 'refill';
+                }
+                _clearFlowModeUiOnly();
+                return lockinRes.action;
+            }
         }
         // No more untouched questions in this chapter — gracefully exit the
         // mode so the user is not stuck staring at a blank practice modal.
-        (window.__jmaxAppToast || alert)('No more untouched questions in this chapter. Exiting to standard mode.');
+        if (!(opts && opts.skipLockinHandle)) {
+            (window.__jmaxAppToast || alert)('No more untouched questions in this chapter. Exiting to standard mode.');
+        }
         AppState.practiceFlowMode = 'standard';
         AppState._flowSessionActive = false;
         _stampServedMode('standard');
@@ -8956,7 +9041,7 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
         AppState.practiceSeconds = 0;
         _clearModeHistory();
         if (typeof renderPracticeQuestionModal === 'function') renderPracticeQuestionModal();
-        return;
+        return 'exited';
     }
     // We have a fresh mode-appropriate question; reset queue to a one-item pool.
     AppState.practiceFlowMode = servedMode;
@@ -8967,6 +9052,7 @@ function _rebuildPracticeQuestionsForMode(seenSet) {
     AppState.practiceSeconds = 0;
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
+    return 'served';
 }
 
 /**
@@ -9242,7 +9328,13 @@ window.__toggleFlowSliderVisibility = _toggleFlowSliderVisibility;
 window.__resumePracticeFromLockinBreak = (sess) => {
     const mode = (sess && sess.mode) || AppState.practiceFlowMode;
     if (!PRACTICE_MODES.includes(mode) || mode === 'standard') return;
-    try { _setPracticeMode(mode); } catch (e) { console.warn('[lockin] resume failed', e); }
+    try {
+        if (sess && sess.subject) _applyLockinScopeToAppState(sess);
+        const ok = _setPracticeMode(mode);
+        if (!ok) {
+            handleLockinPoolExhausted({ catalog: _getLockinScopeCatalog(mode, _modeSeenIds) });
+        }
+    } catch (e) { console.warn('[lockin] resume failed', e); }
 };
 
 function calculateEloMigration(subject, actualTime, scoreOutcome, chapterHealth, questionObj) {
@@ -11065,8 +11157,25 @@ export function parkCurrentPracticeQuestion() {
 }
 window.parkCurrentPracticeQuestion = parkCurrentPracticeQuestion;
 
+window.__playPendingSessionRecapIfAny = () => {
+    if (!SessionRecap || typeof SessionRecap.hasResults !== 'function' || !SessionRecap.hasResults()) return null;
+    let p = null;
+    try { p = SessionRecap.play({ tone: window.__lastLockinRecapTone || 'night' }); } catch (_) {}
+    try {
+        if (p && typeof p.then === 'function') {
+            const tracked = Promise.resolve(p).finally(() => {
+                if (window.__jmaxPendingRecapPromise === tracked) window.__jmaxPendingRecapPromise = null;
+            });
+            window.__jmaxPendingRecapPromise = tracked;
+        }
+    } catch (_) {}
+    return p;
+};
+
 export function closePracticeModal(opts) {
     const _skipLockinGate = !!(opts && opts.skipLockinCheck);
+    const _skipRecap = !!(opts && opts.skipRecap);
+    const _keepModeHistory = !!(opts && opts.keepModeHistory);
     // ── Lock-In gate ───────────────────────────────────────────────────────
     // If the block's clock already expired, bank it and hand off to the break
     // (consume returns true and closes the stage itself). Otherwise, closing
@@ -11098,6 +11207,7 @@ export function closePracticeModal(opts) {
             recapTone = 'parchment';
         }
     } catch (_) {}
+    window.__lastLockinRecapTone = recapTone;
 
     try {
         const _curIdx = AppState.currentPracticeIndex;
@@ -11114,15 +11224,17 @@ export function closePracticeModal(opts) {
 
     closeModalStr('practice-modal');
     let recapPromise = null;
-    try { recapPromise = SessionRecap.play({ tone: recapTone }); } catch (_) {}
-    try {
-        if (recapPromise && typeof recapPromise.then === 'function') {
-            const tracked = Promise.resolve(recapPromise).finally(() => {
-                if (window.__jmaxPendingRecapPromise === tracked) window.__jmaxPendingRecapPromise = null;
-            });
-            window.__jmaxPendingRecapPromise = tracked;
-        }
-    } catch (_) {}
+    if (!_skipRecap) {
+        try { recapPromise = SessionRecap.play({ tone: recapTone }); } catch (_) {}
+        try {
+            if (recapPromise && typeof recapPromise.then === 'function') {
+                const tracked = Promise.resolve(recapPromise).finally(() => {
+                    if (window.__jmaxPendingRecapPromise === tracked) window.__jmaxPendingRecapPromise = null;
+                });
+                window.__jmaxPendingRecapPromise = tracked;
+            }
+        } catch (_) {}
+    }
     _destroyLiveFlowSlider();
     AppState._flowSessionActive = false;
     _stampServedMode('standard');
@@ -11153,7 +11265,7 @@ export function closePracticeModal(opts) {
     // A closed modal must not leak its run's navigation history into the next
     // session — without this, a standard session started right after closing a
     // Flow/Hardcore run could inherit stale back/forward stacks.
-    _clearModeHistory();
+    if (!_keepModeHistory) _clearModeHistory();
     if (document.getElementById('practice-question-list-view').classList.contains('active')) {
         showQuestionList();
     }

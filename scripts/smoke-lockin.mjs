@@ -55,6 +55,16 @@ const presetBtns = [
     { dataset: { grind: '50', chill: '10' }, classList: makeEl('_p50').classList },
     { dataset: { grind: '90', chill: '15' }, classList: makeEl('_p90').classList },
 ];
+const scopeSubjBtns = {
+    physics: makeEl('_lsc_phys'),
+    chemistry: makeEl('_lsc_chem'),
+    maths: makeEl('_lsc_math'),
+};
+const scopeModalStub = makeEl('lockin-scope-modal');
+scopeModalStub.querySelector = (sel) => {
+    const m = /^\.lsc-subj-btn\[data-subject="([^"]+)"\]$/.exec(sel);
+    return (m && scopeSubjBtns[m[1]]) || null;
+};
 
 const visibilityListeners = [];
 globalThis.document = {
@@ -67,7 +77,7 @@ globalThis.document = {
     createElement: (tag) => makeEl(tag),
 };
 globalThis.window = globalThis;
-globalThis.CustomEvent = class CustomEvent { constructor(type) { this.type = type; } };
+globalThis.CustomEvent = class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } };
 globalThis.Event = class Event { constructor(type) { this.type = type; } };
 globalThis.MutationObserver = class { observe() {} disconnect() {} };
 
@@ -76,18 +86,49 @@ const realDateNow = Date.now.bind(Date);
 Date.now = () => realDateNow() + fakeNowOffset;
 
 let practiceClosedCount = 0;
+let practiceClosedOpts = [];
 let practiceExitedCount = 0;
+let flowUiExitedCount = 0;
+let pendingRecapPlayedCount = 0;
 let resumedSessions = [];
-globalThis.closePracticeModal = () => {
+let launchedScopes = [];
+let mockCatalog = {
+    physics: { totalEligible: 3, chapters: [{ name: 'Electrostatics', count: 3 }] },
+    chemistry: { totalEligible: 4, chapters: [{ name: 'Electrochemistry', count: 4 }] },
+    maths: { totalEligible: 0, chapters: [] },
+};
+let galleryMockActive = false;
+let galleryFinishOpts = null;
+let galleryFinishCb = null;
+let galleryAbortedCount = 0;
+let galleryReversedCount = 0;
+globalThis.GalleryBreak = {
+    begin() { galleryMockActive = true; },
+    setProgress() {},
+    finish(cb, opts) { galleryFinishCb = cb; galleryFinishOpts = opts || null; },
+    reverseOut(cb) { galleryReversedCount++; galleryMockActive = false; if (cb) cb(); },
+    abort() { galleryMockActive = false; galleryAbortedCount++; },
+    isActive: () => galleryMockActive,
+};
+globalThis.closePracticeModal = (opts) => {
     practiceClosedCount++;
+    practiceClosedOpts.push(opts || {});
     document.getElementById('practice-modal').classList.remove('active');
 };
 globalThis.exitPracticeMode = () => {
     practiceExitedCount++;
     document.getElementById('practice-modal').classList.remove('active');
 };
+globalThis.__exitLockinFlowUi = () => { flowUiExitedCount++; };
+globalThis.__playPendingSessionRecapIfAny = () => { pendingRecapPlayedCount++; };
+globalThis.__getLockinScopeCatalog = () => JSON.parse(JSON.stringify(mockCatalog));
+globalThis.__launchLockinScope = (sess, opts) => {
+    launchedScopes.push({ subject: sess.subject, chapter: sess.chapter, opts: opts || {} });
+    document.getElementById('practice-modal').classList.add('active');
+    return true;
+};
 globalThis.__resumePracticeFromLockinBreak = (sess) => {
-    resumedSessions.push({ mode: sess.mode, round: sess.currentSession, subject: sess.subject });
+    resumedSessions.push({ mode: sess.mode, round: sess.currentSession, subject: sess.subject, chapter: sess.chapter });
     document.getElementById('practice-modal').classList.add('active');
 };
 globalThis.AppState = { elo: { physics: 1200, chemistry: 1200, maths: 1200, global: 1200 } };
@@ -231,6 +272,172 @@ console.log('── [5] Mid-Timer Question Pool Exhaustion (Arena Cleared Victor
     ok(notifyModal.getAttribute('data-notify-variant') === 'victory', 'Modal has data-notify-variant="victory"');
     ok(document.getElementById('notify-title').textContent.includes('Cleared'), 'Victory title displayed');
     ok(document.getElementById('notify-receipt').innerHTML.includes('3'), 'Victory receipt shows 3 solved questions');
+    pomo.confirmTimerNotification();
+}
+
+console.log('── [6] Break Subject Switcher & Queue-to-Next-Round ──');
+{
+    window.AppState.flowSlider = 72;
+    window.AppState.elo = { physics: 1200, chemistry: 1450, maths: 1300, global: 1316 };
+    pomo.openLockinSetupModal('flow', { subject: 'physics', chapter: 'Electrostatics' }, () => {
+        document.getElementById('practice-modal').classList.add('active');
+    });
+    document.getElementById('lockin-grind').value = '10';
+    document.getElementById('lockin-chill').value = '5';
+    document.getElementById('lockin-rounds').value = '2';
+    pomo.confirmLockinSetup();
+
+    // Advance Round 1 to completion and enter BREAK
+    fakeNowOffset += 602 * 1000;
+    visibilityListeners.forEach(fn => fn());
+    pomo.consumePendingLockinExpiry();
+    ok(pomo.lockinSession.phase === 'BREAK', 'Entered BREAK after Round 1');
+
+    // Open Switch Subject during BREAK
+    const openedSwitch = pomo.openLockinBreakSwitch();
+    ok(openedSwitch === true, 'openLockinBreakSwitch opens during BREAK');
+    ok(scopeModalStub.classList.contains('active'), '#lockin-scope-modal opens');
+    ok(scopeModalStub.getAttribute('data-scope-mode') === 'break', 'Scope modal opens in break mode');
+    ok(scopeSubjBtns.maths.disabled === true, 'Subject with 0 eligible questions is disabled');
+
+    // Select Chemistry and confirm queue
+    pomo.lockinScopeSelectSubject('chemistry');
+    pomo.lockinScopeConfirm();
+    ok(!scopeModalStub.classList.contains('active'), 'Scope modal closes after queueing');
+    ok(pomo.lockinSession.pendingScope && pomo.lockinSession.pendingScope.subject === 'chemistry', 'Chemistry queued as pendingScope');
+    ok(document.getElementById('lbh-next').textContent.includes('CHEM'), 'Break HUD next line reflects queued Chemistry target');
+    ok(document.getElementById('lbh-switch-btn').classList.contains('is-queued'), 'Switch button marks queued state');
+
+    // Skip rest -> resumes directly into Chemistry
+    resumedSessions = [];
+    pomo.skipLockinRest();
+    ok(pomo.lockinSession.phase === 'STUDY', 'Session enters Round 2 STUDY');
+    ok(pomo.lockinSession.subject === 'chemistry', 'lockinSession switched to chemistry');
+    ok(resumedSessions.length === 1 && resumedSessions[0].subject === 'chemistry', 'Resumed practice in chemistry');
+
+    // Earn some ELO in chemistry, finish Round 2, check multi-subject receipt
+    window.AppState.elo.physics += 10;
+    window.AppState.elo.chemistry += 15;
+    pomo.noteLockinSolve(true);
+    fakeNowOffset += 602 * 1000;
+    visibilityListeners.forEach(fn => fn());
+    pomo.consumePendingLockinExpiry();
+    ok(pomo.lockinSession.active === false, 'Cycle completed after Round 2');
+    const receiptHtml = document.getElementById('notify-receipt').innerHTML;
+    ok(receiptHtml.includes('PHYS') && receiptHtml.includes('CHEM') && receiptHtml.includes('+25'),
+        'Multi-subject ELO receipt sums per-subject deltas accurately (+25) instead of cross-subject diff');
+    pomo.confirmTimerNotification();
+}
+
+console.log('── [7] Break Expiry While Break Scope Switcher Is Open → 90s Grace Expiry ──');
+{
+    window.AppState.flowSlider = 72;
+    pomo.openLockinSetupModal('flow', { subject: 'physics', chapter: 'Electrostatics' }, () => {
+        document.getElementById('practice-modal').classList.add('active');
+    });
+    document.getElementById('lockin-grind').value = '5';
+    document.getElementById('lockin-chill').value = '2';
+    document.getElementById('lockin-rounds').value = '2';
+    pomo.confirmLockinSetup();
+
+    fakeNowOffset += 302 * 1000;
+    visibilityListeners.forEach(fn => fn());
+    pomo.consumePendingLockinExpiry();
+    ok(pomo.lockinSession.phase === 'BREAK', 'Entered BREAK');
+
+    pomo.openLockinBreakSwitch();
+    ok(scopeModalStub.getAttribute('data-scope-mode') === 'break', 'Switcher open during break');
+
+    // Let break expire while switcher is open
+    fakeNowOffset += 122 * 1000;
+    visibilityListeners.forEach(fn => fn());
+    ok(scopeModalStub.classList.contains('active'), 'Switcher stays open when break hits 00:00');
+    ok(scopeModalStub.getAttribute('data-scope-mode') === 'break-end', 'Switcher upgraded in-place to break-end mode');
+    ok(pomo.lockinSession.awaitingBreakSwitch === true, 'awaitingBreakSwitch flag set');
+
+    // Let 90s grace expire without picking
+    fakeNowOffset += 91 * 1000;
+    visibilityListeners.forEach(fn => fn());
+    ok(!scopeModalStub.classList.contains('active'), 'Switcher closes cleanly after 90s grace expiry');
+    ok(pomo.lockinSession.active === false, 'Session finishes cleanly with banked blocks');
+    ok(document.getElementById('timer-notify-modal').getAttribute('data-notify-variant') === 'complete',
+        'Complete receipt shown for already-sealed Round 1 (no void penalty)');
+    pomo.confirmTimerNotification();
+}
+
+console.log('── [8] Mid-Block Pool Exhaustion → Refill Gate & Per-Subject studySecs Split ──');
+{
+    state.studySecs.physics = 0;
+    state.studySecs.chemistry = 0;
+    const chainBefore = pomo.getFocusLedger().chain;
+    pomo.openLockinSetupModal('flow', { subject: 'physics', chapter: 'Electrostatics' }, () => {
+        document.getElementById('practice-modal').classList.add('active');
+    });
+    document.getElementById('lockin-grind').value = '20';
+    document.getElementById('lockin-chill').value = '5';
+    document.getElementById('lockin-rounds').value = '1';
+    pomo.confirmLockinSetup();
+
+    // Grind Physics for 5 minutes (300s) -> 15m (900s) remain >= 180s threshold
+    pomo.noteLockinSolve(true);
+    fakeNowOffset += 300 * 1000;
+    practiceClosedOpts = [];
+    launchedScopes = [];
+    const res = pomo.handleLockinPoolExhausted({ catalog: mockCatalog });
+    ok(res.handled === true && res.action === 'refill', 'handleLockinPoolExhausted enters Refill Gate when >=3m left and chapters available');
+    ok(pomo.isLockinAwaitingRefill() === true && pomo.lockinSession.running === false, 'Study clock pauses cleanly in Refill Gate');
+    ok(scopeModalStub.classList.contains('active') && scopeModalStub.getAttribute('data-scope-mode') === 'refill', 'Refill modal opens');
+    ok(practiceClosedOpts.some(o => o.skipRecap === true && o.keepModeHistory === true), 'Practice modal closed silently with skipRecap & keepModeHistory');
+    ok(state.studySecs.physics === 0, 'Nothing deposited yet while still inside escrow block');
+
+    // Switch to Chemistry and resume block
+    pomo.lockinScopeSelectSubject('chemistry');
+    pomo.lockinScopeConfirm();
+    ok(pomo.isLockinAwaitingRefill() === false && pomo.lockinSession.running === true, 'Study clock resumes immediately on launch');
+    ok(pomo.lockinSession.subject === 'chemistry', 'Active subject updated to chemistry');
+    ok(launchedScopes.length === 1 && launchedScopes[0].opts.preserveRecap === true && launchedScopes[0].opts.preserveSeen === true,
+        'Scope launched preserving SessionRecap and seen history');
+    ok(Math.abs(pomo.getLockinLeftSecs() - 900) <= 1, 'Remaining time preserved at ~900s');
+
+    // Finish remaining 15m (900s) in Chemistry
+    fakeNowOffset += 902 * 1000;
+    visibilityListeners.forEach(fn => fn());
+    pomo.consumePendingLockinExpiry();
+    ok(state.studySecs.physics === 300, 'Physics credited exact 300s worked before switch');
+    ok(state.studySecs.chemistry === 900, 'Chemistry credited exact 900s worked after switch');
+    ok(pomo.getFocusLedger().chain === chainBefore + 1, 'Completed multi-chapter block advances focus chain by 1');
+    pomo.confirmTimerNotification();
+}
+
+console.log('── [9] Anti-Exploit: 2:00 Refill Grace Expiry & <5m Early-Exhaustion Shield Guard ──');
+{
+    state.studySecs.physics = 0;
+    localStorage.setItem('jeemax_ck_shields', '0');
+    const chainBefore = pomo.getFocusLedger().chain;
+    pomo.openLockinSetupModal('hardcore', { subject: 'physics', chapter: 'Electrostatics' }, () => {
+        document.getElementById('practice-modal').classList.add('active');
+    });
+    document.getElementById('lockin-grind').value = '25';
+    document.getElementById('lockin-rounds').value = '1';
+    pomo.confirmLockinSetup();
+
+    // Solve 1 question in 60s, exhaust chapter -> Refill Gate
+    pomo.noteLockinSolve(true);
+    fakeNowOffset += 60 * 1000;
+    pendingRecapPlayedCount = 0;
+    flowUiExitedCount = 0;
+    const res = pomo.handleLockinPoolExhausted({ catalog: mockCatalog });
+    ok(res.action === 'refill', 'Entered Refill Gate after 60s');
+
+    // Let 2:00 (120s) grace timer expire without picking
+    fakeNowOffset += 121 * 1000;
+    visibilityListeners.forEach(fn => fn());
+    ok(pomo.lockinSession.active === false && pomo.isLockinAwaitingRefill() === false, 'Session finalized on 2:00 grace expiry');
+    ok(state.studySecs.physics === 60, 'Genuine 60s study time still credited to physics');
+    ok(pomo.getFocusLedger().chain === chainBefore, 'Focus chain did NOT increment for <5m early exhaustion');
+    ok(localStorage.getItem('jeemax_ck_shields') === '0', 'Hardcore Streak Shield NOT minted for <5m early exhaustion');
+    ok(pendingRecapPlayedCount === 1 && flowUiExitedCount === 1, 'Pending recap played and flow UI cleaned up on refill exit');
+    ok(document.getElementById('notify-receipt').innerHTML.includes('no shield'), 'Victory receipt transparently notes no shield under 5m');
     pomo.confirmTimerNotification();
 }
 
