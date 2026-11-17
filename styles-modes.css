@@ -459,6 +459,153 @@ html[data-theme="observatory"] #lockin-scope-modal .close-btn {
 }
 .lsc-launch:hover:not(:disabled) { filter: brightness(1.05); transform: translateY(-1px); }
 .lsc-launch:disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.3); }
+/* Shadow Duel picker inside Sign the Pact (#lockin-setup-modal) */
+.lockin-duel {
+  margin: 0 0 12px;
+  padding: 11px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(242, 188, 112, .16);
+  background: rgba(8, 10, 16, .52);
+}
+.lockin-duel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.lockin-duel-head strong {
+  font-weight: 600;
+  color: rgba(242, 237, 227, .88);
+  letter-spacing: .02em;
+}
+.lockin-duel-record {
+  font-family: var(--font-num, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ritual-amber);
+  letter-spacing: .04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(242, 188, 112, .1);
+  border: 1px solid rgba(242, 188, 112, .25);
+}
+.lockin-duel-record.is-debt {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, .14);
+  border-color: rgba(239, 68, 68, .38);
+}
+.lockin-duel-record.is-hot {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, .14);
+  border-color: rgba(16, 185, 129, .38);
+}
+.lockin-duel-record[hidden] { display: none; }
+.lockin-duel-pills {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(4, 6, 10, .65);
+  border: 1px solid rgba(242, 237, 227, .07);
+}
+.ld-pill {
+  appearance: none;
+  min-width: 0;
+  min-height: 31px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: rgba(242, 237, 227, .62);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+.ld-pill:hover { color: var(--obs-bone, #F2EDE3); background: rgba(242, 237, 227, .05); }
+.ld-pill.active {
+  color: var(--ritual-ink);
+  font-weight: 600;
+  border-color: rgba(255, 225, 166, .58);
+  background: linear-gradient(180deg, #F8D085 0%, #F2B361 100%);
+}
+.lockin-duel-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.lockin-duel-sub[hidden] { display: none; }
+.ld-chip {
+  flex: 1 1 0;
+  min-width: 62px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(242, 237, 227, .12);
+  background: rgba(18, 22, 32, .72);
+  color: rgba(242, 237, 227, .7);
+  font-family: var(--font-num, ui-monospace, monospace);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.ld-chip:hover:not(:disabled) { border-color: rgba(242, 188, 112, .4); color: #fff; }
+.ld-chip.active {
+  background: rgba(242, 188, 112, .18);
+  border-color: rgba(242, 188, 112, .56);
+  color: #fde4b4;
+  font-weight: 600;
+}
+.ld-chip:disabled { opacity: .35; cursor: not-allowed; }
+.lockin-duel-intel {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(242, 237, 227, .09);
+  background: rgba(14, 18, 28, .72);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lockin-duel-intel[hidden] { display: none; }
+.lockin-duel-intel strong {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #f8fafc;
+  letter-spacing: .01em;
+}
+.lockin-duel-intel span {
+  font-size: 10.5px;
+  color: rgba(242, 237, 227, .64);
+  line-height: 1.3;
+}
+.lockin-duel-rule {
+  margin: 7px 0 0;
+  padding: 6px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(242, 188, 112, .2);
+  background: rgba(242, 188, 112, .06);
+  font-family: var(--font-num, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #fde4b4;
+}
+.lockin-duel-rule.is-high-stakes {
+  border-color: rgba(239, 68, 68, .36);
+  background: rgba(239, 68, 68, .09);
+  color: #fecaca;
+}
+.lockin-duel-rule[hidden] { display: none; }
+
 /* Responsive + reduced motion */
 @media (max-width: 640px) {
   #lockin-setup-modal,

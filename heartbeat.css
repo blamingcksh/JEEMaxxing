@@ -1,0 +1,616 @@
+/* ============================================================================
+   heartbeat.css — KLSR Aizawa Flux Void, Clinical Vitals & Flatline Overlay
+   ============================================================================ */
+
+/* Strip the sidebar, top header, and old dashboard permanently */
+#sidebar,
+#main-header,
+#view-dashboard,
+#arena-orders-strip,
+#bridge-banner,
+#tuckin-door-banner,
+.arena-ritual-row,
+.subject-cards {
+    display: none !important;
+}
+
+/* Pure black void mode when on the Heartbeat Home screen */
+body.hb-void-active {
+    background: #010103 !important;
+    overflow: hidden !important;
+}
+
+body.hb-void-active #obs-atmos,
+body.hb-void-active #forest-bg-canvas,
+body.hb-void-active .forest-bg-pill,
+body.hb-void-active .forest-bg-btn,
+body.hb-void-active .obs-atmos {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+body.hb-void-active .app-container,
+body.hb-void-active .main-content {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+    background: transparent !important;
+}
+
+/* Subview navigation return pill (Chapters / Vault / Mocks / Config) */
+.hb-back-void-btn {
+    position: fixed;
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    left: 16px;
+    z-index: 60;
+    appearance: none;
+    background: rgba(6, 8, 13, 0.84);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: rgba(235, 242, 255, 0.88);
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    padding: 7px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.hb-back-void-btn:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #ffffff;
+    background: rgba(16, 20, 30, 0.92);
+}
+
+body.hb-void-active .hb-back-void-btn {
+    display: none !important;
+}
+
+/* Give non-void views breathing room below the fixed [ ← VOID ] pill */
+body:not(.hb-void-active) .main-content {
+    padding-top: calc(54px + env(safe-area-inset-top, 0px)) !important;
+}
+
+/* Full-Viewport Void Stage */
+.hb-void {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background: #010103;
+    z-index: 5;
+    overflow: hidden;
+    user-select: none;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+#heartbeat-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+    touch-action: none;
+}
+
+#heartbeat-canvas:active {
+    cursor: grabbing;
+}
+
+/* Controls fade in ONLY after the 2.5s boot ignition drain */
+.hb-controls {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.hb-void.hb-ready .hb-controls {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Top-right minimal utility cluster: [ VITALS ] [ PACT ] [ ≡ ] */
+.hb-util {
+    position: fixed;
+    top: calc(18px + env(safe-area-inset-top, 0px));
+    right: 22px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transform: translateY(-6px);
+}
+
+.hb-void.hb-ready .hb-util {
+    transform: translateY(0);
+}
+
+.hb-pill-btn {
+    appearance: none;
+    background: rgba(5, 7, 12, 0.62);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    color: rgba(232, 240, 255, 0.82);
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    padding: 7px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: border-color 0.22s ease, color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+}
+
+.hb-pill-btn:hover {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(14, 18, 28, 0.8);
+    box-shadow: 0 0 18px rgba(180, 220, 255, 0.12);
+}
+
+.hb-pill-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--hb-spectrum-color, #9fd4ff);
+    box-shadow: 0 0 8px var(--hb-spectrum-color, #9fd4ff);
+    animation: hbDotPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes hbDotPulse {
+    0%, 100% { opacity: 0.45; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1.15); }
+}
+
+.hb-pill-btn.is-frozen .hb-pill-dot {
+    background: #6ee7b7;
+    box-shadow: 0 0 10px #6ee7b7;
+    animation: none;
+}
+
+/* Bottom-center 3 minimal hair-line subject buttons */
+.hb-subjects {
+    position: fixed;
+    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.hb-void.hb-ready .hb-subjects {
+    transform: translateX(-50%) translateY(0);
+}
+
+.hb-subj-btn {
+    appearance: none;
+    background: rgba(4, 5, 9, 0.56);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(236, 242, 255, 0.82);
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.24em;
+    padding: 11px 22px;
+    min-width: 146px;
+    text-align: center;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: border-color 0.24s ease, color 0.24s ease, background 0.24s ease, box-shadow 0.24s ease, transform 0.18s ease;
+}
+
+.hb-subj-btn:hover {
+    color: #ffffff;
+    border-color: var(--hb-spectrum-color, rgba(210, 232, 255, 0.55));
+    background: rgba(12, 16, 26, 0.78);
+    box-shadow: 0 0 22px rgba(170, 215, 255, 0.14);
+    transform: translateY(-1px);
+}
+
+.hb-subj-btn:active {
+    transform: translateY(0);
+}
+
+@media (max-width: 600px) {
+    .hb-subjects {
+        gap: 8px;
+        width: calc(100vw - 24px);
+        justify-content: center;
+    }
+    .hb-subj-btn {
+        min-width: 0;
+        flex: 1 1 0;
+        padding: 10px 8px;
+        font-size: 10px;
+        letter-spacing: 0.16em;
+    }
+    .hb-util {
+        right: 12px;
+        top: calc(12px + env(safe-area-inset-top, 0px));
+    }
+}
+
+/* Minimal Navigation Menu Popover */
+.hb-nav-menu {
+    position: fixed;
+    top: calc(58px + env(safe-area-inset-top, 0px));
+    right: 22px;
+    z-index: 70;
+    min-width: 196px;
+    background: rgba(5, 7, 11, 0.94);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 4px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+}
+
+.hb-nav-menu[hidden] {
+    display: none !important;
+}
+
+.hb-nav-item {
+    appearance: none;
+    background: transparent;
+    border: 1px solid transparent;
+    color: rgba(226, 234, 248, 0.84);
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-align: left;
+    padding: 9px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.hb-nav-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+.hb-nav-item-sub {
+    font-size: 9px;
+    color: rgba(180, 195, 220, 0.45);
+    letter-spacing: 0.1em;
+}
+
+/* Clinical Vitals & Deficit Prescription Modal */
+.hb-vitals-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    background: rgba(1, 2, 5, 0.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+}
+
+.hb-vitals-overlay[hidden] {
+    display: none !important;
+}
+
+.hb-vitals-card {
+    width: min(560px, 100%);
+    max-height: 90vh;
+    overflow-y: auto;
+    background: rgba(6, 8, 13, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 4px;
+    padding: 22px 24px;
+    color: #eef3ff;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.92);
+}
+
+.hb-vitals-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.hb-vitals-kicker {
+    font-size: 9.5px;
+    letter-spacing: 0.22em;
+    color: rgba(190, 205, 230, 0.54);
+    margin-bottom: 4px;
+}
+
+.hb-vitals-clock {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    color: #ffffff;
+}
+
+.hb-vitals-sub {
+    margin-top: 4px;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    color: rgba(205, 218, 240, 0.65);
+}
+
+.hb-vitals-stage {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    padding: 4px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+.hb-vitals-close {
+    appearance: none;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(220, 230, 250, 0.72);
+    width: 28px;
+    height: 28px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hb-vitals-close:hover {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.hb-vitals-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+
+@media (max-width: 520px) {
+    .hb-vitals-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.hb-vital-box {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+    padding: 10px 12px;
+    border-radius: 3px;
+}
+
+.hb-vital-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: rgba(196, 210, 236, 0.62);
+}
+
+.hb-vital-val {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    font-variant-numeric: tabular-nums;
+}
+
+.hb-vital-bar {
+    height: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 8px 0 6px;
+    overflow: hidden;
+}
+
+.hb-vital-bar-fill {
+    height: 100%;
+    background: var(--hb-spectrum-color, #a5d8ff);
+    transition: width 0.25s ease;
+}
+
+.hb-vital-desc {
+    font-size: 9.5px;
+    line-height: 1.45;
+    color: rgba(190, 204, 230, 0.56);
+}
+
+.hb-prescription {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.hb-presc-title {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: rgba(200, 215, 240, 0.6);
+    margin-bottom: 10px;
+}
+
+.hb-presc-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.hb-presc-row {
+    display: grid;
+    grid-template-columns: 100px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+}
+
+.hb-presc-lbl {
+    letter-spacing: 0.12em;
+    color: rgba(224, 234, 252, 0.86);
+}
+
+.hb-presc-track {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 1px;
+    overflow: hidden;
+}
+
+.hb-presc-fill {
+    height: 100%;
+    background: rgba(225, 238, 255, 0.82);
+}
+
+.hb-presc-fill.is-complete {
+    background: #6ee7b7;
+}
+
+.hb-presc-fill.is-lagging {
+    background: #fb7185;
+}
+
+.hb-presc-num {
+    font-variant-numeric: tabular-nums;
+    font-size: 10.5px;
+    color: rgba(224, 234, 252, 0.78);
+    min-width: 112px;
+    text-align: right;
+}
+
+.hb-presc-locked {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: #fbbf24;
+    text-align: right;
+    padding-top: 2px;
+}
+
+.hb-presc-verdict {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.025);
+    font-size: 10.5px;
+    line-height: 1.55;
+    color: rgba(235, 242, 255, 0.86);
+}
+
+.hb-presc-verdict.is-critical {
+    border-color: rgba(244, 63, 94, 0.45);
+    background: rgba(127, 29, 29, 0.2);
+    color: #fecdd3;
+}
+
+/* Flatline Death Sequence Overlay (unskippable) */
+.hb-flatline-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: radial-gradient(circle at center, rgba(35, 2, 6, 0.92) 0%, #020001 75%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+    color: #ffe4e6;
+}
+
+.hb-flatline-overlay[hidden] {
+    display: none !important;
+}
+
+.hb-flatline-line {
+    width: min(460px, 84vw);
+    height: 2px;
+    background: #ff2438;
+    box-shadow: 0 0 18px #ff2438, 0 0 42px rgba(255, 24, 48, 0.7);
+    margin-bottom: 28px;
+    animation: hbFlatlineBlink 1.6s ease-in-out infinite;
+}
+
+@keyframes hbFlatlineBlink {
+    0%, 100% { opacity: 0.95; }
+    50% { opacity: 0.35; }
+}
+
+.hb-flatline-title {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.28em;
+    color: #ff4d5e;
+    margin-bottom: 12px;
+}
+
+.hb-flatline-msg {
+    max-width: 440px;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: rgba(255, 214, 220, 0.78);
+    margin-bottom: 28px;
+}
+
+.hb-flatline-reset {
+    appearance: none;
+    background: rgba(255, 28, 52, 0.14);
+    border: 1px solid rgba(255, 64, 86, 0.65);
+    color: #ffffff;
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.24em;
+    padding: 12px 26px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hb-flatline-reset:hover:not(:disabled) {
+    background: rgba(255, 28, 52, 0.28);
+    box-shadow: 0 0 28px rgba(255, 36, 56, 0.35);
+}
+
+.hb-flatline-reset:disabled {
+    opacity: 0.45;
+    cursor: wait;
+}
+
+/* Suppress residual ELO/rank chrome globally */
+#global-mmr-row,
+.elo-monitor,
+#elo-header-slot,
+#sr-elo-header-slot,
+#lockin-duel-stakes {
+    display: none !important;
+}

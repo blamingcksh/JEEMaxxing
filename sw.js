@@ -204,12 +204,17 @@
 // v105 - Confidence calibration removed from normal practice modal (kept for Error Matrix / mocks).
 // v106 - LOCK-IN SCOPE SWITCH & REFILL GATE: mid-run subject/chapter switching during/after break,
 //        bounded 2:00 refill gate on pool exhaustion, per-subject segment & ELO accounting.
-const VERSION = 'jeemax-v106';
+// v107 - SHADOW DUEL: opt-in Ghost Rival (Yesterday You, +100 Rival, AIR 5000/1000/500),
+//        opt-in ELO/Shield stakes, post-solve split reveals, Sudden Death tie-breaker,
+//        turning-point receipt, and Run-It-Back rematch. shadow-duel.js joins shell precache.
+const VERSION = 'jeemax-v111';
 
 const SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './heartbeat.css',
+  './heartbeat.js',
   './styles.css',
   './styles-daily.css',
   './styles-retention.css',
@@ -245,6 +250,7 @@ const SHELL = [
   './glyphs.js',
   './matrix.js',
   './pomodoro.js',
+  './shadow-duel.js',
   './metronome.js',
   './theme.js',
   './dashboard-clean.js',

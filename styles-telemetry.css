@@ -760,6 +760,101 @@ body.immersive-active #practice-modal.pq-stage {
   text-overflow: ellipsis;
 }
 
+#practice-modal.pq-stage .pq-duel-split {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(242, 188, 112, 0.28);
+  background: rgba(242, 188, 112, 0.08);
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#practice-modal.pq-stage .pq-duel-split-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#practice-modal.pq-stage .pq-duel-split-head {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+#practice-modal.pq-stage .pq-duel-split-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: rgba(0, 0, 0, 0.14);
+}
+#practice-modal.pq-stage .pq-duel-split-sub {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.9;
+  letter-spacing: 0.02em;
+}
+#practice-modal.pq-stage .pq-duel-split.is-win {
+  border-color: rgba(16, 185, 129, 0.44);
+  background: rgba(16, 185, 129, 0.11);
+  color: #10b981;
+}
+#practice-modal.pq-stage .pq-duel-split.is-loss {
+  border-color: rgba(239, 68, 68, 0.48);
+  background: rgba(239, 68, 68, 0.11);
+  color: #f87171;
+}
+#practice-modal.pq-stage .pq-duel-split.is-draw {
+  border-color: var(--border-subtle);
+  background: rgba(148, 163, 184, 0.09);
+  color: var(--ink-muted);
+}
+
+#practice-modal.pq-stage .pq-duel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 18, 28, 0.14);
+  color: var(--pq-ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+#practice-modal.pq-stage .pq-duel-pill[hidden] { display: none; }
+#practice-modal.pq-stage .pq-duel-pill.is-ahead {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+#practice-modal.pq-stage .pq-duel-pill.is-behind {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.11);
+  color: #ef4444;
+}
+#practice-modal.pq-stage .pq-duel-pill.is-match-point {
+  border-color: rgba(245, 158, 11, 0.65);
+  background: rgba(245, 158, 11, 0.16);
+  color: #d97706;
+}
+body.immersive-active #practice-modal.pq-stage .pq-duel-pill.is-match-point { color: #fbbf24; }
+#practice-modal.pq-stage .pq-duel-pill.is-sudden-death {
+  border-color: rgba(239, 68, 68, 0.72);
+  background: rgba(239, 68, 68, 0.18);
+  color: #dc2626;
+}
+body.immersive-active #practice-modal.pq-stage .pq-duel-pill.is-sudden-death { color: #fca5a5; }
+
 /* ── 2. Vertical Post-Reveal Stack & Full-Width Answer Card ── */
 #practice-modal.pq-stage .pq-reveal-row {
   display: flex;

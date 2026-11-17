@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KLSR // Photonic Manifold Engine</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="gl-canvas"></canvas>
+
+    <!-- Minimal Top HUD -->
+    <header class="hud-top ui-layer" id="hud-top">
+        <div class="brand">
+            <div class="brand-line">
+                <span class="pulse-dot"></span>
+                <span class="brand-title">KLSR // PHOTON MANIFOLD</span>
+            </div>
+            <div class="equation-readout" id="equation-readout">
+                ẋ = σ(y−x) − εz, ẏ = x(ρ−z)−y, ż = xy−βz
+            </div>
+        </div>
+
+        <div class="top-right-group">
+            <div class="telemetry" id="telemetry-readout">
+                <span id="stat-fps">60 FPS</span>
+                <span class="sep">·</span>
+                <span id="stat-jumps">0 HOPS/S</span>
+                <span class="sep">·</span>
+                <span id="stat-nodes">3600 NODES</span>
+            </div>
+            <div class="action-pills">
+                <button class="pill-btn" id="btn-mutate" title="Mutate Chaotic Seed [Space]">
+                    MUTATE <kbd>SPC</kbd>
+                </button>
+                <button class="pill-btn" id="btn-hide-hud" title="Hide Interface [H]">
+                    HIDE <kbd>H</kbd>
+                </button>
+                <button class="pill-btn accent" id="btn-fullscreen" title="Toggle Fullscreen [F]">
+                    FULLSCREEN <kbd>F</kbd>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Floating Hidden-HUD Hint -->
+    <div class="hud-restore-hint" id="hud-restore-hint">
+        PRESS <kbd>H</kbd> FOR CONTROLS · <kbd>SPACE</kbd> MUTATE · <kbd>1–6</kbd> PATTERNS
+    </div>
+
+    <!-- Ultra-Minimal Bottom Control Dock -->
+    <aside class="hud-dock ui-layer" id="hud-dock">
+        <div class="dock-section patterns-section">
+            <div class="section-label">COMPLEX MANIFOLD</div>
+            <div class="pattern-grid" id="pattern-grid">
+                <!-- Populated dynamically from KLSRPatterns.PATTERNS -->
+            </div>
+        </div>
+
+        <div class="dock-divider"></div>
+
+        <div class="dock-section sliders-section">
+            <div class="control-row">
+                <div class="control-head">
+                    <label for="ctrl-speed">SPEED</label>
+                    <span class="val" id="val-speed">1.75×</span>
+                </div>
+                <input type="range" id="ctrl-speed" min="0.05" max="4.00" step="0.01" value="1.75">
+            </div>
+
+            <div class="control-row">
+                <div class="control-head">
+                    <label for="ctrl-luminescence">LUMINESCENCE</label>
+                    <span class="val" id="val-luminescence">1.65</span>
+                </div>
+                <input type="range" id="ctrl-luminescence" min="0.25" max="3.50" step="0.01" value="1.65">
+            </div>
+
+            <div class="control-row">
+                <div class="control-head">
+                    <label for="ctrl-spread">SPREAD</label>
+                    <span class="val" id="val-spread">0.55</span>
+                </div>
+                <input type="range" id="ctrl-spread" min="0.00" max="2.50" step="0.01" value="0.55">
+            </div>
+
+            <div class="control-row">
+                <div class="control-head">
+                    <label for="ctrl-persistence">PERSISTENCE</label>
+                    <span class="val" id="val-persistence">0.84</span>
+                </div>
+                <input type="range" id="ctrl-persistence" min="0.35" max="0.97" step="0.01" value="0.84">
+            </div>
+        </div>
+
+        <div class="dock-divider"></div>
+
+        <div class="dock-section spectrum-section">
+            <div class="section-label">LIGHT SPECTRUM</div>
+            <div class="spectrum-pills" id="spectrum-pills">
+                <button class="spec-btn active" data-spec="xenon">XENON</button>
+                <button class="spec-btn" data-spec="silver">ION</button>
+                <button class="spec-btn" data-spec="amber">AMBER</button>
+                <button class="spec-btn" data-spec="uv">UV</button>
+            </div>
+            <div class="interaction-hint">
+                DRAG TO ORBIT · SCROLL ZOOM · DBL-CLICK FULLSCREEN
+            </div>
+        </div>
+    </aside>
+
+    <script defer src="patterns.js"></script>
+    <script defer src="renderer.js"></script>
+    <script defer src="main.js"></script>
+</body>
+</html>

@@ -10,6 +10,17 @@ import {
     describeValue as flowDescribeValue,
 } from './flow-slider.js';
 import { mountFlowSlider } from './slider-resident.js';
+import {
+    DUEL_PRESETS,
+    DUEL_STAKES,
+    createDuelState,
+    finalizeDuel,
+    formatSplitSecs,
+    getDuelPreviewIntel,
+    loadDuelStats,
+    loadLastDuelPrefs,
+    saveLastDuelPrefs,
+} from './shadow-duel.js';
 
 // ── Null-safe element lookup ──────────────────────────────────────────────
 // The standalone Focus Mode view and the Ambient Sprint widget were removed in
@@ -120,6 +131,12 @@ function _ledgerCompleteBlock(secsDeep, opts) {
             }
         } catch (_) {}
     }
+    // KLSR Heartbeat: feed completed deep Pact minutes into Persistence & Reservoir.
+    try {
+        if (typeof window !== 'undefined' && window.Heartbeat && typeof window.Heartbeat.recordPactBlock === 'function') {
+            window.Heartbeat.recordPactBlock(secsDeep / 60, subj);
+        }
+    } catch (_) {}
     // Daily Directive: a completed deep-focus block pays +2 LU (2× in Hardcore)
     // to the active subject (capped at 3 blocks/day/subject inside directive.js).
     import('./directive.js').then(m => {
@@ -140,6 +157,13 @@ function _ledgerForfeit(secsDeep) {
 // so the bonus was dead code. Every running study phase now sets it; pause,
 // break, quit and reset clear it — the badge never lies.
 function _setDeepWorkActive(on) {
+    // Settle real-time drain right before freezing or unfreezing the Heartbeat clock.
+    try {
+        if (typeof window !== 'undefined' && window.Heartbeat) {
+            if (on && typeof window.Heartbeat.touchActivity === 'function') window.Heartbeat.touchActivity();
+            if (typeof window.Heartbeat.tickClock === 'function') window.Heartbeat.tickClock();
+        }
+    } catch (_) {}
     try {
         if (document.body) document.body.classList.toggle('pomo-active', !!on);
     } catch (_) {}
@@ -181,7 +205,11 @@ function _updateDeepWorkBeacon() {
             b.hidden = false;
             const mmss = formatTime(Math.max(0, _lockinLeftSecs));
             const rTag = `R${lockinSession.currentSession}/${lockinSession.totalSessions}`;
-            if (lockinSession.awaitingRefill) {
+            if (lockinSession.phase === 'SUDDEN_DEATH') {
+                const d = lockinSession.duel;
+                b.textContent = d ? `⚡ SUDDEN DEATH · ${d.userPts}–${d.ghostPts}` : '⚡ SUDDEN DEATH';
+                b.setAttribute('data-state', 'hot');
+            } else if (lockinSession.awaitingRefill) {
                 b.textContent = `⏸ REFILL · ${mmss} · ${rTag}`;
                 b.setAttribute('data-state', 'paused');
             } else if (lockinSession.awaitingBreakSwitch) {
@@ -852,6 +880,8 @@ function _focusToast(msg) {
 // paid out — inside the modal. Kept as escaped, pre-built markup rows.
 function showTimerNotification(title, icon, message, nextAction, receiptHTML) {    _pomoPendingAction = nextAction;
     _setNotifyVariant('');
+    const kicker = $('notify-kicker');
+    if (kicker) kicker.hidden = true;
     $('notify-title').textContent = title;
     $('notify-icon').textContent = icon;
     $('notify-message').textContent = message;
@@ -863,6 +893,8 @@ function showTimerNotification(title, icon, message, nextAction, receiptHTML) { 
     }
     const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
+    const rematch = $('notify-rematch');
+    if (rematch) rematch.style.display = 'none';
     const primary = $('notify-primary');
     if (primary) primary.textContent = "Let's Go";
 
@@ -886,6 +918,178 @@ function _setNotifyVariant(variant) {
     else modal.removeAttribute('data-notify-variant');
 }
 
+function _escHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function _duelDeltaLabel(s) {
+    if (!s) return { text: '0 EVEN', tone: 'draw' };
+    if (s.outcome === 'steal') return { text: '+2 STEAL', tone: 'win' };
+    if (s.outcome === 'speed_win') return { text: `+1 (${Math.abs(s.paceDeltaSecs)}s faster)`, tone: 'win' };
+    if (s.outcome === 'blunder') return { text: '−2 BLUNDER', tone: 'loss' };
+    if (s.outcome === 'speed_loss') return { text: `−1 (${Math.abs(s.paceDeltaSecs)}s slower)`, tone: 'loss' };
+    if (s.outcome === 'skip_punished') return { text: '−1 SKIP COST', tone: 'loss' };
+    if (s.outcome === 'smart_triage') return { text: '0 TRAP TRIAGE', tone: 'draw' };
+    return { text: '0 DRAW', tone: 'draw' };
+}
+
+function _renderDuelAutopsyHtml(d, duel) {
+    const u = duel.userStats || { pts: duel.userPts, graded: duel.gradedCount, correct: 0, accuracyPct: 0, avgSecs: 0 };
+    const g = duel.ghostStats || { pts: duel.ghostPts, elo: null, graded: duel.gradedCount, correct: 0, accuracyPct: 0, avgSecs: 0 };
+    const outcomeCls = duel.outcome === 'win' ? 'is-win'
+        : ((duel.outcome === 'loss' || duel.outcome === 'forfeit') ? 'is-loss' : 'is-draw');
+    const tag = duel.outcome === 'win' ? 'WIN'
+        : (duel.outcome === 'loss' ? 'LOSS'
+            : (duel.outcome === 'forfeit' ? 'FORFEIT'
+                : (duel.outcome === 'draw' ? 'DRAW' : 'UNRANKED')));
+
+    const stakeParts = [`${tag} (${duel.userPts}–${duel.ghostPts})`];
+    if (duel.eloDelta) stakeParts.push(`${duel.eloDelta > 0 ? '+' : ''}${duel.eloDelta} ELO`);
+    if (duel.shieldDelta) stakeParts.push(`${duel.shieldDelta > 0 ? '+' : ''}${duel.shieldDelta} 🛡`);
+    if (duel.streakShieldEarned) stakeParts.push('3🔥 +1 🛡');
+
+    const avgGap = Number(duel.paceAvgGapSecs) || 0;
+    const gapText = avgGap === 0 ? 'Even pace'
+        : (avgGap > 0 ? `${Math.abs(avgGap)}s/Q faster` : `${Math.abs(avgGap)}s/Q slower`);
+
+    const splitsHtml = (duel.splits || []).map(s => {
+        const uStr = s.isSkip ? 'SKIP' : `${s.userCorrect ? '✓' : '✗'} ${formatSplitSecs(s.userSecs)}`;
+        const gStr = s.ghostVerdict === 'skip'
+            ? 'SKIP'
+            : `${s.ghostVerdict === 'correct' ? '✓' : '✗'} ${formatSplitSecs(s.ghostSecs)}`;
+        const delta = _duelDeltaLabel(s);
+        const chap = _escHtml(s.chapter || (s.subject || '').toUpperCase() || 'Question');
+        const tagSuffix = s.isTurningPoint
+            ? ' · TURNING POINT'
+            : (s.isBestMoment ? ' · BEST STEAL' : '');
+        const rowCls = s.isTurningPoint ? 'is-turning-point' : (s.isBestMoment ? 'is-best' : '');
+        return `<div class="da-row ${rowCls}">
+            <span class="da-qnum">Q${s.index}${s.isSuddenDeath ? ' ⚡' : ''}</span>
+            <span class="da-mid">
+                <span class="da-chap">${chap}${tagSuffix}</span>
+                <span class="da-comp">YOU ${uStr} · GHOST ${gStr}</span>
+            </span>
+            <span class="da-delta is-${delta.tone}">${_escHtml(delta.text)}</span>
+        </div>`;
+    }).join('');
+
+    const eloVal = d.eloText || `${(d.netElo || 0) >= 0 ? '+' : ''}${d.netElo || 0}`;
+    const metaParts = [
+        `Shadow Duel: ${tag} (${duel.userPts}–${duel.ghostPts})`,
+        `Grind ${formatStudyDuration(d.elapsed || 0)}`,
+        `Solve ELO ${eloVal}`,
+        `Chain ${d.chain != null ? d.chain : focusLedger.chain}`,
+    ];
+    if (duel.winStreak >= 1) metaParts.push(`Streak ${duel.winStreak}🔥`);
+
+    return `
+        <div class="da-hero">
+            <div class="da-side">
+                <span class="da-side-tag">YOU</span>
+                <span class="da-side-pts">${duel.userPts}</span>
+                <span class="da-side-sub">${u.correct}/${u.graded} ✓ (${u.accuracyPct}%) · ${formatSplitSecs(u.avgSecs)}/Q</span>
+            </div>
+            <div class="da-vs">
+                <span class="da-vs-badge ${outcomeCls}">${_escHtml(stakeParts.join(' · '))}</span>
+                <span class="da-vs-gap">${_escHtml(gapText)}</span>
+            </div>
+            <div class="da-side is-right">
+                <span class="da-side-tag">${_escHtml(duel.shortLabel)}${g.elo ? ` · ${g.elo}` : ''}</span>
+                <span class="da-side-pts">${duel.ghostPts}</span>
+                <span class="da-side-sub">${g.correct}/${Math.max(1, g.graded)} ✓ (${g.accuracyPct}%) · ${formatSplitSecs(g.avgSecs)}/Q</span>
+            </div>
+        </div>
+        <div class="da-verdict ${outcomeCls}">${_escHtml(duel.verdictHeadline || '')}</div>
+        ${splitsHtml ? `<div class="da-tape">${splitsHtml}</div>` : ''}
+        <div class="da-meta">${_escHtml(metaParts.join(' · '))}</div>
+    `;
+}
+
+function _applyNotifyRematchButton(duel) {
+    const rematch = $('notify-rematch');
+    if (!rematch) return;
+    if (duel && duel.outcome) {
+        rematch.style.display = 'block';
+        if (duel.outcome === 'loss' || duel.outcome === 'forfeit') {
+            rematch.textContent = `Avenge Defeat vs ${duel.shortLabel} ↻`;
+        } else if (duel.outcome === 'unqualified') {
+            rematch.textContent = 'Run Full 4+ Q Duel ↻';
+        } else {
+            rematch.textContent = 'Run It Back ↻';
+        }
+    } else {
+        rematch.style.display = 'none';
+    }
+}
+
+function _showDuelCompletionModal(d) {
+    const duel = d.duel;
+    const isLoss = duel.outcome === 'loss' || duel.outcome === 'forfeit';
+    const isWin = duel.outcome === 'win';
+    const variant = isWin ? 'duel-win' : (isLoss ? 'duel-loss' : 'duel-draw');
+    _setNotifyVariant(variant);
+
+    const kicker = $('notify-kicker');
+    if (kicker) {
+        kicker.hidden = false;
+        kicker.textContent = isWin
+            ? `SHADOW DUEL · VICTORY (${duel.userPts}–${duel.ghostPts})`
+            : (isLoss
+                ? `SHADOW DUEL · ${duel.outcome === 'forfeit' ? 'FORFEITED' : 'DEFEATED'} (${duel.userPts}–${duel.ghostPts})`
+                : (duel.outcome === 'unqualified'
+                    ? `SHADOW DUEL · UNRANKED (${duel.gradedCount}/4 Qs)`
+                    : `SHADOW DUEL · STALEMATE (${duel.userPts}–${duel.ghostPts})`));
+    }
+
+    $('notify-icon').textContent = isWin ? '⚔️' : (isLoss ? '💀' : (duel.outcome === 'unqualified' ? '⏱️' : '⚖️'));
+    if (isWin) {
+        $('notify-title').textContent = duel.preset === 'yesterday'
+            ? 'You Beat Yesterday You'
+            : `You Broke ${duel.label}`;
+        const winParts = [];
+        if (duel.eloDelta) winParts.push(`+${duel.eloDelta} ELO`);
+        if (duel.shieldDelta) winParts.push(`+${duel.shieldDelta} 🛡`);
+        $('notify-message').textContent = winParts.length
+            ? `Escrow conquered: ${winParts.join(' & ')} deposited cleanly.`
+            : 'Match won. Keep the momentum rolling.';
+    } else if (isLoss) {
+        $('notify-title').textContent = duel.preset === 'yesterday'
+            ? 'Yesterday You Beat You'
+            : `${duel.label} Outclassed You`;
+        const lossParts = [];
+        if (duel.eloDelta) lossParts.push(`${duel.eloDelta} ELO deducted`);
+        if (duel.shieldDelta) lossParts.push(`${duel.shieldDelta} 🛡 burned`);
+        $('notify-message').textContent = lossParts.length
+            ? `${lossParts.join(' & ')}. Study the tape below and run it back.`
+            : 'Duel streak snapped to 0. Inspect where the match slipped below.';
+    } else if (duel.outcome === 'unqualified') {
+        $('notify-title').textContent = `${duel.userPts}–${duel.ghostPts} Warm-Up Split`;
+        $('notify-message').textContent = 'Stakes refunded because fewer than 4 graded problems were completed.';
+    } else {
+        $('notify-title').textContent = `Deadlocked vs ${duel.label}`;
+        $('notify-message').textContent = 'Escrow returned cleanly. Neither side blinked.';
+    }
+
+    const receipt = $('notify-receipt');
+    if (receipt) {
+        receipt.innerHTML = _renderDuelAutopsyHtml(d, duel);
+        receipt.hidden = false;
+    }
+    const secondary = $('notify-secondary');
+    if (secondary) secondary.style.display = 'none';
+    _applyNotifyRematchButton(duel);
+    const primary = $('notify-primary');
+    if (primary) {
+        primary.textContent = isLoss ? 'Accept Defeat & Exit' : (isWin ? 'Bank Win & Continue' : 'Done');
+    }
+    if (!isLoss) playBell();
+    $('timer-notify-modal').classList.add('active');
+}
+
 function _receiptRows(rows) {
     return rows.map(r => `<div class="receipt-row"><span>${r.k}</span><b>${r.v}</b></div>`).join('');
 }
@@ -897,27 +1101,24 @@ function _blockCompletionReceipt(plannedSecs) {
         { k: 'Chain', v: `${focusLedger.chain} deep block${focusLedger.chain === 1 ? '' : 's'} without a forfeit` },
         { k: 'Deep today', v: formatStudyDuration(focusLedger.deep) },
     ];
-    try {
-        const A = window.AppState;
-        if (_blockEloSnap && A && A.elo) {
-            // Snapshot subject — dynamic mode may have switched mid-block.
-            const subj = _blockEloSnap.subj || studySubject;
-            const dSubject = Math.round((A.elo[subj] || 0) - _blockEloSnap.s);
-            if (dSubject !== 0) rows.push({ k: 'Earned this block', v: `${dSubject > 0 ? '+' : ''}${dSubject} ${subj.toUpperCase()} ELO` });
-        }
-    } catch (_) {}
     return _receiptRows(rows);
 }
 
 export function confirmTimerNotification() {
     const variant = _notifyVariant;
     $('timer-notify-modal').classList.remove('active');
+    const kicker = $('notify-kicker');
+    if (kicker) kicker.hidden = true;
     const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
+    const rematch = $('notify-rematch');
+    if (rematch) rematch.style.display = 'none';
     _setNotifyVariant('');
     // Lock-In variants own their own confirm semantics.
     if (variant === 'breach') { stayLockedIn(); return; }
-    if (variant === 'victory' || variant === 'complete') return;
+    if (variant === 'sudden-death') { startLockinSuddenDeath(); return; }
+    if (variant === 'victory' || variant === 'complete' ||
+        variant === 'duel-win' || variant === 'duel-loss' || variant === 'duel-draw') return;
     if (_pomoPendingAction) {
         const action = _pomoPendingAction;
         _pomoPendingAction = null;
@@ -931,11 +1132,16 @@ export function confirmTimerNotification() {
 export function notifyKeepGoing() {
     const variant = _notifyVariant;
     $('timer-notify-modal').classList.remove('active');
+    const kicker = $('notify-kicker');
+    if (kicker) kicker.hidden = true;
     const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
+    const rematch = $('notify-rematch');
+    if (rematch) rematch.style.display = 'none';
     _setNotifyVariant('');
     _pomoPendingAction = null;
     if (variant === 'breach') { voidLockinBlock(); return; }
+    if (variant === 'sudden-death') { declineLockinSuddenDeath(); return; }
     $('pomo-mini-widget').classList.remove('hidden');
     resumeTimer();
 }
@@ -1057,8 +1263,17 @@ export function executeTimerTick() {
     const elapsed = Math.floor((now - timerStartTime) / 1000);
 
     if (pomoState === 'STOPWATCH') {
-        // Count up from previous accumulated time
+        // Cap stopwatch freeze & continuous run at 3 hours max (prevents infinite idle freeze).
+        const STOPWATCH_MAX_SECS = 3 * 3600;
         secondsLeft = stopwatchAccumulated + elapsed;
+        if (secondsLeft >= STOPWATCH_MAX_SECS) {
+            stopwatchAccumulated = STOPWATCH_MAX_SECS;
+            timerStartTime = now;
+            $('timer-display').textContent = formatTime(STOPWATCH_MAX_SECS);
+            $('mini-time').textContent = formatTime(STOPWATCH_MAX_SECS);
+            quitTimer(false);
+            return;
+        }
         $('timer-display').textContent = formatTime(secondsLeft);
         $('mini-time').textContent = formatTime(secondsLeft);
 
@@ -1577,6 +1792,7 @@ export const lockinSession = {
     pendingScope: null,             // queued { subject, chapter, chapterSelection } for next round
     awaitingRefill: false,          // true while STUDY pauses in Refill Gate after pool exhaustion
     awaitingBreakSwitch: false,     // true while picking new scope at break-end
+    duel: null,                     // Shadow Duel state when opted in at setup
     segmentSecs: { physics: 0, chemistry: 0, maths: 0 },
     startEloBySubject: {},
     subjectsTouched: [],
@@ -1584,7 +1800,7 @@ export const lockinSession = {
     breakMins: 10,
     totalSessions: 1,
     currentSession: 1,
-    phase: 'STUDY',                 // 'STUDY' | 'BREAK'
+    phase: 'STUDY',                 // 'STUDY' | 'BREAK' | 'SUDDEN_DEATH'
     expiredPendingTransition: false,
     solvedInRun: 0,
     solvedInBlock: 0,
@@ -1603,6 +1819,9 @@ let _lockinFlushedSecs = 0;        // seconds already flushed into segmentSecs t
 let _lockinPausedLeft = 0;
 let _lockinOnConfirm = null;
 let _lockinSliderApi = null;       // entry intensity rail handle (pomodoro side)
+let _duelDraft = { preset: 'off', stake: 'none', airTier: 'air1000' };
+let _lastSetupCtx = null;
+let _lastRematchCtx = null;
 
 // Scope Switcher modal state (Break / Break-End / Refill Gate)
 let _scopeModalMode = null;        // null | 'break' | 'break-end' | 'refill'
@@ -1638,6 +1857,21 @@ function _entrySliderValue() {
     return 72;
 }
 
+function _syncLockinLaunchCopy() {
+    try {
+        const launch = document.getElementById('lockin-launch');
+        if (!launch) return;
+        const v = _entrySliderValue();
+        const hardcore = v >= HARDCORE_THRESHOLD;
+        const eff = _effectiveDuelPreset();
+        if (eff === 'off') {
+            launch.textContent = hardcore ? 'Ignite' : 'Lock in';
+            return;
+        }
+        launch.textContent = hardcore ? 'Ignite Duel' : 'Enter Duel';
+    } catch (_) {}
+}
+
 function _syncLockinIntensityUI() {
     const v = _entrySliderValue();
     const mode = flowModeForValue(v);
@@ -1653,12 +1887,11 @@ function _syncLockinIntensityUI() {
             : 'Soft blocks for steady hours. Drag to 98+ for Hardcore.';
         const title = document.getElementById('lockin-title');
         if (title) title.textContent = hardcore ? 'Enter the Crucible' : 'Sign the Pact';
-        const launch = document.getElementById('lockin-launch');
-        if (launch) launch.textContent = hardcore ? 'Ignite' : 'Lock in';
         const modal = document.getElementById('lockin-setup-modal');
         if (modal && typeof modal.setAttribute === 'function') modal.setAttribute('data-lockin-mode', mode);
     } catch (_) {}
     lockinSession.mode = mode;
+    _syncLockinLaunchCopy();
 }
 
 function _mountEntrySlider() {
@@ -1715,6 +1948,125 @@ function _destroyEntrySlider() {
     } catch (_) {}
 }
 
+function _availableShields() {
+    try {
+        if (typeof window !== 'undefined' && window.CK_ENGINE && typeof window.CK_ENGINE.state === 'function') {
+            return Math.max(0, window.CK_ENGINE.state().shields | 0);
+        }
+        if (typeof localStorage !== 'undefined') {
+            return Math.max(0, parseInt(localStorage.getItem('jeemax_ck_shields') || '0', 10) || 0);
+        }
+    } catch (_) {}
+    return 0;
+}
+
+function _effectiveDuelPreset() {
+    return _duelDraft.preset === 'air' ? (_duelDraft.airTier || 'air1000') : (_duelDraft.preset || 'off');
+}
+
+function _initDuelDraft(prefs) {
+    const p = prefs || loadLastDuelPrefs();
+    const raw = p.preset || 'off';
+    if (String(raw).startsWith('air')) {
+        _duelDraft = {
+            preset: 'air',
+            airTier: DUEL_PRESETS[raw] ? raw : (p.airTier || 'air1000'),
+            stake: 'none',
+        };
+    } else {
+        _duelDraft = {
+            preset: DUEL_PRESETS[raw] ? raw : 'off',
+            airTier: DUEL_PRESETS[p.airTier] ? p.airTier : 'air1000',
+            stake: 'none',
+        };
+    }
+}
+
+function _syncLockinDuelUI() {
+    const eff = _effectiveDuelPreset();
+    const active = eff !== 'off';
+    _duelDraft.stake = 'none';
+
+    const presetsWrap = document.getElementById('lockin-duel-presets');
+    if (presetsWrap && typeof presetsWrap.querySelectorAll === 'function') {
+        presetsWrap.querySelectorAll('.ld-pill').forEach(btn => {
+            const k = btn.dataset && btn.dataset.duel;
+            if (btn.classList) btn.classList.toggle('active', k === _duelDraft.preset);
+        });
+    }
+    const airRow = document.getElementById('lockin-duel-air-row');
+    if (airRow) {
+        airRow.hidden = _duelDraft.preset !== 'air';
+        if (typeof airRow.querySelectorAll === 'function') {
+            airRow.querySelectorAll('.ld-chip').forEach(btn => {
+                const t = btn.dataset && btn.dataset.air;
+                if (btn.classList) btn.classList.toggle('active', t === _duelDraft.airTier);
+            });
+        }
+    }
+    const stakesRow = document.getElementById('lockin-duel-stakes');
+    if (stakesRow) stakesRow.hidden = true;
+    const intel = getDuelPreviewIntel({
+        preset: eff,
+        stake: _duelDraft.stake,
+        userElo: _currentSubjectElo(lockinSession.subject),
+        subject: lockinSession.subject,
+    });
+    const recEl = document.getElementById('lockin-duel-record');
+    if (recEl) {
+        if (intel.recordText) {
+            recEl.hidden = false;
+            recEl.textContent = intel.recordText;
+            if (recEl.classList) {
+                recEl.classList.toggle('is-debt', intel.recordTone === 'debt');
+                recEl.classList.toggle('is-hot', intel.recordTone === 'hot');
+            }
+        } else {
+            recEl.hidden = true;
+        }
+    }
+    const intelBox = document.getElementById('lockin-duel-intel');
+    const intelTitle = document.getElementById('lockin-duel-intel-title');
+    const intelSub = document.getElementById('lockin-duel-intel-sub');
+    if (intelBox) {
+        intelBox.hidden = !active;
+        if (active) {
+            if (intelTitle) intelTitle.textContent = intel.intelTitle;
+            if (intelSub) intelSub.textContent = intel.intelDetail;
+        }
+    }
+    const ruleEl = document.getElementById('lockin-duel-rule');
+    if (ruleEl) {
+        ruleEl.hidden = !active;
+        if (active) {
+            ruleEl.textContent = intel.stakesLine;
+            if (ruleEl.classList) {
+                ruleEl.classList.toggle('is-high-stakes',
+                    _duelDraft.stake === 'elo25' || _duelDraft.stake === 'shield' || (intel.lossStreak || 0) >= 2);
+            }
+        }
+    }
+    _syncLockinLaunchCopy();
+}
+
+export function lockinDuelPreset(kind) {
+    if (!['off', 'yesterday', 'rival100', 'air'].includes(kind)) return;
+    _duelDraft.preset = kind;
+    _syncLockinDuelUI();
+}
+
+export function lockinDuelAir(tier) {
+    if (!DUEL_PRESETS[tier]) return;
+    _duelDraft.airTier = tier;
+    _duelDraft.preset = 'air';
+    _syncLockinDuelUI();
+}
+
+export function lockinDuelStake() {
+    _duelDraft.stake = 'none';
+    _syncLockinDuelUI();
+}
+
 export function openLockinSetupModal(mode, context, onConfirmStart) {
     if (!LOCKIN_MODES.includes(mode)) return false;
     const ctx = context || {};
@@ -1735,9 +2087,17 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
     lockinSession.pendingScope = null;
     lockinSession.awaitingRefill = false;
     lockinSession.awaitingBreakSwitch = false;
+    lockinSession.duel = null;
     lockinSession.startElo = _currentSubjectElo(lockinSession.subject);
     lockinSession.voided = false;
     _lockinOnConfirm = typeof onConfirmStart === 'function' ? onConfirmStart : null;
+    _lastSetupCtx = {
+        mode: resolved,
+        subject: lockinSession.subject,
+        chapter: lockinSession.chapter,
+        chapterSelection: lockinSession.chapterSelection ? lockinSession.chapterSelection.slice() : null,
+        onConfirm: _lockinOnConfirm,
+    };
 
     // Seed the draft from the last-used config so returning users land on
     // their habitual block length (preserving explicit 1-round runs).
@@ -1746,6 +2106,9 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
     _setInputVal('lockin-grind', _clamp(cfg ? cfg.study : 50, 5, 180));
     _setInputVal('lockin-chill', _clamp(cfg ? cfg.break : 10, 1, 60));
     _setInputVal('lockin-rounds', _clamp(defRounds, 1, 8));
+
+    _initDuelDraft(ctx.duelPrefs || loadLastDuelPrefs());
+    _syncLockinDuelUI();
 
     _mountEntrySlider();
     _syncLockinIntensityUI();
@@ -1816,6 +2179,13 @@ export function confirmLockinSetup() {
     lockinSession.startElo = _currentSubjectElo(lockinSession.subject);
     _ensureSubjectTracked(lockinSession.subject);
     studySubject = lockinSession.subject;
+
+    const effPreset = _effectiveDuelPreset();
+    const stakeChoice = 'none';
+    saveLastDuelPrefs({ preset: effPreset, stake: stakeChoice, airTier: _duelDraft.airTier });
+    lockinSession.duel = effPreset !== 'off'
+        ? createDuelState({ preset: effPreset, stake: stakeChoice, subject: lockinSession.subject })
+        : null;
     try {
         localStorage.setItem(POMO_CONFIG_KEY, JSON.stringify({
             subject: lockinSession.subject, study, break: chill, sessions: rounds,
@@ -2092,6 +2462,108 @@ export function syncLockinMode(mode) {
     }
 }
 
+function _settleLockinDuel(opts) {
+    const d = lockinSession.duel;
+    if (!d || !d.active) return null;
+    const settlement = finalizeDuel(d, { forfeit: !!(opts && opts.forfeit) });
+    if (!settlement) return null;
+
+    if (_lastSetupCtx) {
+        _lastRematchCtx = {
+            ..._lastSetupCtx,
+            duelPrefs: settlement.rematchPrefs,
+        };
+    }
+    return settlement;
+}
+
+function _shouldOfferSuddenDeath() {
+    const d = lockinSession.duel;
+    if (!d || !d.active) return false;
+    if (d.suddenDeathPlayed || d.suddenDeathDeclined) return false;
+    if (lockinSession.currentSession < lockinSession.totalSessions) return false;
+    if (d.gradedCount < 3 || d.userPts !== d.ghostPts) return false;
+    try {
+        return typeof window !== 'undefined'
+            && typeof window.__hasSuddenDeathQuestion === 'function'
+            && !!window.__hasSuddenDeathQuestion(lockinSession);
+    } catch (_) { return false; }
+}
+
+export function startLockinSuddenDeath() {
+    const d = lockinSession.duel;
+    if (!lockinSession.active || !d || !d.active) {
+        _finishLockinCycle();
+        return false;
+    }
+    lockinSession.phase = 'SUDDEN_DEATH';
+    lockinSession.running = false;
+    _lockinLeftSecs = 0;
+    d.suddenDeathActive = true;
+    _updateDeepWorkBeacon();
+
+    let launched = false;
+    try {
+        if (typeof window !== 'undefined' && typeof window.__launchSuddenDeathQuestion === 'function') {
+            launched = !!window.__launchSuddenDeathQuestion(lockinSession);
+        }
+    } catch (e) { console.warn('[lockin] sudden death launch failed', e); }
+
+    if (!launched) {
+        d.suddenDeathActive = false;
+        _finishLockinCycle();
+        return false;
+    }
+    return true;
+}
+
+export function declineLockinSuddenDeath() {
+    if (lockinSession.duel) {
+        lockinSession.duel.suddenDeathDeclined = true;
+        lockinSession.duel.suddenDeathActive = false;
+    }
+    if (!lockinSession.active) return;
+    _finishLockinCycle();
+}
+
+export function completeLockinSuddenDeath(opts) {
+    if (!lockinSession.active) return false;
+    const d = lockinSession.duel;
+    const conceded = !!(opts && opts.conceded);
+    if (d) {
+        if (conceded && !d.suddenDeathPlayed && d.userPts <= d.ghostPts) {
+            d.ghostPts += 1;
+            d.splits.push({
+                index: d.splits.length + 1,
+                qId: 'sd-concede',
+                subject: lockinSession.subject,
+                chapter: 'Sudden Death',
+                targetSecs: 180,
+                isSkip: false,
+                userCorrect: false,
+                userSecs: 0,
+                ghostVerdict: 'correct',
+                ghostSecs: 90,
+                ghostSource: 'model',
+                userPtsDelta: 0,
+                ghostPtsDelta: 1,
+                outcome: 'blunder',
+                paceDeltaSecs: -90,
+                isSuddenDeath: true,
+            });
+        }
+        d.suddenDeathActive = false;
+        d.suddenDeathPlayed = true;
+    }
+    lockinSession.phase = 'STUDY';
+    _finishLockinCycle();
+    return true;
+}
+
+export function isLockinSuddenDeath() {
+    return !!(lockinSession.active && lockinSession.phase === 'SUDDEN_DEATH');
+}
+
 function _onLockinStudyExpire() {
     _clearLockinTick();
     lockinSession.running = false;
@@ -2103,6 +2575,13 @@ function _onLockinStudyExpire() {
         return;
     }
     _commitCompletedStudyBlock();
+    if (_shouldOfferSuddenDeath()) {
+        _setDeepWorkActive(false);
+        _removePaceGlow();
+        try { NightGuard.logSessionEnd(); } catch (_) {}
+        _afterPendingRecap(() => showLockinSuddenDeathPrompt());
+        return;
+    }
     _advanceToBreakOrFinish();
 }
 
@@ -2232,18 +2711,32 @@ export function endLockinSession() {
     _hideLockinBreakHud();
     try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') window.Metro.resumeAfterInterruption(); } catch (_) {}
     _setDeepWorkActive(false);
+    const duelRes = _settleLockinDuel({ forfeit: false });
     _resetLockinState();
     try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal({ skipLockinCheck: true }); } catch (_) {}
+    if (duelRes && duelRes.outcome !== 'unqualified' && typeof window !== 'undefined' && typeof window.__jmaxAppToast === 'function') {
+        const sign = duelRes.eloDelta > 0 ? '+' : '';
+        const eloMsg = duelRes.eloDelta ? ` (${sign}${duelRes.eloDelta} ELO)` : '';
+        window.__jmaxAppToast(`Shadow Duel settled: ${duelRes.outcome.toUpperCase()} ${duelRes.userPts}–${duelRes.ghostPts}${eloMsg}`);
+    }
 }
 
 function _finishLockinCycle(opts) {
+    _flushCurrentLockinSegment();
     const eloData = _buildRunNetEloData();
+    const blocksDone = Math.max(1, (opts && opts.blocksCompleted) || lockinSession.totalSessions || 1);
+    const lastSegSecs = Object.values(lockinSession.segmentSecs || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+    const totalSecs = Math.max(lastSegSecs, blocksDone * Math.max(1, lockinSession.studyMins || 25) * 60);
+    const duel = _settleLockinDuel({ forfeit: false });
     const summary = {
-        blocks: Math.max(1, (opts && opts.blocksCompleted) || lockinSession.totalSessions || 1),
+        blocks: blocksDone,
+        elapsed: totalSecs,
         solved: lockinSession.solvedInRun | 0,
         netElo: eloData.netElo,
         eloText: eloData.eloText,
+        chain: focusLedger.chain,
         mode: lockinSession.mode,
+        duel,
     };
     _removePaceGlow();
     _resetLockinState();
@@ -2260,6 +2753,7 @@ function _resetLockinState() {
     lockinSession.awaitingRefill = false;
     lockinSession.awaitingBreakSwitch = false;
     lockinSession.pendingScope = null;
+    lockinSession.duel = null;
     lockinSession.phase = 'STUDY';
     lockinSession.currentSession = 1;
     lockinSession.solvedInRun = 0;
@@ -2333,8 +2827,14 @@ export function consumePendingLockinExpiry() {
     lockinSession.expiredPendingTransition = false;
     _removePaceGlow();
     _commitCompletedStudyBlock();
-    // Close the practice stage first so any SessionRecap plays cleanly BEFORE Break / Complete overlays.
+    // Close the practice stage first so any SessionRecap plays cleanly BEFORE Break / Complete / Sudden Death overlays.
     try { if (typeof window.closePracticeModal === 'function') window.closePracticeModal({ skipLockinCheck: true }); } catch (_) {}
+    if (_shouldOfferSuddenDeath()) {
+        _setDeepWorkActive(false);
+        try { NightGuard.logSessionEnd(); } catch (_) {}
+        _afterPendingRecap(() => showLockinSuddenDeathPrompt());
+        return true;
+    }
     _afterPendingRecap(() => _advanceToBreakOrFinish());
     return true;
 }
@@ -2407,6 +2907,7 @@ export function completeLockinOnPoolExhausted(opts) {
     const mode = lockinSession.mode;
     const eloData = _buildRunNetEloData();
     const chain = focusLedger.chain;
+    const duel = _settleLockinDuel({ forfeit: false });
     _clearLockinTick();
     lockinSession.running = false;
     _setDeepWorkActive(false);
@@ -2432,6 +2933,7 @@ export function completeLockinOnPoolExhausted(opts) {
         meetsMinBlock: commitRes.meetsMinBlock,
         earlyExhaustion: !!(opts && opts.earlyExhaustion),
         graceExpired: !!(opts && opts.graceExpired),
+        duel,
     }));
     return true;
 }
@@ -2472,12 +2974,17 @@ export function voidLockinBlock() {
     try { GalleryBreak.abort(); } catch (_) {}
     _hideLockinBreakHud();
     try { if (typeof window !== 'undefined' && window.Metro && typeof window.Metro.resumeAfterInterruption === 'function') window.Metro.resumeAfterInterruption(); } catch (_) {}
+    const duelForfeit = wasActive ? _settleLockinDuel({ forfeit: true }) : null;
     if (wasActive) {
         _ledgerForfeit(0);
         try { window.dispatchEvent(new CustomEvent('jmax:pomo-forfeit')); } catch (_) {}
     }
     _resetLockinState();
     try { if (typeof window.exitPracticeMode === 'function') window.exitPracticeMode(); } catch (_) {}
+    if (duelForfeit && duelForfeit.outcome === 'forfeit' && typeof window !== 'undefined' && typeof window.__jmaxAppToast === 'function') {
+        const lossMsg = duelForfeit.eloDelta ? `${duelForfeit.eloDelta} ELO` : `${duelForfeit.shieldDelta} 🛡`;
+        window.__jmaxAppToast(`Shadow Duel forfeited · ${lossMsg}`);
+    }
 }
 
 // ── Scope Switcher Modal (Break / Break-End / Refill Gate) ────────────────
@@ -2910,7 +3417,16 @@ function _updateLockinBreakHud() {
     if (nextEl) {
         const icon = lockinSession.mode === 'hardcore' ? 'Hardcore' : 'Flow State';
         const scopeStr = _formatScopeLabel(target);
-        nextEl.textContent = `Next: Round ${lockinSession.currentSession + 1}/${lockinSession.totalSessions} · ${icon}${scopeStr ? ` · ${scopeStr}` : ''}`;
+        const d = lockinSession.duel;
+        let duelStr = '';
+        if (d && d.active) {
+            duelStr = d.userPts < d.ghostPts
+                ? ` · DOWN ${d.userPts}–${d.ghostPts} ${_escHtml(d.shortLabel)} (AT RISK)`
+                : (d.userPts > d.ghostPts
+                    ? ` · UP ${d.userPts}–${d.ghostPts} ${_escHtml(d.shortLabel)}`
+                    : ` · TIED ${d.userPts}–${d.ghostPts} ${_escHtml(d.shortLabel)}`);
+        }
+        nextEl.textContent = `Next: Round ${lockinSession.currentSession + 1}/${lockinSession.totalSessions} · ${icon}${scopeStr ? ` · ${scopeStr}` : ''}${duelStr}`;
     }
     const swBtn = document.getElementById('lbh-switch-btn');
     if (swBtn) {
@@ -2931,7 +3447,13 @@ function _updateLockinBreakHud() {
 // ── Notification variants ─────────────────────────────────────────────────
 export function showLockinVictory(data) {
     const d = data || {};
+    if (d.duel) {
+        _showDuelCompletionModal(d);
+        return;
+    }
     _setNotifyVariant('victory');
+    const kicker = $('notify-kicker');
+    if (kicker) kicker.hidden = true;
     $('notify-icon').textContent = '🏆';
     $('notify-title').textContent = d.earlyEnded ? 'Block Banked Early' : 'Chapter Pool Cleared!';
     $('notify-message').textContent = d.graceExpired
@@ -2949,40 +3471,82 @@ export function showLockinVictory(data) {
         } else if (d.meetsMinBlock === false) {
             payoutVal = 'Elapsed Time Banked (< 5m · chain unchanged)';
         }
-        receipt.innerHTML = _receiptRows([
+        const rows = [
             { k: 'Elapsed grind credited', v: formatStudyDuration(d.elapsed || 0) },
             { k: 'Questions solved', v: String(d.solved || 0) },
-            { k: d.multiSubject ? 'Net ELO' : 'Net subject ELO', v: eloVal },
             { k: 'Focus chain', v: String(d.chain || 0) },
             { k: 'Escrow payout', v: payoutVal },
-        ]);
+        ];
+        receipt.innerHTML = _receiptRows(rows);
         receipt.hidden = false;
     }
     const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
+    _applyNotifyRematchButton(null);
     const primary = $('notify-primary');
     if (primary) primary.textContent = "Let's Go";
     playBell();
     $('timer-notify-modal').classList.add('active');
 }
 
+export function showLockinSuddenDeathPrompt() {
+    const d = lockinSession.duel;
+    if (!d || !d.active) { _finishLockinCycle(); return; }
+    const stake = DUEL_STAKES[d.stake] || DUEL_STAKES.elo10;
+    _setNotifyVariant('sudden-death');
+    const kicker = $('notify-kicker');
+    if (kicker) {
+        kicker.hidden = false;
+        kicker.textContent = 'FINAL BLOCK TIED · ALL-OR-NOTHING';
+    }
+    $('notify-icon').textContent = '⚡';
+    $('notify-title').textContent = 'SUDDEN DEATH · TIED MATCH';
+    $('notify-message').textContent = `You and ${d.label} finished level at ${d.userPts}–${d.ghostPts}. Your study block is already banked — settle the duel on 1 high-ELO decider question?`;
+    const receipt = $('notify-receipt');
+    if (receipt) {
+        receipt.innerHTML = _receiptRows([
+            { k: 'Match score', v: `YOU ${d.userPts} – ${d.ghostPts} ${_escHtml(d.shortLabel)} (${d.gradedCount} Qs)` },
+            { k: 'Pot at stake', v: _escHtml(stake.desc) },
+            { k: 'Protection', v: 'Study time & chain already safely banked' },
+        ]);
+        receipt.hidden = false;
+    }
+    const secondary = $('notify-secondary');
+    if (secondary) { secondary.textContent = 'Split Pot (Draw)'; secondary.style.display = 'block'; }
+    const rematch = $('notify-rematch');
+    if (rematch) rematch.style.display = 'none';
+    const primary = $('notify-primary');
+    if (primary) primary.textContent = 'Enter Sudden Death ⚡';
+    playBell();
+    $('timer-notify-modal').classList.add('active');
+}
+
 export function showLockinBreach() {
     _setNotifyVariant('breach');
+    const kicker = $('notify-kicker');
+    if (kicker) kicker.hidden = true;
     const elapsed = _elapsedStudySecs();
     $('notify-icon').textContent = '⛓️';
     $('notify-title').textContent = 'Void This Lock-In Block?';
     $('notify-message').textContent = "Closing the practice stage now ends your lock-in timer early. This specific block's time period will NOT be counted.";
     const receipt = $('notify-receipt');
     if (receipt) {
-        receipt.innerHTML = _receiptRows([
+        const rows = [
             { k: 'Escrow time voided', v: `${formatTime(elapsed)} (0m will be counted)` },
             { k: 'Focus chain', v: `chain of ${focusLedger.chain} → 0` },
             { k: 'Mode multiplier', v: lockinSession.mode === 'hardcore' ? '1.8× WIN bonus lost' : '×1.5 Deep Work bonus lost' },
-        ]);
+        ];
+        const d = lockinSession.duel;
+        if (d && d.active && (d.gradedCount >= 2 || d.userPts < d.ghostPts)) {
+            rows.push({ k: 'Shadow Duel risk', v: 'Counts as Forfeit' });
+        }
+        receipt.innerHTML = _receiptRows(rows);
         receipt.hidden = false;
     }
     const secondary = $('notify-secondary');
     if (secondary) { secondary.textContent = 'Void Block & Exit'; secondary.style.display = 'block'; }
+    const rematch = $('notify-rematch');
+    if (rematch) rematch.style.display = 'none';
     const primary = $('notify-primary');
     if (primary) primary.textContent = 'Stay Locked In →';
     // No bell — this is a warning, not a reward.
@@ -2991,7 +3555,13 @@ export function showLockinBreach() {
 
 export function showLockinComplete(data) {
     const d = data || {};
+    if (d.duel) {
+        _showDuelCompletionModal(d);
+        return;
+    }
     _setNotifyVariant('complete');
+    const kicker = $('notify-kicker');
+    if (kicker) kicker.hidden = true;
     $('notify-icon').textContent = '🎉';
     $('notify-title').textContent = 'Lock-In Cycle Complete';
     $('notify-message').textContent = 'Every block sealed. Time banked, chain grown. Take the win — you earned the rest.';
@@ -3002,31 +3572,64 @@ export function showLockinComplete(data) {
         const netElo = d.netElo != null ? d.netElo : 0;
         const eloVal = d.eloText || `${netElo >= 0 ? '+' : ''}${netElo}`;
         const isHc = (d.mode || lockinSession.mode) === 'hardcore';
-        receipt.innerHTML = _receiptRows([
+        const rows = [
             { k: 'Blocks sealed', v: String(blocks) },
             { k: 'Questions solved', v: String(solved) },
-            { k: d.eloText && d.eloText.includes('(') ? 'Net ELO' : 'Net subject ELO', v: eloVal },
             { k: 'Escrow payout', v: isHc ? '2.0× Hardcore Bonus (+1 🛡)' : '1.0× Flow' },
             { k: 'Deep today', v: formatStudyDuration(focusLedger.deep) },
             { k: 'Focus chain', v: String(focusLedger.chain) },
-        ]);
+        ];
+        receipt.innerHTML = _receiptRows(rows);
         receipt.hidden = false;
     }
     const secondary = $('notify-secondary');
     if (secondary) secondary.style.display = 'none';
+    _applyNotifyRematchButton(null);
     const primary = $('notify-primary');
     if (primary) primary.textContent = "Let's Go";
     playBell();
     $('timer-notify-modal').classList.add('active');
 }
 
+export function rematchLastDuel() {
+    $('timer-notify-modal').classList.remove('active');
+    const kicker = $('notify-kicker');
+    if (kicker) kicker.hidden = true;
+    const secondary = $('notify-secondary');
+    if (secondary) secondary.style.display = 'none';
+    const rematch = $('notify-rematch');
+    if (rematch) rematch.style.display = 'none';
+    _setNotifyVariant('');
+
+    const ctx = _lastRematchCtx || _lastSetupCtx;
+    if (!ctx) return false;
+    const onConfirm = typeof ctx.onConfirm === 'function'
+        ? ctx.onConfirm
+        : ((sess) => {
+            if (typeof window !== 'undefined' && typeof window.__launchLockinScope === 'function') {
+                window.__launchLockinScope(sess);
+            }
+        });
+    return openLockinSetupModal(ctx.mode || 'flow', {
+        subject: ctx.subject,
+        chapter: ctx.chapter,
+        chapterSelection: ctx.chapterSelection,
+        duelPrefs: ctx.duelPrefs,
+    }, onConfirm);
+}
+
 // ── Inline-onclick bridges (index.html) ───────────────────────────────────
 try {
+    window.openLockinSetupModal = openLockinSetupModal;
     window.lockinClose = closeLockinSetupModal;
     window.lockinConfirm = confirmLockinSetup;
     window.lockinPreset = applyLockinPreset;
     window.lockinStep = stepLockinField;
     window.lockinRefresh = refreshLockinTimeline;
+    window.lockinDuelPreset = lockinDuelPreset;
+    window.lockinDuelAir = lockinDuelAir;
+    window.lockinDuelStake = lockinDuelStake;
+    window.rematchLastDuel = rematchLastDuel;
     window.skipLockinRest = skipLockinRest;
     window.addLockinRest = addLockinRest;
     window.endLockinSession = endLockinSession;
@@ -3041,4 +3644,4 @@ try {
 } catch (_) {}
 
 // ── Tuck-In / bridge focus-ledger bridge (app.js reads window.POMO_API) ────
-try { window.POMO_API = { getFocusLedger, getLockinSession: () => ({ ...lockinSession }) }; } catch (_) {}
+try { window.POMO_API = { getFocusLedger, getLockinSession: () => ({ ...lockinSession }), startLockinSuddenDeath, completeLockinSuddenDeath, isLockinSuddenDeath }; } catch (_) {}
