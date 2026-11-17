@@ -67,6 +67,7 @@ import {
 
 // ── Daily Directive (target-system v2) ──
 import { Directive } from './directive.js';
+import { Heartbeat } from './heartbeat.js';
 import './bridge.js';
 import './tuckin.js';
 import { SessionRecap } from './mario-recap.js';
@@ -156,11 +157,21 @@ import {
     notifyKeepGoing, hydrateFocusStats, updateProjection,
     getFocusLedger, widgetPauseToggle,
     // ── Integrated Lock-In Ritual Engine (Flow / Hardcore background timer) ──
+    lockinSession,
     openLockinSetupModal, consumePendingLockinExpiry, isLockinStudyRunning,
     isLockinAwaitingRefill, handleLockinPoolExhausted,
     completeLockinOnPoolExhausted, requestLockinEarlyExitConfirm, noteLockinSolve,
-    syncLockinMode,
+    syncLockinMode, completeLockinSuddenDeath, isLockinSuddenDeath, getLockinLeftSecs,
 } from './pomodoro.js';
+
+import {
+    preRollGhostAttempt,
+    resolveDuelQuestion,
+    repriceDuelQuestion,
+    formatDuelSplitRich,
+    formatDuelBadgeText,
+    isDuelMatchPoint,
+} from './shadow-duel.js';
 
 // Replace the existing matrix.js import block with:
 import {
@@ -404,7 +415,7 @@ const LS_LAST_SETTLED = 'jeemax_last_settled_date';
 // todayLocalKey() exactly, since these strings are used as ledger/comparison
 // keys (streak history, deload windows, forest stores).
 function todayLocalKey() {
-  const d = new Date();
+  const d = new Date(Date.now() - 4 * 3600000);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
@@ -1194,6 +1205,7 @@ export function toggleSidebar() {
 let _lastRemoteSaveSeq = 0;
 
 export async function switchTab(viewId, element) {
+    if (viewId === 'dashboard') viewId = 'practice';
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     const targetView = document.getElementById('view-' + viewId);
     if (targetView) targetView.classList.add('active');
@@ -1203,11 +1215,7 @@ export async function switchTab(viewId, element) {
 
     const header = document.getElementById('main-header');
     if (header) {
-        if (viewId !== 'dashboard') {
-            header.classList.add('hidden');
-        } else {
-            header.classList.remove('hidden');
-        }
+        header.classList.add('hidden');
     }
 
     // Re-read persisted state ONLY when a sibling tab committed since our last
@@ -1248,12 +1256,14 @@ export async function switchTab(viewId, element) {
     }
     try { _updateBioGuardBeacon(); } catch (_) {}
     try { _renderCalibrationReport(); } catch (_) {}
+    try { Heartbeat.syncVoidState(); } catch (_) {}
 }
 
 export function showPracticeSubview(id) {
     document.querySelectorAll('#view-practice .practice-subview').forEach(el => el.classList.remove('active'));
     const target = document.getElementById(id);
     if (target) target.classList.add('active');
+    try { Heartbeat.syncVoidState(); } catch (_) {}
 }
 
 function _resetMoodCapacity() {
@@ -1476,8 +1486,7 @@ function updateQuickLaunchAndArena() {
             if (metaEl) {
                 const chCount = (AppState.chapters && AppState.chapters[sub] && AppState.chapters[sub].length) || 0;
                 const qCount = perSubjCount.get(sub) || 0;
-                const eloVal = (AppState.elo && typeof AppState.elo[sub] === 'number' && isFinite(AppState.elo[sub])) ? Math.round(AppState.elo[sub]) : 1200;
-                metaEl.textContent = `${chCount} chapters · ${qCount} questions · ${eloVal} ELO`;
+                metaEl.textContent = `${chCount} chapters · ${qCount} questions`;
             }
             const subjectCard = document.querySelector(`.subject-col[data-subject="${sub}"] .subject-card`);
             if (subjectCard) {
@@ -1619,10 +1628,8 @@ export async function updateUI() {
 
     ['physics', 'chemistry', 'maths'].forEach(sub => {
         const prog = _prog[sub];
-        // Native language (v2.1): counts + "to go", smart weighting invisible.
-        // The BAR is still the heat fraction — a hard weighted solve consumes
-        // more of it than an easy one, but the user only ever reads problems.
-        document.getElementById(`${sub}-count`).textContent = solved[sub];
+        const countEl = document.getElementById(`${sub}-count`);
+        if (countEl) countEl.textContent = solved[sub];
         let tgtLbl = document.getElementById(`tgt-${sub.substring(0, 4)}-lbl`);
         if (tgtLbl) tgtLbl.textContent = prog
             ? (prog.heat >= 1 ? '· done' : `· ${Directive.problemsRemaining(sub)} to go`)
@@ -1630,7 +1637,8 @@ export async function updateUI() {
         const pct = prog
             ? Math.min(100, prog.heat * 100)
             : (AppState.activeTargets[sub] > 0 ? Math.min(100, (solved[sub] / AppState.activeTargets[sub]) * 100) : 0);
-        document.getElementById(`${sub}-bar`).style.width = `${pct}%`;
+        const barEl = document.getElementById(`${sub}-bar`);
+        if (barEl) barEl.style.width = `${pct}%`;
         _updatePaceTick(`${sub}-bar`);
     });
     _updatePaceTick('tp-total-bar');
@@ -2059,11 +2067,14 @@ export function selectSubject(s) {
     AppState.currentSubject = s;
     renderChaptersList();
     showPracticeSubview('practice-chapters-view');
-    document.getElementById('chapters-subject-title').innerText = 'Chapters';
+    const titleEl = document.getElementById('chapters-subject-title');
+    if (titleEl) titleEl.innerText = 'Chapters';
+    try { Heartbeat.syncVoidState(); } catch (_) {}
 }
 
 export function goToSubjects() {
     showPracticeSubview('practice-subject-view');
+    try { Heartbeat.syncVoidState(); } catch (_) {}
 }
 
 export function goToChapters() {
@@ -6127,9 +6138,10 @@ function _pqRenderDiag() {
         : null;
     const dt = avgTime == null ? null : Math.round(time - avgTime);
     const timeTxt = _mmss(time) + (dt == null ? '' : ` (${dt <= 0 ? '−' : '+'}${_mmss(Math.abs(dt))} Δ)`);
-    const elo = (AppState._pqEloByIdx && AppState._pqEloByIdx[idx]) || null;
-    const delta = elo && Number.isFinite(Number(elo.deltaSubject)) ? Math.round(Number(elo.deltaSubject)) : null;
-    const eloTxt = delta == null ? 'PENDING' : `${delta >= 0 ? '+' : ''}${delta}`;
+    const band = getEloBand(_safeQElo(q));
+    const tierTag = band ? band.split('_')[0] : 'STD';
+    const unitW = Heartbeat.getQuestionUnitWeight(q);
+    const tierTxt = `${tierTag} · ${unitW.toFixed(2)}u`;
     let after = null;
     try { after = _getChapterHealth(q.subject, q.chapter); } catch (_) {}
     const before = (AppState._pqHealthByIdx && Number.isFinite(AppState._pqHealthByIdx[idx]))
@@ -6137,12 +6149,32 @@ function _pqRenderDiag() {
     const retTxt = before != null && after != null
         ? `${before}% → ${Math.round(after)}%`
         : (after != null ? `${Math.round(after)}%` : '—');
+    let duelHtml = '';
+    try {
+        const duel = _getActiveDuel();
+        if (duel && q.id != null) {
+            const split = (duel.splits || []).find(s => s && s.qId === String(q.id));
+            if (split) {
+                const rich = formatDuelSplitRich(split, duel);
+                if (rich) {
+                    const cls = `is-${rich.tone}`;
+                    duelHtml = `<div class="pq-duel-split ${cls}">
+                        <div class="pq-duel-split-top">
+                            <span class="pq-duel-split-head">${escapeHtml(rich.head)}</span>
+                            <span class="pq-duel-split-badge">${escapeHtml(rich.badge)}</span>
+                        </div>
+                        <div class="pq-duel-split-sub">${escapeHtml(rich.sub)}</div>
+                    </div>`;
+                }
+            }
+        }
+    } catch (_) {}
     el.innerHTML = `
         <div class="pq-diag-grid audit-header">
             <span class="pq-diag-field"><i>TIME</i><b>${timeTxt}</b></span>
-            <span class="pq-diag-field"><i>ELO</i><b>${eloTxt}</b></span>
+            <span class="pq-diag-field"><i>TIER</i><b>${tierTxt}</b></span>
             <span class="pq-diag-field"><i>RETENTION</i><b>${retTxt}</b></span>
-        </div>`;
+        </div>${duelHtml}`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -6504,6 +6536,8 @@ function _pqBindOverrideEvents() {
         const vaultBtn = target.closest('.pq-vault-btn');
         if (vaultBtn && !vaultBtn.disabled) {
             AppState.pendingWrongQ = AppState.currentQ;
+            const noteEl = document.getElementById('error-dissection-note');
+            if (noteEl) noteEl.value = (AppState.currentQ && AppState.currentQ.dissectionNote) || '';
             openModal('error-reason-modal');
         }
     });
@@ -6684,6 +6718,13 @@ function _pqCommitKeyOverride() {
             targetSecs: _eloTargetSeconds(q),
             eloDelta: newEloResult ? newEloResult.deltaSubject : 0,
         });
+    } catch (_) {}
+    try {
+        const duel = _getActiveDuel();
+        if (duel) {
+            repriceDuelQuestion(duel, q, newIsCorrect);
+            _syncPracticeDuelPill();
+        }
     } catch (_) {}
     _pqSyncQuestionToBank(q);
     saveAllAsync().catch(console.error);
@@ -6888,7 +6929,7 @@ export function renderPracticeQuestionModal() {
         const _contBtn = document.getElementById('practice-continue-btn');
         if (_contBtn) {
             if (_pqIsGradedQuestion(AppState.currentQ, _pqIdx) && !AppState.bountyMode) {
-                _contBtn.textContent = 'NEXT PROBLEM [SPACE]';
+                _contBtn.textContent = isLockinSuddenDeath() ? 'SETTLE DUEL [SPACE]' : 'NEXT PROBLEM [SPACE]';
                 _contBtn.style.display = '';
             } else {
                 _contBtn.style.display = 'none';
@@ -6900,6 +6941,7 @@ export function renderPracticeQuestionModal() {
         try { _pqBindStageKeys(); } catch (_) {}
         try { _pqBindOverrideEvents(); } catch (_) {}
         try { _pqRenderDiag(); } catch (_) {}
+        try { _syncPracticeDuelPill(); } catch (_) {}
         try { _pqUpdatePace(); } catch (_) {}
         try { _pqBindHold(); } catch (_) {}
         return;
@@ -6964,6 +7006,7 @@ export function renderPracticeQuestionModal() {
     try { _pqSyncState(); } catch (_) {}
     try { _pqBindStageKeys(); } catch (_) {}
     try { _pqRenderDiag(); } catch (_) {}
+    try { _syncPracticeDuelPill(); } catch (_) {}
     try { _pqUpdatePace(); } catch (_) {}
     try { _pqBindHold(); } catch (_) {}
 }
@@ -7823,10 +7866,7 @@ function _noteSessionSkip(q) {
     try { SessionRecap.recordSkip(q, { mode: _activeModeForQuestion(q) }); } catch (_) {}
 }
 
-function _noteSessionElo(q, eloResult) {
-    if (!q || !eloResult) return;
-    try { SessionRecap.noteElo(q, eloResult.deltaSubject); } catch (_) {}
-}
+function _noteSessionElo() {}
 
 function _recordSessionRecap(q, correct, secs) {
     if (!q) return;
@@ -8610,6 +8650,12 @@ function skipQuestion(reason) {
     // the user actually leaves the current question — consume it here instead
     // of advancing to a fresh question.
     if (consumePendingLockinExpiry()) return;
+    if (isLockinSuddenDeath()) {
+        const idx = AppState.currentPracticeIndex;
+        const alreadySubmitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[idx]);
+        completeLockinSuddenDeath({ conceded: !alreadySubmitted });
+        return;
+    }
     const mode = AppState.practiceFlowMode;
     if (!mode || mode === 'standard') return;
     const q = AppState.practiceQuestions[AppState.currentPracticeIndex];
@@ -8631,6 +8677,17 @@ function skipQuestion(reason) {
     _modeAdjustTargetForSkip(reason);
     _modeSeenIds.add(q);
     _noteSessionSkip(q);
+    try {
+        const duel = _getActiveDuel();
+        if (duel) {
+            resolveDuelQuestion(duel, q, {
+                isSkip: true,
+                userSecs: AppState.practiceSeconds,
+                ctx: _duelCtxForQuestion(q),
+            });
+            _syncPracticeDuelPill();
+        }
+    } catch (_) {}
     saveAllAsync().catch(console.error);
 
     _showSkipUndoToast(() => {
@@ -8665,6 +8722,11 @@ function _modeAdvance() {
     // Silent-expiry handoff: if the background Lock-In block already expired,
     // leave the stage for the earned break instead of serving a new question.
     if (consumePendingLockinExpiry()) return;
+    if (isLockinSuddenDeath()) {
+        const duel = _getActiveDuel();
+        completeLockinSuddenDeath({ conceded: !(duel && duel.suddenDeathPlayed) });
+        return;
+    }
     const mode = AppState.practiceFlowMode;
     if (!mode || mode === 'standard') {
         practiceNext();
@@ -8711,11 +8773,11 @@ function _renderModeFooter() {
 function _showModeContinueButton() {
     const cont = document.getElementById('practice-continue-btn');
     if (cont) {
-        cont.textContent = 'NEXT PROBLEM [SPACE]';
+        cont.textContent = isLockinSuddenDeath() ? 'SETTLE DUEL [SPACE]' : 'NEXT PROBLEM [SPACE]';
         cont.style.display = '';
     }
     const skip = document.getElementById('practice-skip-btn');
-    if (skip) { skip.style.display = ''; skip.title = 'Next Question'; }
+    if (skip) { skip.style.display = ''; skip.title = isLockinSuddenDeath() ? 'Settle Duel' : 'Next Question'; }
 }
 
 function _hideModeContinueButton() {
@@ -8750,6 +8812,10 @@ function _serveModeEntry(entry) {
             AppState.practiceSeconds++;
             updatePracticeTimerDisplay();
         }, 1000);
+        try {
+            const duel = _getActiveDuel();
+            if (duel) preRollGhostAttempt(duel, entry.q, _duelCtxForQuestion(entry.q));
+        } catch (_) {}
     } else {
         AppState.practiceTimer = null;
     }
@@ -8861,6 +8927,143 @@ window.__launchLockinScope = (scope, opts) => {
     return _setPracticeMode(mode, opts);
 };
 
+function _getActiveDuel() {
+    return (lockinSession && lockinSession.active && lockinSession.duel && lockinSession.duel.active)
+        ? lockinSession.duel
+        : null;
+}
+
+function _duelCtxForQuestion(q) {
+    const subj = _normalizeSubjectKey((q && q.subject) || AppState.currentSubject || 'physics');
+    let targetSecs = 180;
+    try { targetSecs = Math.max(45, Number(_eloTargetSeconds(q)) || 180); } catch (_) {}
+    let chapterAvgSecs = targetSecs;
+    let chapterAvgElo = 1200;
+    try { chapterAvgSecs = _getChapterAvgTime(subj, q && q.chapter); } catch (_) {}
+    try { chapterAvgElo = _getChapterAvgElo(subj, q && q.chapter); } catch (_) {}
+    const userElo = (AppState.elo && Number.isFinite(Number(AppState.elo[subj])))
+        ? Number(AppState.elo[subj])
+        : 1200;
+    return { userElo, targetSecs, chapterAvgSecs, chapterAvgElo };
+}
+
+function _resolveActiveDuelAttempt(q, isCorrect, secs) {
+    try {
+        const duel = _getActiveDuel();
+        if (!duel || !q) return null;
+        const entry = resolveDuelQuestion(duel, q, {
+            userCorrect: !!isCorrect,
+            userSecs: Math.max(0, Number(secs) || 0),
+            ctx: _duelCtxForQuestion(q),
+        });
+        _syncPracticeDuelPill();
+        return entry;
+    } catch (_) { return null; }
+}
+
+function _syncPracticeDuelPill() {
+    const pill = document.getElementById('pq-duel-pill');
+    if (!pill) return;
+    const duel = _getActiveDuel();
+    if (!duel || !AppState._flowSessionActive) {
+        pill.hidden = true;
+        pill.textContent = '';
+        if (pill.classList) {
+            pill.classList.remove('is-ahead', 'is-behind', 'is-match-point', 'is-sudden-death');
+        }
+        return;
+    }
+    const leftSecs = getLockinLeftSecs();
+    const isFinalRound = lockinSession.currentSession >= lockinSession.totalSessions;
+    const matchPoint = isDuelMatchPoint(duel, leftSecs, isFinalRound);
+    const isFinalNearEnd = isFinalRound && leftSecs <= 300;
+    pill.textContent = formatDuelBadgeText(duel, { isFinalNearEnd });
+    pill.hidden = false;
+    if (pill.classList) {
+        pill.classList.toggle('is-sudden-death', !!duel.suddenDeathActive);
+        pill.classList.toggle('is-match-point', !!matchPoint && !duel.suddenDeathActive);
+        pill.classList.toggle('is-ahead', duel.userPts > duel.ghostPts);
+        pill.classList.toggle('is-behind', duel.userPts < duel.ghostPts);
+    }
+}
+
+function _pickSuddenDeathQuestion(sess) {
+    const subj = _normalizeSubjectKey((sess && sess.subject) || AppState.currentSubject || 'physics');
+    const chapter = (sess && sess.chapter) || AppState.currentChapter || '';
+    const sel = (sess && Array.isArray(sess.chapterSelection) && sess.chapterSelection.length)
+        ? sess.chapterSelection
+        : null;
+    const inScope = sel && sel.length
+        ? AppState.questionBank.filter(q =>
+            q && q.subject === subj && sel.some(ch => _chaptersMatch(q.chapter, ch))
+            && _isUnexecutedModeQuestion(q) && typeof q.qElo === 'number' && isFinite(q.qElo)
+            && !q.isAnomaly && !q.modeRetired && !_modeSeenIds.has(q))
+        : _flowScopePool(subj, chapter).filter(q => !_modeSeenIds.has(q));
+    const pool = inScope.length
+        ? inScope
+        : AppState.questionBank.filter(q =>
+            q && q.subject === subj && _isUnexecutedModeQuestion(q)
+            && typeof q.qElo === 'number' && isFinite(q.qElo)
+            && !q.isAnomaly && !q.modeRetired && !_modeSeenIds.has(q));
+    if (!pool.length) return null;
+    const userElo = (AppState.elo && Number.isFinite(Number(AppState.elo[subj]))) ? Number(AppState.elo[subj]) : 1200;
+    const targetElo = Math.min(2550, userElo + 140);
+    let best = pool[0];
+    let bestDist = Math.abs(_safeQElo(best) - targetElo);
+    for (let i = 1; i < pool.length; i++) {
+        const dist = Math.abs(_safeQElo(pool[i]) - targetElo);
+        if (dist < bestDist) {
+            best = pool[i];
+            bestDist = dist;
+        }
+    }
+    return best;
+}
+
+window.__applyDuelEloDelta = (subj, delta) => {
+    const safeSubj = _normalizeSubjectKey(subj || AppState.currentSubject || 'physics');
+    const d = Math.round(Number(delta) || 0);
+    if (!d) return 0;
+    if (!AppState.elo || typeof AppState.elo !== 'object') {
+        AppState.elo = { physics: 1200, chemistry: 1200, maths: 1200, global: 1200 };
+    }
+    const prev = Number(AppState.elo[safeSubj]) || 1200;
+    const next = Math.max(400, Math.min(3000, prev + d));
+    AppState.elo[safeSubj] = next;
+    AppState.elo.global = _computeGlobalMetaMMR(
+        AppState.elo.physics ?? 1200,
+        AppState.elo.chemistry ?? 1200,
+        AppState.elo.maths ?? 1200
+    );
+    AppState.eloUpdatedAt = Date.now();
+    try { renderEloMatrix(); } catch (_) {}
+    saveAllAsync().catch(console.error);
+    return next - prev;
+};
+
+window.__hasSuddenDeathQuestion = (sess) => !!_pickSuddenDeathQuestion(sess);
+
+window.__launchSuddenDeathQuestion = (sess) => {
+    if (sess) _applyLockinScopeToAppState(sess);
+    const q = _pickSuddenDeathQuestion(sess);
+    if (!q) return false;
+    const mode = (sess && sess.mode) || AppState.practiceFlowMode || 'flow';
+    AppState._flowSessionActive = true;
+    AppState.practiceFlowMode = PRACTICE_MODES.includes(mode) && mode !== 'standard' ? mode : 'flow';
+    _stampServedMode(AppState.practiceFlowMode);
+    _modeSeenIds.add(q);
+    _renderModeBadge();
+    _renderModeFooter();
+    _serveModeEntry({ q, submitted: false });
+    openModal('practice-modal');
+    AppState.photoHidden = false;
+    const hideBtn = document.getElementById('hide-photo-toggle');
+    if (hideBtn) hideBtn.innerHTML = '🖼&nbsp;&nbsp;Hide Image';
+    _mountLiveFlowSlider();
+    try { _syncPracticeDuelPill(); } catch (_) {}
+    return true;
+};
+
 /**
  * Pre-flight for a Lock-In entry: the "is there at least one mode-eligible
  * question" probe gates the Ritual Chamber so the user never signs a pact
@@ -8942,9 +9145,14 @@ function _setPracticeMode(mode, opts) {
     if (AppState.practiceQuestions.length > 0 &&
         typeof renderPracticeQuestionModal === 'function') {
         AppState.practiceSeconds = 0;
+        try {
+            const duel = _getActiveDuel();
+            if (duel) preRollGhostAttempt(duel, AppState.practiceQuestions[0], _duelCtxForQuestion(AppState.practiceQuestions[0]));
+        } catch (_) {}
         updatePracticeTimerDisplay();
         renderPracticeQuestionModal();
         openModal('practice-modal');
+        try { _syncPracticeDuelPill(); } catch (_) {}
         AppState.photoHidden = false;
         const hideBtn = document.getElementById('hide-photo-toggle');
         if (hideBtn) hideBtn.innerHTML = '🖼&nbsp;&nbsp;Hide Image';
@@ -9915,32 +10123,10 @@ window.renderCalibrationReport = _renderCalibrationReport;
 
 // ── Front-End Interface Hydration ──────────────────────────────────────────
 
-/** Render the Global Meta-MMR tracking row under the user profile card. */
-function _renderGlobalMmrRow(globalElo) {
-    const profile = document.querySelector('.user-profile');
-    if (!profile) return;
-    let row = document.getElementById('global-mmr-row');
-    if (!row) {
-        row = document.createElement('div');
-        row.id = 'global-mmr-row';
-        row.className = 'global-mmr-row';
-        profile.appendChild(row);
-    }
-    const tier = getRankTierDetails(globalElo);
-
-    // Completely drops the long tier string text to display just the icon and numeric Elo value
-    row.innerHTML = `<span class="mmr-tier-badge">${_tierIconMarkup(tier)} ${Math.round(globalElo)} ELO</span>`;
-
-    // ── Make the ELO badge clickable → opens the JEE Advanced AIR projection
-    // popup. The row persists across re-renders (getElementById reuse above),
-    // so setting onclick each time is idempotent and never stacks listeners.
-    row.style.cursor = 'pointer';
-    row.title = 'Click to view predicted JEE Advanced AIR';
-    row.onclick = () => _openAirPopup(globalElo, row);
-
-    // If the popup is already open, refresh its content with the latest elo.
-    _refreshAirPopupIfOpen(globalElo);
-    // Exam countdown rides the same HUD cadence (never its own timer).
+/** User ELO UI retired: keep surface clean and remove stale row if present. */
+function _renderGlobalMmrRow() {
+    const row = document.getElementById('global-mmr-row');
+    if (row && row.parentNode) row.parentNode.removeChild(row);
     try { _updateExamCountdownChip(); } catch (_) {}
 }
 
@@ -10328,102 +10514,12 @@ function _injectAirPopupStyles() {
 window._openAirPopup = _openAirPopup;
 window._closeAirPopup = _closeAirPopup;
 
-/** Render a localized rating monitor into a dashboard subject card. */
-function _renderSubjectEloMonitor(subject, elo) {
-    const safeSubject = _normalizeSubjectKey(subject);
-    const cards = document.querySelectorAll('#view-dashboard .compact-subject-card');
-    let cardEl = null;
-    cards.forEach(c => {
-        const h4 = c.querySelector('h4');
-        if (!h4) return;
-        const txt = h4.textContent.toLowerCase();
-        if (safeSubject === 'physics' && txt.includes('physics')) cardEl = c;
-        else if (safeSubject === 'chemistry' && txt.includes('chemistry')) cardEl = c;
-        else if (safeSubject === 'maths' && (txt.includes('maths') || txt.includes('math'))) cardEl = c;
-    });
-    if (!cardEl) return;
-    // Row layout: ride inline in the row header (name + rating on one line).
-    // Legacy tile layout fallback: below the progress pill.
-    const rowTop = cardEl.querySelector('.tp-row-top');
-    const pill = cardEl.querySelector('.distribution-pill');
-    if (!rowTop && !pill) return;
-    let monitor = cardEl.querySelector('.elo-monitor');
-    if (!monitor) {
-        monitor = document.createElement('div');
-        monitor.className = 'elo-monitor';
-        if (rowTop) rowTop.insertBefore(monitor, rowTop.querySelector('.tp-count'));
-        else pill.insertAdjacentElement('afterend', monitor);
-    }
-    const tier = getRankTierDetails(elo);
-    const nextThreshold = _getNextTierThreshold(elo);
-    monitor.innerHTML =
-        `<span class="elo-monitor-rating">${_tierIconMarkup(tier)} ${Math.round(elo)}</span>` +
-        `<span class="elo-monitor-tier">${tier.name}</span>`;
-    // Hover breakdown: relative points away from the next higher tier badge.
-    if (nextThreshold !== null) {
-        const pointsAway = Math.max(0, nextThreshold - Math.floor(elo));
-        const nextName = _getNextTierName(elo);
-        monitor.setAttribute('data-tooltip',
-            `${Math.round(elo)} ${tier.name} · ${pointsAway} pts to ${nextName}`);
-    } else {
-        monitor.setAttribute('data-tooltip',
-            `${Math.round(elo)} ${tier.name} · Peak tier hit`);
-    }
-}
+/** User ELO monitors retired: keep no-op for cross-module callers. */
+function _renderSubjectEloMonitor() {}
 
-/**
- * Deficit Lockdown Protocol overlay.
- *   if (min(EP,EC,EM) / max(EP,EC,EM) < 0.65) → activate lockdown.
- * Applies a deep crimson background gradient to #view-dashboard and pulses the
- * lowest-performing subject card. (The old warning banner was removed with the
- * cat banner.)
- */
-function _applyDeficitLockdown(eP, eC, eM) {
-    const minV = Math.min(eP, eC, eM);
-    const maxV = Math.max(eP, eC, eM);
-    const ratio = maxV > 0 ? minV / maxV : 1;
-    const dash = document.getElementById('view-dashboard');
-    if (!dash) return;
-
-    const active = ratio < 0.65;
-
-    if (active) {
-        dash.classList.add('deficit-lockdown-active');
-        // Identify + pulse the lowest-performing subject card.
-        const subjects = [['physics', eP], ['chemistry', eC], ['maths', eM]];
-        subjects.sort((a, b) => a[1] - b[1]);
-        const lowest = subjects[0][0];
-        const cards = dash.querySelectorAll('.compact-subject-card');
-        cards.forEach(c => {
-            const h4 = c.querySelector('h4');
-            if (!h4) return;
-            const txt = h4.textContent.toLowerCase();
-            const subj = txt.includes('physics') ? 'physics'
-                : (txt.includes('chemistry') ? 'chemistry' : 'maths');
-            if (subj === lowest) c.classList.add('lowest-subject-pulse');
-            else c.classList.remove('lowest-subject-pulse');
-        });
-    } else {
-        dash.classList.remove('deficit-lockdown-active');
-        dash.querySelectorAll('.compact-subject-card').forEach(c => c.classList.remove('lowest-subject-pulse'));
-    }
-}
-
-/**
- * Master Elo Matrix UI hydration. Called from updateUI() and initApp().
- * Renders the global profile row, every subject monitor, and runs the
- * deficit lockdown protocol check.
- */
+/** User ELO matrix UI retired: clear any residual ELO rows. */
 function renderEloMatrix() {
-    const eP = AppState.elo.physics || 1200;
-    const eC = AppState.elo.chemistry || 1200;
-    const eM = AppState.elo.maths || 1200;
-    const eG = AppState.elo.global || 1200;
-    _renderGlobalMmrRow(eG);
-    _renderSubjectEloMonitor('physics', eP);
-    _renderSubjectEloMonitor('chemistry', eC);
-    _renderSubjectEloMonitor('maths', eM);
-    _applyDeficitLockdown(eP, eC, eM);
+    _renderGlobalMmrRow();
 }
 
 // ── One-time CSS injection for ELO shift chips (content + header) ──
@@ -10521,57 +10617,9 @@ function injectEloShiftChip(eloResult, options = {}) {
         AppState._pqEloByIdx = AppState._pqEloByIdx || {};
         AppState._pqEloByIdx[AppState.currentPracticeIndex] = eloResult;
     }
-    const delta = eloResult.deltaSubject || 0;
-    const sign = delta >= 0 ? '+' : '';
-    const tier = getRankTierDetails(eloResult.newSubjectElo);
-    const subjLabel = eloResult.subject.charAt(0).toUpperCase() + eloResult.subject.slice(1);
-
-    // ── Chip in the practice header bar (dedicated slot next to streak) ──
-    // Supports both the main practice modal and the SR drawer.
     const headerSlot = document.getElementById('elo-header-slot')
                    || document.getElementById('sr-elo-header-slot');
-    if (headerSlot) {
-        if (headerSlot._chipWipeTimer) {
-            clearTimeout(headerSlot._chipWipeTimer);
-            headerSlot._chipWipeTimer = null;
-        }
-        headerSlot.innerHTML = '';
-        const isClean = options.outcome ? (options.outcome === 'clean') : (delta >= 0);
-        const label = isClean ? 'CALIBRATED' : 'OFF-TARGET';
-        const isModalSlot = (headerSlot.id === 'elo-header-slot');
-        const headerChip = document.createElement('div');
-        headerChip.className = 'elo-header-chip ' + (delta >= 0 ? 'elo-up' : 'elo-down');
-        headerChip.title = `${subjLabel} rating ${sign}${Math.round(delta)} · Rank: ${tier.name} — a live skill estimate shaped by your solve speed, question difficulty and practice mode.`;
-        headerChip.innerHTML =
-            `<span class="elo-shift-delta">${sign}${Math.round(delta)}</span>` +
-            (isModalSlot ? ' ' : '') +
-            `<span class="elo-shift-tier">${isModalSlot ? label : `[${label}]`}</span>`;
-        headerSlot.appendChild(headerChip);
-
-        // Persist header chip in both practice and SR drawers until close / next card
-        if (headerSlot.id === 'sr-elo-header-slot' && headerSlot._chipWipeTimer) {
-            clearTimeout(headerSlot._chipWipeTimer);
-            headerSlot._chipWipeTimer = null;
-        }
-    }
-
-    // Tier transition celebration — cascading emoji burst + synth fanfare.
-    if (eloResult.tierChanged && delta > 0) {
-        try {
-            let originX = window.innerWidth / 2;
-            let originY = window.innerHeight / 2;
-            const modal = document.querySelector('#practice-modal .modal-card') ||
-                document.querySelector('#sr-practice-overlay .sr-practice-modal');
-            if (modal && modal.offsetParent !== null) {
-                const rect = modal.getBoundingClientRect();
-                originX = rect.left + rect.width / 2;
-                originY = rect.top + rect.height / 2;
-            }
-            burstEmojis(originX, originY, 40,
-                ['🎉', '😄', '🔥', '✨', '🥳', '🎊', '💯', '🌟', '😎', '🏆'], 1.6);
-            playSuperSound();
-        } catch (_) { /* ignore celebration errors */ }
-    }
+    if (headerSlot) headerSlot.innerHTML = '';
     try { _pqRenderDiag(); } catch (_) {}
 }
 
@@ -10767,8 +10815,10 @@ export function practiceSubmit() {
     }
 
     if (isCorrect) {
-        const wasAlreadySolved = (AppState.currentQ.status === 'solved');
+        const wasAlreadySolved = (AppState.currentQ.status === 'solved') || Boolean(AppState.currentQ._hbEverSolved);
+        const wasDue = Boolean(AppState.currentQ.nextReviewAt && getDueStatus(AppState.currentQ).status === 'ready');
         AppState.currentQ.status = 'solved';
+        try { Heartbeat.recordProblemUnit(AppState.currentQ, 'solve', { wasAlreadySolved, isDue: wasDue }); } catch (_) {}
         if (!wasAlreadySolved && !AppState.bountyMode) {
             _directiveMarkSolve(AppState.currentQ, true);
             changeCount(AppState.currentQ.subject, 1);
@@ -10830,6 +10880,8 @@ export function practiceSubmit() {
         AppState._pqEloByIdx[AppState.currentPracticeIndex] = _eloResult;
     }
 
+    _resolveActiveDuelAttempt(AppState.currentQ, isCorrect, AppState.practiceSeconds);
+
     renderPracticeQuestionModal();
 
     // ── Elo shift chip (injected AFTER the modal re-render so it survives) ──
@@ -10880,7 +10932,8 @@ export function addTextQuestionFollowUp() {
 
     correctBtn.onclick = () => {
         if (AppState._pqPendingSelfReportByIdx) delete AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex];
-        const wasAlreadySolved = (AppState.currentQ.status === 'solved');
+        const wasAlreadySolved = (AppState.currentQ.status === 'solved') || Boolean(AppState.currentQ._hbEverSolved);
+        const wasDue = Boolean(AppState.currentQ.nextReviewAt && getDueStatus(AppState.currentQ).status === 'ready');
         const _wasSelfGraded = !!AppState.currentQ.selfGrade;
         if (!AppState.currentQ.selfGrade) AppState.currentQ.selfGrade = { g: 3, t: Date.now() };
         AppState.currentQ.frictionFlag = (AppState.currentQ.selfGrade.g === 2);
@@ -10890,6 +10943,7 @@ export function addTextQuestionFollowUp() {
         // Lock first-attempt result — only the first attempt counts for accuracy.
         if (!AppState.currentQ.firstAttemptResult) AppState.currentQ.firstAttemptResult = 'correct';
         AppState.currentQ.status = 'solved';
+        try { Heartbeat.recordProblemUnit(AppState.currentQ, 'solve', { wasAlreadySolved, isDue: wasDue }); } catch (_) {}
         _recordSessionRecap(AppState.currentQ, true, AppState._frozenTextQSeconds || AppState.practiceSeconds);
         // ── Cognitive MMR: Elo Migration (text self-report: correct) ──
         let _eloRes = null;
@@ -10924,6 +10978,7 @@ export function addTextQuestionFollowUp() {
             AppState._pqEloByIdx = AppState._pqEloByIdx || {};
             AppState._pqEloByIdx[AppState.currentPracticeIndex] = _eloRes;
         }
+        _resolveActiveDuelAttempt(AppState.currentQ, true, AppState._frozenTextQSeconds || AppState.practiceSeconds);
         renderPracticeQuestionModal();
         if (_eloRes) { _noteSessionElo(AppState.currentQ, _eloRes); try { injectEloShiftChip(_eloRes, { outcome: 'clean' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
@@ -10980,6 +11035,7 @@ export function addTextQuestionFollowUp() {
             AppState._pqEloByIdx = AppState._pqEloByIdx || {};
             AppState._pqEloByIdx[AppState.currentPracticeIndex] = _eloRes;
         }
+        _resolveActiveDuelAttempt(AppState.currentQ, false, AppState._frozenTextQSeconds || AppState.practiceSeconds);
         renderPracticeQuestionModal();
         if (_eloRes) { _noteSessionElo(AppState.currentQ, _eloRes); try { injectEloShiftChip(_eloRes, { outcome: 'skill' }); } catch (_) { /* ignore */ } }
         try { renderEloMatrix(); } catch (_) { /* ignore */ }
@@ -11051,11 +11107,26 @@ export function confirmErrorLog() {
     // Per-question SR revision clock so this fresh vault entry wins LWW against
     // a stale cloud/tab copy that may still carry it as unloged.
     AppState.pendingWrongQ.srUpdatedAt = Date.now();
+    const noteEl = document.getElementById('error-dissection-note');
+    const note = (noteEl && typeof noteEl.value === 'string' && noteEl.value.trim())
+        ? noteEl.value.trim()
+        : String(AppState.pendingWrongQ.dissectionNote || '').trim();
+    if (note) AppState.pendingWrongQ.dissectionNote = note;
+    if (noteEl) noteEl.value = '';
+    let hbDissectRes = null;
+    try { hbDissectRes = Heartbeat.recordProblemUnit(AppState.pendingWrongQ, 'dissection', { reason, note }); } catch (_) {}
     saveAllAsync().catch(console.error);
     // Non-blocking confirmation [AUDIT P2]: the old alert() fired mid-practice
     // at the user's emotional low point (just got it wrong) and froze the page
     // until dismissed.
-    if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('🗂 Logged to the Vault — it will resurface when memory fades.');
+    if (typeof window.__jmaxAppToast === 'function') {
+        const msg = hbDissectRes && hbDissectRes.credited
+            ? '🗂 Dissection logged (+70% Heartbeat; remaining 30% unlocks when solved due in Vault).'
+            : (hbDissectRes && hbDissectRes.reason === 'dissection-incomplete'
+                ? '🗂 Logged to Vault at 0u — add ≥30 chars failure note to earn 70% Heartbeat credit.'
+                : '🗂 Logged to the Vault — it will resurface when memory fades.');
+        window.__jmaxAppToast(msg);
+    }
     closeModalStr('error-reason-modal');
     renderErrorMatrixFromBank();
     try { renderChapterDecayGrid(); } catch (_) {}
@@ -11182,6 +11253,11 @@ export function closePracticeModal(opts) {
     // mid-block is a contract breach — ask before voiding the escrow.
     if (!_skipLockinGate) {
         if (consumePendingLockinExpiry()) return;
+        if (isLockinSuddenDeath()) {
+            const duel = _getActiveDuel();
+            completeLockinSuddenDeath({ conceded: !(duel && duel.suddenDeathPlayed) });
+            return;
+        }
         if (isLockinStudyRunning() && requestLockinEarlyExitConfirm()) return;
     }
     // Check for Hemingway Bridge abandonment candidate before resetting timer / state
@@ -11243,6 +11319,7 @@ export function closePracticeModal(opts) {
         modalEl.classList.remove('pq-has-media');
         modalEl.setAttribute('data-pq-state', 'solving');
     }
+    try { _syncPracticeDuelPill(); } catch (_) {}
     const headerSlot = document.getElementById('elo-header-slot');
     if (headerSlot) {
         if (headerSlot._chipWipeTimer) { clearTimeout(headerSlot._chipWipeTimer); headerSlot._chipWipeTimer = null; }
@@ -12150,6 +12227,7 @@ async function initApp() {
     });
 
     await loadDataAsync();
+    try { await Heartbeat.init(); } catch (e) { console.error('[initApp] Heartbeat boot fault:', e); }
     try { _renderCalibrationReport(); } catch (_) {}
     try { updateQuickLaunchAndArena(); } catch (_) {}
 
@@ -12314,9 +12392,6 @@ async function initApp() {
     }
 
     try {
-        if (window.Bridge && typeof window.Bridge.ensureBootPresented === 'function') {
-            window.Bridge.ensureBootPresented();
-        }
         if (window.Bridge && typeof window.Bridge.renderBanner === 'function') {
             window.Bridge.renderBanner();
         }

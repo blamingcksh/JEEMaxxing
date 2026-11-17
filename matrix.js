@@ -625,6 +625,8 @@ function _resetDrawerState() {
         // can never roll a previous card's mutation back.
         preBridgeSnapshot: null,
         cortexSnapshot: null,
+        preSolveStatus: null,
+        preSolveDue: false,
     };
 }
 
@@ -981,6 +983,8 @@ export function openPracticeDrawer(qId, opts) {
     }
 
     const dueInfo = getDueStatus(q);
+    _drawerState.preSolveStatus = q.status;
+    _drawerState.preSolveDue = Boolean(dueInfo && dueInfo.status === 'ready');
     const hasText = !!(q.extractedText && q.extractedText.trim().length > 0);
     const hasImage = !!((q.imageDataUrl && q.imageDataUrl.length > 100) || q.driveImageId
         || (q.diagramImageUrl && q.diagramImageUrl.length > 100));
@@ -2012,50 +2016,9 @@ function _applyResult(result, source, q) {
     // Persist the Elo mutation immediately — don't wait for "Log Attempt".
     saveAllAsync().catch(console.error);
 
-    // ── Inject a PERSISTENT +/- Elo chip into the SR drawer header slot
-    // (the title bar that holds the streak visualizer & hide-image button).
-    // It stays visible while the user finishes tagging and is cleared
-    // automatically when the drawer closes (the overlay is removed).
-    if (_eloResult) {
-        const _headerSlot = document.getElementById('sr-elo-header-slot');
-        if (_headerSlot) {
-            const _delta = _eloResult.deltaSubject || 0;
-            const _sign = _delta >= 0 ? '+' : '';
-            let _tierName = '';
-            try {
-                if (typeof window.getRankTierDetails === 'function') {
-                    _tierName = '[' + window.getRankTierDetails(_eloResult.newSubjectElo).name + ']';
-                }
-            } catch (_) { /* ignore */ }
-            _headerSlot.innerHTML =
-                '<div class="elo-header-chip ' + (_delta >= 0 ? 'elo-up' : 'elo-down') + '">' +
-                    '<span class="elo-shift-delta">' + _sign + Math.round(_delta) + '</span>' +
-                    '<span class="elo-shift-tier">' + _tierName + '</span>' +
-                '</div>';
-        }
-
-        // ── Tier transition celebration — cascading emoji burst + fanfare,
-        // fired from the SR drawer's centre ONLY on genuine promotions. ──
-        if (_eloResult.tierChanged && (_eloResult.deltaSubject || 0) > 0) {
-            try {
-                let originX = window.innerWidth / 2;
-                let originY = window.innerHeight / 2;
-                const drawer = document.querySelector('#sr-practice-overlay .sr-practice-modal');
-                if (drawer && drawer.offsetParent !== null) {
-                    const rect = drawer.getBoundingClientRect();
-                    originX = rect.left + rect.width / 2;
-                    originY = rect.top + rect.height / 2;
-                }
-                if (typeof window.burstEmojis === 'function') {
-                    window.burstEmojis(originX, originY, 40,
-                        ['🎉', '😄', '🔥', '✨', '🥳', '🎊', '💯', '🌟', '😎', '🏆'], 1.6);
-                }
-                if (typeof window.playSuperSound === 'function') {
-                    window.playSuperSound();
-                }
-            } catch (_) { /* ignore celebration errors */ }
-        }
-    }
+    // User ELO chip retired from SR drawer header.
+    const _headerSlot = document.getElementById('sr-elo-header-slot');
+    if (_headerSlot) _headerSlot.innerHTML = '';
 
     // ── Refresh the dashboard MMR matrix — DEFERRED to a macrotask. ──
     // At this point in _applyResult we've just fired the red/green flash
@@ -2694,6 +2657,18 @@ export function submitPracticeLog(opts) {
         }
     }
 
+    // Feed KLSR Heartbeat equally for verified Vault fixes and honest dissections.
+    try {
+        if (window.Heartbeat && typeof window.Heartbeat.recordProblemUnit === 'function') {
+            window.Heartbeat.recordProblemUnit(q, _drawerState.result === 'correct' ? 'solve' : 'dissection', {
+                wasAlreadySolved: _drawerState.preSolveStatus === 'solved' || Boolean(q._hbEverSolved),
+                isDue: Boolean(_drawerState.preSolveDue),
+                reason: q.errorReason,
+                note: q.dissectionNote,
+            });
+        }
+    } catch (_) {}
+
     // ── Cognitive Cortex v3: commit the tag draft edited in the drawer.
     // Commits ONLY when the user actually changed the draft, and never drops
     // tags the editor never showed: _drawerTags() seeds the draft with
@@ -2785,7 +2760,6 @@ export function submitPracticeLog(opts) {
                 secs: _secs,
                 targetSecs: Math.round((_drawerState.targetTimeMins || 5) * 60),
             });
-            if (_drawerState.eloResult) SessionRecap.noteElo(q, _drawerState.eloResult.deltaSubject);
         } catch (_) { /* recap must never block the log */ }
     }
 
@@ -3772,6 +3746,11 @@ export function addErrorBlock() {
 
     AppState.questionBank.push(newErrorQ);
     _bumpBankRev();
+    try {
+        if (window.Heartbeat && typeof window.Heartbeat.recordProblemUnit === 'function') {
+            window.Heartbeat.recordProblemUnit(newErrorQ, 'dissection');
+        }
+    } catch (_) {}
     saveAllAsync().catch(console.error);
 
     document.getElementById('new-err-chapter').value = '';

@@ -476,6 +476,19 @@ export async function idbSetMany(entries) {
     });
 }
 
+async function idbClearAll() {
+    try {
+        const db = await openDB();
+        return await new Promise((resolve) => {
+            const tx = db.transaction('storage', 'readwrite');
+            tx.objectStore('storage').clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+            tx.onabort = () => resolve();
+        });
+    } catch (_) {}
+}
+
 export async function idbGet(key) {
     const db = await openDB();
     const tx = db.transaction('storage', 'readonly');
@@ -616,6 +629,171 @@ async function cpdbSetMany(entries) {
     });
 }
 
+async function cpdbClearAll() {
+    try {
+        const db = await openCpDb();
+        if (!db) return;
+        await new Promise((resolve) => {
+            try {
+                const tx = db.transaction(CPDB_STORE, 'readwrite');
+                tx.objectStore(CPDB_STORE).clear();
+                tx.oncomplete = () => {
+                    try { db.close(); } catch (_) {}
+                    _cpDbPromise = null;
+                    resolve();
+                };
+                tx.onerror = () => resolve();
+                tx.onabort = () => resolve();
+            } catch (_) { resolve(); }
+        });
+    } catch (_) {}
+}
+
+// ── Heartbeat Wipe Epoch & Scorched-Earth Purge ────────────────────────────
+export const WIPE_EPOCH_KEY = 'jeemax_wipe_epoch';
+
+export function getWipeEpoch() {
+    try {
+        if (typeof localStorage !== 'undefined') {
+            const n = Number(localStorage.getItem(WIPE_EPOCH_KEY)) || 0;
+            if (n > 0) return n;
+        }
+    } catch (_) {}
+    return 0;
+}
+
+export async function getWipeEpochAsync() {
+    let lsEpoch = getWipeEpoch();
+    let idbEpoch = 0;
+    try {
+        const v = await idbGet(WIPE_EPOCH_KEY);
+        idbEpoch = Number(v) || 0;
+    } catch (_) {}
+    const best = Math.max(lsEpoch, idbEpoch);
+    if (best > 0) {
+        if (lsEpoch < best) {
+            try { localStorage.setItem(WIPE_EPOCH_KEY, String(best)); } catch (_) {}
+        }
+        if (idbEpoch < best) {
+            try { await idbSet(WIPE_EPOCH_KEY, best); } catch (_) {}
+        }
+    }
+    return best;
+}
+
+async function _pushWipedCloudState(token, folderId, newEpoch) {
+    if (!token || !folderId) return;
+    try {
+        const query = `name='system_state.json' and '${folderId}' in parents and trashed=false`;
+        const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!searchRes.ok) return;
+        const searchData = await searchRes.json();
+        let fileId = (searchData.files && searchData.files.length > 0) ? searchData.files[0].id : null;
+        const emptyPayload = {
+            date: todayLocalKey(),
+            questionBank: [],
+            chapters: { physics: [], chemistry: [], maths: [] },
+            solved: { physics: 0, chemistry: 0, maths: 0 },
+            studySecs: { physics: 0, chemistry: 0, maths: 0 },
+            elo: { physics: 1200, chemistry: 1200, maths: 1200, global: 1200 },
+            eloUpdatedAt: 0,
+            examDate: null,
+            dailyHistory: [],
+            tombstones: [],
+            wipeEpoch: newEpoch,
+        };
+        if (!fileId) {
+            const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: 'system_state.json', parents: [folderId] }),
+            });
+            if (!createRes.ok) return;
+            const created = await createRes.json();
+            fileId = created.id;
+        }
+        if (fileId) {
+            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+                method: 'PATCH',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(emptyPayload),
+            });
+        }
+    } catch (_) { /* cloud push on wipe is best-effort when offline */ }
+}
+
+/**
+ * Total Scorched-Earth Wipe executed when the KLSR Heartbeat flatlines at 0.0h.
+ * Clears jeemaxxing_db, checkpoint-db, and localStorage, stamps a monotonically
+ * increasing wipeEpoch so pre-wipe cloud snapshots or JSON backups cannot be
+ * resurrected, and resets all live in-memory AppState.
+ */
+export async function wipeAllAppData() {
+    // Cancel any queued coalesced save so it cannot overwrite the wipe.
+    if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _saveTimer = null;
+    }
+    if (_saveBatchResolve) {
+        try { _saveBatchResolve(); } catch (_) {}
+        _saveBatchResolve = null;
+        _saveBatchReject = null;
+        _saveBatch = null;
+    }
+    try { await _saveChain.catch(() => {}); } catch (_) {}
+
+    const prevEpoch = await getWipeEpochAsync();
+    const newEpoch = Math.max(Date.now(), prevEpoch + 1);
+    const driveToken = AppState.driveAccessToken;
+    const driveFolder = AppState.cloudFolderId;
+
+    await Promise.all([idbClearAll(), cpdbClearAll()]);
+    try {
+        if (typeof localStorage !== 'undefined') localStorage.clear();
+    } catch (_) {}
+
+    // Reset in-memory state completely.
+    AppState.questionBank = [];
+    AppState.chapters = { physics: [], chemistry: [], maths: [] };
+    AppState.mocks = [];
+    AppState.mockDraftContext = null;
+    AppState.mockFocus = {};
+    AppState.imageFetchCache = {};
+    AppState.chapterWeights = {};
+    AppState.userChapterWeights = {};
+    AppState.calibrationLog = [];
+    AppState.chapterTheta = {};
+    AppState.pendingWrongQ = null;
+    AppState.currentQ = null;
+    AppState.practiceQuestions = [];
+    AppState.elo = { physics: 1200, chemistry: 1200, maths: 1200, global: 1200 };
+    AppState.eloUpdatedAt = 0;
+    AppState.driveAccessToken = null;
+    AppState.cloudFolderId = null;
+    solved.physics = 0;
+    solved.chemistry = 0;
+    solved.maths = 0;
+    studySecs.physics = 0;
+    studySecs.chemistry = 0;
+    studySecs.maths = 0;
+    _tombstones = new Set();
+    _bankSigs.clear();
+    _historyLastWritten = null;
+
+    // Stamp permanent wipe epoch in both localStorage and IDB.
+    try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(WIPE_EPOCH_KEY, String(newEpoch));
+    } catch (_) {}
+    try { await idbSet(WIPE_EPOCH_KEY, newEpoch); } catch (_) {}
+
+    if (driveToken && driveFolder) {
+        await _pushWipedCloudState(driveToken, driveFolder, newEpoch);
+    }
+    return newEpoch;
+}
+
 // ── Backup integrity primitives ──────────────────────────────────────────
 const _te = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
 function _bytesOf(str) {
@@ -661,11 +839,13 @@ export async function buildFullBackup() {
     for (const [k, v] of idbEntries) await fingerprint('idb', k, v);
     for (const [k, v] of cpEntries) await fingerprint('cpdb', k, v);
     for (const k of Object.keys(ls)) await fingerprint('ls', k, ls[k]);
+    const wipeEpoch = await getWipeEpochAsync();
     return {
         [BACKUP_MARKER]: true,
         version: BACKUP_VERSION,
         app: 'JEEMaxxing',
         exportedAt: new Date().toISOString(),
+        wipeEpoch,
         counts: { idbKeys: idbEntries.length, cpdbKeys: cpEntries.length, lsKeys: Object.keys(ls).length },
         manifest: { sections, totalBytes },
         cpdb: cpEntries,
@@ -684,6 +864,13 @@ export async function buildFullBackup() {
 export async function applyFullBackup(payload) {
     if (!payload || payload[BACKUP_MARKER] !== true) throw new Error('Not a JEEMaxxing backup file');
     if (!Array.isArray(payload.idb)) throw new Error('Backup is missing its data section');
+    const minEpoch = await getWipeEpochAsync();
+    if (minEpoch > 0) {
+        const backupEpoch = Number(payload.wipeEpoch) || 0;
+        if (backupEpoch < minEpoch) {
+            throw new Error('Backup predates a Heartbeat Flatline wipe and cannot be restored.');
+        }
+    }
     // Structural sanity before touching anything.
     for (const entry of payload.idb) {
         if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string') {
@@ -711,6 +898,11 @@ export async function applyFullBackup(payload) {
             try { localStorage.setItem(k, String(payload.ls[k])); } catch (_) {}
         }
     } catch (_) {}
+    if (minEpoch > 0) {
+        const keepEpoch = Math.max(minEpoch, Number(payload.wipeEpoch) || 0);
+        try { localStorage.setItem(WIPE_EPOCH_KEY, String(keepEpoch)); } catch (_) {}
+        try { await idbSet(WIPE_EPOCH_KEY, keepEpoch); } catch (_) {}
+    }
     const report = await _verifyBackupAgainst(payload);
     report.cpKeys = cpRestored;
     if (cpError) report.mismatches.push('cpdb: write failed (' + cpError + ')');
@@ -1103,8 +1295,10 @@ export function formatDateKey(date) {
     return `${y}-${m}-${day}`;
 }
 
+export const DAY_ROLLOVER_HOUR = 4;
 export function todayLocalKey(date) {
-    return formatDateKey(date || new Date());
+    const base = date instanceof Date ? date : new Date(date != null ? date : Date.now());
+    return formatDateKey(new Date(base.getTime() - DAY_ROLLOVER_HOUR * 3600000));
 }
 const _SUBJ_KEYS = ['physics', 'chemistry', 'maths'];
 export function normSubjKey(s) {
@@ -2676,11 +2870,7 @@ export async function initializeCloudFolder() {
 
 // ==================== CLOUD SYNC OPERATIONS ====================
 
-export async function getCloudSolvedTotal() {
-    // Returns the summed cloud counters, 0 when no state file exists yet,
-    // or null when the cloud could not be reached/parsed (state UNKNOWN).
-    // Callers that guard against destructive overwrites must treat null as
-    // "cannot verify → refuse", never as "empty".
+export async function getCloudSnapshotStatus() {
     try {
         const query = `name='system_state.json' and '${AppState.cloudFolderId}' in parents and trashed=false`;
         let searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
@@ -2692,11 +2882,19 @@ export async function getCloudSolvedTotal() {
                 headers: { Authorization: `Bearer ${AppState.driveAccessToken}` }
             });
             let cloudState = await fileRes.json();
-            return (cloudState.solved?.physics || 0) + (cloudState.solved?.chemistry || 0) + (cloudState.solved?.maths || 0);
+            return {
+                total: (cloudState.solved?.physics || 0) + (cloudState.solved?.chemistry || 0) + (cloudState.solved?.maths || 0),
+                wipeEpoch: Number(cloudState.wipeEpoch) || 0,
+            };
         }
-        return 0; // no state file yet — verified empty
+        return { total: 0, wipeEpoch: 0 };
     } catch (e) {}
     return null;
+}
+
+export async function getCloudSolvedTotal() {
+    const st = await getCloudSnapshotStatus();
+    return st ? st.total : null;
 }
 
 export async function executeUnifiedSync() {
@@ -2715,6 +2913,8 @@ export async function executeUnifiedSync() {
             headers: { Authorization: `Bearer ${AppState.driveAccessToken}` }
         });
         let fileId = null;
+        const localWipeEpoch = await getWipeEpochAsync();
+        let blockedPreWipeCloud = false;
         if (searchRes.ok) {
             let searchData = await searchRes.json();
             if (searchData.files && searchData.files.length > 0) {
@@ -2724,41 +2924,40 @@ export async function executeUnifiedSync() {
                 });
                 if (fileRes.ok) {
                     let cloudState = await fileRes.json();
-                    if (subText) subText.textContent = "Merging runtime variables...";
-                    if (cloudState.questionBank) {
-                        // One merge, one rule — shared with loadStateFromCloud.
-                        // This block previously ran its own status-only merge,
-                        // which reverted the SR fields the background pull had
-                        // just carried across.
-                        const adopted = await _mergeCloudQuestionBank(cloudState.questionBank, cloudState.tombstones);
-                        if (adopted > 0) _invalidateMatrixCtx();
-                    }
-                    if (cloudState.chapters) {
-                        for (let subj in cloudState.chapters) {
-                            if (!AppState.chapters[subj]) AppState.chapters[subj] = [];
-                            cloudState.chapters[subj].forEach(ch => { if (!AppState.chapters[subj].includes(ch)) AppState.chapters[subj].push(ch); });
+                    const cloudWipeEpoch = Number(cloudState && cloudState.wipeEpoch) || 0;
+                    if (localWipeEpoch > 0 && cloudWipeEpoch < localWipeEpoch) {
+                        blockedPreWipeCloud = true;
+                        console.warn('[cloud] Refusing pre-wipe cloud snapshot; overwriting cloud with post-wipe state.');
+                    } else {
+                        if (subText) subText.textContent = "Merging runtime variables...";
+                        if (cloudState.questionBank) {
+                            const adopted = await _mergeCloudQuestionBank(cloudState.questionBank, cloudState.tombstones);
+                            if (adopted > 0) _invalidateMatrixCtx();
                         }
-                    }
-                    const todayStr = todayLocalKey();
-                    if (cloudState.date === todayStr) {
-                        if (cloudState.solved) {
-                            solved.physics   = Math.max(solved.physics,   cloudState.solved.physics || 0);
-                            solved.chemistry = Math.max(solved.chemistry, cloudState.solved.chemistry || 0);
-                            solved.maths    = Math.max(solved.maths,    cloudState.solved.maths || 0);
+                        if (cloudState.chapters) {
+                            for (let subj in cloudState.chapters) {
+                                if (!AppState.chapters[subj]) AppState.chapters[subj] = [];
+                                cloudState.chapters[subj].forEach(ch => { if (!AppState.chapters[subj].includes(ch)) AppState.chapters[subj].push(ch); });
+                            }
                         }
-                        if (cloudState.studySecs) {
-                            studySecs.physics   = Math.max(studySecs.physics,   cloudState.studySecs.physics || 0);
-                            studySecs.chemistry = Math.max(studySecs.chemistry, cloudState.studySecs.chemistry || 0);
-                            studySecs.maths    = Math.max(studySecs.maths,    cloudState.studySecs.maths || 0);
+                        const todayStr = todayLocalKey();
+                        if (cloudState.date === todayStr) {
+                            if (cloudState.solved) {
+                                solved.physics   = Math.max(solved.physics,   cloudState.solved.physics || 0);
+                                solved.chemistry = Math.max(solved.chemistry, cloudState.solved.chemistry || 0);
+                                solved.maths    = Math.max(solved.maths,    cloudState.solved.maths || 0);
+                            }
+                            if (cloudState.studySecs) {
+                                studySecs.physics   = Math.max(studySecs.physics,   cloudState.studySecs.physics || 0);
+                                studySecs.chemistry = Math.max(studySecs.chemistry, cloudState.studySecs.chemistry || 0);
+                                studySecs.maths    = Math.max(studySecs.maths,    cloudState.studySecs.maths || 0);
+                            }
                         }
-                    }
-                    // ── Elo Matrix: last-write-wins via eloUpdatedAt stamp ──
-                    _mergeEloFromCloud(cloudState.elo, cloudState.eloUpdatedAt);
-                    // Target exam date: adopt from cloud only when local is unset, so a
-                    // stale/empty cloud snapshot can never wipe a locally chosen date.
-                    if (!AppState.examDate && typeof cloudState.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cloudState.examDate) && !isNaN(new Date(cloudState.examDate).getTime())) {
-                        AppState.examDate = cloudState.examDate;
-                        try { saveAllAsync().catch(() => {}); } catch (_) {}
+                        _mergeEloFromCloud(cloudState.elo, cloudState.eloUpdatedAt);
+                        if (!AppState.examDate && typeof cloudState.examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cloudState.examDate) && !isNaN(new Date(cloudState.examDate).getTime())) {
+                            AppState.examDate = cloudState.examDate;
+                            try { saveAllAsync().catch(() => {}); } catch (_) {}
+                        }
                     }
                 }
             }
@@ -2777,7 +2976,7 @@ export async function executeUnifiedSync() {
 
         if (subText) subText.textContent = "Uploading consolidated data...";
         const localTotal = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
-        if (localTotal === 0 && AppState.questionBank.length === 0) {
+        if (!blockedPreWipeCloud && localTotal === 0 && AppState.questionBank.length === 0) {
             const cloudTotal = await getCloudSolvedTotal();
             // cloudTotal > 0: cloud holds data — never overwrite it with an
             // empty local state. cloudTotal === null: cloud could not be
@@ -2789,7 +2988,7 @@ export async function executeUnifiedSync() {
         }
         // Strip inline images from the cloud payload (mirrors syncStateToCloud)
         // — driveImageId re-fetches them on demand; keeps Drive JSON lean.
-        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(_stripBankImages), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, examDate: AppState.examDate || null, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())] };
+        const payload = { date: todayLocalKey(), questionBank: AppState.questionBank.map(_stripBankImages), chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, examDate: AppState.examDate || null, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())], wipeEpoch: localWipeEpoch };
         if (!fileId) {
             let createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
                 method: 'POST', headers: { Authorization: `Bearer ${AppState.driveAccessToken}`, 'Content-Type': 'application/json' },
@@ -2914,14 +3113,16 @@ export async function syncStateToCloud(force = false) {
         // 2) Genuinely-empty local state (fresh-looking): verify the cloud is
         //    also empty before overwriting. If the cloud holds data — or can't
         //    be checked — refuse rather than clobber.
+        const localWipeEpoch = await getWipeEpochAsync();
         {
             const _localTotal = (solved.physics || 0) + (solved.chemistry || 0) + (solved.maths || 0);
             if (_localTotal === 0 && AppState.questionBank.length === 0) {
-                let _cloudTotal = null;
-                try { _cloudTotal = await getCloudSolvedTotal(); } catch (_) { _cloudTotal = null; }
-                if (_cloudTotal !== 0) {
+                let _cloudSt = null;
+                try { _cloudSt = await getCloudSnapshotStatus(); } catch (_) { _cloudSt = null; }
+                const _preWipeOverride = (_cloudSt && localWipeEpoch > 0 && _cloudSt.wipeEpoch < localWipeEpoch);
+                if (!_preWipeOverride && (!_cloudSt || _cloudSt.total !== 0)) {
                     console.warn('[cloud] Auto-push refused: local bank/counters are empty' +
-                        (_cloudTotal > 0 ? ' while the cloud mirror holds data.' : ' and the cloud state could not be verified.') +
+                        (_cloudSt && _cloudSt.total > 0 ? ' while the cloud mirror holds data.' : ' and the cloud state could not be verified.') +
                         ' Possible storage degradation — nothing was overwritten.');
                     return;
                 }
@@ -2950,7 +3151,7 @@ export async function syncStateToCloud(force = false) {
             await persistImageCacheIfChanged();
         }
         if (subText) subText.textContent = "Syncing system state...";
-        const payload = { date: todayLocalKey(), questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, examDate: AppState.examDate || null, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())] };
+        const payload = { date: todayLocalKey(), questionBank: cloudQuestionBank, chapters: AppState.chapters, solved, studySecs, elo: { ...AppState.elo }, eloUpdatedAt: AppState.eloUpdatedAt || 0, examDate: AppState.examDate || null, dailyHistory: await getDailyHistory(), tombstones: [...(await _getTombstones())], wipeEpoch: localWipeEpoch };
         // fileId cache [AUDIT P1-11 staging]: every push used to re-run the
         // Drive file-search round-trip. Cache per session; invalidate on 404
         // (folder/file deleted mid-session) so the next push recreates it.
@@ -3004,6 +3205,13 @@ export async function loadStateFromCloud(isBackground = false) {
             const fileId = searchData.files[0].id;
             let fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${AppState.driveAccessToken}` } });
             let cloudState = await fileRes.json();
+            const localWipeEpoch = await getWipeEpochAsync();
+            const cloudWipeEpoch = Number(cloudState && cloudState.wipeEpoch) || 0;
+            if (localWipeEpoch > 0 && cloudWipeEpoch < localWipeEpoch) {
+                console.warn('[cloud] Ignoring pre-wipe cloud snapshot; pushing post-wipe state.');
+                await _pushWipedCloudState(AppState.driveAccessToken, AppState.cloudFolderId, localWipeEpoch);
+                return;
+            }
             if (cloudState.questionBank) {
                 // One merge, one rule — shared with executeUnifiedSync so the
                 // two pull paths can never drift apart again.

@@ -10,7 +10,7 @@
    Design & rules: docs / hemingway_bridge_plan.md & night_hook_v2_plan.md
    ============================================================================ */
 
-import { idbGet, idbSet, todayLocalKey } from './storage.js';
+import { idbGet, idbSet, formatDateKey } from './storage.js';
 
 const STATE_KEY = 'jeemax_bridge_v1';
 const STATS_KEY = 'jeemax_bridge_stats';
@@ -19,7 +19,7 @@ const BDAY_CUTOFF_H = 5; // 05:00 AM cutoff for bridge day
 /** Local bridge-day key (e.g. 02:00 on Oct 16 is credited to Oct 15) */
 export function getBridgeDay(ts = Date.now()) {
     const d = new Date(ts - BDAY_CUTOFF_H * 3600e3);
-    return todayLocalKey(d);
+    return formatDateKey(d);
 }
 
 /** Cross-eligible only when the bridge-day has turned AND >= 4h have passed */

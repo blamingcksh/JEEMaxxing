@@ -441,5 +441,124 @@ console.log('── [9] Anti-Exploit: 2:00 Refill Grace Expiry & <5m Early-Exhau
     pomo.confirmTimerNotification();
 }
 
+console.log('── [10] Shadow Duel + Sudden Death Tie-Breaker & Run-It-Back Rematch ──');
+{
+    localStorage.clear();
+    state.studySecs.physics = 0;
+    state.studySecs.chemistry = 0;
+    state.studySecs.maths = 0;
+    globalThis.AppState = { elo: { physics: 1500, chemistry: 1500, maths: 1500, global: 1500 } };
+
+    let duelEloCalls = [];
+    globalThis.__applyDuelEloDelta = (subj, delta) => {
+        duelEloCalls.push({ subj, delta });
+        globalThis.AppState.elo[subj] = (globalThis.AppState.elo[subj] || 1200) + delta;
+        return delta;
+    };
+    let sdLaunched = 0;
+    let sdAvailable = true;
+    globalThis.__hasSuddenDeathQuestion = () => sdAvailable;
+    globalThis.__launchSuddenDeathQuestion = () => {
+        sdLaunched++;
+        document.getElementById('practice-modal').classList.add('active');
+        return true;
+    };
+
+    const duelMod = await import('../shadow-duel.js');
+    pomo.openLockinSetupModal('flow', { subject: 'physics', chapter: 'Electrostatics' }, () => {
+        document.getElementById('practice-modal').classList.add('active');
+    });
+    document.getElementById('lockin-grind').value = '10';
+    document.getElementById('lockin-rounds').value = '1';
+    pomo.lockinDuelPreset('rival100');
+    pomo.lockinDuelStake('elo10');
+    pomo.confirmLockinSetup();
+
+    ok(pomo.lockinSession.duel && pomo.lockinSession.duel.active === true && pomo.lockinSession.duel.preset === 'rival100',
+        'Sign the Pact initializes live Shadow Duel on lockinSession');
+
+    // Play 4 questions ending tied 2-2 (Speed Wins vs Speed Losses)
+    const d = pomo.lockinSession.duel;
+    for (let i = 1; i <= 4; i++) {
+        const userWinsSplit = i % 2 === 1;
+        d.currentGhost = { qId: `sd-${i}`, qElo: 1500, targetSecs: 180, ghostElo: 1600, verdict: 'correct', secs: 100, source: 'model' };
+        duelMod.resolveDuelQuestion(d, { id: `sd-${i}`, subject: 'physics', chapter: 'Electrostatics' }, {
+            userCorrect: true,
+            userSecs: userWinsSplit ? 80 : 120,
+        });
+        pomo.noteLockinSolve(true);
+    }
+    ok(d.userPts === 2 && d.ghostPts === 2 && d.gradedCount === 4, 'Match finishes regular block tied 2-2 across 4 graded Qs');
+
+    // Expire clock while inside Practice -> silent expiry -> advance triggers consumePendingLockinExpiry
+    fakeNowOffset += 605 * 1000;
+    visibilityListeners.forEach(fn => fn());
+    ok(pomo.lockinSession.expiredPendingTransition === true, 'Expired final block defers cleanly until solve finishes');
+
+    const consumed = pomo.consumePendingLockinExpiry();
+    ok(consumed === true, 'consumePendingLockinExpiry runs on advance');
+    ok(state.studySecs.physics === 600, 'Regular 600s study block is safely banked BEFORE Sudden Death starts');
+    ok(document.getElementById('timer-notify-modal').getAttribute('data-notify-variant') === 'sudden-death',
+        'Tied final match offers Sudden Death tie-breaker modal');
+
+    // Enter Sudden Death
+    pomo.confirmTimerNotification();
+    ok(pomo.isLockinSuddenDeath() === true && sdLaunched === 1, 'Confirming enters SUDDEN_DEATH phase and launches decider Q');
+
+    // User steals Sudden Death decider Q
+    d.currentGhost = { qId: 'sd-decider', qElo: 1640, targetSecs: 180, ghostElo: 1600, verdict: 'wrong', secs: 140, source: 'model' };
+    duelMod.resolveDuelQuestion(d, { id: 'sd-decider', subject: 'physics', chapter: 'Electrostatics' }, {
+        userCorrect: true,
+        userSecs: 95,
+    });
+    ok(d.suddenDeathPlayed === true && d.userPts === 4 && d.ghostPts === 2, 'Sudden Death steal gives +2 and flips match to 4-2');
+
+    // Finish Sudden Death
+    pomo.completeLockinSuddenDeath({ conceded: false });
+    ok(pomo.lockinSession.active === false && !pomo.isLockinSuddenDeath(), 'Cycle settles cleanly after Sudden Death');
+    ok(duelEloCalls.length === 1 && duelEloCalls[0].subj === 'physics' && duelEloCalls[0].delta === 20,
+        'Winning 10 ELO Duel deposits +20 ELO into physics via __applyDuelEloDelta');
+    ok(globalThis.AppState.elo.physics === 1520, 'Physics ELO rose from 1500 to 1520');
+    const receiptHtml = document.getElementById('notify-receipt').innerHTML;
+    ok(document.getElementById('timer-notify-modal').getAttribute('data-notify-variant') === 'duel-win',
+        'Winning Duel themes notification modal with duel-win variant');
+    ok(document.getElementById('notify-kicker').textContent.includes('VICTORY (4–2)'),
+        'Win kicker clearly announces VICTORY (4–2)');
+    ok(receiptHtml.includes('Shadow Duel: WIN (4–2') && receiptHtml.includes('da-hero') && receiptHtml.includes('da-tape'),
+        'Final receipt renders full Duel Autopsy scoreboard & split-by-split tape');
+    ok(document.getElementById('notify-rematch').style.display !== 'none', 'Run It Back rematch button is visible on Duel completion');
+
+    // Rematch restores previous setup & duel prefs cleanly, then play a LOSS round to verify DEFEATED urgency UI
+    pomo.rematchLastDuel();
+    ok(document.getElementById('lockin-setup-modal').classList.contains('active'), 'Rematch reopens Sign the Pact modal');
+    ok(!document.getElementById('lockin-duel-intel').hidden && document.getElementById('lockin-launch').textContent.includes('−10 ELO'),
+        'Setup chamber shows live enemy intel & escrow stake on launch CTA');
+
+    document.getElementById('lockin-grind').value = '5';
+    document.getElementById('lockin-rounds').value = '1';
+    pomo.confirmLockinSetup();
+    const dLoss = pomo.lockinSession.duel;
+    for (let i = 1; i <= 4; i++) {
+        dLoss.currentGhost = { qId: `dl-${i}`, qElo: 1550, targetSecs: 180, ghostElo: 1620, verdict: 'correct', secs: 75, source: 'model' };
+        duelMod.resolveDuelQuestion(dLoss, { id: `dl-${i}`, subject: 'physics', chapter: 'Magnetism' }, {
+            userCorrect: i <= 2,
+            userSecs: 120,
+        });
+        pomo.noteLockinSolve(i <= 2);
+    }
+    fakeNowOffset += 305 * 1000;
+    visibilityListeners.forEach(fn => fn());
+    pomo.consumePendingLockinExpiry();
+    ok(document.getElementById('timer-notify-modal').getAttribute('data-notify-variant') === 'duel-loss',
+        'Losing Duel switches completion modal to crimson duel-loss variant (never celebratory)');
+    ok(document.getElementById('notify-kicker').textContent.includes('DEFEATED') && document.getElementById('notify-title').textContent.includes('Outclassed'),
+        'Defeat modal names defeat & opponent clearly');
+    ok(document.getElementById('notify-rematch').textContent.includes('Avenge Defeat') && document.getElementById('notify-primary').textContent.includes('Accept Defeat'),
+        'Loss prioritizes Avenge Defeat rematch over Accept Defeat');
+    ok(document.getElementById('notify-receipt').innerHTML.includes('TURNING POINT'),
+        'Loss split tape highlights the exact Turning Point Q');
+    pomo.confirmTimerNotification();
+}
+
 console.log(`\nALL LOCK-IN SMOKE TESTS PASSED! (${passed} assertions)\n`);
 process.exit(0);

@@ -221,7 +221,7 @@ ok(/closeModalStr\('practice-modal'\);[\s\S]{0,180}SessionRecap\.play\(\{ tone/.
 ok(!/setTimeout\([^)]*SessionRecap\.play/.test(app), 'recap start is not deferred');
 ok(app.includes("recapTone = 'parchment'"), 'app carries the parchment stage into the recap');
 ok(/export function submitPracticeLog\(opts\) \{[\s\S]*?SessionRecap\.record\(q, \{/.test(matrix), 'matrix records logged Vault cards in submitPracticeLog');
-ok(/SessionRecap\.noteElo\(q, _drawerState\.eloResult\.deltaSubject\)/.test(matrix), 'matrix records the logged Elo delta');
+ok(!/SessionRecap\.noteElo\(q, _drawerState\.eloResult\.deltaSubject\)/.test(matrix), 'matrix omits user Elo delta from recap');
 ok(matrix.includes('SessionRecap.recordSkip(q)'), 'matrix records skipped Vault cards');
 ok(matrix.includes('SessionRecap.play({ tone: _recapTone })'), 'matrix plays recap when the drawer closes');
 ok(matrix.includes('closePracticeDrawer({ recap: false })'), 'matrix suppresses the recap during in-session navigation');

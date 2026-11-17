@@ -82,9 +82,10 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <link rel="stylesheet" href="styles-telemetry.css">
 <link rel="stylesheet" href="slider-resident.css">
 <link rel="stylesheet" href="styles-modes.css">
+<link rel="stylesheet" href="heartbeat.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
-<body>
+<body class="hb-void-active">
 
 <!-- ═══════════════ ATMOSPHERE ═══════════════
      The observatory sky (starfield, one plate per screen, grain) is mounted
@@ -97,7 +98,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     <!-- ═══════════════ SIDEBAR ═══════════════
          Icon system: inline SVG (18px · stroke 1.75 · currentColor), so nav
          glyphs render identically on every platform and follow theme ink. -->
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar" id="sidebar" hidden>
         <div class="logo-container">
             <span class="logo-mark" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
@@ -146,6 +147,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
     <!-- ═══════════════ MAIN CONTENT ═══════════════ -->
     <main class="main-content">
+        <button type="button" class="hb-back-void-btn" id="hb-back-void-btn" onclick="window.Heartbeat && window.Heartbeat.returnToVoid()">← VOID</button>
 
         <!-- ── Header: page identity left · live calibration strip + actions right ──
              Contracts: #top-date (app.js), #calibration-report (app.js renderCalibrationReport),
@@ -185,7 +187,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
               Skin lives in styles-dashboard.css (loaded just before styles-ipad.css,
               which stays last so the iPad standalone hardening wins).
         ════════════════════════════════════════════ -->
-        <section id="view-dashboard" class="view-section">
+        <section id="view-dashboard" class="view-section" hidden>
             <!-- ── Deck Layout Bar (holds #dc-layout-fab) ── -->
             <div id="dash-quick-bar" class="dash-quick-bar"></div>
 
@@ -412,11 +414,24 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
             <!-- Subview: subject select -->
             <div id="practice-subject-view" class="practice-subview active">
-                <!-- ── Hemingway Bridge & Tuck-In banners (fixed mounts above the Arena) ── -->
+                <div id="heartbeat-void" class="hb-void hb-booting">
+                    <canvas id="heartbeat-canvas"></canvas>
+                    <div class="hb-util hb-controls">
+                        <button type="button" class="hb-pill-btn" id="hb-vitals-btn"><span class="hb-pill-dot"></span><span>VITALS</span></button>
+                        <button type="button" class="hb-pill-btn" id="hb-pact-btn"><span>PACT</span></button>
+                        <button type="button" class="hb-pill-btn" id="hb-nav-btn" aria-label="Navigation menu"><span>≡</span></button>
+                    </div>
+                    <nav class="hb-subjects hb-controls" aria-label="Select subject">
+                        <button type="button" class="hb-subj-btn" data-subject="physics" onclick="selectSubject('physics')">PHYSICS</button>
+                        <button type="button" class="hb-subj-btn" data-subject="chemistry" onclick="selectSubject('chemistry')">CHEMISTRY</button>
+                        <button type="button" class="hb-subj-btn" data-subject="maths" onclick="selectSubject('maths')">MATHS</button>
+                    </nav>
+                </div>
+                <!-- Legacy Arena mounts retired from visual void -->
                 <div id="bridge-banner" hidden></div>
                 <div id="tuckin-door-banner" hidden></div>
                 <div id="arena-orders-strip" class="arena-orders-strip" hidden></div>
-                <div class="subject-cards">
+                <div class="subject-cards" hidden>
                     <div class="subject-col" data-subject="physics">
                         <div class="subject-card subject-card--phys" onclick="selectSubject('physics')">
                             <span class="obs-specimen-plate-tag">OBS. 07 · CHLADNI RESONANCE</span>
@@ -469,7 +484,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         <div class="subject-day-count" id="arena-day-count-maths" title="Maths solved today">0</div>
                     </div>
                 </div>
-                <div class="arena-ritual-row">
+                <div class="arena-ritual-row" hidden>
                     <button type="button" class="btn btn-secondary arena-tuckin-btn" id="arena-tuckin-btn"
                             onclick="window.TuckIn && window.TuckIn.open({ source: 'manual' })"
                             title="Seal today's progress and stage tomorrow's first move">
@@ -482,7 +497,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <!-- Subview: chapter list -->
             <div id="practice-chapters-view" class="practice-subview">
                 <div class="practice-header">
-                    <button class="btn btn-secondary dz-back" onclick="goToSubjects()">← ARENA</button>
+                    <button class="btn btn-secondary dz-back" onclick="goToSubjects()">← VOID</button>
                     <div class="dz-title-wrap">
                         <span class="dz-kicker" id="chapters-subject-chip">DOMAIN // PHYSICS</span>
                         <h2 id="chapters-subject-title" class="dz-title">Chapters</h2>
@@ -730,6 +745,29 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <p class="lockin-intensity-rule" id="lockin-intensity-rule">Soft blocks for steady hours.</p>
         </div>
 
+        <div class="lockin-duel" id="lockin-duel">
+            <div class="lockin-duel-head">
+                <strong>Shadow Duel</strong>
+                <span class="lockin-duel-record" id="lockin-duel-record" hidden>0W–0L</span>
+            </div>
+            <div class="lockin-duel-pills" id="lockin-duel-presets" role="group" aria-label="Shadow rival">
+                <button type="button" class="ld-pill active" data-duel="off" onclick="lockinDuelPreset('off')">Off</button>
+                <button type="button" class="ld-pill" data-duel="yesterday" onclick="lockinDuelPreset('yesterday')">Yesterday</button>
+                <button type="button" class="ld-pill" data-duel="rival100" onclick="lockinDuelPreset('rival100')">+100 Rival</button>
+                <button type="button" class="ld-pill" data-duel="air" onclick="lockinDuelPreset('air')">AIR Target</button>
+            </div>
+            <div class="lockin-duel-sub" id="lockin-duel-air-row" hidden role="group" aria-label="AIR target tier">
+                <button type="button" class="ld-chip" data-air="air5000" onclick="lockinDuelAir('air5000')">AIR 5000</button>
+                <button type="button" class="ld-chip active" data-air="air1000" onclick="lockinDuelAir('air1000')">AIR 1000</button>
+                <button type="button" class="ld-chip" data-air="air500" onclick="lockinDuelAir('air500')">AIR 500</button>
+            </div>
+            <div class="lockin-duel-intel" id="lockin-duel-intel" hidden>
+                <strong id="lockin-duel-intel-title"></strong>
+                <span id="lockin-duel-intel-sub"></span>
+            </div>
+            <p class="lockin-duel-rule" id="lockin-duel-rule" hidden></p>
+        </div>
+
         <div class="lockin-timeline">
             <div class="lt-track" id="lockin-timeline-track"></div>
             <div class="lt-meta">
@@ -827,11 +865,13 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <div id="timer-notify-modal" class="modal-overlay">
     <div class="modal-content timer-notify-card">
         <div class="notify-icon" id="notify-icon">🍅</div>
+        <div class="notify-kicker" id="notify-kicker" hidden></div>
         <h2 id="notify-title">Focus Session Done!</h2>
         <p class="box-desc" id="notify-message">Take a break. You earned it.</p>
         <div class="notify-receipt" id="notify-receipt" hidden></div>
         <div class="notify-actions">
             <button id="notify-secondary" class="btn btn-quit" style="display:none;width:100%;margin-top:10px" onclick="notifyKeepGoing()">Keep Going</button>
+            <button id="notify-rematch" class="btn btn-secondary" style="display:none;width:100%;margin-top:10px" onclick="rematchLastDuel()">Run It Back ↻</button>
             <button id="notify-primary" class="btn btn-primary" style="width:100%;margin-top:16px" onclick="confirmTimerNotification()">Let's Go</button>
         </div>
     </div>
@@ -1064,6 +1104,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     <nav class="pq-corner pq-corner-l" aria-label="Question Navigation">
         <button class="pq-ghost pq-prev" id="practice-prev-btn" onclick="practicePrev()" aria-label="Previous question">‹</button>
         <button class="pq-ghost pq-skip" id="practice-skip-btn" onclick="window.openSkipPopover()" aria-label="Skip question" style="display:none" title="Skip (Why?)">⏭</button>
+        <span id="pq-duel-pill" class="pq-duel-pill" hidden></span>
     </nav>
 
     <!-- Top-right ghost corner controls -->
@@ -1140,6 +1181,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <option value="calculation">Calc Fumble (Calculation)</option>
             <option value="misread">Read Fail (Misread)</option>
         </select>
+        <textarea id="error-dissection-note" class="pomo-input" rows="3" style="margin-top:12px;width:100%;resize:vertical;" placeholder="Write your failure dissection (≥ 30 chars to earn 70% Heartbeat units now; 30% unlocks when solved due in Vault)..."></textarea>
         <button class="btn btn-danger" style="width:100%;margin-top:16px" onclick="confirmErrorLog()">Send to the Vault (Log Error)</button>
     </div>
 </div>
