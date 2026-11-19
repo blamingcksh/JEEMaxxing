@@ -207,7 +207,10 @@
 // v107 - SHADOW DUEL: opt-in Ghost Rival (Yesterday You, +100 Rival, AIR 5000/1000/500),
 //        opt-in ELO/Shield stakes, post-solve split reveals, Sudden Death tie-breaker,
 //        turning-point receipt, and Run-It-Back rematch. shadow-duel.js joins shell precache.
-const VERSION = 'jeemax-v111';
+// v112 - PRACTICE SURGE BORDER FIX: remove vertical glowing box-shadow lines on
+//        .pq-shell / .sr-practice-modal during Crit / Overheat surge; bump stylesheet
+//        cache-buster to styles-practice-fullscreen.css?v=12.
+const VERSION = 'jeemax-v112';
 
 const SHELL = [
   './',
@@ -245,7 +248,7 @@ const SHELL = [
   './styles-telemetry.css',
   './styles-modes.css',
   './styles-dashboard.css',
-  './styles-practice-fullscreen.css?v=11',
+  './styles-practice-fullscreen.css?v=12',
   './atmosphere.js',
   './glyphs.js',
   './matrix.js',
