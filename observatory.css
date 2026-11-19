@@ -2272,14 +2272,6 @@ html[data-theme="observatory"] #calibration-report .calib-warmup {
 }
 
 /* ── Active Surge Exceptions (calm at rest, vivid on Crit / Overheat / Deep Work) ── */
-html[data-theme="observatory"] #practice-modal[data-ck-surge="crit"] .pq-shell,
-html[data-theme="observatory"] #sr-practice-overlay[data-ck-surge="crit"] .sr-practice-modal {
-  box-shadow: 0 0 0 1px rgba(217, 179, 106, 0.55), 0 0 30px -6px rgba(217, 179, 106, 0.38) !important;
-}
-html[data-theme="observatory"] #practice-modal[data-ck-surge="overheat"] .pq-shell,
-html[data-theme="observatory"] #sr-practice-overlay[data-ck-surge="overheat"] .sr-practice-modal {
-  box-shadow: 0 0 0 1px rgba(217, 120, 95, 0.65), 0 0 34px -6px rgba(217, 120, 95, 0.48) !important;
-}
 html[data-theme="observatory"] .ck-hud-pill.is-crit {
   color: var(--obs-warn) !important;
   border-color: color-mix(in srgb, var(--obs-warn) 55%, transparent) !important;
