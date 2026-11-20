@@ -117,8 +117,28 @@ try {
     });
     check(JSON.stringify(readyState.btns) === JSON.stringify(['PHYSICS', 'CHEMISTRY', 'MATHS']),
         'Three minimal subject buttons (PHYSICS, CHEMISTRY, MATHS) appear after intro');
-    check(readyState.util.includes('VITALS') && readyState.util.includes('PACT') && readyState.util.includes('≡'),
-        'Minimal utility buttons (VITALS, PACT, ≡) appear after intro');
+    check(readyState.util.includes('VITALS') && readyState.util.includes('PACT') && readyState.util.includes('AUDIO') && readyState.util.includes('≡'),
+        'Minimal utility buttons (VITALS, PACT, AUDIO, ≡) appear after intro');
+
+    // Toggle industrial audio button ON -> MUTED -> ON cleanly
+    await page.click('#hb-audio-btn');
+    const audioMuted = await page.evaluate(() => ({
+        enabled: window.HeartbeatAudio?.isEnabled(),
+        label: document.querySelector('#hb-audio-btn .hb-audio-lbl')?.textContent,
+    }));
+    await page.click('#hb-audio-btn');
+    const audioRestored = await page.evaluate(async () => {
+        const unlocked = await window.HeartbeatAudio?.unlock();
+        window.HeartbeatAudio?.playClick();
+        window.HeartbeatAudio?.playChamberLoad();
+        return {
+            enabled: window.HeartbeatAudio?.isEnabled(),
+            label: document.querySelector('#hb-audio-btn .hb-audio-lbl')?.textContent,
+            unlocked,
+        };
+    });
+    check(audioMuted.enabled === false && audioMuted.label === 'MUTED' && audioRestored.enabled === true && audioRestored.label === 'AUDIO' && audioRestored.unlocked === true,
+        'Procedural industrial background audio toggles, unlocks AudioContext & fires SFX cleanly (AUDIO ↔ MUTED)');
     check(!readyState.hasEloRow && !readyState.hasStakes, 'User ELO row and Shadow Duel stakes are absent');
     check(readyState.bodyVoid && readyState.canvasBox.width === 1440 && readyState.canvasBox.height === 900,
         'Full-viewport 1440x900 void active');

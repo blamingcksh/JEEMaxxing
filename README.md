@@ -32,13 +32,13 @@ Color stages interpolate continuously across 5 bands:
 ## Core modules
 
 - `index.html` — Application shell, void canvas stage, practice modal, error/lock-in dialogs
-- `heartbeat.js` / `heartbeat.css` — KLSR Aizawa Flux WebGL2 renderer (with 2D fallback), 30h clock, vitals UI, flatline wipe sequence
+- `heartbeat.js` / `heartbeat.css` / `heartbeat-audio.js` — KLSR Aizawa Flux WebGL2 renderer (with 2D fallback), 30h clock, vitals UI, industrial dark-ambient Web Audio engine, flatline wipe sequence
 - `storage.js` — `AppState`, IndexedDB (`jeemaxxing_db`), multi-tab sync, wipe-epoch guards (local-only; backups & Drive sync disabled)
 - `app.js` — Routing, question bank management, practice grader, difficulty calibration
 - `matrix.js` / `memory.js` — Spaced-repetition Error Vault and memory stability model
 - `pomodoro.js` / `shadow-duel.js` — Lock-In Pact timers, stopwatch caps, focus ledger
 - `mock.js` — Timed mock exam runner and auto-grading
-- `sw.js` — Service worker (`jeemax-v115`, network-first HTML + offline KaTeX cache)
+- `sw.js` — Service worker (`jeemax-v117`, network-first HTML + offline KaTeX cache)
 
 ## Running locally
 

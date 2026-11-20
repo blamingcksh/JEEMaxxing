@@ -163,6 +163,9 @@ function _setDeepWorkActive(on) {
             if (on && typeof window.Heartbeat.touchActivity === 'function') window.Heartbeat.touchActivity();
             if (typeof window.Heartbeat.tickClock === 'function') window.Heartbeat.tickClock();
         }
+        if (on && typeof window !== 'undefined' && window.HeartbeatAudio && typeof window.HeartbeatAudio.playChamberLoad === 'function') {
+            window.HeartbeatAudio.playChamberLoad();
+        }
     } catch (_) {}
     try {
         if (document.body) document.body.classList.toggle('pomo-active', !!on);
