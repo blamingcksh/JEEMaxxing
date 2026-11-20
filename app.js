@@ -9281,37 +9281,46 @@ function _playModeClickRipple(e, btn) {
     ripple.addEventListener('animationend', () => ripple.remove());
 }
 
-// ── Mode-engage sound cue (FX-gated) ───────────────────────────────────────
+// ── Mode-engage sound cue (Buckshot industrial seal / steel slam) ──────────
 function _playModeSound(mode) {
     if (!window.FX || !window.FX.wantSound()) return;
     try {
-        // Reuse a single AudioContext — browsers cap concurrent instances at ~6–12.
-        if (!window.__modeAudioCtx) {
-            window.__modeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        const ctx = window.__modeAudioCtx;
-        // Resume if suspended (autoplay policy)
-        if (ctx.state === 'suspended') ctx.resume();
+        const ctx = _sharedSfxCtx();
+        if (!ctx) return;
+        const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
+        try { window.HeartbeatAudio?.duck?.(0.5); } catch (_) {}
+
         const osc = ctx.createOscillator();
+        const lp = ctx.createBiquadFilter();
         const gain = ctx.createGain();
+        lp.type = 'lowpass';
         if (mode === 'flow') {
-            // Soft ascending chime
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, now);
-            osc.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
-            gain.gain.setValueAtTime(0.12, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+            // Pressurized chamber seal + cold metallic latch
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(110, now);
+            osc.frequency.exponentialRampToValueAtTime(164.81, now + 0.18);
+            lp.frequency.setValueAtTime(220, now);
+            lp.frequency.exponentialRampToValueAtTime(640, now + 0.16);
+            lp.Q.value = 2.6;
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.linearRampToValueAtTime(0.16 * v, now + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
         } else {
-            // Deep percussive thud
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(180, now);
-            osc.frequency.exponentialRampToValueAtTime(60, now + 0.12);
-            gain.gain.setValueAtTime(0.18, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+            // Hardcore: heavy steel guillotine slam + distorted sub-drop
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(175, now);
+            osc.frequency.exponentialRampToValueAtTime(34, now + 0.22);
+            lp.frequency.setValueAtTime(760, now);
+            lp.frequency.exponentialRampToValueAtTime(120, now + 0.24);
+            lp.Q.value = 3.8;
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.linearRampToValueAtTime(0.28 * v, now + 0.006);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+            try { window.HeartbeatAudio?.playChamberLoad?.(); } catch (_) {}
         }
-        osc.connect(gain).connect(ctx.destination);
-        osc.start(now); osc.stop(now + 0.3);
+        osc.connect(lp).connect(gain).connect(ctx.destination);
+        osc.start(now); osc.stop(now + 0.38);
     } catch (_) { /* audio not available */ }
 }
 
@@ -11451,34 +11460,73 @@ function _sharedSfxCtx() {
     } catch (_) { return null; }
 }
 
+function _sfxNoiseBurst(ctx, time, dur, bpFreq, bpQ, peak) {
+    const len = Math.max(64, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = bpFreq;
+    bp.Q.value = bpQ;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.linearRampToValueAtTime(Math.max(0.0001, peak), time + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    src.connect(bp).connect(g).connect(ctx.destination);
+    src.start(time);
+    src.stop(time + dur + 0.02);
+}
+
+// Overcharge / Critical Hit Reactor Surge (dark industrial power-chord sweep)
 function playSuperSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
         const ctx = _sharedSfxCtx();
         if (!ctx) return;
+        const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        const freqs = [523.25, 659.25, 783.99, 1046.5];
-        freqs.forEach((f, i) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(f, now + i * 0.1);
-            gain.gain.setValueAtTime(0.2, now + i * 0.1);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.15);
-            osc.connect(gain).connect(ctx.destination);
-            osc.start(now + i * 0.1);
-            osc.stop(now + i * 0.1 + 0.2);
+        try { window.HeartbeatAudio?.duck?.(1.1); } catch (_) {}
 
-            const osc2 = ctx.createOscillator();
-            const gain2 = ctx.createGain();
-            osc2.type = 'square';
-            osc2.frequency.setValueAtTime(f, now + i * 0.1 + 0.15);
-            gain2.gain.setValueAtTime(0.1, now + i * 0.1 + 0.15);
-            gain2.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.3);
-            osc2.connect(gain2).connect(ctx.destination);
-            osc2.start(now + i * 0.1 + 0.15);
-            osc2.stop(now + i * 0.1 + 0.3);
+        // 1. Sub-reactor boom
+        const sub = ctx.createOscillator();
+        const subG = ctx.createGain();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(105, now);
+        sub.frequency.exponentialRampToValueAtTime(34, now + 0.38);
+        subG.gain.setValueAtTime(0.0001, now);
+        subG.gain.linearRampToValueAtTime(0.32 * v, now + 0.01);
+        subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+        sub.connect(subG).connect(ctx.destination);
+        sub.start(now); sub.stop(now + 0.58);
+
+        // 2. Cold dark power-fifth FM + sawtooth surge (A2, E3, A3, E4)
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(240, now);
+        lp.frequency.exponentialRampToValueAtTime(1650, now + 0.32);
+        lp.frequency.exponentialRampToValueAtTime(280, now + 0.95);
+        lp.Q.value = 3.2;
+        lp.connect(ctx.destination);
+
+        [110.0, 164.81, 220.0, 329.63].forEach((f, i) => {
+            const osc = ctx.createOscillator();
+            const g = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(f, now + i * 0.055);
+            osc.detune.value = (i % 2 === 0 ? -7 : 7);
+            g.gain.setValueAtTime(0.0001, now + i * 0.055);
+            g.gain.linearRampToValueAtTime(0.11 * v, now + i * 0.055 + 0.015);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + 0.92);
+            osc.connect(g).connect(lp);
+            osc.start(now + i * 0.055);
+            osc.stop(now + 0.96);
         });
+
+        _sfxNoiseBurst(ctx, now, 0.045, 3200, 3.2, 0.14 * v);
+        _sfxNoiseBurst(ctx, now + 0.09, 0.06, 1500, 2.4, 0.16 * v);
     } catch (e) { /* ignore */ }
 }
 
@@ -11530,43 +11578,108 @@ function showSupercharged() {
     if (Math.random() < 0.15 && typeof activateOverheat === 'function') activateOverheat();  // gameplay — never gated
 }
 
+// Live Round Verified: heavy sub-punch + hollow cold metallic FM chime + bolt lock
 function playCorrectSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
         const ctx = _sharedSfxCtx();
         if (!ctx) return;
+        const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        [523.25, 659.25, 783.99].forEach((freq, i) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq, now + i * 0.08);
-            gain.gain.setValueAtTime(0.2, now + i * 0.08);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.15);
-            osc.connect(gain).connect(ctx.destination);
-            osc.start(now + i * 0.08);
-            osc.stop(now + i * 0.08 + 0.18);
+        try { window.HeartbeatAudio?.duck?.(0.65); } catch (_) {}
+
+        // Sub confirmation punch
+        const sub = ctx.createOscillator();
+        const subG = ctx.createGain();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(125, now);
+        sub.frequency.exponentialRampToValueAtTime(46, now + 0.16);
+        subG.gain.setValueAtTime(0.0001, now);
+        subG.gain.linearRampToValueAtTime(0.28 * v, now + 0.006);
+        subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+        sub.connect(subG).connect(ctx.destination);
+        sub.start(now); sub.stop(now + 0.30);
+
+        // Cold metallic FM fifth ring (A3 -> E4)
+        [220.0, 329.63].forEach((freq, i) => {
+            const t = now + i * 0.065;
+            const car = ctx.createOscillator();
+            const mod = ctx.createOscillator();
+            const mg = ctx.createGain();
+            const g = ctx.createGain();
+            car.type = 'sine'; mod.type = 'sine';
+            car.frequency.setValueAtTime(freq, t);
+            mod.frequency.setValueAtTime(freq * 1.414, t);
+            mg.gain.setValueAtTime(freq * 0.65, t);
+            mg.gain.exponentialRampToValueAtTime(1, t + 0.45);
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime((i === 0 ? 0.13 : 0.11) * v, t + 0.008);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.52);
+            mod.connect(mg).connect(car.frequency);
+            car.connect(g).connect(ctx.destination);
+            car.start(t); mod.start(t);
+            car.stop(t + 0.55); mod.stop(t + 0.55);
         });
+
+        _sfxNoiseBurst(ctx, now, 0.028, 2900, 3.2, 0.12 * v);
     } catch (e) { /* ignore */ }
 }
 
+// Blank Shell / Misfire Slam: dry firing-pin click + dissonant minor-2nd shudder + sub drop
 function playWrongSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
         const ctx = _sharedSfxCtx();
         if (!ctx) return;
+        const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        [600, 300].forEach((freq, i) => {
+        try { window.HeartbeatAudio?.duck?.(0.75); } catch (_) {}
+
+        // 1. Dry hollow firing-pin misfire snap
+        _sfxNoiseBurst(ctx, now, 0.022, 3500, 4.0, 0.17 * v);
+        const pin = ctx.createOscillator();
+        const pinG = ctx.createGain();
+        pin.type = 'triangle';
+        pin.frequency.setValueAtTime(440, now);
+        pin.frequency.exponentialRampToValueAtTime(135, now + 0.032);
+        pinG.gain.setValueAtTime(0.0001, now);
+        pinG.gain.linearRampToValueAtTime(0.14 * v, now + 0.002);
+        pinG.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+        pin.connect(pinG).connect(ctx.destination);
+        pin.start(now); pin.stop(now + 0.045);
+
+        // 2. Heavy dissonant minor-second industrial shudder (A2 + Bb2) + sub drop
+        const t = now + 0.055;
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(460, t);
+        lp.frequency.exponentialRampToValueAtTime(75, t + 0.34);
+        lp.Q.value = 3.8;
+        lp.connect(ctx.destination);
+
+        [110.0, 116.54].forEach((freq) => {
             const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(freq, now + i * 0.08);
-            gain.gain.setValueAtTime(0.18, now + i * 0.08);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.12);
-            osc.connect(gain).connect(ctx.destination);
-            osc.start(now + i * 0.08);
-            osc.stop(now + i * 0.08 + 0.15);
+            const g = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(freq, t);
+            osc.frequency.exponentialRampToValueAtTime(freq * 0.72, t + 0.34);
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(0.16 * v, t + 0.008);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.36);
+            osc.connect(g).connect(lp);
+            osc.start(t); osc.stop(t + 0.38);
         });
+
+        const drop = ctx.createOscillator();
+        const dropG = ctx.createGain();
+        drop.type = 'sine';
+        drop.frequency.setValueAtTime(68, t);
+        drop.frequency.exponentialRampToValueAtTime(26, t + 0.30);
+        dropG.gain.setValueAtTime(0.0001, t);
+        dropG.gain.linearRampToValueAtTime(0.24 * v, t + 0.008);
+        dropG.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+        drop.connect(dropG).connect(ctx.destination);
+        drop.start(t); drop.stop(t + 0.36);
     } catch (e) { /* ignore audio errors */ }
 }
 

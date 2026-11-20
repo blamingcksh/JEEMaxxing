@@ -81,40 +81,141 @@
     osc.start(now);
     osc.stop(now + dur + 0.03);
   }
-  function noise(dur, g) {
-    var c = ctx(); if (!c) return;
-    var now = c.currentTime;
-    var n = Math.floor(c.sampleRate * dur);
-    if (n <= 0) return;
-    var buf = c.createBuffer(1, n, c.sampleRate);
+  var _noiseBuf = null;
+  var _noiseCtx = null;
+  function crispNoiseBuf(c) {
+    if (_noiseBuf && _noiseCtx === c) return _noiseBuf;
+    var len = Math.max(1, Math.floor(c.sampleRate * 0.35));
+    var buf = c.createBuffer(1, len, c.sampleRate);
     var data = buf.getChannelData(0);
-    for (var i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1);
-    var src = c.createBufferSource(); src.buffer = buf;
+    for (var i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1);
+    _noiseBuf = buf; _noiseCtx = c;
+    return buf;
+  }
+  function noise(dur, g, bpFreq, bpQ, at) {
+    var c = ctx(); if (!c) return;
+    var now = c.currentTime + (at || 0);
+    var d = Math.max(0.008, dur || 0.04);
+    var src = c.createBufferSource(); src.buffer = crispNoiseBuf(c);
+    var flt = c.createBiquadFilter(); flt.type = 'bandpass';
+    flt.frequency.setValueAtTime(bpFreq || 1600, now);
+    flt.Q.setValueAtTime(bpQ || 1.2, now);
     var gn = c.createGain();
-    var flt = c.createBiquadFilter(); flt.type = 'bandpass'; flt.frequency.value = 1400; flt.Q.value = 0.7;
-    var peak = Math.max(0.0001, g * vol());
+    var peak = Math.max(0.0001, (g != null ? g : 0.08) * vol());
     try {
       gn.gain.setValueAtTime(0.0001, now);
-      gn.gain.exponentialRampToValueAtTime(peak, now + 0.01);
-      gn.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      gn.gain.exponentialRampToValueAtTime(peak, now + Math.min(0.004, d * 0.25));
+      gn.gain.exponentialRampToValueAtTime(0.0001, now + d);
     } catch (e) { return; }
     src.connect(flt).connect(gn).connect(c.destination);
-    src.start(now); src.stop(now + dur + 0.03);
+    src.start(now); src.stop(now + d + 0.02);
+  }
+  function filteredTone(o) {
+    var c = ctx(); if (!c) return;
+    var now = c.currentTime + (o.at || 0);
+    var dur = Math.max(0.012, o.dur || 0.09);
+    var peak = Math.max(0.0001, (o.g != null ? o.g : 0.12) * vol());
+    var osc = c.createOscillator();
+    osc.type = o.type || 'sawtooth';
+    var flt = c.createBiquadFilter();
+    flt.type = o.fltType || 'lowpass';
+    var g = c.createGain();
+    try {
+      osc.frequency.setValueAtTime(Math.max(1, o.f), now);
+      if (o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.f2), now + dur);
+      flt.frequency.setValueAtTime(Math.max(20, o.cutoff || 600), now);
+      if (o.cutoff2) flt.frequency.exponentialRampToValueAtTime(Math.max(20, o.cutoff2), now + dur);
+      if (o.Q != null) flt.Q.setValueAtTime(o.Q, now);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(peak, now + (o.atk || 0.004));
+      g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    } catch (e) { return; }
+    osc.connect(flt).connect(g).connect(c.destination);
+    osc.start(now); osc.stop(now + dur + 0.03);
+  }
+  function fmHit(o) {
+    var c = ctx(); if (!c) return;
+    var now = c.currentTime + (o.at || 0);
+    var dur = Math.max(0.02, o.dur || 0.12);
+    var peak = Math.max(0.0001, (o.g != null ? o.g : 0.10) * vol());
+    var car = c.createOscillator(); car.type = 'sine';
+    var mod = c.createOscillator(); mod.type = 'sine';
+    var modGain = c.createGain();
+    var outGain = c.createGain();
+    var ratio = o.ratio || 1.414;
+    var idx = o.mod || (o.f * 1.3);
+    try {
+      car.frequency.setValueAtTime(Math.max(1, o.f), now);
+      if (o.f2) car.frequency.exponentialRampToValueAtTime(Math.max(1, o.f2), now + dur);
+      mod.frequency.setValueAtTime(Math.max(1, o.f * ratio), now);
+      modGain.gain.setValueAtTime(Math.max(0.01, idx), now);
+      modGain.gain.exponentialRampToValueAtTime(0.01, now + dur * 0.72);
+      outGain.gain.setValueAtTime(0.0001, now);
+      outGain.gain.exponentialRampToValueAtTime(peak, now + 0.003);
+      outGain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    } catch (e) { return; }
+    mod.connect(modGain).connect(car.frequency);
+    car.connect(outGain).connect(c.destination);
+    mod.start(now); car.start(now);
+    mod.stop(now + dur + 0.03); car.stop(now + dur + 0.03);
   }
 
+  // Dark industrial / mechanical Buckshot-grade UI SFX (Mario sounds untouched)
   var SFX = {
-    click:   function () { tone({ type: 'square',   f: 200, f2: 120, dur: 0.05, g: 0.10 }); },
-    soft:    function () { tone({ type: 'sine',     f: 330,        dur: 0.06, g: 0.07 }); },
-    confirm: function () { tone({ type: 'sine',     f: 660, f2: 990, dur: 0.12, g: 0.14 }); },
-    delete:  function () { tone({ type: 'sawtooth', f: 240, f2: 90,  dur: 0.14, g: 0.11 }); },
-    select:  function () { tone({ type: 'triangle', f: 520,        dur: 0.05, g: 0.09 }); },
-    tab:     function () { tone({ type: 'triangle', f: 440, f2: 560, dur: 0.09, g: 0.10 }); },
-    modalClose: function () { tone({ type: 'sine',  f: 520, f2: 260, dur: 0.14, g: 0.08 }); noise(0.10, 0.03); },
-    toggle:  function () { tone({ type: 'square',   f: 760, f2: 980, dur: 0.045, g: 0.07 }); },
-    blip:    function () { tone({ type: 'sine',     f: 1200,       dur: 0.03, g: 0.05 }); },
-    tick:    function () { tone({ type: 'triangle', f: 900,        dur: 0.03, g: 0.07 }); },
-    hover:   function () { tone({ type: 'sine',     f: 1500,       dur: 0.02, g: 0.025 }); },
-    success: function () { var f = [523, 659, 783]; for (var i = 0; i < f.length; i++) tone({ type: 'sine', f: f[i], dur: 0.12, g: 0.12, at: i * 0.07 }); },
+    click: function () {
+      filteredTone({ type: 'triangle', f: 165, f2: 52, dur: 0.048, g: 0.14, cutoff: 420, Q: 1.4 });
+      noise(0.016, 0.11, 2900, 1.8);
+    },
+    soft: function () {
+      filteredTone({ type: 'triangle', f: 185, f2: 88, dur: 0.052, g: 0.09, cutoff: 340, Q: 0.9 });
+      noise(0.014, 0.04, 1850, 1.3);
+    },
+    confirm: function () {
+      noise(0.02, 0.13, 3300, 1.8, 0);
+      filteredTone({ type: 'triangle', f: 118, f2: 46, dur: 0.085, g: 0.16, cutoff: 260, Q: 1.2, at: 0 });
+      fmHit({ f: 220, dur: 0.11, g: 0.11, ratio: 1.414, mod: 260, at: 0.012 });
+      fmHit({ f: 329.63, dur: 0.18, g: 0.12, ratio: 1.414, mod: 310, at: 0.055 });
+    },
+    delete: function () {
+      filteredTone({ type: 'sawtooth', f: 175, f2: 42, dur: 0.17, g: 0.15, cutoff: 680, cutoff2: 95, Q: 3.6 });
+      noise(0.085, 0.11, 1450, 1.5, 0.01);
+    },
+    select: function () {
+      noise(0.015, 0.09, 2700, 2.0);
+      fmHit({ f: 310, f2: 260, dur: 0.055, g: 0.085, ratio: 1.414, mod: 280 });
+    },
+    tab: function () {
+      filteredTone({ type: 'sawtooth', f: 135, f2: 245, dur: 0.085, g: 0.095, fltType: 'bandpass', cutoff: 680, cutoff2: 1400, Q: 2.2 });
+      noise(0.016, 0.085, 3150, 2.1, 0.052);
+    },
+    modalClose: function () {
+      filteredTone({ type: 'sawtooth', f: 230, f2: 58, dur: 0.14, g: 0.11, cutoff: 480, cutoff2: 110, Q: 2.0 });
+      noise(0.11, 0.065, 1100, 0.9, 0.008);
+    },
+    toggle: function () {
+      noise(0.014, 0.11, 3800, 2.2, 0);
+      filteredTone({ type: 'triangle', f: 240, f2: 110, dur: 0.042, g: 0.11, cutoff: 520, Q: 1.5, at: 0.018 });
+    },
+    blip: function () {
+      fmHit({ f: 440, dur: 0.042, g: 0.065, ratio: 2.0, mod: 240 });
+      noise(0.009, 0.045, 3300, 2.4);
+    },
+    tick: function () {
+      noise(0.011, 0.095, 3600, 2.5);
+      filteredTone({ type: 'triangle', f: 290, f2: 135, dur: 0.024, g: 0.075, cutoff: 700, Q: 1.4 });
+    },
+    hover: function () {
+      noise(0.009, 0.026, 2500, 2.2);
+    },
+    success: function () {
+      try { window.HeartbeatAudio && window.HeartbeatAudio.duck && window.HeartbeatAudio.duck(0.65); } catch (e) {}
+      noise(0.024, 0.14, 3200, 1.7, 0);
+      filteredTone({ type: 'triangle', f: 110, f2: 40, dur: 0.21, g: 0.19, cutoff: 260, Q: 1.3, at: 0 });
+      var freqs = [220, 329.63, 440];
+      for (var i = 0; i < freqs.length; i++) {
+        fmHit({ f: freqs[i], dur: 0.24, g: 0.11, ratio: 1.414, mod: freqs[i] * 1.15, at: 0.015 + i * 0.06 });
+      }
+    },
     marioCoin: function () { tone({ type: 'square', f: 987.77, dur: 0.07, g: 0.085, at: 0 }); tone({ type: 'square', f: 1318.51, dur: 0.28, g: 0.085, at: 0.07 }); }
   };
   function sound(name) { if (!prefs.sound) return; var fn = SFX[name]; if (fn) { try { fn(); } catch (e) {} } }
