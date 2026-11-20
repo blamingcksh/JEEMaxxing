@@ -200,6 +200,17 @@ body:not(.hb-void-active) .main-content {
     box-shadow: none;
 }
 
+.hb-pill-btn.is-spotify-yield {
+    opacity: 0.72;
+    border-color: rgba(229, 192, 123, 0.24);
+    color: rgba(235, 224, 200, 0.78);
+}
+
+.hb-pill-btn.is-spotify-yield .hb-audio-dot {
+    background: rgba(229, 192, 123, 0.68);
+    box-shadow: 0 0 6px rgba(229, 192, 123, 0.38);
+}
+
 /* Bottom-center 3 minimal hair-line subject buttons */
 .hb-subjects {
     position: fixed;

@@ -210,7 +210,10 @@
 // v112 - PRACTICE SURGE BORDER FIX: remove vertical glowing box-shadow lines on
 //        .pq-shell / .sr-practice-modal during Crit / Overheat surge; bump stylesheet
 //        cache-buster to styles-practice-fullscreen.css?v=12.
-const VERSION = 'jeemax-v119';
+// v120 - SPOTIFY CONNECT DECK: zero-backend PKCE OAuth, Connect playback,
+//        playlists/library/queue/search, 4 quick-pins, Practice haze &
+//        Void Drown Mode, plus iPadOS-safe Heartbeat Audio yield handoff.
+const VERSION = 'jeemax-v120';
 
 const SHELL = [
   './',
@@ -219,6 +222,10 @@ const SHELL = [
   './heartbeat.css',
   './heartbeat.js',
   './heartbeat-audio.js',
+  './spotify.css',
+  './spotify-auth.js',
+  './spotify-api.js',
+  './spotify-deck.js',
   './styles.css',
   './styles-daily.css',
   './styles-retention.css',
@@ -373,8 +380,14 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Never touch Drive / Gemini / any API endpoint.
-  if (url.origin === 'https://www.googleapis.com' || url.origin === 'https://generativelanguage.googleapis.com') {
+  // Never touch Drive / Gemini / Spotify endpoints.
+  if (
+    url.origin === 'https://www.googleapis.com' ||
+    url.origin === 'https://generativelanguage.googleapis.com' ||
+    url.origin === 'https://api.spotify.com' ||
+    url.origin === 'https://accounts.spotify.com' ||
+    url.origin === 'https://i.scdn.co'
+  ) {
     return;
   }
 
@@ -398,8 +411,10 @@ self.addEventListener('fetch', (event) => {
         if (!res || !res.ok || !ct.includes('text/html')) {
           throw new Error('bad-shell-response ' + (res ? res.status : 'network'));
         }
-        const copy = res.clone();
-        caches.open(VERSION).then((cache) => { try { cache.put(req, copy); } catch (_) {} });
+        if (!url.searchParams.has('code') && !url.searchParams.has('error')) {
+          const copy = res.clone();
+          caches.open(VERSION).then((cache) => { try { cache.put(req, copy); } catch (_) {} });
+        }
         return res;
       }).catch(() =>
         caches.match(req, { ignoreSearch: true }).then((cached) => cached || caches.match('./'))
