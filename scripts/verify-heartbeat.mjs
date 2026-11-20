@@ -393,13 +393,126 @@ try {
     check(diagInfo.hbCredited, 'UI solve automatically credited Heartbeat unit for ui-test-q1');
     await page.click('#practice-modal .pq-corner-close');
 
-    console.log('── [5] 0.0h Flatline Death Sequence, Scorched-Earth Wipe & Anti-Save-Scumming ──');
-    // Export pre-wipe backup before triggering flatline
-    const preWipeBackup = await page.evaluate(async () => {
+    console.log('── [4b] Zero-Escape-Hatch & Data-Safety Guards (No Backups/Drive, Corrupt State, Clock Glitches, Multi-Tab) ──');
+    // (0) Confirm all backup & Google Drive escape hatches are stripped from DOM & JS API
+    const noEscapeCheck = await page.evaluate(async () => {
         const mod = await import('./storage.js');
-        return await mod.buildFullBackup();
+        let buildErr = null, applyErr = null;
+        try { await mod.buildFullBackup(); } catch (e) { buildErr = e && e.message; }
+        try { await mod.applyFullBackup({ __jmaxBackup: true, idb: [] }); } catch (e) { applyErr = e && e.message; }
+        return {
+            hasBackupBtn: !!document.getElementById('backup-download-btn'),
+            hasRestoreInput: !!document.getElementById('restore-backup-input'),
+            hasDriveBtn: !!document.getElementById('btn-drive-auth'),
+            hasManualSync: !!document.getElementById('manual-sync-btn'),
+            hasExportGlobal: typeof window.exportFullBackup === 'function',
+            hasRestoreGlobal: typeof window.restoreFullBackup === 'function',
+            buildErr,
+            applyErr,
+        };
     });
-    check(preWipeBackup && Array.isArray(preWipeBackup.idb), 'Captured pre-wipe full backup');
+    check(!noEscapeCheck.hasBackupBtn && !noEscapeCheck.hasRestoreInput && !noEscapeCheck.hasDriveBtn && !noEscapeCheck.hasManualSync,
+        'Backup export/restore and Google Drive sync controls are completely removed from UI');
+    check(!noEscapeCheck.hasExportGlobal && !noEscapeCheck.hasRestoreGlobal &&
+          String(noEscapeCheck.buildErr).includes('permanently disabled') &&
+          String(noEscapeCheck.applyErr).includes('permanently disabled'),
+        'buildFullBackup() and applyFullBackup() are permanently disabled');
+
+    // (a) Absurd >1yr CMOS forward clock jump must NOT trigger false flatline
+    const afterAbsurdJump = await page.evaluate(() => {
+        const before = window.Heartbeat.getVitals().reservoirHours;
+        window.Heartbeat.tickClock(Date.now() + 500 * 24 * 3600 * 1000);
+        const after = window.Heartbeat.getVitals();
+        return { before, afterHrs: after.reservoirHours, flatlined: after.flatlined };
+    });
+    check(!afterAbsurdJump.flatlined && Math.abs(afterAbsurdJump.before - afterAbsurdJump.afterHrs) < 0.01,
+        'Absurd +500d CMOS clock jump is ignored instead of causing false flatline');
+
+    // (b) Corrupt reservoirHours ("" / "NaN") in storage must heal safely instead of becoming 0 and wiping
+    await page.goto(`http://127.0.0.1:${PORT}/__offline_gap`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async () => {
+        const raw = JSON.parse(localStorage.getItem('jeemax_heartbeat_v1'));
+        raw.reservoirHours = '';
+        localStorage.setItem('jeemax_heartbeat_v1', JSON.stringify(raw));
+        const mod = await import('./storage.js');
+        await mod.idbSet('jeemax_heartbeat_v1', { ...raw, reservoirHours: Number.NaN });
+    });
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => !!window.Heartbeat && !!document.getElementById('heartbeat-void')?.classList.contains('hb-ready'), null, { timeout: 15000 });
+    const afterCorrupt = await page.evaluate(async () => {
+        const mod = await import('./storage.js');
+        return {
+            v: window.Heartbeat.getVitals(),
+            hasQ: mod.AppState.questionBank.some(q => q.id === 'ui-test-q1'),
+        };
+    });
+    check(!afterCorrupt.v.flatlined && afterCorrupt.v.reservoirHours > 29.5 && afterCorrupt.hasQ,
+        `Corrupt NaN/empty reservoirHours healed safely (${afterCorrupt.v.reservoirHours.toFixed(2)}h) with question bank intact`);
+
+    // (c) Multi-tab sync: sibling tab solve propagates immediately via BroadcastChannel/storage
+    const page2 = await context.newPage();
+    await page2.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await page2.waitForFunction(() => !!window.Heartbeat && !!document.getElementById('heartbeat-void')?.classList.contains('hb-ready'), null, { timeout: 15000 });
+    await page2.evaluate(() => {
+        window.Heartbeat.recordProblemUnit({ id: 'hb-tab2-q1', subject: 'physics', qElo: 1400, qEloSource: 'gem-stamped' }, 'solve');
+    });
+    await page.waitForFunction(() => window.Heartbeat.getState().daily.creditedIds.includes('hb-tab2-q1'), null, { timeout: 5000 });
+    check(true, 'Sibling tab solve propagated immediately to open tab via multi-tab Heartbeat sync');
+    await page2.close();
+
+    // (d) Pre-wipe rescue: stale tab hitting 0.0h aborts wipe if persisted storage is alive
+    const rescueResult = await page.evaluate(async () => {
+        const mod = await import('./storage.js');
+        const futureTs = Date.now() + 35 * 3600 * 1000;
+        const aliveRecord = {
+            ...window.Heartbeat.getState(),
+            reservoirHours: 27.5,
+            lastTickAt: futureTs,
+            highWaterMark: futureTs,
+            flatlined: false,
+        };
+        localStorage.setItem('jeemax_heartbeat_v1', JSON.stringify(aliveRecord));
+        await mod.idbSet('jeemax_heartbeat_v1', aliveRecord);
+        // Tab in memory still has ~22h at now -> jumping +25h drains in-memory to 0,
+        // invoking _enterFlatlineSequence, which must re-read disk and ABORT wipe.
+        window.Heartbeat.tickClock(futureTs);
+        await new Promise(r => setTimeout(r, 350));
+        const v = window.Heartbeat.getVitals(futureTs);
+        return {
+            flatlined: v.flatlined,
+            hrs: v.reservoirHours,
+            hasQ: mod.AppState.questionBank.some(q => q.id === 'ui-test-q1'),
+            overlayHidden: document.getElementById('heartbeat-flatline-overlay')?.hidden !== false,
+        };
+    });
+    check(!rescueResult.flatlined && rescueResult.hrs > 27.0 && rescueResult.hasQ && rescueResult.overlayHidden,
+        `Pre-wipe verification rescued stale tab (${rescueResult.hrs.toFixed(2)}h, question bank intact, wipe aborted)`);
+
+    // (f) Cleared localStorage recovers cleanly from IDB mirror without data loss
+    await page.goto(`http://127.0.0.1:${PORT}/__offline_gap`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(async () => {
+        const mod = await import('./storage.js');
+        const idbHb = await mod.idbGet('jeemax_heartbeat_v1');
+        // Normalize timestamps back to now so IDB holds a clean 26.0h living copy
+        idbHb.reservoirHours = 26.0;
+        idbHb.lastTickAt = Date.now();
+        idbHb.highWaterMark = idbHb.lastTickAt;
+        await mod.idbSet('jeemax_heartbeat_v1', idbHb);
+        localStorage.clear();
+    });
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => !!window.Heartbeat && !!document.getElementById('heartbeat-void')?.classList.contains('hb-ready'), null, { timeout: 15000 });
+    const afterLsClear = await page.evaluate(async () => {
+        const mod = await import('./storage.js');
+        return {
+            v: window.Heartbeat.getVitals(),
+            hasQ: mod.AppState.questionBank.some(q => q.id === 'ui-test-q1'),
+        };
+    });
+    check(!afterLsClear.v.flatlined && afterLsClear.v.reservoirHours > 25.8 && afterLsClear.v.reservoirHours <= 26.05 && afterLsClear.hasQ,
+        `Cleared localStorage recovered cleanly from IDB mirror (${afterLsClear.v.reservoirHours.toFixed(2)}h, question bank intact)`);
+
+    console.log('── [5] 0.0h Flatline Death Sequence, Scorched-Earth Wipe & Anti-Save-Scumming ──');
 
     // Advance offline drain past 30h ceiling while app is closed -> reopen -> must flatline and wipe everything
     await page.goto(`http://127.0.0.1:${PORT}/__offline_gap`, { waitUntil: 'domcontentloaded' });
@@ -425,7 +538,7 @@ try {
         const epoch = mod.getWipeEpoch();
         let restoreError = null;
         try {
-            await mod.applyFullBackup(window.__preWipeBackupTest);
+            await mod.applyFullBackup({ __jmaxBackup: true, idb: [] });
         } catch (e) {
             restoreError = e && e.message;
         }
@@ -435,33 +548,30 @@ try {
             cpCount: cpEntries.length,
             epoch,
             lsKeys: Object.keys(localStorage),
+            restoreError,
         };
     });
-    // Also test applyFullBackup rejection by passing preWipeBackup directly
-    const restoreRejectedMsg = await page.evaluate(async (bak) => {
-        const mod = await import('./storage.js');
-        try {
-            await mod.applyFullBackup(bak);
-            return 'ALLOWED';
-        } catch (e) {
-            return e && e.message;
-        }
-    }, preWipeBackup);
 
     check(postWipeAudit.bankLen === 0 && !postWipeAudit.idbKeys.includes('jeemax_question_bank'),
         'Scorched-earth wipe erased questionBank and jeemaxxing_db data');
     check(postWipeAudit.cpCount === 0, 'Scorched-earth wipe cleared checkpoint-db');
     check(postWipeAudit.epoch > 0 && postWipeAudit.lsKeys.includes('jeemax_wipe_epoch'),
         'Permanent jeemax_wipe_epoch stamped after flatline');
-    check(String(restoreRejectedMsg).includes('Flatline wipe'),
-        `Pre-wipe backup restore rejected (${restoreRejectedMsg})`);
+    check(String(postWipeAudit.restoreError).includes('permanently disabled'),
+        `Post-wipe backup restore stays permanently blocked (${postWipeAudit.restoreError})`);
 
-    // Click BEGIN FROM ZERO -> restarts fresh 30h life
+    // Click BEGIN FROM ZERO -> restarts fresh 30h life & survives immediate reload
     await page.click('#hb-flatline-reset-btn');
     await page.waitForFunction(() => document.getElementById('heartbeat-flatline-overlay')?.hidden === true);
     const rebootVitals = await page.evaluate(() => window.Heartbeat.getVitals());
     check(rebootVitals.reservoirHours > 29.9 && !rebootVitals.flatlined,
         `BEGIN FROM ZERO initialized fresh 30.0h life (${rebootVitals.reservoirHours.toFixed(2)}h)`);
+
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => !!window.Heartbeat && !!document.getElementById('heartbeat-void')?.classList.contains('hb-ready'), null, { timeout: 15000 });
+    const afterRebootReload = await page.evaluate(() => window.Heartbeat.getVitals());
+    check(!afterRebootReload.flatlined && afterRebootReload.reservoirHours > 29.9,
+        `Immediate reload after BEGIN FROM ZERO stays alive cleanly (${afterRebootReload.reservoirHours.toFixed(2)}h)`);
 
     check(errors.length === 0, `Zero uncaught runtime errors (${errors.length} seen${errors.length ? ': ' + errors.join(' | ') : ''})`);
 } finally {

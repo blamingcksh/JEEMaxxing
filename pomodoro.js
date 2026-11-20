@@ -1320,18 +1320,16 @@ export function executeTimerTick() {
 // ---- What happens when timer reaches 0 ----
 function handleTimerEnd() {
     $('pomo-mini-widget').classList.add('hidden');
-    _setDeepWorkActive(false);   // block over — the ×1.5 window closes with it
 
     if (pomoState === 'STUDY') {
         // ── Night Guard: a naturally-completed focus block is a session end
         // for the sleep-debt ledger (quit already logs its own).
         try { NightGuard.logSessionEnd(); } catch (_) {}
         // ── Ledger: a block that ran to its planned end is a completed block.
-        // Deep-time counts seconds actually credited (pause froze the clock);
-        // billing the planned total used to log phantom deep minutes whenever
-        // the block was paused along the way.
+        // Credit Pact minutes BEFORE unfreezing decay so a low-reservoir finish never clips 0.0h.
         const deepSecs = Math.max(0, Math.min(_blockCreditedSecs | 0, timerTotalSeconds | 0));
         _ledgerCompleteBlock(deepSecs);
+        _setDeepWorkActive(false);   // block over — the ×1.5 window closes with it
         const receipt = _blockCompletionReceipt(timerTotalSeconds);
         _blockEloSnap = null;
         hydrateFocusStats();
