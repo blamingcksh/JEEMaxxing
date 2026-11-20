@@ -210,7 +210,7 @@
 // v112 - PRACTICE SURGE BORDER FIX: remove vertical glowing box-shadow lines on
 //        .pq-shell / .sr-practice-modal during Crit / Overheat surge; bump stylesheet
 //        cache-buster to styles-practice-fullscreen.css?v=12.
-const VERSION = 'jeemax-v115';
+const VERSION = 'jeemax-v117';
 
 const SHELL = [
   './',
@@ -218,6 +218,7 @@ const SHELL = [
   './manifest.webmanifest',
   './heartbeat.css',
   './heartbeat.js',
+  './heartbeat-audio.js',
   './styles.css',
   './styles-daily.css',
   './styles-retention.css',

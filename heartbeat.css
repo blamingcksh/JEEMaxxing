@@ -182,6 +182,24 @@ body:not(.hb-void-active) .main-content {
     animation: none;
 }
 
+.hb-audio-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #cbd5f5;
+    box-shadow: 0 0 6px rgba(180, 220, 255, 0.7);
+    transition: background 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.hb-pill-btn.is-audio-off {
+    opacity: 0.56;
+}
+
+.hb-pill-btn.is-audio-off .hb-audio-dot {
+    background: rgba(160, 174, 198, 0.35);
+    box-shadow: none;
+}
+
 /* Bottom-center 3 minimal hair-line subject buttons */
 .hb-subjects {
     position: fixed;

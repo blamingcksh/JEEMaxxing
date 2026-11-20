@@ -23,6 +23,7 @@ import {
     isDegradedBoot,
     wipeAllAppData,
 } from './storage.js';
+import { HeartbeatAudio } from './heartbeat-audio.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 export const MAX_RESERVOIR_HOURS = 30.0;
@@ -525,6 +526,7 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
     _hb.daily.units[subj] = round2((_hb.daily.units[subj] || 0) + weight);
     const hoursAdded = _applyDailyRechargeDelta();
     _pulseBoost = 1.0;
+    try { HeartbeatAudio.playChamberLoad(); } catch (_) {}
     _saveState();
     _refreshHudAndVitals();
 
@@ -545,6 +547,7 @@ export function recordPactBlock(mins, subj) {
     _hb.daily.pactMins = round2((_hb.daily.pactMins || 0) + cleanMins);
     const hoursAdded = _applyDailyRechargeDelta();
     _pulseBoost = 1.0;
+    try { HeartbeatAudio.playChamberLoad(); } catch (_) {}
     _saveState();
     _refreshHudAndVitals();
 
@@ -2220,6 +2223,7 @@ async function _enterFlatlineSequence(checkNowMs = Date.now()) {
     _flatlineStartedAt = Date.now();
     _hb.flatlined = true;
     _hb.reservoirHours = 0;
+    try { HeartbeatAudio.playFlatlineDrop(); } catch (_) {}
     _saveState();
 
     if (typeof document !== 'undefined') {
@@ -2362,18 +2366,25 @@ export async function initHeartbeat() {
         const vitalsBtn = document.getElementById('hb-vitals-btn');
         if (vitalsBtn && !vitalsBtn.dataset.hbBound) {
             vitalsBtn.dataset.hbBound = '1';
-            vitalsBtn.addEventListener('click', (e) => { e.stopPropagation(); openVitals(); });
+            vitalsBtn.addEventListener('click', (e) => { e.stopPropagation(); try { HeartbeatAudio.playClick(); } catch (_) {} openVitals(); });
         }
         const pactBtn = document.getElementById('hb-pact-btn');
         if (pactBtn && !pactBtn.dataset.hbBound) {
             pactBtn.dataset.hbBound = '1';
-            pactBtn.addEventListener('click', (e) => { e.stopPropagation(); openPactFromVoid(); });
+            pactBtn.addEventListener('click', (e) => { e.stopPropagation(); try { HeartbeatAudio.playClick(); } catch (_) {} openPactFromVoid(); });
         }
         const navBtn = document.getElementById('hb-nav-btn');
         if (navBtn && !navBtn.dataset.hbBound) {
             navBtn.dataset.hbBound = '1';
-            navBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleNavMenu(); });
+            navBtn.addEventListener('click', (e) => { e.stopPropagation(); try { HeartbeatAudio.playClick(); } catch (_) {} toggleNavMenu(); });
         }
+        document.querySelectorAll('.hb-subj-btn').forEach(btn => {
+            if (!btn.dataset.hbSfxBound) {
+                btn.dataset.hbSfxBound = '1';
+                btn.addEventListener('click', () => { try { HeartbeatAudio.playClick(); } catch (_) {} });
+            }
+        });
+        try { HeartbeatAudio.init(); } catch (_) {}
         document.addEventListener('click', (e) => {
             if (!_navMenuOpen) return;
             const menu = document.getElementById('heartbeat-nav-menu');
