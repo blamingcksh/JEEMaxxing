@@ -763,49 +763,59 @@ export function initAudioContext() {
     }
 }
 
-// Soothing singing-bowl style bell — replaces the old sharp 880Hz blip.
-// Pair of pure sines (A3 fundamental + perfect-fifth E4) with a slow
-// attack and ~2.2s exponential decay. Peak gain is well below the prior
-// 0.30 so the chime feels warm rather than piercing.
+// Heavy Underground Bunker Steel Gong — dark metallic resonance on Pact / block completion.
 export function playBell() {
     if (window.FX && !window.FX.wantSound()) return;
-    initAudioContext(); // ensure context exists and is resumed
+    initAudioContext();
     if (!bellAudioCtx) return;
 
-    // Duck the ambient bed so the chime cuts through the rain (etc.).
     try { if (window.FocusSound && window.FocusSound.duck) window.FocusSound.duck(); } catch (_) {}
+    try { if (window.HeartbeatAudio && window.HeartbeatAudio.duck) window.HeartbeatAudio.duck(1.6); } catch (_) {}
 
-    // FX exposes prefs.volume (not a vol() getter); 0.7 mirrors fx.js default.
-    // Bail when muted — exponentialRampToValueAtTime rejects 0-valued targets,
-    // and an inaudible chime doesn't need any oscillators scheduled.
     const vol = (window.FX && window.FX.prefs && typeof window.FX.prefs.volume === 'number')
         ? window.FX.prefs.volume : 0.7;
     if (vol <= 0) return;
     const floor = 0.0001;
     const now = bellAudioCtx.currentTime;
+
+    // 1. Iron hammer sub-impact
+    const sub = bellAudioCtx.createOscillator();
+    const subG = bellAudioCtx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(118, now);
+    sub.frequency.exponentialRampToValueAtTime(42, now + 0.25);
+    subG.gain.setValueAtTime(floor, now);
+    subG.gain.linearRampToValueAtTime(0.28 * vol, now + 0.008);
+    subG.gain.exponentialRampToValueAtTime(floor, now + 0.55);
+    sub.connect(subG).connect(bellAudioCtx.destination);
+    sub.start(now); sub.stop(now + 0.58);
+
+    // 2. Dark metallic FM steel gong (A2 fundamental + E3 fifth + inharmonic 2.756 overtone)
     const partials = [
-        { f: 220.00, g: 0.18, dur: 2.20 },   // A3 — warm fundamental
-        { f: 329.63, g: 0.10, dur: 2.45 },   // E4 — perfect-fifth shimmer, longer tail
+        { f: 110.00, ratio: 2.756, depth: 0.75, g: 0.19, dur: 2.35 },
+        { f: 164.81, ratio: 1.414, depth: 0.50, g: 0.12, dur: 2.60 },
     ];
     for (const p of partials) {
-        const osc = bellAudioCtx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = p.f;
+        const car = bellAudioCtx.createOscillator();
+        const mod = bellAudioCtx.createOscillator();
+        const mg = bellAudioCtx.createGain();
         const gain = bellAudioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(bellAudioCtx.destination);
+        car.type = 'sine'; mod.type = 'sine';
+        car.frequency.setValueAtTime(p.f, now);
+        mod.frequency.setValueAtTime(p.f * p.ratio, now);
+        mg.gain.setValueAtTime(p.f * p.depth, now);
+        mg.gain.exponentialRampToValueAtTime(1, now + p.dur * 0.75);
         gain.gain.setValueAtTime(floor, now);
-        gain.gain.exponentialRampToValueAtTime(p.g * vol, now + 0.06);       // soft attack
-        gain.gain.exponentialRampToValueAtTime(floor, now + p.dur);          // long exhale
-        osc.start(now);
-        osc.stop(now + p.dur + 0.05);
+        gain.gain.linearRampToValueAtTime(p.g * vol, now + 0.012);
+        gain.gain.exponentialRampToValueAtTime(floor, now + p.dur);
+        mod.connect(mg).connect(car.frequency);
+        car.connect(gain).connect(bellAudioCtx.destination);
+        car.start(now); mod.start(now);
+        car.stop(now + p.dur + 0.05); mod.stop(now + p.dur + 0.05);
     }
 }
 
-// Gentle ascending ignition chime played the moment a pomodoro / stopwatch
-// session starts. Two soft sines a fifth apart, second tone staggered so the
-// pair feels like an inhale rather than a ding — matches the soothing tone
-// of playBell() so start and stop share the same emotional register.
+// Heavy Vault Door Seal + Reactor Ignition played when starting a study / Pact block.
 export function playStartChime() {
     if (window.FX && !window.FX.wantSound()) return;
     initAudioContext();
@@ -816,24 +826,30 @@ export function playStartChime() {
     if (vol <= 0) return;
     const floor = 0.0001;
     const now = bellAudioCtx.currentTime;
-    const partials = [
-        { f: 261.63, g: 0.10, at: 0.00, dur: 1.10 }, // C4 — soft root
-        { f: 392.00, g: 0.10, at: 0.18, dur: 1.30 }, // G4 — staggered perfect-fifth up
-    ];
-    for (const p of partials) {
+    try { if (window.HeartbeatAudio && window.HeartbeatAudio.duck) window.HeartbeatAudio.duck(0.9); } catch (_) {}
+
+    // Deep pressurized power-up swell (A1 -> A2) through sweeping low-pass filter
+    const lp = bellAudioCtx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(160, now);
+    lp.frequency.exponentialRampToValueAtTime(680, now + 0.45);
+    lp.frequency.exponentialRampToValueAtTime(140, now + 1.15);
+    lp.Q.value = 3.0;
+    lp.connect(bellAudioCtx.destination);
+
+    [55.0, 110.0].forEach((freq, idx) => {
         const osc = bellAudioCtx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = p.f;
-        const gain = bellAudioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(bellAudioCtx.destination);
-        const startAt = now + p.at;
-        gain.gain.setValueAtTime(floor, startAt);
-        gain.gain.exponentialRampToValueAtTime(p.g * vol, startAt + 0.05);   // soft attack
-        gain.gain.exponentialRampToValueAtTime(floor, startAt + p.dur);      // gentle decay
-        osc.start(startAt);
-        osc.stop(startAt + p.dur + 0.05);
-    }
+        const g = bellAudioCtx.createGain();
+        osc.type = idx === 0 ? 'sawtooth' : 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.5, now + 0.55);
+        g.gain.setValueAtTime(floor, now + idx * 0.09);
+        g.gain.linearRampToValueAtTime((idx === 0 ? 0.16 : 0.12) * vol, now + idx * 0.09 + 0.04);
+        g.gain.exponentialRampToValueAtTime(floor, now + 1.15);
+        osc.connect(g).connect(lp);
+        osc.start(now + idx * 0.09);
+        osc.stop(now + 1.2);
+    });
 }
 
 // ── Interruption gate [AUDIT P0-1] ─────────────────────────────────────────

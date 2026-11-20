@@ -916,6 +916,19 @@ export function playFlatlineDrop() {
     osc.stop(now + 1.3);
 }
 
+/** Briefly duck the industrial ambience so heavy mechanical SFX cut cleanly through. */
+export function duck(secs = 0.75) {
+    if (!_enabled || !_ac || !_duckBus || _ac.state !== 'running') return;
+    try {
+        const now = _ac.currentTime;
+        const hold = Math.max(0.15, Math.min(3.0, Number(secs) || 0.75));
+        _duckBus.gain.cancelScheduledValues(now);
+        _duckBus.gain.setValueAtTime(_duckBus.gain.value, now);
+        _duckBus.gain.linearRampToValueAtTime(0.32, now + 0.025);
+        _duckBus.gain.exponentialRampToValueAtTime(1.0, now + hold);
+    } catch (_) {}
+}
+
 export function initHeartbeatAudio() {
     _syncButtonUI();
     if (typeof document === 'undefined') return;
@@ -953,6 +966,7 @@ export const HeartbeatAudio = {
     playChamberLoad,
     playBootIgnition,
     playFlatlineDrop,
+    duck,
 };
 
 try {
