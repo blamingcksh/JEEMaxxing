@@ -15,7 +15,7 @@ Offline-first JEE preparation app written in vanilla ES6 modules with zero build
   - First-time solves pay `100%`; due spaced-repetition repeats pay `50%`; non-due repeats pay `0%`.
   - Logging an error requires both a mistake tag and a `>= 30`-character failure note to pay `70%` immediately. The remaining `30%` stays locked until solved when due in the Vault.
 - **4:00 AM day rollover**: Daily quotas reset at `04:00` local time (`DAY_ROLLOVER_HOUR = 4`) so late-night sessions do not split across midnight.
-- **Flatline wipe (`0.0h`)**: Exhausting the 30-hour clock wipes `jeemaxxing_db`, `checkpoint-db`, and `localStorage`, pushes the empty state if cloud sync is linked, and stamps a monotonic `jeemax_wipe_epoch` that rejects pre-wipe backups and snapshots.
+- **Flatline wipe (`0.0h`)**: Exhausting the 30-hour clock wipes `jeemaxxing_db`, `checkpoint-db`, and `localStorage`, and stamps a monotonic `jeemax_wipe_epoch`. Backup export/import and Google Drive sync are disabled so data exists solely inside the live pulse.
 
 ## Manifold vitals & spectrum
 
@@ -33,12 +33,12 @@ Color stages interpolate continuously across 5 bands:
 
 - `index.html` — Application shell, void canvas stage, practice modal, error/lock-in dialogs
 - `heartbeat.js` / `heartbeat.css` — KLSR Aizawa Flux WebGL2 renderer (with 2D fallback), 30h clock, vitals UI, flatline wipe sequence
-- `storage.js` — `AppState`, IndexedDB (`jeemaxxing_db`), backup import/export, wipe-epoch guards, Google Drive sync
+- `storage.js` — `AppState`, IndexedDB (`jeemaxxing_db`), multi-tab sync, wipe-epoch guards (local-only; backups & Drive sync disabled)
 - `app.js` — Routing, question bank management, practice grader, difficulty calibration
 - `matrix.js` / `memory.js` — Spaced-repetition Error Vault and memory stability model
 - `pomodoro.js` / `shadow-duel.js` — Lock-In Pact timers, stopwatch caps, focus ledger
 - `mock.js` — Timed mock exam runner and auto-grading
-- `sw.js` — Service worker (`jeemax-v111`, network-first HTML + offline KaTeX cache)
+- `sw.js` — Service worker (`jeemax-v115`, network-first HTML + offline KaTeX cache)
 
 ## Running locally
 

@@ -236,6 +236,9 @@ const SR_MERGE_FIELDS = [
     'status',             // 'error' | 'solved' — the vault identity
     'errorReason',        // vault classification
     'firstAttemptResult', // locked first attempt (accuracy is immutable)
+    'dissectionNote',     // >=30c written error dissection note
+    '_hbVaultLocked30',   // Heartbeat 30% Vault unlock escrow flag
+    '_hbEverSolved',      // Heartbeat cross-day repeat-solve guard
 ];
 
 /**
@@ -731,6 +734,9 @@ async function _pushWipedCloudState(token, folderId, newEpoch) {
  * resurrected, and resets all live in-memory AppState.
  */
 export async function wipeAllAppData() {
+    if (_degradedBootRead) {
+        throw new Error('Storage boot read degraded — refusing destructive wipe to protect stored data.');
+    }
     // Cancel any queued coalesced save so it cannot overwrite the wipe.
     if (_saveTimer) {
         clearTimeout(_saveTimer);
@@ -823,6 +829,15 @@ async function _hashSection(value) {
 }
 
 export async function buildFullBackup() {
+    throw new Error('Backups are permanently disabled — data exists solely inside the live Heartbeat.');
+}
+
+export async function applyFullBackup() {
+    throw new Error('Backups are permanently disabled — data exists solely inside the live Heartbeat.');
+}
+
+// Legacy backup helpers retired (backups permanently disabled for Heartbeat stakes)
+async function _legacyBuildFullBackupDisabled() {
     flushSaves().catch(() => {});          // fold any pending coalesced save in
     await new Promise(r => setTimeout(r, 650)); // > 600ms coalesce window
     const [idbEntries, cpEntries] = await Promise.all([idbGetAllEntries(), cpdbGetAllEntries()]);
@@ -861,7 +876,7 @@ export async function buildFullBackup() {
  * manifest/cpdb) and v3. Never prunes: keys created after the backup stay.
  * Returns a verification report (see _verifyBackupAgainst).
  */
-export async function applyFullBackup(payload) {
+async function _legacyApplyFullBackupDisabled(payload) {
     if (!payload || payload[BACKUP_MARKER] !== true) throw new Error('Not a JEEMaxxing backup file');
     if (!Array.isArray(payload.idb)) throw new Error('Backup is missing its data section');
     const minEpoch = await getWipeEpochAsync();
@@ -886,7 +901,15 @@ export async function applyFullBackup(payload) {
         }
     }
     if (payload.ls && typeof payload.ls !== 'object') throw new Error('Backup prefs section is malformed');
-    await idbSetMany(payload.idb);
+    // Freeze Heartbeat pagehide/timer auto-saves while applying a backup so the
+    // outgoing page cannot overwrite the restored Heartbeat state on reload.
+    try { if (typeof window !== 'undefined') window.__jmaxBackupRestoring = true; } catch (_) {}
+    try {
+        await idbSetMany(payload.idb);
+    } catch (err) {
+        try { if (typeof window !== 'undefined') window.__jmaxBackupRestoring = false; } catch (_) {}
+        throw err;
+    }
     let cpRestored = 0, cpError = null;
     if (Array.isArray(payload.cpdb) && payload.cpdb.length) {
         try { await cpdbSetMany(payload.cpdb); cpRestored = payload.cpdb.length; }
@@ -906,6 +929,24 @@ export async function applyFullBackup(payload) {
     const report = await _verifyBackupAgainst(payload);
     report.cpKeys = cpRestored;
     if (cpError) report.mismatches.push('cpdb: write failed (' + cpError + ')');
+    // Rebase a living Heartbeat clock to now after integrity verification so
+    // migrating a valid backup older than 30h does not self-destruct on reload.
+    // Flatlined backups remain flatlined so dead saves cannot bypass permadeath.
+    try {
+        const hbEntry = payload.idb.find(([k]) => k === 'jeemax_heartbeat_v1');
+        let hbRaw = hbEntry && hbEntry[1] && typeof hbEntry[1] === 'object' ? { ...hbEntry[1] } : null;
+        if (!hbRaw && payload.ls && typeof payload.ls.jeemax_heartbeat_v1 === 'string') {
+            hbRaw = JSON.parse(payload.ls.jeemax_heartbeat_v1);
+        }
+        const hrs = hbRaw ? Number(hbRaw.reservoirHours) : NaN;
+        if (hbRaw && !hbRaw.flatlined && Number.isFinite(hrs) && hrs > 0) {
+            const now = Date.now();
+            hbRaw.lastTickAt = now;
+            hbRaw.highWaterMark = now;
+            try { localStorage.setItem('jeemax_heartbeat_v1', JSON.stringify(hbRaw)); } catch (_) {}
+            try { await idbSet('jeemax_heartbeat_v1', hbRaw); } catch (_) {}
+        }
+    } catch (_) {}
     return { keys: payload.idb.length, lsKeys: Object.keys(payload.ls || {}).length, ...report };
 }
 
@@ -1931,7 +1972,7 @@ export function waitForDriveToken(callback) {
 }
 
 export function handleDriveAuth() {
-    AppState.tokenClient.requestAccessToken({ prompt: 'consent' });
+    return;
 }
 
 export async function handleAuthExpiry() {
@@ -2237,6 +2278,9 @@ let _saveChain = Promise.resolve();
 // survive; this guarantees it also can't be silently DESTROYED.
 let _degradedBootRead = false;
 let _degradedBlockWarned = false;
+export function isDegradedBoot() {
+    return _degradedBootRead;
+}
 
 export function saveAllAsync() {
     if (!_saveTimer) {
@@ -2734,6 +2778,9 @@ export async function fetchMediaFromDrive(fileId, token) {
 }
 
 export async function cacheAllDriveImages() {
+    return;
+}
+async function _legacyCacheAllDriveImagesDisabled() {
   if (!AppState.driveAccessToken) { alert('Please connect Google Drive first.'); return; }
   showLoading('Caching all Drive images locally…');
   let fixed = 0;
@@ -2770,6 +2817,9 @@ export async function deleteMediaFromDrive(fileId, token) {
 // ==================== DRIVE INIT & HEARTBEAT ====================
 
 export async function initDrive() {
+    return;
+}
+async function _legacyInitDriveDisabled() {
     // Guard: Google Identity Services is loaded from a CDN. If that script
     // failed to load (network block, offline boot), google.accounts is
     // undefined — a TypeError here would abort initApp() before the math
@@ -2821,10 +2871,7 @@ export async function initDrive() {
 }
 
 export function setupSyncHeartbeat() {
-    if (syncIntervalId) clearInterval(syncIntervalId);
-    syncIntervalId = setInterval(() => {
-        if (AppState.driveAccessToken && AppState.cloudFolderId) loadStateFromCloud(true);
-    }, 120000);
+    if (syncIntervalId) { clearInterval(syncIntervalId); syncIntervalId = null; }
 }
 
 export async function isDriveTokenValid() {
@@ -2898,6 +2945,9 @@ export async function getCloudSolvedTotal() {
 }
 
 export async function executeUnifiedSync() {
+    return;
+}
+async function _legacyExecuteUnifiedSyncDisabled() {
     const valid = await isDriveTokenValid();
     if (!valid || !AppState.driveAccessToken || !AppState.cloudFolderId) {
         alert("Google Drive connection lost. Please reconnect in Settings."); return;
@@ -3088,7 +3138,10 @@ function _mergeEloFromCloud(cloudElo, cloudUpdatedAt) {
     // cloudAt < localAt (or equal stamps): local state is newer — keep local.
 }
 
-export async function syncStateToCloud(force = false) {
+export async function syncStateToCloud() {
+    return;
+}
+async function _legacySyncStateToCloudDisabled(force = false) {
     if (!AppState.driveAccessToken || !AppState.cloudFolderId) return;
     if (_cloudSyncInFlight) { _cloudSyncQueued = true; return; } // coalesce overlapping pushes
     if (!force) {
@@ -3194,7 +3247,10 @@ export async function syncStateToCloud(force = false) {
     }
 }
 
-export async function loadStateFromCloud(isBackground = false) {
+export async function loadStateFromCloud() {
+    return;
+}
+async function _legacyLoadStateFromCloudDisabled(isBackground = false) {
     if (!AppState.driveAccessToken || !AppState.cloudFolderId) return;
     if (!isBackground) showLoading("Syncing with cloud architecture...");
     const query = `name='system_state.json' and '${AppState.cloudFolderId}' in parents and trashed=false`;

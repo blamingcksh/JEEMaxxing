@@ -206,7 +206,7 @@ import {
 // ── Inline-onclick bridges: index.html buttons call these in global scope ──
 window.toggleDailyQueue = toggleDailyQueue;           // Daily Fix Queue button
 window.activateDailyQueue = activateDailyQueue;       // boot-flow force-arm
-window.cacheAllDriveImages = cacheAllDriveImages;     // Cache All Images button
+// Drive & full-backup bridges removed: data lives solely inside the live Heartbeat.
 
 // ── Full Backup / Restore bridges (Config → Data Vault) [AUDIT P1-1] · v3 ─
 // Export shows a per-section breakdown from the backup manifest so you can
@@ -265,82 +265,7 @@ function _describeBackup(payload) {
     } catch (_) { /* breakdown is cosmetic */ }
     return lines;
 }
-function _setVaultBusy(busy, label) {
-    try {
-        const btn = document.getElementById('backup-download-btn');
-        if (btn) {
-            btn.disabled = !!busy;
-            btn.style.opacity = busy ? '0.6' : '';
-            btn.style.pointerEvents = busy ? 'none' : '';
-            if (label) btn.textContent = label;
-        }
-    } catch (_) {}
-}
-window.exportFullBackup = async function () {
-    _setVaultBusy(true, '⏳ Packing backup…');
-    try {
-        const payload = await buildFullBackup();
-        const lines = _describeBackup(payload);
-        const ok = confirm(`Download full backup?\n\nThis file holds your ENTIRE grind:\n${lines.join('\n')}\n\nKeep it safe — restore it on any device.`);
-        if (!ok) return;
-        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `jeemaxxing-full-backup-${_backupStamp()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1500);
-        alert(`Backup downloaded (${payload.counts.idbKeys} data + ${payload.counts.cpdbKeys} checkpoint + ${payload.counts.lsKeys} prefs, ${_fmtBytes(payload.manifest.totalBytes)}).\n\nKeep this file safe — it is your ENTIRE grind: bank, images, ELO, mocks, history, checkpoint and settings.`);
-    } catch (e) {
-        console.error('[backup] export failed:', e);
-        alert('Backup failed: ' + (e && e.message ? e.message : e));
-    } finally {
-        _setVaultBusy(false, '⬇ Download Full Backup');
-    }
-};
-
-window.restoreFullBackup = function (fileInput) {
-    const file = fileInput && fileInput.files && fileInput.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-        try {
-            const payload = JSON.parse(reader.result);
-            if (!payload || payload.__jmaxBackup !== true) {
-                alert('That file is not a JEEMaxxing full backup.');
-                return;
-            }
-            // Safety net: auto-download the CURRENT state before overwriting.
-            try {
-                const safety = await buildFullBackup();
-                const sb = new Blob([JSON.stringify(safety)], { type: 'application/json;charset=utf-8' });
-                const surl = URL.createObjectURL(sb);
-                const sa = document.createElement('a');
-                sa.href = surl;
-                sa.download = `jeemaxxing-PRE-RESTORE-safety-${_backupStamp()}.json`;
-                document.body.appendChild(sa);
-                sa.click();
-                sa.remove();
-                setTimeout(() => URL.revokeObjectURL(surl), 1500);
-            } catch (_) { /* safety copy is best-effort */ }
-            const ok = confirm(`Restore backup from ${payload.exportedAt || 'unknown date'}?\n\nThis OVERWRITES everything on this device — bank, images, ELO, history, mocks, checkpoint, settings.\nA safety copy of the current state has just been downloaded.`);
-            if (!ok) return;
-            const res = await applyFullBackup(payload);
-            if (res.ok) {
-                alert(`Restored ${res.keys} data + ${res.cpKeys} checkpoint + ${res.lsKeys} prefs.\nVerified ${res.checked} sections — every fingerprint matched.\n\nThe app will now reload.`);
-            } else {
-                alert(`Restored ${res.keys} data + ${res.cpKeys} checkpoint + ${res.lsKeys} prefs, BUT ${res.mismatchCount} check(s) failed:\n${res.mismatches.join('\n')}\n\nA safety copy of the prior state was downloaded before this restore.`);
-            }
-            location.reload();
-        } catch (e) {
-            console.error('[backup] restore failed:', e);
-            alert('Restore failed: ' + (e && e.message ? e.message : e));
-        }
-    };
-    reader.readAsText(file);
-};
+// Backup export/restore UI removed permanently — no escape hatch from Heartbeat flatline.
 
 import { CNSLoad } from './cns-load.js';
 import { DeloadEngine } from './deload.js';
@@ -12228,6 +12153,7 @@ async function initApp() {
 
     await loadDataAsync();
     try { await Heartbeat.init(); } catch (e) { console.error('[initApp] Heartbeat boot fault:', e); }
+    const _bootFlatlined = !!(Heartbeat.isFlatlined && Heartbeat.isFlatlined());
     try { _renderCalibrationReport(); } catch (_) {}
     try { updateQuickLaunchAndArena(); } catch (_) {}
 
@@ -12305,7 +12231,7 @@ async function initApp() {
     const todayStr = todayLocalKey();
     const lastSettled = await _readLastSettledDay();
 
-    if (lastSettled !== todayStr) {
+    if (!_bootFlatlined && lastSettled !== todayStr) {
         await runNewDayCycle(todayStr);
     }
 
@@ -12315,10 +12241,12 @@ async function initApp() {
     // AppState.activeTargets is derived from the contract so every legacy
     // visual (heatmap, candles, streak) flows from v2 targets. Idempotent:
     // after a rollover, runNewDayCycle already created today's state. ──
-    try {
-        await Directive.ensureToday();
-        Directive.renderSettingsPanel();
-    } catch (e) { console.error('Directive boot fault:', e); }
+    if (!_bootFlatlined) {
+        try {
+            await Directive.ensureToday();
+            Directive.renderSettingsPanel();
+        } catch (e) { console.error('Directive boot fault:', e); }
+    }
     try {
         window.addEventListener('jmax:directive-updated', () => {
             updateUI().catch(() => {});
@@ -12326,12 +12254,14 @@ async function initApp() {
         });
     } catch (_) {}
 
-    restoreDailyCountsIntoSolved();
-    // Boot-perf [AUDIT P2]: don't block the rest of init (graph, HUD, widgets)
-    // on the save coalescer's 600ms trailing window. The commit still lands —
-    // pagehide/visibilitychange flush guarantees it — the UI just stops
-    // waiting for it.
-    saveAllAsync().catch(console.error);
+    if (!_bootFlatlined) {
+        restoreDailyCountsIntoSolved();
+        // Boot-perf [AUDIT P2]: don't block the rest of init (graph, HUD, widgets)
+        // on the save coalescer's 600ms trailing window. The commit still lands —
+        // pagehide/visibilitychange flush guarantees it — the UI just stops
+        // waiting for it.
+        saveAllAsync().catch(console.error);
+    }
     startMidnightRolloverWatcher();
 
     const visBeaker = document.getElementById('vis-beaker');
@@ -12380,16 +12310,7 @@ async function initApp() {
         if (typeof renderDailyVarianceHeatmap === 'function') renderDailyVarianceHeatmap();
     });
 
-    // Initialize Google Drive
-    try {
-        await initDrive();
-    } catch (err) {
-        // Drive auth is optional (Google Identity Services CDN may be blocked
-        // offline/on some networks). A failure here must NEVER kill boot or
-        // the global math watchdog — everything after this point is
-        // non-essential chrome.
-        console.warn('[initApp] Drive init skipped:', err);
-    }
+    // Google Drive sync permanently disabled (local-only Heartbeat storage).
 
     try {
         if (window.Bridge && typeof window.Bridge.renderBanner === 'function') {
@@ -13134,9 +13055,7 @@ window.renderLatexInElement = function () {
 window.answerMathHTML = answerMathHTML;
 window.processElementMath = processElementMath;
 window.deleteQuestion = deleteQuestion;
-window.handleDriveAuth = handleDriveAuth;
 window.updateStreakDisplay = updateStreakDisplay;
-window.executeUnifiedSync = executeUnifiedSync;
 window.toggleStopwatchMode = toggleStopwatchMode;
 window.toggleDynamicSubject = toggleDynamicSubject;
 window.changeStudySubject = changeStudySubject;

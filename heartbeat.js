@@ -20,6 +20,7 @@ import {
     normSubjKeyStrict,
     getEloBand,
     getDueStatus,
+    isDegradedBoot,
     wipeAllAppData,
 } from './storage.js';
 
@@ -35,6 +36,9 @@ export const FREEZE_IDLE_LIMIT_MS = 35 * 60 * 1000;     // 35m max without solve
 export const STOPWATCH_MAX_FREEZE_MS = 3 * 3600 * 1000; // 3h continuous freeze cap
 
 const STORAGE_KEY = 'jeemax_heartbeat_v1';
+const HB_SYNC_CHANNEL = 'jmax-hb-sync';
+const MIN_VALID_EPOCH_MS = 1704067200000; // 2024-01-01T00:00:00Z
+const MAX_SINGLE_JUMP_MS = 365 * 24 * 3600 * 1000; // 1 year sanity ceiling
 const SUBJECTS = ['physics', 'chemistry', 'maths'];
 const BOOT_HOLD_MS = 900;
 const BOOT_DRAIN_MS = 1600;
@@ -101,9 +105,19 @@ let _vitalsOpen = false;
 let _navMenuOpen = false;
 let _lastActivityAt = Date.now();
 let _freezeStartedAt = null;
+let _hbStorageDegraded = false;
+let _flatlinePromise = null;
+let _hbChannel = null;
+let _lastLivePerfMs = null;
+let _lastLiveWallMs = null;
+const _hbTabId = (typeof crypto !== 'undefined' && crypto && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID()
+    : 'hb-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
 
-// ── Persistence ─────────────────────────────────────────────────────────────
-function _saveState() {
+// ── Persistence & Multi-Tab Reconciliation ──────────────────────────────────
+function _saveState(opts = {}) {
+    if (_hbStorageDegraded || isDegradedBoot()) return;
+    if (typeof window !== 'undefined' && window.__jmaxBackupRestoring) return;
     try {
         if (typeof localStorage !== 'undefined') {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(_hb));
@@ -114,6 +128,19 @@ function _saveState() {
             idbSet(STORAGE_KEY, _hb).catch(() => {});
         }
     } catch (_) {}
+    if (!opts.silentBroadcast) {
+        try {
+            if (typeof BroadcastChannel !== 'undefined') {
+                if (!_hbChannel) _hbChannel = new BroadcastChannel(HB_SYNC_CHANNEL);
+                _hbChannel.postMessage({ type: 'hb-update', tabId: _hbTabId, state: _hb });
+            }
+        } catch (_) {}
+    }
+}
+
+function _isValidEpoch(v) {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= MIN_VALID_EPOCH_MS;
 }
 
 function _normalizeLoadedState(raw, now = Date.now()) {
@@ -130,14 +157,22 @@ function _normalizeLoadedState(raw, now = Date.now()) {
         chemistry: Math.max(0, Number(d.creditedSubjHours && d.creditedSubjHours.chemistry) || 0),
         maths: Math.max(0, Number(d.creditedSubjHours && d.creditedSubjHours.maths) || 0),
     };
+    // Guard against corrupt NaN / "" / non-finite reservoirHours turning into 0 and falsely wiping.
+    const rawHrs = raw.reservoirHours;
+    const parsedHrs = (rawHrs === null || rawHrs === undefined || rawHrs === '') ? NaN : Number(rawHrs);
+    const safeHrs = Number.isFinite(parsedHrs) ? clamp(parsedHrs, 0, MAX_RESERVOIR_HOURS) : MAX_RESERVOIR_HOURS;
+    const rawParity = raw.lastParity;
+    const parsedParity = (rawParity === null || rawParity === undefined || rawParity === '') ? NaN : Number(rawParity);
+    const safeParity = Number.isFinite(parsedParity) ? clamp(parsedParity, 0, 1) : 1.0;
+
     return {
         version: 1,
-        reservoirHours: clamp(Number(raw.reservoirHours ?? MAX_RESERVOIR_HOURS) || 0, 0, MAX_RESERVOIR_HOURS),
-        lastTickAt: Number(raw.lastTickAt) > 0 ? Number(raw.lastTickAt) : now,
-        highWaterMark: Number(raw.highWaterMark) > 0 ? Number(raw.highWaterMark) : now,
-        seededAt: Number(raw.seededAt) > 0 ? Number(raw.seededAt) : now,
-        lastParity: clamp(Number(raw.lastParity ?? 1.0) || 0, 0, 1),
-        flatlined: Boolean(raw.flatlined),
+        reservoirHours: safeHrs,
+        lastTickAt: _isValidEpoch(raw.lastTickAt) ? Number(raw.lastTickAt) : now,
+        highWaterMark: _isValidEpoch(raw.highWaterMark) ? Number(raw.highWaterMark) : now,
+        seededAt: _isValidEpoch(raw.seededAt) ? Number(raw.seededAt) : now,
+        lastParity: safeParity,
+        flatlined: Boolean(raw.flatlined) && safeHrs <= 0,
         daily: {
             date: typeof d.date === 'string' && d.date ? d.date : _safeTodayKey(),
             units: normUnits,
@@ -149,8 +184,74 @@ function _normalizeLoadedState(raw, now = Date.now()) {
     };
 }
 
-async function _loadState() {
-    const now = Date.now();
+function _dailyProgressScore(d) {
+    if (!d || typeof d !== 'object') return 0;
+    const u = d.units || {};
+    return (Number(u.physics) || 0) + (Number(u.chemistry) || 0) + (Number(u.maths) || 0) + (Number(d.pactMins) || 0) * 0.1;
+}
+
+function _mergeHeartbeatRecords(localRaw, remoteRaw, now = Date.now()) {
+    const a = _normalizeLoadedState(localRaw, now);
+    const b = _normalizeLoadedState(remoteRaw, now);
+
+    // Newer life (e.g. sibling tab clicked BEGIN FROM ZERO after flatline) always wins cleanly.
+    if (b.seededAt > a.seededAt + 500) return b;
+    if (a.seededAt > b.seededAt + 500) return a;
+
+    // Within the same life, if one side is genuinely flatlined at a newer-or-equal clock, flatline wins.
+    if (a.flatlined || b.flatlined) {
+        if (a.flatlined && !b.flatlined && b.highWaterMark > a.highWaterMark + 2000 && b.reservoirHours > 0) return b;
+        if (b.flatlined && !a.flatlined && a.highWaterMark > b.highWaterMark + 2000 && a.reservoirHours > 0) return a;
+        return a.flatlined ? a : b;
+    }
+
+    // Merge daily buckets upward so sibling solves/Pact blocks are never lost.
+    let daily;
+    if (b.daily.date > a.daily.date) {
+        daily = b.daily;
+    } else if (a.daily.date > b.daily.date) {
+        daily = a.daily;
+    } else {
+        const ids = Array.from(new Set([...a.daily.creditedIds, ...b.daily.creditedIds])).slice(-1500);
+        daily = {
+            date: a.daily.date,
+            units: {
+                physics: Math.max(a.daily.units.physics, b.daily.units.physics),
+                chemistry: Math.max(a.daily.units.chemistry, b.daily.units.chemistry),
+                maths: Math.max(a.daily.units.maths, b.daily.units.maths),
+            },
+            pactMins: Math.max(a.daily.pactMins, b.daily.pactMins),
+            creditedIds: ids,
+            creditedPactHours: Math.max(a.daily.creditedPactHours, b.daily.creditedPactHours),
+            creditedSubjHours: {
+                physics: Math.max(a.daily.creditedSubjHours.physics, b.daily.creditedSubjHours.physics),
+                chemistry: Math.max(a.daily.creditedSubjHours.chemistry, b.daily.creditedSubjHours.chemistry),
+                maths: Math.max(a.daily.creditedSubjHours.maths, b.daily.creditedSubjHours.maths),
+            },
+        };
+    }
+
+    // Align both records to the newer wall-clock instant before taking the max so
+    // a stale background tab can neither pull reservoir down nor inject phantom hours.
+    const maxTick = Math.max(a.lastTickAt, b.lastTickAt);
+    const maxHwm = Math.max(a.highWaterMark, b.highWaterMark);
+    const effA = Math.max(0, a.reservoirHours - Math.max(0, (maxTick - a.lastTickAt) / 3600000));
+    const effB = Math.max(0, b.reservoirHours - Math.max(0, (maxTick - b.lastTickAt) / 3600000));
+    const reservoirHours = Math.max(effA, effB);
+
+    return {
+        version: 1,
+        reservoirHours: clamp(reservoirHours, 0, MAX_RESERVOIR_HOURS),
+        lastTickAt: maxTick,
+        highWaterMark: maxHwm,
+        seededAt: Math.max(a.seededAt, b.seededAt),
+        lastParity: Math.max(a.lastParity, b.lastParity),
+        flatlined: false,
+        daily,
+    };
+}
+
+async function _readPersistedHeartbeat() {
     let lsRaw = null;
     try {
         if (typeof localStorage !== 'undefined') {
@@ -159,28 +260,43 @@ async function _loadState() {
         }
     } catch (_) {}
     let idbRaw = null;
+    let idbFailed = false;
     try {
         if (typeof indexedDB !== 'undefined') {
             idbRaw = await idbGet(STORAGE_KEY);
         }
-    } catch (_) {}
+    } catch (_) {
+        idbFailed = true;
+    }
+    return { lsRaw, idbRaw, idbFailed };
+}
 
-    // Pick whichever record reflects the newer clock / highWaterMark; if one is
-    // flatlined, flatline wins to block partial-clear save-scumming.
+async function _loadState() {
+    const now = Date.now();
+    const { lsRaw, idbRaw, idbFailed } = await _readPersistedHeartbeat();
+    _hbStorageDegraded = Boolean(idbFailed || isDegradedBoot());
+
     let chosen = null;
     if (lsRaw && idbRaw) {
-        if (lsRaw.flatlined || idbRaw.flatlined) {
-            chosen = lsRaw.flatlined ? lsRaw : idbRaw;
-        } else {
-            const lsHwm = Number(lsRaw.highWaterMark || lsRaw.lastTickAt || 0);
-            const idbHwm = Number(idbRaw.highWaterMark || idbRaw.lastTickAt || 0);
-            chosen = idbHwm > lsHwm ? idbRaw : lsRaw;
-        }
+        chosen = _mergeHeartbeatRecords(lsRaw, idbRaw, now);
     } else {
         chosen = idbRaw || lsRaw;
     }
     _hb = _normalizeLoadedState(chosen, now);
-    _saveState();
+    _saveState({ silentBroadcast: true });
+}
+
+function _adoptRemoteState(remoteRaw) {
+    if (!remoteRaw || typeof remoteRaw !== 'object') return;
+    const now = Date.now();
+    const merged = _mergeHeartbeatRecords(_hb, remoteRaw, now);
+    _hb = merged;
+    if (!_hb.flatlined && _hb.reservoirHours > 0 && _flatlineActive && !_flatlineWipeDone) {
+        _flatlineActive = false;
+        const fl = typeof document !== 'undefined' ? document.getElementById('heartbeat-flatline-overlay') : null;
+        if (fl) fl.hidden = true;
+    }
+    _refreshHudAndVitals();
 }
 
 // ── Freeze & Real-Time Wall-Clock Drain ─────────────────────────────────────
@@ -223,29 +339,67 @@ function _ensureTodayBucket() {
     _hb.daily = _freshDaily(today);
 }
 
-export function tickClock(nowMs = Date.now()) {
+export function tickClock(nowMs = Date.now(), opts = {}) {
     _ensureTodayBucket();
+    if (!Number.isFinite(nowMs) || nowMs < MIN_VALID_EPOCH_MS) return;
+    if (!Number.isFinite(_hb.reservoirHours)) _hb.reservoirHours = MAX_RESERVOIR_HOURS;
+
     if (_hb.flatlined) {
-        if (!_flatlineActive) _enterFlatlineSequence();
+        if (!_flatlineActive && !_hbStorageDegraded && !isDegradedBoot()) {
+            _flatlinePromise = _enterFlatlineSequence();
+        }
         return;
     }
-    const hwm = Math.max(_hb.highWaterMark || nowMs, _hb.lastTickAt || nowMs);
+
+    // Live OS/NTP clock-jump guard: if wall clock leaps >2h while the tab is visibly open
+    // and monotonic performance.now() only advanced <60s, ignore the spike instead of wiping.
+    if (opts && opts.fromLiveTimer && typeof document !== 'undefined' && !document.hidden && typeof performance !== 'undefined') {
+        const perfNow = performance.now();
+        if (_lastLiveWallMs !== null && _lastLivePerfMs !== null) {
+            const wallDelta = nowMs - _lastLiveWallMs;
+            const perfDelta = perfNow - _lastLivePerfMs;
+            if (wallDelta > 2 * 3600000 && perfDelta >= 0 && perfDelta < 60000) {
+                console.warn('[heartbeat] Ignored anomalous live OS clock jump:', Math.round(wallDelta / 60000), 'mins');
+                _lastLiveWallMs = nowMs;
+                _lastLivePerfMs = perfNow;
+                return;
+            }
+        }
+        _lastLiveWallMs = nowMs;
+        _lastLivePerfMs = perfNow;
+    }
+
+    const lastTick = _isValidEpoch(_hb.lastTickAt) ? _hb.lastTickAt : nowMs;
+    const hwm = Math.max(_isValidEpoch(_hb.highWaterMark) ? _hb.highWaterMark : nowMs, lastTick);
     // Anti-rollback guard: system clock moving backward yields 0 elapsed hours, never negative drain.
     const effNow = Math.max(nowMs, hwm);
-    const elapsedHours = Math.max(0, (effNow - (_hb.lastTickAt || effNow)) / 3600000);
-    if (!isDecayFrozen(effNow) && elapsedHours > 0) {
-        _hb.reservoirHours = Math.max(0, _hb.reservoirHours - elapsedHours);
+    const deltaMs = Math.max(0, effNow - lastTick);
+    // Absurd forward jump guard (>1 year, e.g. CMOS reset to 2099): refuse to wipe on bogus clock.
+    if (deltaMs > MAX_SINGLE_JUMP_MS) {
+        console.warn('[heartbeat] Ignored absurd >1yr clock jump; refusing false flatline.');
+        return;
     }
+
+    const elapsedHours = deltaMs / 3600000;
+    const nextHours = (!isDecayFrozen(effNow) && elapsedHours > 0)
+        ? Math.max(0, _hb.reservoirHours - elapsedHours)
+        : _hb.reservoirHours;
+
+    if (nextHours <= 0) {
+        if (_hbStorageDegraded || isDegradedBoot()) {
+            console.warn('[heartbeat] Storage degraded — refusing destructive flatline wipe.');
+            return;
+        }
+        // Defer persisting flatlined:true until _enterFlatlineSequence verifies
+        // against persisted storage (prevents a stale background tab from falsely wiping).
+        _flatlinePromise = _enterFlatlineSequence(effNow);
+        return;
+    }
+
+    _hb.reservoirHours = nextHours;
     _hb.lastTickAt = effNow;
     _hb.highWaterMark = effNow;
 
-    if (_hb.reservoirHours <= 0) {
-        _hb.reservoirHours = 0;
-        _hb.flatlined = true;
-        _saveState();
-        _enterFlatlineSequence();
-        return;
-    }
     if (elapsedHours > 0.0002) {
         _saveState();
     }
@@ -2020,13 +2174,53 @@ function _startBootIntro() {
     }, BOOT_TOTAL_MS);
 }
 
-async function _enterFlatlineSequence() {
-    if (_flatlineActive) return;
+async function _enterFlatlineSequence(checkNowMs = Date.now()) {
+    if (_flatlineActive) return _flatlinePromise;
+    if (_hbStorageDegraded || isDegradedBoot()) {
+        console.warn('[heartbeat] Storage degraded — flatline wipe aborted.');
+        return false;
+    }
     _flatlineActive = true;
     _flatlineWipeDone = false;
+
+    // Pre-wipe verification: re-read localStorage & IDB BEFORE wiping so a stale
+    // background tab can never trigger a false wipe when another tab is alive.
+    try {
+        const { lsRaw, idbRaw, idbFailed } = await _readPersistedHeartbeat();
+        if (idbFailed || isDegradedBoot()) {
+            _hbStorageDegraded = true;
+            _flatlineActive = false;
+            console.warn('[heartbeat] Pre-wipe IDB read failed — aborting wipe to protect data.');
+            return false;
+        }
+        const persistedRaw = (lsRaw && idbRaw)
+            ? _mergeHeartbeatRecords(lsRaw, idbRaw, checkNowMs)
+            : (idbRaw || lsRaw);
+        if (persistedRaw) {
+            const p = _normalizeLoadedState(persistedRaw, checkNowMs);
+            if (!p.flatlined && p.reservoirHours > 0) {
+                const eff = Math.max(checkNowMs, p.highWaterMark, p.lastTickAt);
+                const elapsed = Math.max(0, (eff - p.lastTickAt) / 3600000);
+                const remaining = p.reservoirHours - elapsed;
+                if (remaining > 0.001) {
+                    _hb = { ...p, reservoirHours: clamp(remaining, 0, MAX_RESERVOIR_HOURS), lastTickAt: eff, highWaterMark: eff, flatlined: false };
+                    _flatlineActive = false;
+                    _saveState({ silentBroadcast: true });
+                    _refreshHudAndVitals();
+                    return false;
+                }
+            }
+        }
+    } catch (err) {
+        console.warn('[heartbeat] Pre-wipe check fault — aborting wipe to protect data:', err);
+        _flatlineActive = false;
+        return false;
+    }
+
     _flatlineStartedAt = Date.now();
     _hb.flatlined = true;
     _hb.reservoirHours = 0;
+    _saveState();
 
     if (typeof document !== 'undefined') {
         _ensureDomContainers();
@@ -2049,6 +2243,7 @@ async function _enterFlatlineSequence() {
             flatlined: true,
         };
         _saveState();
+        try { if (typeof indexedDB !== 'undefined') await idbSet(STORAGE_KEY, _hb); } catch (_) {}
     } catch (err) {
         console.error('[heartbeat] wipe fault:', err);
     }
@@ -2060,15 +2255,21 @@ async function _enterFlatlineSequence() {
         if (msg) msg.textContent = 'ALL DATA TERMINATED. Pre-wipe backups and cloud snapshots are permanently locked out.';
         if (btn) { btn.disabled = false; btn.textContent = 'BEGIN FROM ZERO'; }
     }
+    return true;
 }
 
 export async function resetFromFlatline() {
     if (!_flatlineWipeDone && _flatlineActive) return;
     const now = Date.now();
+    const prevSeeded = Number(_hb && _hb.seededAt) || 0;
     _flatlineActive = false;
     _flatlineWipeDone = false;
+    _flatlinePromise = null;
     _hb = _freshHeartbeatState(now);
+    // Guarantee strictly newer life epoch (>500ms) so an immediate reload can never merge back into the dead flatline record.
+    _hb.seededAt = Math.max(now, prevSeeded + 1000);
     _saveState();
+    try { if (typeof indexedDB !== 'undefined') await idbSet(STORAGE_KEY, _hb); } catch (_) {}
 
     if (typeof document !== 'undefined') {
         const fl = document.getElementById('heartbeat-flatline-overlay');
@@ -2182,14 +2383,35 @@ export async function initHeartbeat() {
             }
         });
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
+            if (document.hidden) {
+                _saveState({ silentBroadcast: true });
+                _lastLivePerfMs = null;
+                _lastLiveWallMs = null;
+            } else {
+                _lastLivePerfMs = typeof performance !== 'undefined' ? performance.now() : null;
+                _lastLiveWallMs = Date.now();
                 tickClock();
                 _refreshHudAndVitals();
             }
         });
         if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
             window.addEventListener('focus', () => { tickClock(); _refreshHudAndVitals(); });
+            window.addEventListener('pagehide', () => { _saveState({ silentBroadcast: true }); });
+            window.addEventListener('storage', (e) => {
+                if (!e || e.key !== STORAGE_KEY || !e.newValue) return;
+                try { _adoptRemoteState(JSON.parse(e.newValue)); } catch (_) {}
+            });
         }
+        try {
+            if (typeof BroadcastChannel !== 'undefined') {
+                if (!_hbChannel) _hbChannel = new BroadcastChannel(HB_SYNC_CHANNEL);
+                _hbChannel.onmessage = (e) => {
+                    const msg = e && e.data;
+                    if (!msg || msg.type !== 'hb-update' || msg.tabId === _hbTabId) return;
+                    _adoptRemoteState(msg.state);
+                };
+            }
+        } catch (_) {}
         let _lastDomTouch = 0;
         const _onUserTouch = () => {
             const t = Date.now();
@@ -2200,6 +2422,12 @@ export async function initHeartbeat() {
         };
         document.addEventListener('pointerdown', _onUserTouch, { passive: true });
         document.addEventListener('keydown', _onUserTouch, { passive: true });
+        document.addEventListener('wheel', _onUserTouch, { passive: true });
+        document.addEventListener('touchstart', _onUserTouch, { passive: true });
+    }
+
+    if (_flatlinePromise) {
+        try { await _flatlinePromise; } catch (_) {}
     }
 
     if (!_hb.flatlined && _hb.reservoirHours > 0) {
@@ -2210,8 +2438,10 @@ export async function initHeartbeat() {
 
     if (_clockTimer) clearInterval(_clockTimer);
     if (typeof setInterval === 'function') {
+        _lastLivePerfMs = typeof performance !== 'undefined' ? performance.now() : null;
+        _lastLiveWallMs = Date.now();
         _clockTimer = setInterval(() => {
-            tickClock();
+            tickClock(Date.now(), { fromLiveTimer: true });
             _refreshHudAndVitals();
         }, 1000);
     }
@@ -2228,6 +2458,7 @@ export const Heartbeat = {
     recordPactBlock,
     touchActivity,
     isDecayFrozen,
+    isFlatlined: () => Boolean(_hb.flatlined || _flatlineActive),
     openVitals,
     closeVitals,
     toggleNavMenu,

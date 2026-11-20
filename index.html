@@ -165,12 +165,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                      after every graded solve and on every dashboard entry. -->
                 <div class="badge calib-strip" id="calibration-report" aria-live="polite"
                      title="Calibration Report · does your confidence match your accuracy? Rolling last 60 graded solves."><span class="calib-kicker">CALIBRATION</span><span class="calib-warmup">loading…</span></div>
-                <div class="header-actions">
-                    <div class="badge sync-cluster" title="Cloud sync">
-                        <button class="manual-sync-btn" id="manual-sync-btn" onclick="executeUnifiedSync()" aria-label="Force cloud sync" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.4-4.8"/><path d="M4.2 3.8v3.6h3.6"/><path d="M4 13a8 8 0 0 0 14.4 4.8"/><path d="M19.8 20.2v-3.6h-3.6"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" opacity="0.65"/></svg></button>
-                        <span class="val" id="sync-sub-text">Cloud Link</span>
-                    </div>
-                </div>
+                <div class="header-actions"></div>
             </div>
         </header>
 
@@ -558,30 +553,6 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 
             <div class="settings-grid">
 
-                <!-- Cloud Storage -->
-                <div class="settings-card">
-                    <h3><svg class="g"><use href="#g-cloud"></use></svg>Cloud Storage</h3>
-                    <p class="box-desc">Link Google Drive to go unlimited. Data syncs to 'JEEMaxxing_Cloud'. No more storage caps.</p>
-                    <button id="btn-drive-auth" class="btn btn-primary" onclick="handleDriveAuth()">Link Google Drive</button>
-                    <div id="drive-status" class="drive-ok" style="display:none">✔ Cloud Sync Locked In</div>
-                    <button class="btn btn-secondary" onclick="cacheAllDriveImages()"><svg class="g"><use href="#g-archive"></use></svg> Cache All Images Locally</button>
-                </div>
-
-                <!-- Data Vault — full backup / restore [AUDIT P1-1] -->
-                <div class="settings-card">
-                    <h3><svg class="g"><use href="#g-archive"></use></svg>Data Vault</h3>
-                    <img class="settings-card-watermark" src="atlas/folio-i-horizon.svg" alt="" aria-hidden="true" loading="lazy">
-                    <p class="box-desc">One-file backup of EVERYTHING — question bank, images, ELO, mocks, solve history, checkpoint lockdown and settings. Every section is fingerprinted, and restore verifies each one. Do this regularly; cloud sync is not a backup.</p>
-                    <button id="backup-download-btn" class="btn btn-primary" onclick="exportFullBackup()"><svg class="g"><use href="#g-download"></use></svg> Download Full Backup</button>
-                    <div class="file-upload-wrapper" style="margin-top:10px">
-                        <label class="file-upload-label compact-upload" for="restore-backup-input">
-                            <span class="file-icon"><svg class="g"><use href="#g-upload"></use></svg></span>
-                            <span class="file-text">Restore From Backup…</span>
-                        </label>
-                        <input type="file" id="restore-backup-input" accept="application/json,.json" style="display:none" onchange="restoreFullBackup(this); this.value='';">
-                    </div>
-                </div>
-
                 <!-- Profile -->
                 <div class="settings-card">
                     <h3><svg class="g"><use href="#g-key"></use></svg>Your Build</h3>
@@ -936,8 +907,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         </div>
         <button class="btn btn-primary" onclick="window.exportSmartReport()" style="width:100%;margin-top:12px;"><svg class="g"><use href="#g-download"></use></svg> Download Smart Report (.txt)</button>
         <details class="rp-advanced">
-            <summary><svg class="g"><use href="#g-folder"></use></svg> Advanced: raw JSON export &amp; maintenance</summary>
-            <button class="btn btn-secondary" onclick="window.exportRawBankJson()" style="width:100%;margin-top:8px;"><svg class="g"><use href="#g-doc"></use></svg> Raw Bank JSON (.json)</button>
+            <summary><svg class="g"><use href="#g-folder"></use></svg> Advanced: maintenance</summary>
             <button class="btn btn-danger" onclick="window.purgeDuplicateQuestions()" style="width:100%;margin-top:8px;"><svg class="g"><use href="#g-trash"></use></svg> Purge Duplicate Questions</button>
         </details>
     </div>
@@ -1343,10 +1313,6 @@ window.clearMatrixFilters = function () {
 <!-- KaTeX engine (window.katex) — vendored locally; must precede the app module.
      onerror flags a failed load so app.js can inject a CDN fallback copy. -->
 <script defer src="./vendor/katex/katex.min.js" onerror="window.__katexLoadFailed=true;"></script>
-<!-- Google Identity Services — storage.js initDrive() needs google.accounts.oauth2.
-     PERF: async (not defer) — a network CDN script must never sit on the
-     DOMContentLoaded critical path; initDrive() waits briefly for it. -->
-<script async src="https://accounts.google.com/gsi/client"></script>
 <!-- Main controller module — imports storage / pomodoro / matrix -->
 <script type="module" src="./app.js"></script>
 <!-- 4-Pillar Accountability Checkpoint System — self-mounting (hub, control
