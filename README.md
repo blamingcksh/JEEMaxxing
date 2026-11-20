@@ -38,7 +38,7 @@ Color stages interpolate continuously across 5 bands:
 - `matrix.js` / `memory.js` — Spaced-repetition Error Vault and memory stability model
 - `pomodoro.js` / `shadow-duel.js` — Lock-In Pact timers, stopwatch caps, focus ledger
 - `mock.js` — Timed mock exam runner and auto-grading
-- `sw.js` — Service worker (`jeemax-v118`, network-first HTML + offline KaTeX cache)
+- `sw.js` — Service worker (`jeemax-v119`, network-first HTML + offline KaTeX cache)
 
 ## Running locally
 

@@ -64,8 +64,13 @@ function _saveEnabled(on) {
     } catch (_) {}
 }
 
+const SILENT_WAV_URI = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
 let _enabled = _loadEnabled();
 let _ac = null;
+let _graphBuilt = false;
+let _iosUnlockAudio = null;
+let _iosSessionActivated = false;
 let _running = false;
 let _masterGain = null;
 let _wallFilter = null;
@@ -84,6 +89,76 @@ let _noiseBuffer = null;
 let _crispNoiseBuffer = null;
 let _boundGestures = false;
 let _lastVitals = null;
+
+/**
+ * iPadOS / iOS WebKit Safari & PWA unlock:
+ *   1. Route audio through Media/Playback session so iPad Silent Mode does NOT mute Web Audio.
+ *   2. Play a 1-sample silent HTML <audio> once on user gesture for pre-iPadOS-17 Safari.
+ */
+function _activateIosAudioSession() {
+    try {
+        if (typeof navigator !== 'undefined' && navigator.audioSession && 'type' in navigator.audioSession) {
+            if (navigator.audioSession.type !== 'playback') {
+                navigator.audioSession.type = 'playback';
+            }
+        }
+    } catch (_) {}
+
+    if (_iosSessionActivated || typeof document === 'undefined') return;
+    try {
+        if (!_iosUnlockAudio) {
+            const el = document.createElement('audio');
+            el.setAttribute('playsinline', '');
+            el.setAttribute('webkit-playsinline', '');
+            el.preload = 'auto';
+            el.src = SILENT_WAV_URI;
+            el.volume = 0.01;
+            _iosUnlockAudio = el;
+        }
+        const p = _iosUnlockAudio.play();
+        if (p && typeof p.then === 'function') {
+            p.then(() => { _iosSessionActivated = true; }).catch(() => {});
+        } else {
+            _iosSessionActivated = true;
+        }
+    } catch (_) {}
+}
+
+function _playSilentPulse(ac) {
+    try {
+        const b = ac.createBuffer(1, 1, 22050);
+        const s = ac.createBufferSource();
+        s.buffer = b;
+        s.connect(ac.destination);
+        s.start(0);
+    } catch (_) {}
+}
+
+function _ensureContext() {
+    if (_ac) return _ac;
+    if (typeof window === 'undefined') return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    let ac;
+    try { ac = new AudioCtx(); } catch (_) { return null; }
+    _ac = ac;
+    try {
+        ac.addEventListener('statechange', () => {
+            if (_ac !== ac) return;
+            if (ac.state === 'running' && _enabled && !(typeof document !== 'undefined' && document.hidden)) {
+                _buildGraph();
+                if (!_running) {
+                    _startLoops();
+                    playBootIgnition();
+                } else {
+                    _applyHealthModulation();
+                }
+                _syncButtonUI();
+            }
+        });
+    } catch (_) {}
+    return ac;
+}
 
 function _ensureNoiseBuffers(ac) {
     if (_noiseBuffer && _noiseBuffer.sampleRate === ac.sampleRate) return;
@@ -159,14 +234,10 @@ function _isVoidActive() {
 }
 
 function _buildGraph() {
-    if (_ac) return _ac;
-    if (typeof window === 'undefined') return null;
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return null;
-
-    let ac;
-    try { ac = new AudioCtx(); } catch (_) { return null; }
-    _ac = ac;
+    const ac = _ensureContext();
+    if (!ac) return null;
+    if (_graphBuilt) return ac;
+    _graphBuilt = true;
     _ensureNoiseBuffers(ac);
 
     // Master chain:
@@ -174,17 +245,17 @@ function _buildGraph() {
     //   iPad-friendly Mid-Bass EQ -> Dynamics Limiter -> _masterGain -> Destination
     const warmthEq = ac.createBiquadFilter();
     warmthEq.type = 'peaking';
-    warmthEq.frequency.value = 112;
-    warmthEq.Q.value = 1.1;
-    warmthEq.gain.value = 3.2; // makes muffled bass felt on iPad speakers without mud
+    warmthEq.frequency.value = 128;
+    warmthEq.Q.value = 1.0;
+    warmthEq.gain.value = 4.2; // makes muffled bass clearly felt on iPad speakers without mud
 
     const subGuard = ac.createBiquadFilter();
     subGuard.type = 'highpass';
     subGuard.frequency.value = 32; // stops inaudible DC rumble from eating limiter headroom
 
     const tapeDrive = ac.createWaveShaper();
-    tapeDrive.curve = _makeAnalogTapeCurve(14);
-    tapeDrive.oversample = '2x';
+    tapeDrive.curve = _makeAnalogTapeCurve(16);
+    try { tapeDrive.oversample = '2x'; } catch (_) {}
 
     const comp = ac.createDynamicsCompressor();
     comp.threshold.value = -13;
@@ -656,18 +727,19 @@ function _applyHealthModulation() {
     if (_flatlineGain) _flatlineGain.gain.setTargetAtTime(0.0001, now, 0.15);
 
     // Master volume: rich & immersive in Void, smoothly muffled & ducked while solving/Pact
-    const targetVol = inVoid ? 0.54 : (v.frozen ? 0.25 : 0.30);
+    // Calibrated so low-end & harmonics stay clearly audible on iPad speakers
+    const targetVol = inVoid ? 0.64 : (v.frozen ? 0.32 : 0.38);
     _masterGain.gain.setTargetAtTime(targetVol, now, 0.28);
 
     // Concrete wall filter opens up in Void, clamps down "behind glass" in study chamber
     const healthFrac = Math.max(0, Math.min(1, v.reservoirHours / 30));
-    const baseCutoff = inVoid ? (220 + healthFrac * 290) : (145 + healthFrac * 95);
+    const baseCutoff = inVoid ? (270 + healthFrac * 370) : (190 + healthFrac * 125);
     _wallFilter.frequency.setTargetAtTime(baseCutoff, now, 0.35);
-    _wallFilter.Q.setTargetAtTime(v.reservoirHours < 8 ? 3.4 : 1.4, now, 0.35);
+    _wallFilter.Q.setTargetAtTime(v.reservoirHours < 8 ? 3.2 : 1.35, now, 0.35);
 
-    if (_droneGain) _droneGain.gain.setTargetAtTime(inVoid ? 0.16 : 0.11, now, 0.3);
+    if (_droneGain) _droneGain.gain.setTargetAtTime(inVoid ? 0.19 : 0.13, now, 0.3);
     if (_humGain) {
-        const buzz = v.reservoirHours < 3 ? 0.06 : (v.reservoirHours < 8 ? 0.038 : 0.02);
+        const buzz = v.reservoirHours < 3 ? 0.065 : (v.reservoirHours < 8 ? 0.04 : 0.022);
         _humGain.gain.setTargetAtTime(buzz, now, 0.3);
     }
 }
@@ -725,11 +797,24 @@ function _syncButtonUI() {
 
 export async function unlockAudio() {
     if (!_enabled) return false;
-    const ac = _buildGraph();
+    // 1. Synchronous iPadOS / iOS audio-session & context resume BEFORE any heavy work
+    //    so WebKit never drops the user-activation token.
+    _activateIosAudioSession();
+    const ac = _ensureContext();
     if (!ac) return false;
-    try {
-        if (ac.state === 'suspended') await ac.resume();
-    } catch (_) {}
+
+    let resumePromise = null;
+    if (ac.state !== 'running') {
+        try { resumePromise = ac.resume(); } catch (_) {}
+        _playSilentPulse(ac);
+    }
+
+    // 2. Build DSP graph (idempotent)
+    _buildGraph();
+
+    if (resumePromise) {
+        try { await resumePromise; } catch (_) {}
+    }
     if (ac.state === 'running') {
         if (!_running) {
             _startLoops();
@@ -929,8 +1014,46 @@ export function duck(secs = 0.75) {
     } catch (_) {}
 }
 
+function _bindUnlockGestures() {
+    if (_boundGestures || typeof document === 'undefined') return;
+    _boundGestures = true;
+
+    const onGesture = (e) => {
+        if (!_enabled) return;
+        // Let the explicit AUDIO/MUTED button handle its own toggle without pre-unlocking
+        const target = e && e.target;
+        if (target && typeof target.closest === 'function' && target.closest('#hb-audio-btn')) return;
+        if (!_ac || _ac.state !== 'running' || !_running) {
+            unlockAudio();
+        }
+    };
+
+    // Capture phase + touchend/click are mandatory on iPadOS Safari & Home-Screen PWAs
+    // (WebKit ignores pointerdown/touchstart for Web Audio unlock, and UI buttons call stopPropagation).
+    document.addEventListener('touchend', onGesture, { capture: true, passive: true });
+    document.addEventListener('click', onGesture, { capture: true, passive: true });
+    document.addEventListener('pointerdown', onGesture, { capture: true, passive: true });
+    document.addEventListener('touchstart', onGesture, { capture: true, passive: true });
+    document.addEventListener('keydown', onGesture, { capture: true, passive: true });
+
+    const onForeground = () => {
+        if (_enabled && _ac && !(typeof document !== 'undefined' && document.hidden)) {
+            if (_ac.state !== 'running') {
+                try { _ac.resume().catch(() => {}); } catch (_) {}
+            }
+        }
+        _applyHealthModulation();
+    };
+    document.addEventListener('visibilitychange', onForeground);
+    if (typeof window !== 'undefined') {
+        window.addEventListener('pageshow', onForeground);
+        window.addEventListener('focus', onForeground);
+    }
+}
+
 export function initHeartbeatAudio() {
     _syncButtonUI();
+    _bindUnlockGestures();
     if (typeof document === 'undefined') return;
 
     const audioBtn = document.getElementById('hb-audio-btn');
@@ -941,20 +1064,10 @@ export function initHeartbeatAudio() {
             toggleAudio();
         });
     }
-
-    if (!_boundGestures) {
-        _boundGestures = true;
-        const onFirstGesture = () => {
-            if (_enabled) unlockAudio();
-        };
-        document.addEventListener('pointerdown', onFirstGesture, { passive: true });
-        document.addEventListener('touchstart', onFirstGesture, { passive: true });
-        document.addEventListener('keydown', onFirstGesture, { passive: true });
-        document.addEventListener('visibilitychange', () => {
-            _applyHealthModulation();
-        });
-    }
 }
+
+// Bind unlock listeners immediately at module load so early taps during boot are never missed.
+_bindUnlockGestures();
 
 export const HeartbeatAudio = {
     init: initHeartbeatAudio,

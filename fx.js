@@ -51,16 +51,23 @@
       if (!C) return null;
       try { ac = new C(); } catch (e) { return null; }
     }
-    if (ac.state === 'suspended') { try { ac.resume(); } catch (e) {} }
+    if (ac.state !== 'running') { try { ac.resume(); } catch (e) {} }
     return ac;
   }
   // Unlock / resume on first user gesture (autoplay policy). Sound-off users
   // never construct the context at all — a live AudioContext pins an audio
   // hardware session (measurable battery cost on mobile) while producing
   // nothing; enabling sound later lazily builds it on the first tone.
-  function unlock() { if (!prefs.sound && !wantMarioSound()) return; var c = ctx(); if (c && c.state === 'suspended') { try { c.resume(); } catch (e) {} } }
-  document.addEventListener('pointerdown', unlock, { passive: true });
-  document.addEventListener('keydown', unlock, { passive: true });
+  function unlock() {
+    if (!prefs.sound && !wantMarioSound()) return;
+    try { if (navigator.audioSession && 'type' in navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) {}
+    var c = ctx();
+    if (c && c.state !== 'running') { try { c.resume(); } catch (e) {} }
+  }
+  document.addEventListener('touchend', unlock, { capture: true, passive: true });
+  document.addEventListener('click', unlock, { capture: true, passive: true });
+  document.addEventListener('pointerdown', unlock, { capture: true, passive: true });
+  document.addEventListener('keydown', unlock, { capture: true, passive: true });
 
   function tone(o) {
     var c = ctx(); if (!c) return;
