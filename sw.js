@@ -213,7 +213,9 @@
 // v120 - SPOTIFY CONNECT DECK: zero-backend PKCE OAuth, Connect playback,
 //        playlists/library/queue/search, 4 quick-pins, Practice haze &
 //        Void Drown Mode, plus iPadOS-safe Heartbeat Audio yield handoff.
-const VERSION = 'jeemax-v120';
+// v121 - PRACTICE HAZE & CHROME FADE: album-art colour buff on attached
+//        Practice/Vault diagrams + complete vanish fade on micro-pill.
+const VERSION = 'jeemax-v121';
 
 const SHELL = [
   './',

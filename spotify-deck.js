@@ -205,6 +205,8 @@ let _pollInFlight = false;
 let _lastHeroSignature = '';
 let _lastTabSignature = '';
 let _lastDrownSignature = '';
+let _lastVoidSignature = '';
+let _lastFloatSignature = '';
 
 function _isVoidActive() {
     return typeof document !== 'undefined' && document.body && document.body.classList.contains('hb-void-active');
@@ -257,8 +259,11 @@ function _applyCoverCssVar(coverUrl) {
         }
     } catch (_) {}
 
+    const active = Boolean(state.connected && state.prefs.practiceHaze && clean);
+    try {
+        document.documentElement.classList.toggle('sp-haze-active', active);
+    } catch (_) {}
     if (dom.pqHaze) {
-        const active = Boolean(state.connected && state.prefs.practiceHaze && clean);
         dom.pqHaze.classList.toggle('is-active', active);
     }
 }
@@ -302,6 +307,8 @@ function _syncProgressElements() {
 function _syncVoidAnchor() {
     if (!dom.voidAnchor) return;
     if (!state.connected) {
+        if (_lastVoidSignature === 'disconnected' && dom.voidAnchor.innerHTML) return;
+        _lastVoidSignature = 'disconnected';
         dom.voidAnchor.innerHTML = `
             <button type="button" class="sp-void-pill" data-sp-act="open-deck" title="Connect Spotify (Alt+Shift+M)">
                 <span class="sp-void-ico">${SVG_LOGO}</span>
@@ -317,6 +324,10 @@ function _syncVoidAnchor() {
     const sub = item
         ? (artistsText(item) || (pb.device ? pb.device.name : ''))
         : (pb.device ? pb.device.name : 'OPEN DECK');
+
+    const sig = ['connected', pb.isPlaying ? 1 : 0, cover, title, sub].join('|');
+    if (sig === _lastVoidSignature && dom.voidAnchor.innerHTML) return;
+    _lastVoidSignature = sig;
 
     dom.voidAnchor.innerHTML = `
         <div class="sp-void-bar ${pb.isPlaying ? 'is-playing' : ''}">
@@ -341,6 +352,8 @@ function _syncFloatPill() {
 
     if (!state.connected) {
         dom.floatPill.classList.remove('is-connected', 'is-playing');
+        if (_lastFloatSignature === 'disconnected' && dom.floatPill.innerHTML) return;
+        _lastFloatSignature = 'disconnected';
         dom.floatPill.innerHTML = `
             <button type="button" class="sp-float-ghost" data-sp-act="open-deck" aria-label="Open Spotify Deck" title="Spotify (Alt+Shift+M)">
                 <span class="sp-float-ico">${SVG_LOGO}</span>
@@ -356,6 +369,13 @@ function _syncFloatPill() {
 
     dom.floatPill.classList.add('is-connected');
     dom.floatPill.classList.toggle('is-playing', Boolean(pb.isPlaying));
+
+    const sig = ['connected', pb.isPlaying ? 1 : 0, cover, title, isTrackLoop ? 1 : 0].join('|');
+    if (sig === _lastFloatSignature && dom.floatPill.innerHTML) {
+        _syncProgressElements();
+        return;
+    }
+    _lastFloatSignature = sig;
 
     dom.floatPill.innerHTML = `
         <div class="sp-float-inner">
@@ -1677,7 +1697,13 @@ export function closeDeck() {
     state.playlistPicker.open = false;
     if (dom.deckBackdrop) dom.deckBackdrop.hidden = true;
     if (dom.deckDrawer) dom.deckDrawer.hidden = true;
-    try { document.body.classList.remove('sp-deck-open'); } catch (_) {}
+    try {
+        document.body.classList.remove('sp-deck-open');
+        const pqModal = document.getElementById('practice-modal');
+        if (pqModal && pqModal.classList.contains('active')) {
+            pqModal.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        }
+    } catch (_) {}
     _scheduleNextPoll();
 }
 
