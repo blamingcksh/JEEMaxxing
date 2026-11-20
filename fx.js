@@ -60,7 +60,11 @@
   // nothing; enabling sound later lazily builds it on the first tone.
   function unlock() {
     if (!prefs.sound && !wantMarioSound()) return;
-    try { if (navigator.audioSession && 'type' in navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) {}
+    try {
+      var _spYielding = (window.HeartbeatAudio && window.HeartbeatAudio.isSpotifyYielding && window.HeartbeatAudio.isSpotifyYielding()) || (window.SpotifyDeck && window.SpotifyDeck.isConnected && window.SpotifyDeck.isConnected());
+      var _desiredSession = _spYielding ? 'ambient' : 'playback';
+      if (navigator.audioSession && 'type' in navigator.audioSession && navigator.audioSession.type !== _desiredSession) navigator.audioSession.type = _desiredSession;
+    } catch (e) {}
     var c = ctx();
     if (c && c.state !== 'running') { try { c.resume(); } catch (e) {} }
   }

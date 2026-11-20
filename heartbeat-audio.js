@@ -17,6 +17,8 @@
  */
 
 const PREFS_KEY = 'jeemax_hb_audio_v1';
+const SPOTIFY_YIELD_KEY = 'jeemax_spotify_yield_v1';
+const SPOTIFY_TOKENS_KEY = 'jeemax_spotify_tokens_v1';
 
 // ── Composition (92 BPM dark Phrygian / Locrian industrial, 8-bar cycle = 128 16th steps) ──
 const BPM = 92;
@@ -64,9 +66,22 @@ function _saveEnabled(on) {
     } catch (_) {}
 }
 
+function _loadInitialSpotifyYield() {
+    try {
+        if (typeof localStorage !== 'undefined') {
+            const explicit = localStorage.getItem(SPOTIFY_YIELD_KEY);
+            if (explicit === '1') return true;
+            if (explicit === '0') return false;
+            if (localStorage.getItem(SPOTIFY_TOKENS_KEY)) return true;
+        }
+    } catch (_) {}
+    return false;
+}
+
 const SILENT_WAV_URI = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
 let _enabled = _loadEnabled();
+let _spotifyYield = _loadInitialSpotifyYield();
 let _ac = null;
 let _graphBuilt = false;
 let _iosUnlockAudio = null;
@@ -92,17 +107,26 @@ let _lastVitals = null;
 
 /**
  * iPadOS / iOS WebKit Safari & PWA unlock:
- *   1. Route audio through Media/Playback session so iPad Silent Mode does NOT mute Web Audio.
+ *   1. Route audio through Media/Playback session so iPad Silent Mode does NOT mute Web Audio,
+ *      EXCEPT while yielded to Spotify where we stay on 'ambient' so background music never stops.
  *   2. Play a 1-sample silent HTML <audio> once on user gesture for pre-iPadOS-17 Safari.
  */
-function _activateIosAudioSession() {
+function _setIosSessionType(type) {
     try {
         if (typeof navigator !== 'undefined' && navigator.audioSession && 'type' in navigator.audioSession) {
-            if (navigator.audioSession.type !== 'playback') {
-                navigator.audioSession.type = 'playback';
+            if (navigator.audioSession.type !== type) {
+                navigator.audioSession.type = type;
             }
         }
     } catch (_) {}
+}
+
+function _activateIosAudioSession() {
+    if (_spotifyYield) {
+        _setIosSessionType('ambient');
+        return;
+    }
+    _setIosSessionType('playback');
 
     if (_iosSessionActivated || typeof document === 'undefined') return;
     try {
@@ -145,6 +169,11 @@ function _ensureContext() {
     try {
         ac.addEventListener('statechange', () => {
             if (_ac !== ac) return;
+            if (_spotifyYield) {
+                _applyHealthModulation();
+                _syncButtonUI();
+                return;
+            }
             if (ac.state === 'running' && _enabled && !(typeof document !== 'undefined' && document.hidden)) {
                 _buildGraph();
                 if (!_running) {
@@ -684,7 +713,7 @@ function _scheduleStep(stepIndex, time) {
 }
 
 function _schedulerTick() {
-    if (!_running || !_enabled || !_ac || _ac.state !== 'running') return;
+    if (!_running || !_enabled || _spotifyYield || !_ac || _ac.state !== 'running') return;
     if (typeof document !== 'undefined' && document.hidden) {
         _nextStepTime = _ac.currentTime + 0.05;
         return;
@@ -709,8 +738,8 @@ function _applyHealthModulation() {
     const now = _ac.currentTime;
     const hidden = typeof document !== 'undefined' && document.hidden;
 
-    if (!_enabled || hidden) {
-        _masterGain.gain.setTargetAtTime(0.0001, now, 0.12);
+    if (!_enabled || _spotifyYield || hidden) {
+        _masterGain.gain.setTargetAtTime(0.0001, now, _spotifyYield ? 0.08 : 0.12);
         return;
     }
 
@@ -746,12 +775,12 @@ function _applyHealthModulation() {
 
 function _scheduleCardiacLoop() {
     if (_cardiacTimer) { clearTimeout(_cardiacTimer); _cardiacTimer = null; }
-    if (!_running || !_enabled) return;
+    if (!_running || !_enabled || _spotifyYield) return;
     const v = _lastVitals || _readVitalsSafe();
     const bpm = Math.max(38, Math.min(92, 42 + (v.speed || 0.5) * 42));
     const periodMs = Math.round((60 / bpm) * 1000);
     _cardiacTimer = setTimeout(() => {
-        if (_running && _enabled && _ac && _ac.state === 'running' && !(typeof document !== 'undefined' && document.hidden)) {
+        if (_running && _enabled && !_spotifyYield && _ac && _ac.state === 'running' && !(typeof document !== 'undefined' && document.hidden)) {
             const cur = _lastVitals || _readVitalsSafe();
             if (!cur.flatlined) {
                 const stress = Math.max(0, Math.min(1, 1 - cur.reservoirHours / 20));
@@ -787,9 +816,20 @@ function _syncButtonUI() {
     if (typeof document === 'undefined') return;
     const btn = document.getElementById('hb-audio-btn');
     if (btn) {
+        btn.classList.toggle('is-spotify-yield', _spotifyYield);
+        if (_spotifyYield) {
+            btn.classList.remove('is-audio-on');
+            btn.classList.add('is-audio-off');
+            btn.setAttribute('aria-pressed', 'false');
+            btn.title = 'Heartbeat audio yielded to Spotify — tap to take over';
+            const lbl = btn.querySelector('.hb-audio-lbl');
+            if (lbl) lbl.textContent = 'VOID OFF';
+            return;
+        }
         btn.classList.toggle('is-audio-on', _enabled);
         btn.classList.toggle('is-audio-off', !_enabled);
         btn.setAttribute('aria-pressed', _enabled ? 'true' : 'false');
+        btn.title = _enabled ? 'Heartbeat audio on — tap to mute' : 'Heartbeat audio muted — tap to enable';
         const lbl = btn.querySelector('.hb-audio-lbl');
         if (lbl) lbl.textContent = _enabled ? 'AUDIO' : 'MUTED';
     }
@@ -797,6 +837,10 @@ function _syncButtonUI() {
 
 export async function unlockAudio() {
     if (!_enabled) return false;
+    if (_spotifyYield) {
+        _activateIosAudioSession();
+        return false;
+    }
     // 1. Synchronous iPadOS / iOS audio-session & context resume BEFORE any heavy work
     //    so WebKit never drops the user-activation token.
     _activateIosAudioSession();
@@ -815,6 +859,7 @@ export async function unlockAudio() {
     if (resumePromise) {
         try { await resumePromise; } catch (_) {}
     }
+    if (_spotifyYield) return false;
     if (ac.state === 'running') {
         if (!_running) {
             _startLoops();
@@ -832,7 +877,7 @@ export function setAudioEnabled(on) {
     _enabled = Boolean(on);
     _saveEnabled(_enabled);
     _syncButtonUI();
-    if (_enabled) {
+    if (_enabled && !_spotifyYield) {
         unlockAudio();
     } else if (_ac && _masterGain) {
         try {
@@ -843,7 +888,49 @@ export function setAudioEnabled(on) {
     return _enabled;
 }
 
+export function setSpotifyYield(active) {
+    const next = Boolean(active);
+    const changed = next !== _spotifyYield;
+    _spotifyYield = next;
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(SPOTIFY_YIELD_KEY, next ? '1' : '0');
+        }
+    } catch (_) {}
+    if (next) {
+        _setIosSessionType('ambient');
+        if (_ac && _masterGain) {
+            try {
+                _masterGain.gain.setTargetAtTime(0.0001, _ac.currentTime, 0.08);
+            } catch (_) {}
+        }
+        _stopLoops();
+        _syncButtonUI();
+    } else {
+        _syncButtonUI();
+        if (_enabled && (changed || !_running)) {
+            unlockAudio();
+        }
+    }
+    return _spotifyYield;
+}
+
+export function isSpotifyYielding() {
+    return _spotifyYield;
+}
+
 export function toggleAudio() {
+    if (_spotifyYield) {
+        setSpotifyYield(false);
+        setAudioEnabled(true);
+        try {
+            if (typeof window !== 'undefined' && window.SpotifyDeck && typeof window.SpotifyDeck.onVoidAudioReclaimed === 'function') {
+                window.SpotifyDeck.onVoidAudioReclaimed();
+            }
+        } catch (_) {}
+        playClick();
+        return true;
+    }
     const next = setAudioEnabled(!_enabled);
     if (next) playClick();
     return next;
@@ -857,7 +944,7 @@ export function isAudioEnabled() {
 
 /** Heavy industrial steel breaker-switch click. */
 export function playClick() {
-    if (!_enabled) return;
+    if (!_enabled || _spotifyYield) return;
     const ac = _buildGraph();
     if (!ac || ac.state !== 'running') return;
     const now = ac.currentTime;
@@ -893,7 +980,7 @@ export function playClick() {
 
 /** 3-stage Buckshot chamber-rack / heavy steel latch sound (Pact lock-in & Heartbeat feed). */
 export function playChamberLoad() {
-    if (!_enabled) return;
+    if (!_enabled || _spotifyYield) return;
     const ac = _buildGraph();
     if (!ac || ac.state !== 'running') return;
     const now = ac.currentTime;
@@ -937,7 +1024,7 @@ export function playChamberLoad() {
 
 /** Cinematic power-on sub-swell + fluorescent ballast double-flicker on unlock. */
 export function playBootIgnition() {
-    if (!_enabled) return;
+    if (!_enabled || _spotifyYield) return;
     const ac = _buildGraph();
     if (!ac || ac.state !== 'running') return;
     const now = ac.currentTime;
@@ -978,7 +1065,7 @@ export function playBootIgnition() {
 
 /** Heavy power-grid shutdown collapse on 0.0h Flatline. */
 export function playFlatlineDrop() {
-    if (!_enabled) return;
+    if (!_enabled || _spotifyYield) return;
     const ac = _buildGraph();
     if (!ac || ac.state !== 'running') return;
     const now = ac.currentTime;
@@ -1003,7 +1090,7 @@ export function playFlatlineDrop() {
 
 /** Briefly duck the industrial ambience so heavy mechanical SFX cut cleanly through. */
 export function duck(secs = 0.75) {
-    if (!_enabled || !_ac || !_duckBus || _ac.state !== 'running') return;
+    if (!_enabled || _spotifyYield || !_ac || !_duckBus || _ac.state !== 'running') return;
     try {
         const now = _ac.currentTime;
         const hold = Math.max(0.15, Math.min(3.0, Number(secs) || 0.75));
@@ -1019,7 +1106,7 @@ function _bindUnlockGestures() {
     _boundGestures = true;
 
     const onGesture = (e) => {
-        if (!_enabled) return;
+        if (!_enabled || _spotifyYield) return;
         // Let the explicit AUDIO/MUTED button handle its own toggle without pre-unlocking
         const target = e && e.target;
         if (target && typeof target.closest === 'function' && target.closest('#hb-audio-btn')) return;
@@ -1037,6 +1124,11 @@ function _bindUnlockGestures() {
     document.addEventListener('keydown', onGesture, { capture: true, passive: true });
 
     const onForeground = () => {
+        if (_spotifyYield) {
+            _setIosSessionType('ambient');
+            _applyHealthModulation();
+            return;
+        }
         if (_enabled && _ac && !(typeof document !== 'undefined' && document.hidden)) {
             if (_ac.state !== 'running') {
                 try { _ac.resume().catch(() => {}); } catch (_) {}
@@ -1075,6 +1167,8 @@ export const HeartbeatAudio = {
     toggle: toggleAudio,
     setEnabled: setAudioEnabled,
     isEnabled: isAudioEnabled,
+    setSpotifyYield,
+    isSpotifyYielding,
     playClick,
     playChamberLoad,
     playBootIgnition,

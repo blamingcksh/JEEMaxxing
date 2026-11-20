@@ -755,9 +755,31 @@ export async function wipeAllAppData() {
     const driveToken = AppState.driveAccessToken;
     const driveFolder = AppState.cloudFolderId;
 
+    const SPOTIFY_PERSIST_KEYS = [
+        'jeemax_spotify_client_id_v1',
+        'jeemax_spotify_tokens_v1',
+        'jeemax_spotify_pins_v1',
+        'jeemax_spotify_prefs_v1',
+        'jeemax_spotify_yield_v1',
+    ];
+    const preservedSpotify = {};
+    try {
+        if (typeof localStorage !== 'undefined') {
+            for (const k of SPOTIFY_PERSIST_KEYS) {
+                const v = localStorage.getItem(k);
+                if (v !== null) preservedSpotify[k] = v;
+            }
+        }
+    } catch (_) {}
+
     await Promise.all([idbClearAll(), cpdbClearAll()]);
     try {
-        if (typeof localStorage !== 'undefined') localStorage.clear();
+        if (typeof localStorage !== 'undefined') {
+            localStorage.clear();
+            for (const k of Object.keys(preservedSpotify)) {
+                localStorage.setItem(k, preservedSpotify[k]);
+            }
+        }
     } catch (_) {}
 
     // Reset in-memory state completely.
