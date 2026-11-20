@@ -199,7 +199,7 @@
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36);
     overflow: hidden;
     max-width: min(330px, calc(100vw - 88px));
-    transition: opacity 0.45s ease, border-color 0.22s ease, background 0.25s ease;
+    transition: opacity 0.45s ease, transform 0.45s ease, border-color 0.22s ease, background 0.25s ease;
 }
 
 .sp-float-pill[hidden],
@@ -230,13 +230,11 @@ body.pq-active.immersive-active .sp-float-pill {
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
 }
 
-body:has(#practice-modal.pq-chrome-hidden) .sp-float-pill {
-    opacity: 0.4;
-}
-
-body:has(#practice-modal.pq-chrome-hidden) .sp-float-pill:hover,
-body:has(#practice-modal.pq-chrome-hidden) .sp-float-pill:focus-within {
-    opacity: 1;
+body.pq-active:not(.sp-deck-open):has(#practice-modal.pq-chrome-hidden) .sp-float-pill {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px);
+    transition: opacity 2.8s ease, transform 2.8s ease;
 }
 
 .sp-float-ghost {
@@ -397,6 +395,14 @@ body:has(#practice-modal.pq-chrome-hidden) .sp-float-pill:focus-within {
     transition: opacity 0.9s ease;
 }
 
+body:not(.immersive-active) .sp-pq-haze {
+    mix-blend-mode: color;
+}
+
+body.immersive-active .sp-pq-haze {
+    mix-blend-mode: normal;
+}
+
 #practice-modal.pq-stage:not(.active) .sp-pq-haze {
     display: none;
 }
@@ -412,7 +418,7 @@ body:has(#practice-modal.pq-chrome-hidden) .sp-float-pill:focus-within {
     background-image: var(--sp-cover);
     background-size: cover;
     background-position: center;
-    filter: blur(86px) saturate(1.45);
+    filter: blur(86px) saturate(1.5);
     will-change: transform;
 }
 
@@ -426,12 +432,74 @@ body:has(#practice-modal.pq-chrome-hidden) .sp-float-pill:focus-within {
     animation: spHazeDriftB 36s ease-in-out infinite alternate;
 }
 
+body:not(.immersive-active) .sp-pq-haze-a {
+    opacity: 0.36;
+    filter: blur(92px) saturate(1.7);
+}
+
+body:not(.immersive-active) .sp-pq-haze-b {
+    opacity: 0.22;
+    filter: blur(92px) saturate(1.7);
+}
+
 body.immersive-active .sp-pq-haze-a {
     opacity: 0.14;
+    filter: blur(86px) saturate(1.5);
 }
 
 body.immersive-active .sp-pq-haze-b {
     opacity: 0.09;
+    filter: blur(86px) saturate(1.5);
+}
+
+/* ── Attached Practice Diagram Colour Buff (luminance-safe color wash over paper base) ── */
+html.sp-haze-active #practice-modal.pq-stage .pq-qa-media,
+html.sp-haze-active #sr-practice-overlay.pq-stage .pq-qa-media,
+html.sp-haze-active #sr-practice-overlay.pq-stage .sr-question-media:not(.pq-qa-media *) {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    border-radius: 12px;
+}
+
+html.sp-haze-active #practice-modal.pq-stage .pq-qa-media::before,
+html.sp-haze-active #sr-practice-overlay.pq-stage .pq-qa-media::before,
+html.sp-haze-active #sr-practice-overlay.pq-stage .sr-question-media:not(.pq-qa-media *)::before {
+    content: "";
+    position: absolute;
+    inset: -35%;
+    background-image: var(--sp-cover);
+    background-size: cover;
+    background-position: center;
+    filter: blur(90px) saturate(1.75);
+    mix-blend-mode: color;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.50;
+    transition: opacity 0.9s ease;
+}
+
+html.sp-haze-active body.immersive-active #practice-modal.pq-stage .pq-qa-media,
+html.sp-haze-active body.immersive-active #sr-practice-overlay.pq-stage .pq-qa-media,
+html.sp-haze-active body.immersive-active #sr-practice-overlay.pq-stage .sr-question-media:not(.pq-qa-media *) {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.48), inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+html.sp-haze-active body.immersive-active #practice-modal.pq-stage .pq-qa-media::before,
+html.sp-haze-active body.immersive-active #sr-practice-overlay.pq-stage .pq-qa-media::before,
+html.sp-haze-active body.immersive-active #sr-practice-overlay.pq-stage .sr-question-media:not(.pq-qa-media *)::before {
+    opacity: 0.52;
+}
+
+html.sp-haze-active #practice-modal.pq-stage .pq-qa-media img,
+html.sp-haze-active #practice-modal.pq-stage #practice-modal-img,
+html.sp-haze-active #sr-practice-overlay.pq-stage .pq-qa-media img,
+html.sp-haze-active #sr-practice-overlay.pq-stage #sr-question-img,
+html.sp-haze-active #sr-practice-overlay.pq-stage #sr-question-diagram-img {
+    position: relative;
+    z-index: 1;
+    mix-blend-mode: multiply !important;
+    filter: contrast(1.09) !important;
 }
 
 @keyframes spHazeDriftA {

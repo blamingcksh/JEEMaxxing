@@ -382,11 +382,13 @@ try {
         `1-tap LOOP locked track repeat (repeat=${spState.repeatState}, lastApi=${spState.apiLog.slice(-4).join(' | ')})`);
 
     // Save -> Unsave via 2026 /me/library
+    const saveWait = page.waitForResponse((res) => res.url().includes('/me/library') && res.request().method() === 'PUT');
     await page.click('#sp-deck-hero [data-sp-act="toggle-save"]');
-    await page.waitForTimeout(200);
+    await saveWait;
     const savedOnce = spState.savedUris.has('spotify:track:t1');
+    const unsaveWait = page.waitForResponse((res) => res.url().includes('/me/library') && res.request().method() === 'DELETE');
     await page.click('#sp-deck-hero [data-sp-act="toggle-save"]');
-    await page.waitForTimeout(200);
+    await unsaveWait;
     const unsavedAfter = !spState.savedUris.has('spotify:track:t1');
     check(savedOnce && unsavedAfter && spState.apiLog.some((l) => l.startsWith('PUT /me/library')) && spState.apiLog.some((l) => l.startsWith('DELETE /me/library')),
         'Save/Remove uses 2026 /me/library endpoints');
@@ -394,8 +396,9 @@ try {
     // + PLAYLIST picker
     await page.click('#sp-deck-hero [data-sp-act="open-playlist-picker"]');
     await page.waitForSelector('#sp-playlist-picker');
+    const addPlWait = page.waitForResponse((res) => res.url().includes('/playlists/pl2/items') && res.request().method() === 'POST');
     await page.click('#sp-playlist-picker [data-sp-act="add-to-playlist"][data-playlist-id="pl2"]');
-    await page.waitForTimeout(200);
+    await addPlWait;
     check(spState.apiLog.some((l) => l.startsWith('POST /playlists/pl2/items')), '+ PLAYLIST adds track via 2026 POST /playlists/{id}/items');
 
     // Tabs: Rotation, Liked, Queue, Search + Album drill-down
@@ -450,6 +453,7 @@ try {
             subject: 'physics',
             chapter: 'Electrostatics',
             extractedText: 'Find potential $V$.',
+            imageDataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=',
             type: 'mcq',
             options: ['1 V', '2 V', '3 V', '4 V'],
             correctAnswer: 'A',
@@ -475,13 +479,65 @@ try {
     await page.waitForFunction(() => document.getElementById('sp-deck-drawer')?.hidden === true);
     const pqStillOpen = await page.evaluate(() => document.getElementById('practice-modal')?.classList.contains('active'));
 
-    const parchmentBg = await page.evaluate(() => getComputedStyle(document.getElementById('sp-float-pill')).backgroundColor);
+    const readHazeMetrics = () => page.evaluate(() => {
+        const haze = document.getElementById('sp-pq-haze');
+        const hazeCs = haze ? getComputedStyle(haze) : null;
+        const media = document.querySelector('#practice-modal .pq-qa-media');
+        const beforeCs = media ? getComputedStyle(media, '::before') : null;
+        const img = document.getElementById('practice-modal-img');
+        const imgCs = img ? getComputedStyle(img) : null;
+        return {
+            htmlHaze: document.documentElement.classList.contains('sp-haze-active'),
+            pillBg: getComputedStyle(document.getElementById('sp-float-pill')).backgroundColor,
+            hazeBlend: hazeCs ? hazeCs.mixBlendMode : '',
+            beforeBg: beforeCs ? beforeCs.backgroundImage : '',
+            beforeBlend: beforeCs ? beforeCs.mixBlendMode : '',
+            beforeOp: beforeCs ? parseFloat(beforeCs.opacity) : 0,
+            imgBlend: imgCs ? imgCs.mixBlendMode : '',
+            imgZ: imgCs ? imgCs.zIndex : '',
+        };
+    });
+
+    const parchmentMetrics = await readHazeMetrics();
+    const parchmentBg = parchmentMetrics.pillBg;
+    await page.evaluate(() => document.getElementById('practice-modal')?.dispatchEvent(new Event('pointerdown', { bubbles: true })));
     await page.click('#immersive-focus-btn');
     await page.waitForFunction((prev) => getComputedStyle(document.getElementById('sp-float-pill')).backgroundColor !== prev, parchmentBg, { timeout: 3000 });
-    const roastBg = await page.evaluate(() => getComputedStyle(document.getElementById('sp-float-pill')).backgroundColor);
+    const mediaBuff = await readHazeMetrics();
+    const roastBg = mediaBuff.pillBg;
+
+    await page.evaluate(() => document.getElementById('practice-modal').classList.add('pq-chrome-hidden'));
+    await page.waitForFunction(() => {
+        const cs = getComputedStyle(document.getElementById('sp-float-pill'));
+        return cs.pointerEvents === 'none' && parseFloat(cs.opacity) === 0;
+    }, null, { timeout: 5000 });
+    const fadedPill = await page.evaluate(() => {
+        const cs = getComputedStyle(document.getElementById('sp-float-pill'));
+        return { opacity: cs.opacity, pointerEvents: cs.pointerEvents };
+    });
+
+    await page.evaluate(() => document.getElementById('practice-modal').classList.remove('pq-chrome-hidden'));
+    await page.waitForFunction(() => {
+        const cs = getComputedStyle(document.getElementById('sp-float-pill'));
+        return cs.pointerEvents !== 'none' && parseFloat(cs.opacity) === 1;
+    }, null, { timeout: 3000 });
+    const restoredPill = await page.evaluate(() => {
+        const cs = getComputedStyle(document.getElementById('sp-float-pill'));
+        return { opacity: cs.opacity, pointerEvents: cs.pointerEvents };
+    });
 
     check(pqChecks.floatVisible && pqChecks.hazeActive, 'Practice Micro-Pill visible & Living Album Haze active in Practice');
     check(parchmentBg !== roastBg, `Practice Micro-Pill adapts between Parchment (${parchmentBg}) and Roast (${roastBg})`);
+    check(
+        parchmentMetrics.htmlHaze && parchmentMetrics.hazeBlend === 'color' && parchmentMetrics.beforeBlend === 'color' && parchmentMetrics.beforeOp > 0.4,
+        `Parchment haze & diagram buff preserve luminance (hazeBlend=${parchmentMetrics.hazeBlend}, beforeBlend=${parchmentMetrics.beforeBlend}, op=${parchmentMetrics.beforeOp})`
+    );
+    check(
+        mediaBuff.htmlHaze && mediaBuff.hazeBlend === 'normal' && mediaBuff.beforeBg.includes('url(') && mediaBuff.beforeBlend === 'color' && mediaBuff.beforeOp > 0.4 && mediaBuff.imgBlend === 'multiply' && mediaBuff.imgZ === '1',
+        `Roast attached diagram receives luminance-safe album buff (hazeBlend=${mediaBuff.hazeBlend}, beforeBlend=${mediaBuff.beforeBlend}, op=${mediaBuff.beforeOp}, imgBlend=${mediaBuff.imgBlend}, z=${mediaBuff.imgZ})`
+    );
+    check(fadedPill.opacity === '0' && fadedPill.pointerEvents === 'none' && restoredPill.opacity === '1' && restoredPill.pointerEvents !== 'none',
+        'Practice Micro-Pill completely vanishes to opacity:0 on idle chrome-hidden and restores on activity');
     check(pqStillOpen === true, 'Escape closes Spotify Deck WITHOUT closing Practice stage underneath');
 
     check(errors.length === 0, `Zero uncaught runtime errors (${errors.length} seen${errors.length ? ': ' + errors.join(' | ') : ''})`);

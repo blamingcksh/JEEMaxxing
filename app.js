@@ -7011,6 +7011,7 @@ function _pqChromeAnswered() {
 
 function _pqChromeOverlayOpen() {
     try {
+        if (document.body && document.body.classList.contains('sp-deck-open')) return true;
         if (document.getElementById('skip-popover')) return true;
         const sol = document.getElementById('solution-modal');
         if (sol && sol.classList.contains('active')) return true;
