@@ -223,7 +223,10 @@
 // v124 - FIX IPAD HOLD-REVEAL ON SPOTIFY DECK CLOSE: use dedicated
 //        pq:chrome-activity event instead of synthetic pointerdown, and guard
 //        Practice & Vault SR hold listeners against untrusted/overlay pointers.
-const VERSION = 'jeemax-v124';
+// v125 - SLIM PRACTICE & VAULT SR STAGES: move Practice telemetry into a
+//        1-line top-center readout + compact 2-band post-reveal dock, and
+//        rebuild Error Matrix SR modal onto shared v2 tokens and 1-row reflection.
+const VERSION = 'jeemax-v125';
 
 const SHELL = [
   './',
