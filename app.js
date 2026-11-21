@@ -5870,6 +5870,12 @@ function _pqUpdatePace() {
     } catch (_) {}
 }
 
+function _pqSetContinueLabel(btn, isSuddenDeath) {
+    if (!btn) return;
+    const label = isSuddenDeath ? 'SETTLE DUEL' : 'NEXT PROBLEM';
+    btn.innerHTML = `${label}<span class="pq-kbd-cap"> [SPACE]</span>`;
+}
+
 function _pqIsPendingSelfReport(q, idx) {
     return !!(AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[idx]);
 }
@@ -6297,8 +6303,8 @@ function _pqBuildRevealZoneHTML(q, idx) {
 
     if (!graded) {
         html += `<div class="verdict-row">`;
-        html += `<button type="button" class="btn btn-verify" id="text-correct-btn">VERIFIED [Y]</button>`;
-        html += `<button type="button" class="btn btn-fail" id="text-wrong-btn">FAILED [N]</button>`;
+        html += `<button type="button" class="btn btn-verify" id="text-correct-btn">VERIFIED<span class="pq-kbd-cap"> [Y]</span></button>`;
+        html += `<button type="button" class="btn btn-fail" id="text-wrong-btn">FAILED<span class="pq-kbd-cap"> [N]</span></button>`;
         if (hasSolution) {
             html += `<button type="button" class="btn show-solution-btn" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
         }
@@ -6322,7 +6328,7 @@ function _pqBuildRevealZoneHTML(q, idx) {
             if (q.status === 'error' && q.errorReason) {
                 actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button" disabled title="Already logged to the Vault">LOGGED TO VAULT</button>`;
             } else {
-                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button">SEND TO THE VAULT [V]</button>`;
+                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button">SEND TO THE VAULT<span class="pq-kbd-cap"> [V]</span></button>`;
             }
         }
         if (snap) {
@@ -6676,6 +6682,17 @@ let _pqHoldStartX = 0;
 let _pqHoldStartY = 0;
 let _pqJustHeld = false;
 
+function _pqClearSelection() {
+    try {
+        const s = window.getSelection && window.getSelection();
+        if (s && !s.isCollapsed) s.removeAllRanges();
+    } catch (_) {}
+}
+
+function _pqIsSelectionEditableTarget(target) {
+    return !!(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
 function _pqBindHold() {
     if (_pqHoldBound) return;
     const modal = document.getElementById('practice-modal');
@@ -6697,10 +6714,36 @@ function _pqBindHold() {
     const cancelHold = () => {
         if (_pqHoldTimer) { clearTimeout(_pqHoldTimer); _pqHoldTimer = null; }
         if (_pqHoldRingTimer) { clearTimeout(_pqHoldRingTimer); _pqHoldRingTimer = null; }
+        modal.classList.remove('pq-holding');
         if (ringWrap) {
             ringWrap.classList.remove('active');
         }
     };
+
+    const shouldBlockHoldSelect = (target) => {
+        if (!modal.classList.contains('active')) return false;
+        if (_pqIsSelectionEditableTarget(target)) return false;
+        return !!(_pqHoldTimer || _pqJustHeld || modal.getAttribute('data-pq-state') === 'solving');
+    };
+
+    modal.addEventListener('selectstart', (e) => {
+        if (shouldBlockHoldSelect(e.target)) {
+            e.preventDefault();
+            _pqClearSelection();
+        }
+    });
+
+    modal.addEventListener('contextmenu', (e) => {
+        if (shouldBlockHoldSelect(e.target)) {
+            e.preventDefault();
+        }
+    });
+
+    modal.addEventListener('dragstart', (e) => {
+        if (modal.classList.contains('active') && modal.getAttribute('data-pq-state') === 'solving') {
+            e.preventDefault();
+        }
+    });
 
     modal.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -6715,7 +6758,7 @@ function _pqBindHold() {
         const submitBtn = document.getElementById('practice-submit-btn');
         const isSubmitBtn = submitBtn && (submitBtn === e.target || submitBtn.contains(e.target));
 
-        const interactive = e.target.closest('button, input, textarea, select, a, .mcq-option, .skip-popover, #practice-image-lightbox');
+        const interactive = e.target.closest('button, input, textarea, select, a, .mcq-option, .skip-popover, #practice-image-lightbox, .pq-corner, .flow-slider-dock, .sp-float-pill');
         if (interactive && !isSubmitBtn) {
             return;
         }
@@ -6725,6 +6768,8 @@ function _pqBindHold() {
         }
 
         cancelHold();
+        _pqClearSelection();
+        modal.classList.add('pq-holding');
         _pqHoldStartX = e.clientX;
         _pqHoldStartY = e.clientY;
 
@@ -6739,6 +6784,7 @@ function _pqBindHold() {
 
         _pqHoldTimer = setTimeout(() => {
             cancelHold();
+            _pqClearSelection();
             _pqJustHeld = true;
             setTimeout(() => { _pqJustHeld = false; }, 450);
             try { if (navigator.vibrate) navigator.vibrate(40); } catch (_) {}
@@ -6756,6 +6802,9 @@ function _pqBindHold() {
 
     modal.addEventListener('pointerup', cancelHold, { passive: true });
     modal.addEventListener('pointercancel', cancelHold, { passive: true });
+    window.addEventListener('blur', cancelHold);
+    window.addEventListener('pointerup', cancelHold, { passive: true });
+    window.addEventListener('pointercancel', cancelHold, { passive: true });
 }
 
 export function renderPracticeQuestionModal() {
@@ -6854,7 +6903,7 @@ export function renderPracticeQuestionModal() {
         const _contBtn = document.getElementById('practice-continue-btn');
         if (_contBtn) {
             if (_pqIsGradedQuestion(AppState.currentQ, _pqIdx) && !AppState.bountyMode) {
-                _contBtn.textContent = isLockinSuddenDeath() ? 'SETTLE DUEL [SPACE]' : 'NEXT PROBLEM [SPACE]';
+                _pqSetContinueLabel(_contBtn, isLockinSuddenDeath());
                 _contBtn.style.display = '';
             } else {
                 _contBtn.style.display = 'none';
@@ -8699,7 +8748,7 @@ function _renderModeFooter() {
 function _showModeContinueButton() {
     const cont = document.getElementById('practice-continue-btn');
     if (cont) {
-        cont.textContent = isLockinSuddenDeath() ? 'SETTLE DUEL [SPACE]' : 'NEXT PROBLEM [SPACE]';
+        _pqSetContinueLabel(cont, isLockinSuddenDeath());
         cont.style.display = '';
     }
     const skip = document.getElementById('practice-skip-btn');
@@ -10842,7 +10891,7 @@ export function practiceSubmit() {
     } else {
         const contBtn = document.getElementById('practice-continue-btn');
         if (contBtn && (!AppState.practiceFlowMode || AppState.practiceFlowMode === 'standard' || AppState.bountyMode)) {
-            contBtn.textContent = 'NEXT PROBLEM [SPACE]';
+            _pqSetContinueLabel(contBtn, false);
             contBtn.style.display = '';
         }
     }
@@ -10858,8 +10907,8 @@ export function addTextQuestionFollowUp() {
         verdictRow = document.createElement('div');
         verdictRow.className = 'verdict-row';
         verdictRow.innerHTML =
-            `<button type="button" class="btn btn-verify" id="text-correct-btn">VERIFIED [Y]</button>
-             <button type="button" class="btn btn-fail" id="text-wrong-btn">FAILED [N]</button>`;
+            `<button type="button" class="btn btn-verify" id="text-correct-btn">VERIFIED<span class="pq-kbd-cap"> [Y]</span></button>
+             <button type="button" class="btn btn-fail" id="text-wrong-btn">FAILED<span class="pq-kbd-cap"> [N]</span></button>`;
         container.appendChild(verdictRow);
         correctBtn = document.getElementById('text-correct-btn');
         wrongBtn = document.getElementById('text-wrong-btn');
@@ -10924,7 +10973,7 @@ export function addTextQuestionFollowUp() {
         } else {
             const contBtn = document.getElementById('practice-continue-btn');
             if (contBtn) {
-                contBtn.textContent = 'NEXT PROBLEM [SPACE]';
+                _pqSetContinueLabel(contBtn, false);
                 contBtn.style.display = '';
             }
         }
@@ -10981,7 +11030,7 @@ export function addTextQuestionFollowUp() {
         } else {
             const contBtn = document.getElementById('practice-continue-btn');
             if (contBtn) {
-                contBtn.textContent = 'NEXT PROBLEM [SPACE]';
+                _pqSetContinueLabel(contBtn, false);
                 contBtn.style.display = '';
             }
         }
@@ -11943,10 +11992,15 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) _ens
 window._ensureStreakLoop = _ensureStreakLoop;
 
 export function updateStreakVisualizer() {
+    const idle = (Number(AppState.practiceCorrectStreak) || 0) <= 0;
     const numberEl = document.getElementById('streak-number');
     if (numberEl) numberEl.textContent = AppState.practiceCorrectStreak;
     const srNumberEl = document.getElementById('sr-streak-number');
     if (srNumberEl) srNumberEl.textContent = AppState.practiceCorrectStreak;
+    const viz = document.getElementById('streak-visualizer');
+    if (viz) viz.classList.toggle('is-idle', idle);
+    const srViz = document.getElementById('sr-streak-visualizer');
+    if (srViz) srViz.classList.toggle('is-idle', idle);
 }
 
 // Show the HUD streak badge for 10s after a graded answer (correct or wrong),

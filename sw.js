@@ -215,7 +215,10 @@
 //        Void Drown Mode, plus iPadOS-safe Heartbeat Audio yield handoff.
 // v121 - PRACTICE HAZE & CHROME FADE: album-art colour buff on attached
 //        Practice/Vault diagrams + complete vanish fade on micro-pill.
-const VERSION = 'jeemax-v121';
+// v122 - HOLD-GESTURE ANTI-SELECTION & IPAD REVEAL POLISH: suppress text
+//        selection/callouts during hold-to-reveal gestures and declutter/fix
+//        iPad answer reveal layout across Practice & Vault SR stages.
+const VERSION = 'jeemax-v122';
 
 const SHELL = [
   './',
@@ -258,7 +261,7 @@ const SHELL = [
   './styles-telemetry.css',
   './styles-modes.css',
   './styles-dashboard.css',
-  './styles-practice-fullscreen.css?v=12',
+  './styles-practice-fullscreen.css?v=13',
   './atmosphere.js',
   './glyphs.js',
   './matrix.js',

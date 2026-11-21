@@ -481,6 +481,9 @@ async function open(opts = {}) {
     sealBtn.addEventListener('mouseleave', cancelHold);
     sealBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startHold(); });
     sealBtn.addEventListener('touchend', cancelHold);
+    sealBtn.addEventListener('touchcancel', cancelHold);
+    sealBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+    sealBtn.addEventListener('selectstart', (e) => e.preventDefault());
 
     // Keyboard support: Enter seals immediately
     function onKeyDown(e) {

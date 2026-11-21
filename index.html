@@ -74,7 +74,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <!-- ── iPad / coarse-pointer hardening layer (must stay LAST — see file header) ── -->
 <link rel="stylesheet" href="styles-dashboard.css">
 <link rel="stylesheet" href="styles-signal.css">
-<link rel="stylesheet" href="styles-practice-fullscreen.css?v=12">
+<link rel="stylesheet" href="styles-practice-fullscreen.css?v=13">
 <link rel="stylesheet" href="styles-ipad.css">
 <!-- ── OBSERVATORY reskin — loaded LAST; overrides every visible surface
      while the legacy sheets keep working underneath (see observatory.css) ── -->
@@ -1100,7 +1100,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         <!-- Result & action strip (visible when answered / revealed) -->
         <footer class="pq-nav pq-result-strip bottom-dock" id="practice-footer">
             <div class="pq-mini-status dock-telemetry">
-                <div class="streak-visualizer" id="streak-visualizer">
+                <div class="streak-visualizer is-idle" id="streak-visualizer">
                     <span class="sprite-frame"><canvas id="streak-canvas" width="16" height="16"></canvas></span>
                     <span class="streak-number" id="streak-number">0</span>
                 </div>
@@ -1110,7 +1110,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <span class="pq-center-actions dock-actions">
                 <button class="pq-submit" id="practice-submit-btn" onclick="practiceSubmit()">Reveal Answer</button>
                 <button type="button" class="btn-next-primary pq-next-pending" id="pq-next-pending" disabled aria-disabled="true" style="display:none">SELECT VERDICT TO CONTINUE</button>
-                <button class="btn btn-secondary btn-next-primary pq-continue-btn" id="practice-continue-btn" onclick="window.continuePractice()" style="display:none">NEXT PROBLEM [SPACE]</button>
+                <button class="btn btn-secondary btn-next-primary pq-continue-btn" id="practice-continue-btn" onclick="window.continuePractice()" style="display:none">NEXT PROBLEM<span class="pq-kbd-cap"> [SPACE]</span></button>
             </span>
         </footer>
     </div>

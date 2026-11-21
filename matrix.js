@@ -729,9 +729,25 @@ let _srHoldRingTimer = null;
 let _srHoldStartX = 0;
 let _srHoldStartY = 0;
 let _srJustHeld = false;
+let _srHoldWindowCleanup = null;
+
+function _srClearSelection() {
+    try {
+        const s = window.getSelection && window.getSelection();
+        if (s && !s.isCollapsed) s.removeAllRanges();
+    } catch (_) {}
+}
+
+function _srIsSelectionEditableTarget(target) {
+    return !!(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]'));
+}
 
 function _srBindHold(overlay) {
     if (!overlay) return;
+    if (_srHoldWindowCleanup) {
+        try { _srHoldWindowCleanup(); } catch (_) {}
+        _srHoldWindowCleanup = null;
+    }
 
     // Capture-phase click suppressor: swallows any click generated upon releasing an 800ms hold
     overlay.addEventListener('click', (e) => {
@@ -748,19 +764,46 @@ function _srBindHold(overlay) {
     const cancelHold = () => {
         if (_srHoldTimer) { clearTimeout(_srHoldTimer); _srHoldTimer = null; }
         if (_srHoldRingTimer) { clearTimeout(_srHoldRingTimer); _srHoldRingTimer = null; }
+        overlay.classList.remove('pq-holding');
         if (ringWrap) ringWrap.classList.remove('active');
     };
+
+    const shouldBlockHoldSelect = (target) => {
+        if (_srIsSelectionEditableTarget(target)) return false;
+        return !!(_srHoldTimer || _srJustHeld || !_drawerState.resultLocked);
+    };
+
+    overlay.addEventListener('selectstart', (e) => {
+        if (shouldBlockHoldSelect(e.target)) {
+            e.preventDefault();
+            _srClearSelection();
+        }
+    });
+
+    overlay.addEventListener('contextmenu', (e) => {
+        if (shouldBlockHoldSelect(e.target)) {
+            e.preventDefault();
+        }
+    });
+
+    overlay.addEventListener('dragstart', (e) => {
+        if (!_drawerState.resultLocked) {
+            e.preventDefault();
+        }
+    });
 
     overlay.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (_drawerState.resultLocked) return;
 
-        const interactive = e.target.closest('button, input, textarea, select, a, .sr-mcq-option, .sr-conf-btn, .sr-friction-pill, .sr-toggle-btn');
+        const interactive = e.target.closest('button, input, textarea, select, a, .sr-mcq-option, .sr-conf-btn, .sr-friction-pill, .sr-toggle-btn, .pq-corner, .sp-float-pill, .sr-hint-toggle, .sr-tagedit-x, .sr-tagedit-sugg');
         const cb = document.getElementById('sr-confirm-btn') || document.getElementById('sr-reveal-answer-btn');
         const isConfirmBtn = cb && (cb === e.target || cb.contains(e.target));
         if (interactive && !isConfirmBtn) return;
 
         cancelHold();
+        _srClearSelection();
+        overlay.classList.add('pq-holding');
         _srHoldStartX = e.clientX;
         _srHoldStartY = e.clientY;
 
@@ -775,6 +818,7 @@ function _srBindHold(overlay) {
 
         _srHoldTimer = setTimeout(() => {
             cancelHold();
+            _srClearSelection();
             _srJustHeld = true;
             setTimeout(() => { _srJustHeld = false; }, 450);
             try { if (navigator.vibrate) navigator.vibrate(40); } catch (_) {}
@@ -799,6 +843,15 @@ function _srBindHold(overlay) {
 
     overlay.addEventListener('pointerup', cancelHold, { passive: true });
     overlay.addEventListener('pointercancel', cancelHold, { passive: true });
+
+    window.addEventListener('blur', cancelHold);
+    window.addEventListener('pointerup', cancelHold, { passive: true });
+    window.addEventListener('pointercancel', cancelHold, { passive: true });
+    _srHoldWindowCleanup = () => {
+        window.removeEventListener('blur', cancelHold);
+        window.removeEventListener('pointerup', cancelHold);
+        window.removeEventListener('pointercancel', cancelHold);
+    };
 }
 
 function _srBindKeys(overlay) {
@@ -1019,9 +1072,9 @@ export function openPracticeDrawer(qId, opts) {
     overlay.innerHTML = `
         <div class="pq-pace sr-pace" id="sr-pace" aria-hidden="true"></div>
         <div class="pq-hold-ring-wrap" id="sr-hold-ring-wrap" aria-hidden="true">
-            <svg class="pq-hold-ring" viewBox="0 0 44 44">
-                <circle class="pq-hold-ring-bg" cx="22" cy="22" r="19"></circle>
-                <circle class="pq-hold-ring-fg" cx="22" cy="22" r="19"></circle>
+            <svg class="pq-hold-ring" viewBox="0 0 52 52">
+                <circle class="pq-hold-ring-bg" cx="26" cy="26" r="22"></circle>
+                <circle class="pq-hold-ring-fg" cx="26" cy="26" r="22"></circle>
             </svg>
         </div>
 
@@ -1094,7 +1147,7 @@ export function openPracticeDrawer(qId, opts) {
                 <div class="sr-drawer-footer pq-result-strip">
                     <div class="sr-footer-meta">
                         <div class="sr-streak-pill" title="Current solve streak">
-                            <div class="streak-visualizer" id="sr-streak-visualizer"><canvas id="sr-streak-canvas" width="22" height="22"></canvas></div>
+                            <div class="streak-visualizer${(Number(AppState.practiceCorrectStreak) || 0) <= 0 ? ' is-idle' : ''}" id="sr-streak-visualizer"><canvas id="sr-streak-canvas" width="22" height="22"></canvas></div>
                             <span class="streak-number sr-streak-number" id="sr-streak-number">${AppState.practiceCorrectStreak || 0}</span>
                         </div>
                         <div id="sr-elo-header-slot" class="elo-header-slot"></div>
@@ -1153,6 +1206,7 @@ export function closePracticeDrawer(opts) {
     if (_srIdleTimer) { clearTimeout(_srIdleTimer); _srIdleTimer = null; }
     if (_srHoldTimer) { clearTimeout(_srHoldTimer); _srHoldTimer = null; }
     if (_srHoldRingTimer) { clearTimeout(_srHoldRingTimer); _srHoldRingTimer = null; }
+    if (_srHoldWindowCleanup) { try { _srHoldWindowCleanup(); } catch (_) {} _srHoldWindowCleanup = null; }
     const _snap = _drawerState.preBridgeSnapshot;
     if (_snap) {
         try {
