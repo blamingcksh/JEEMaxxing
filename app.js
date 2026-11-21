@@ -6746,6 +6746,8 @@ function _pqBindHold() {
     });
 
     modal.addEventListener('pointerdown', (e) => {
+        if (!e.isTrusted) return;
+        if (!Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) return;
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (!modal.classList.contains('active')) return;
         const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
@@ -6783,6 +6785,10 @@ function _pqBindHold() {
         }, 120);
 
         _pqHoldTimer = setTimeout(() => {
+            if (!modal.classList.contains('active') || _pqChromeOverlayOpen()) {
+                cancelHold();
+                return;
+            }
             cancelHold();
             _pqClearSelection();
             _pqJustHeld = true;
@@ -7120,6 +7126,7 @@ function _pqEnsureChromeTapBound() {
         const m = _pqChromeModal();
         if (!m) return;
         m.addEventListener('pointerdown', _pqOnChromeActivity, { passive: true });
+        m.addEventListener('pq:chrome-activity', _pqOnChromeActivity);
         m.addEventListener('keydown', _pqOnChromeActivity);
         m.addEventListener('input', _pqOnChromeActivity);
         // Scroll doesn't bubble — capture catches card/modal track scrolls.

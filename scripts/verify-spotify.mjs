@@ -475,9 +475,31 @@ try {
     }));
     await page.click('#sp-float-pill [data-sp-act="open-deck"]');
     await page.waitForSelector('#sp-deck-drawer:not([hidden])');
+    await page.evaluate(() => document.getElementById('practice-modal')?.classList.add('pq-chrome-hidden'));
+    await page.click('#sp-deck-drawer [data-sp-act="close-deck"]');
+    await page.waitForFunction(() => document.getElementById('sp-deck-drawer')?.hidden === true);
+    await page.waitForTimeout(1000);
+    const afterDeckClickClose = await page.evaluate(() => {
+        const modal = document.getElementById('practice-modal');
+        const ring = document.getElementById('pq-hold-ring-wrap');
+        return {
+            active: Boolean(modal?.classList.contains('active')),
+            holding: Boolean(modal?.classList.contains('pq-holding')),
+            ringActive: Boolean(ring?.classList.contains('active')),
+            pqState: modal?.getAttribute('data-pq-state') || '',
+            chromeHidden: Boolean(modal?.classList.contains('pq-chrome-hidden')),
+        };
+    });
+
+    await page.click('#sp-float-pill [data-sp-act="open-deck"]');
+    await page.waitForSelector('#sp-deck-drawer:not([hidden])');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => document.getElementById('sp-deck-drawer')?.hidden === true);
-    const pqStillOpen = await page.evaluate(() => document.getElementById('practice-modal')?.classList.contains('active'));
+    await page.waitForTimeout(1000);
+    const pqStillOpen = await page.evaluate(() => {
+        const modal = document.getElementById('practice-modal');
+        return Boolean(modal?.classList.contains('active')) && modal?.getAttribute('data-pq-state') === 'solving';
+    });
 
     const readHazeMetrics = () => page.evaluate(() => {
         const haze = document.getElementById('sp-pq-haze');
@@ -500,7 +522,7 @@ try {
 
     const parchmentMetrics = await readHazeMetrics();
     const parchmentBg = parchmentMetrics.pillBg;
-    await page.evaluate(() => document.getElementById('practice-modal')?.dispatchEvent(new Event('pointerdown', { bubbles: true })));
+    await page.evaluate(() => document.getElementById('practice-modal')?.dispatchEvent(new CustomEvent('pq:chrome-activity')));
     await page.click('#immersive-focus-btn');
     await page.waitForFunction((prev) => getComputedStyle(document.getElementById('sp-float-pill')).backgroundColor !== prev, parchmentBg, { timeout: 3000 });
     const mediaBuff = await readHazeMetrics();
@@ -538,6 +560,10 @@ try {
     );
     check(fadedPill.opacity === '0' && fadedPill.pointerEvents === 'none' && restoredPill.opacity === '1' && restoredPill.pointerEvents !== 'none',
         'Practice Micro-Pill completely vanishes to opacity:0 on idle chrome-hidden and restores on activity');
+    check(
+        afterDeckClickClose.active && !afterDeckClickClose.holding && !afterDeckClickClose.ringActive && afterDeckClickClose.pqState === 'solving' && !afterDeckClickClose.chromeHidden,
+        `Closing Spotify Deck restores Practice chrome without triggering hold-to-reveal (state=${afterDeckClickClose.pqState}, holding=${afterDeckClickClose.holding}, ring=${afterDeckClickClose.ringActive}, chromeHidden=${afterDeckClickClose.chromeHidden})`
+    );
     check(pqStillOpen === true, 'Escape closes Spotify Deck WITHOUT closing Practice stage underneath');
 
     check(errors.length === 0, `Zero uncaught runtime errors (${errors.length} seen${errors.length ? ': ' + errors.join(' | ') : ''})`);
