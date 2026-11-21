@@ -974,6 +974,8 @@ body #practice-modal.pq-stage .pq-reveal-row .result-banner.answer-card,
 body #practice-modal.pq-stage .pq-reveal-row .result-banner.reveal.answer-card,
 body #sr-practice-overlay.pq-stage .sr-result-banner,
 body #sr-practice-overlay.pq-stage .sr-answer-card {
+  position: relative;
+  overflow: hidden;
   display: flex !important;
   align-items: center;
   justify-content: space-between;
@@ -1007,11 +1009,31 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.correct {
   color: var(--pass-ink) !important;
 }
 
+body #practice-modal.pq-stage .pq-reveal-row .answer-card.is-passed.is-crit.result-banner.correct,
+body:not(.immersive-active) #sr-practice-overlay.pq-stage .sr-result-banner.correct.is-crit,
+body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.correct.is-crit {
+  border-color: rgba(212, 160, 23, 0.58) !important;
+  border-left: 3px solid #d4a017 !important;
+}
+
+body #practice-modal.pq-stage .answer-card.is-crit .pq-ans-kicker,
+body:not(.immersive-active) #sr-practice-overlay.pq-stage .sr-result-banner.is-crit .pq-ans-kicker {
+  color: #9a6b05 !important;
+  opacity: 1 !important;
+}
+
+body.immersive-active #practice-modal.pq-stage .answer-card.is-crit .pq-ans-kicker,
+body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.is-crit .pq-ans-kicker {
+  color: #e8b931 !important;
+  opacity: 1 !important;
+}
+
 body #practice-modal.pq-stage .pq-reveal-row .answer-card.is-failed.result-banner.wrong,
 body:not(.immersive-active) #sr-practice-overlay.pq-stage .sr-result-banner.incorrect,
 body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect {
   background: var(--fail-bg) !important;
   border-color: var(--fail-border) !important;
+  border-left: 3px solid var(--fail-ink) !important;
   color: var(--fail-ink) !important;
 }
 
@@ -1314,16 +1336,109 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
 
 #practice-modal.pq-stage .ck-hud-pill,
 #sr-practice-overlay.pq-stage .ck-hud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   border: none !important;
   background: transparent !important;
   padding: 0 !important;
   border-radius: 0 !important;
   color: var(--ink-secondary) !important;
   font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
+  line-height: 1;
   white-space: nowrap;
+}
+
+#practice-modal.pq-stage .ck-combo,
+#sr-practice-overlay.pq-stage .ck-combo {
+  color: var(--ink-primary);
+  font-weight: 700;
+}
+
+#practice-modal.pq-stage .ck-pips,
+#sr-practice-overlay.pq-stage .ck-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+#practice-modal.pq-stage .ck-pip,
+#sr-practice-overlay.pq-stage .ck-pip {
+  display: block;
+  width: 9px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--border-strong);
+  opacity: 0.42;
+  transition: background-color 180ms ease, opacity 180ms ease, transform 180ms ease;
+}
+
+#practice-modal.pq-stage .ck-pip.is-lit,
+#sr-practice-overlay.pq-stage .ck-pip.is-lit {
+  background: var(--ink-primary);
+  opacity: 1;
+}
+
+#practice-modal.pq-stage .ck-hud-pill.is-crit .ck-pip.is-lit,
+#sr-practice-overlay.pq-stage .ck-hud-pill.is-crit .ck-pip.is-lit {
+  background: #d4a017;
+}
+
+#practice-modal.pq-stage .ck-hud-pill.is-overheat .ck-pip.is-lit,
+#sr-practice-overlay.pq-stage .ck-hud-pill.is-overheat .ck-pip.is-lit {
+  background: #ea580c;
+}
+
+#practice-modal.pq-stage .ck-hud-pill.is-miss .ck-pip.is-lit,
+#sr-practice-overlay.pq-stage .ck-hud-pill.is-miss .ck-pip.is-lit {
+  background: var(--fail-ink);
+  opacity: 1;
+}
+
+#practice-modal.pq-stage .ck-hud-pill.is-miss .ck-pip:not(.is-lit),
+#sr-practice-overlay.pq-stage .ck-hud-pill.is-miss .ck-pip:not(.is-lit) {
+  background: var(--fail-ink);
+  opacity: 0.28;
+}
+
+#practice-modal.pq-stage .ck-tag,
+#sr-practice-overlay.pq-stage .ck-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+}
+
+#practice-modal.pq-stage .ck-hud-pill.is-crit .ck-tag,
+#sr-practice-overlay.pq-stage .ck-hud-pill.is-crit .ck-tag {
+  color: #9a6b05;
+}
+
+body.immersive-active #practice-modal.pq-stage .ck-hud-pill.is-crit .ck-tag,
+body.immersive-active #sr-practice-overlay.pq-stage .ck-hud-pill.is-crit .ck-tag {
+  color: #e8b931;
+}
+
+#practice-modal.pq-stage .ck-hud-pill.is-overheat .ck-tag,
+#sr-practice-overlay.pq-stage .ck-hud-pill.is-overheat .ck-tag {
+  color: #ea580c;
+}
+
+#practice-modal.pq-stage .ck-hud-pill.is-miss .ck-tag.is-shield,
+#sr-practice-overlay.pq-stage .ck-hud-pill.is-miss .ck-tag.is-shield {
+  color: var(--ink-primary);
+}
+
+#practice-modal.pq-stage .ck-shield,
+#sr-practice-overlay.pq-stage .ck-shield {
+  color: var(--ink-muted);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
 }
 
 #practice-modal.pq-stage .dock-center {
@@ -2253,9 +2368,179 @@ body.pq-active .jmax-app-toast {
   bottom: auto !important;
 }
 
+/* ── 6. Brutally Minimalist Solve / Crit / Miss Motion & Surge Signifiers ── */
+@keyframes pqPaceCritBreathe {
+  0%, 100% { opacity: 0.62; }
+  50% { opacity: 1; }
+}
+
+body #practice-modal.pq-stage .pq-pace,
+body #sr-practice-overlay.pq-stage .pq-pace {
+  transition: opacity 0.25s ease, background-color 0.14s ease, height 0.2s ease !important;
+}
+
+body #practice-modal.pq-stage[data-ck-surge="crit"] .pq-pace,
+body #sr-practice-overlay.pq-stage[data-ck-surge="crit"] .pq-pace {
+  background: #d4a017 !important;
+  opacity: 0.82 !important;
+  transition: opacity 0.2s ease, background-color 0.08s ease !important;
+  animation: pqPaceCritBreathe 2.4s ease-in-out infinite;
+}
+
+body #practice-modal.pq-stage .pq-pace.is-flash-pass,
+body #sr-practice-overlay.pq-stage .pq-pace.is-flash-pass {
+  background: var(--pass-ink) !important;
+  opacity: 1 !important;
+  animation: none !important;
+  transition: opacity 280ms ease-out, background-color 80ms ease-out !important;
+}
+
+body #practice-modal.pq-stage .pq-pace.is-flash-crit,
+body #sr-practice-overlay.pq-stage .pq-pace.is-flash-crit {
+  background: #d4a017 !important;
+  opacity: 1 !important;
+  height: 3px !important;
+  animation: none !important;
+  transition: opacity 420ms ease-out, background-color 80ms ease-out, height 200ms ease-out !important;
+}
+
+body #practice-modal.pq-stage .pq-pace.is-flash-fail,
+body #sr-practice-overlay.pq-stage .pq-pace.is-flash-fail {
+  background: var(--fail-ink) !important;
+  opacity: 0.95 !important;
+  animation: none !important;
+  transition: opacity 300ms ease-out, background-color 80ms ease-out !important;
+}
+
+body #practice-modal.pq-stage[data-ck-surge="crit"] .pq-hold-ring-fg,
+body #sr-practice-overlay.pq-stage[data-ck-surge="crit"] .pq-hold-ring-fg {
+  stroke: #d4a017 !important;
+}
+
+@keyframes pqCardSettle {
+  from { transform: translateY(4px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes pqSheenSweep {
+  0% { transform: translateX(-110%) skewX(-18deg); opacity: 0; }
+  25% { opacity: 0.9; }
+  100% { transform: translateX(240%) skewX(-18deg); opacity: 0; }
+}
+
+@keyframes pqCardMissShudder {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  55% { transform: translateX(2.5px); }
+  80% { transform: translateX(-1px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes pqStageRecoil {
+  0% { transform: translateY(0); }
+  38% { transform: translateY(2.5px); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes pqDiagPulsePass {
+  0% { color: var(--pass-ink); }
+  100% { color: var(--ink-secondary); }
+}
+
+@keyframes pqCritSpark {
+  0% {
+    transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scaleY(1);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--tx, 0px)), calc(-50% + var(--ty, 0px))) rotate(var(--rot, 0deg)) scaleY(0.35);
+    opacity: 0;
+  }
+}
+
+body #practice-modal.pq-stage .answer-card.pq-fx-pass,
+body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-pass {
+  animation: pqCardSettle 170ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body #practice-modal.pq-stage .answer-card.pq-fx-crit,
+body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-crit {
+  animation: pqCardSettle 190ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body #practice-modal.pq-stage .answer-card.pq-fx-pass::after,
+body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-pass::after,
+body #practice-modal.pq-stage .answer-card.pq-fx-crit::after,
+body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-crit::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 34%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+  animation: pqSheenSweep 280ms ease-out forwards;
+}
+
+body #practice-modal.pq-stage .answer-card.pq-fx-crit::after,
+body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-crit::after {
+  background: linear-gradient(90deg, transparent, rgba(212, 160, 23, 0.32), transparent);
+  animation-duration: 360ms;
+}
+
+body #practice-modal.pq-stage .answer-card.pq-fx-fail,
+body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-fail {
+  animation: pqCardMissShudder 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body #practice-modal.pq-stage .pq-shell.pq-fx-recoil,
+body #sr-practice-overlay.pq-stage .sr-practice-modal.pq-fx-recoil {
+  animation: pqStageRecoil 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body #practice-modal.pq-stage #pq-diag.pq-diag-pulse-pass,
+body #sr-practice-overlay.pq-stage .sr-top-meta.pq-diag-pulse-pass {
+  animation: pqDiagPulsePass 300ms ease-out;
+}
+
+.pq-crit-spark {
+  position: fixed;
+  width: 2px;
+  height: 8px;
+  border-radius: 1px;
+  background: #d4a017;
+  pointer-events: none;
+  z-index: 10010;
+  will-change: transform, opacity;
+  animation: pqCritSpark 340ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #practice-modal[data-pq-state="answered"] #pq-diag { animation: none; }
   .obs-specimen-frame .subject-ring-arc,
   .rh-gauge .rh-cov,
   .rh-gauge .rh-line { transition: none; }
+  body #practice-modal.pq-stage[data-ck-surge="crit"] .pq-pace,
+  body #sr-practice-overlay.pq-stage[data-ck-surge="crit"] .pq-pace,
+  body #practice-modal.pq-stage .answer-card.pq-fx-pass,
+  body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-pass,
+  body #practice-modal.pq-stage .answer-card.pq-fx-crit,
+  body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-crit,
+  body #practice-modal.pq-stage .answer-card.pq-fx-pass::after,
+  body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-pass::after,
+  body #practice-modal.pq-stage .answer-card.pq-fx-crit::after,
+  body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-crit::after,
+  body #practice-modal.pq-stage .answer-card.pq-fx-fail,
+  body #sr-practice-overlay.pq-stage .sr-result-banner.pq-fx-fail,
+  body #practice-modal.pq-stage .pq-shell.pq-fx-recoil,
+  body #sr-practice-overlay.pq-stage .sr-practice-modal.pq-fx-recoil,
+  .red-flash-overlay,
+  .green-glow-overlay,
+  .supercharged-glow-overlay {
+    animation: none !important;
+  }
+  .pq-crit-spark {
+    display: none !important;
+  }
 }

@@ -226,7 +226,11 @@
 // v125 - SLIM PRACTICE & VAULT SR STAGES: move Practice telemetry into a
 //        1-line top-center readout + compact 2-band post-reveal dock, and
 //        rebuild Error Matrix SR modal onto shared v2 tokens and 1-row reflection.
-const VERSION = 'jeemax-v125';
+// v126 - MINIMALIST SOLVE, CRIT & MISS FEEDBACK: synchronous CK_ENGINE.onSolve
+//        (0ms crit/miss evaluation, 3-pip charge HUD, UNDER PACE / REDEEMED),
+//        perimeter-only edge flashes, pitch-escalating streak audio, and
+//        crisp damped wrong-answer tactile misfire.
+const VERSION = 'jeemax-v126';
 
 const SHELL = [
   './',

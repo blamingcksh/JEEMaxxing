@@ -5316,6 +5316,7 @@ export function startPracticeWithQuestion(questions, index, opts = null) {
     AppState.practiceSubmittedFlags = new Array(questions.length).fill(false);
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
+    AppState._pqCritByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
     AppState._pqHealthBefore = null;
@@ -5840,8 +5841,10 @@ function _pqUpdatePace() {
         const modal = document.getElementById('practice-modal');
         if (!paceEl || !modal || !modal.classList.contains('active')) return;
         const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]);
+        paceEl.style.opacity = '';
+        paceEl.style.background = '';
         if (submitted) {
-            paceEl.style.opacity = '0';
+            paceEl.style.setProperty('--pq-pace-o', '0');
             return;
         }
         let targetSecs = AppState._pqTargetSecs;
@@ -5857,14 +5860,14 @@ function _pqUpdatePace() {
         const secs = AppState.practiceSeconds || 0;
         const ratio = secs / targetSecs;
         if (ratio < 0.8) {
-            paceEl.style.opacity = '0';
+            paceEl.style.setProperty('--pq-pace-o', '0');
         } else {
             const factor = Math.min(1.0, (ratio - 0.8) / 0.2);
-            paceEl.style.opacity = (0.2 + factor * 0.75).toFixed(2);
+            paceEl.style.setProperty('--pq-pace-o', (0.2 + factor * 0.75).toFixed(2));
             if (factor >= 0.5) {
-                paceEl.style.background = 'var(--pq-pace-to)';
+                paceEl.style.setProperty('--pq-pace-bg', 'var(--pq-pace-to)');
             } else {
-                paceEl.style.background = 'var(--pq-pace-from)';
+                paceEl.style.setProperty('--pq-pace-bg', 'var(--pq-pace-from)');
             }
         }
     } catch (_) {}
@@ -6339,11 +6342,14 @@ function _pqBuildRevealZoneHTML(q, idx) {
     }
 
     const actionsHtml = actionBtns ? `<div class="pq-ans-actions">${actionBtns}</div>` : '';
+    const critLabel = AppState._pqCritByIdx && AppState._pqCritByIdx[idx];
     let bannerCls = 'result-banner reveal answer-card';
     let kickerText = 'ANSWER REVEALED';
     if (graded && q.status === 'solved') {
-        bannerCls = 'result-banner correct answer-card is-passed';
-        kickerText = 'PASSED · ANSWER';
+        bannerCls = critLabel
+            ? 'result-banner correct answer-card is-passed is-crit'
+            : 'result-banner correct answer-card is-passed';
+        kickerText = critLabel ? ('CRIT · ' + escapeHtml(critLabel)) : 'PASSED · ANSWER';
     } else if (graded && (q.status === 'wrong' || q.status === 'error')) {
         bannerCls = 'result-banner wrong answer-card is-failed';
         kickerText = 'FAILED · ANSWER';
@@ -6803,6 +6809,7 @@ function _pqBindHold() {
 
         _pqHoldRingTimer = setTimeout(() => {
             if (ringWrap) ringWrap.classList.add('active');
+            try { _pqPlayHoldTick(modal.getAttribute('data-ck-surge') === 'crit'); } catch (_) {}
         }, 120);
 
         _pqHoldTimer = setTimeout(() => {
@@ -6853,6 +6860,7 @@ export function renderPracticeQuestionModal() {
     if (!submitted) {
         window._pendingSolveConfidence = null;
         if (AppState._pqEloByIdx) delete AppState._pqEloByIdx[_pqIdx];
+        if (AppState._pqCritByIdx) delete AppState._pqCritByIdx[_pqIdx];
         const _cBtn = document.getElementById('practice-continue-btn');
         if (_cBtn) _cBtn.style.display = 'none';
     }
@@ -8798,6 +8806,7 @@ function _serveModeEntry(entry) {
     window._pendingSolveConfidence = null;   // fresh item → stale tap discarded
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
+    AppState._pqCritByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
     AppState.practiceQuestions = [entry.q];
@@ -11347,6 +11356,7 @@ export function closePracticeModal(opts) {
     window._pendingSolveConfidence = null;
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
+    AppState._pqCritByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
     AppState._pqHealthBefore = null;
@@ -11411,10 +11421,13 @@ export async function deleteQuestion(id) {
 
 export function triggerRedFlash() {
     if (window.FX && !window.FX.wantEffects()) return;
-    const overlay = document.createElement('div');
-    overlay.className = 'red-flash-overlay';
-    document.body.appendChild(overlay);
-    overlay.addEventListener('animationend', () => overlay.remove());
+    _pqSpawnEdgeFlash('red-flash-overlay', 440);
+    _pqFlashPace('fail');
+    const stage = _pqActiveStage();
+    if (stage) {
+        const card = stage.querySelector('.answer-card.is-failed, .sr-result-banner.incorrect');
+        if (card) _pqPulseClass(card, 'pq-fx-fail', 280);
+    }
 }
 
 function _syncImmersiveBtn() {
@@ -11558,7 +11571,144 @@ function _sfxNoiseBurst(ctx, time, dur, bpFreq, bpQ, peak) {
     src.stop(time + dur + 0.02);
 }
 
-// Overcharge / Critical Hit Reactor Surge (dark industrial power-chord sweep)
+function _pqActiveStage() {
+    const sr = document.getElementById('sr-practice-overlay');
+    if (sr && sr.isConnected) return sr;
+    const pm = document.getElementById('practice-modal');
+    return (pm && pm.classList.contains('active')) ? pm : null;
+}
+
+function _pqPulseClass(el, cls, ms) {
+    if (!el || !cls) return;
+    el._pqFxTimers = el._pqFxTimers || {};
+    if (el._pqFxTimers[cls]) {
+        clearTimeout(el._pqFxTimers[cls]);
+        el._pqFxTimers[cls] = null;
+    }
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    el._pqFxTimers[cls] = setTimeout(() => {
+        el.classList.remove(cls);
+        el._pqFxTimers[cls] = null;
+    }, ms);
+}
+
+function _pqSpawnEdgeFlash(className, fallbackMs) {
+    const el = document.createElement('div');
+    el.className = className;
+    document.body.appendChild(el);
+    let cleaned = false;
+    const clean = () => {
+        if (cleaned) return;
+        cleaned = true;
+        try { el.remove(); } catch (_) {}
+    };
+    el.addEventListener('animationend', clean, { once: true });
+    setTimeout(clean, fallbackMs);
+}
+
+function _pqFlashPace(kind) {
+    const stage = _pqActiveStage();
+    if (!stage) return;
+    const pace = stage.querySelector('#pq-pace, #sr-pace');
+    if (!pace) return;
+    pace.classList.remove('is-flash-pass', 'is-flash-crit', 'is-flash-fail');
+    const cls = kind === 'crit' ? 'is-flash-crit' : kind === 'fail' ? 'is-flash-fail' : 'is-flash-pass';
+    const ms = kind === 'crit' ? 500 : 320;
+    _pqPulseClass(pace, cls, ms);
+}
+
+function _pqStampCritCard(stage, critLabel) {
+    if (!stage || !critLabel) return null;
+    const card = stage.querySelector('.answer-card.is-passed, .sr-result-banner.correct');
+    if (!card) return null;
+    card.classList.add('is-crit');
+    const kicker = card.querySelector('.pq-ans-kicker');
+    if (kicker) kicker.textContent = 'CRIT · ' + String(critLabel);
+    return card;
+}
+
+function _spawnCritSparks(anchorEl) {
+    if (window.FX && !window.FX.wantEffects()) return;
+    try {
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    } catch (_) {}
+    const rect = (anchorEl && anchorEl.getBoundingClientRect)
+        ? anchorEl.getBoundingClientRect()
+        : { left: window.innerWidth * 0.3, top: window.innerHeight * 0.45, width: window.innerWidth * 0.4, height: 64 };
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+
+    // 10 crisp 2px×8px perimeter ticks distributed along top/bottom/sides of the answer card.
+    const count = 10;
+    for (let i = 0; i < count; i++) {
+        const spark = document.createElement('div');
+        spark.className = 'pq-crit-spark';
+        let sx, sy, angle;
+        if (i < 4) {
+            const frac = (i + 0.5) / 4;
+            sx = rect.left + rect.width * frac;
+            sy = rect.top + 2;
+            angle = -Math.PI / 2 + (frac - 0.5) * 0.7;
+        } else if (i < 8) {
+            const frac = (i - 4 + 0.5) / 4;
+            sx = rect.left + rect.width * frac;
+            sy = rect.bottom - 2;
+            angle = Math.PI / 2 + (frac - 0.5) * 0.7;
+        } else if (i === 8) {
+            sx = rect.left + 2;
+            sy = rect.top + rect.height * 0.5;
+            angle = Math.PI;
+        } else {
+            sx = rect.right - 2;
+            sy = rect.top + rect.height * 0.5;
+            angle = 0;
+        }
+        const dist = 24 + (i % 3) * 8;
+        const tx = Math.cos(angle) * dist;
+        const ty = Math.sin(angle) * dist;
+        const rotDeg = (angle * 180 / Math.PI) + 90;
+        spark.style.left = sx.toFixed(1) + 'px';
+        spark.style.top = sy.toFixed(1) + 'px';
+        spark.style.setProperty('--tx', tx.toFixed(1) + 'px');
+        spark.style.setProperty('--ty', ty.toFixed(1) + 'px');
+        spark.style.setProperty('--rot', rotDeg.toFixed(1) + 'deg');
+        document.body.appendChild(spark);
+        let cleaned = false;
+        const clean = () => {
+            if (cleaned) return;
+            cleaned = true;
+            try { spark.remove(); } catch (_) {}
+        };
+        spark.addEventListener('animationend', clean, { once: true });
+        setTimeout(clean, 450);
+    }
+}
+
+function _pqPlayHoldTick(isCritArmed) {
+    if (window.FX && !window.FX.wantSound()) return;
+    try {
+        const ctx = _sharedSfxCtx();
+        if (!ctx) return;
+        const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
+        const now = ctx.currentTime;
+        const peak = 0.048 * v;
+        _sfxNoiseBurst(ctx, now, 0.014, isCritArmed ? 3400 : 2400, 3.8, peak);
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(isCritArmed ? 660 : 480, now);
+        osc.frequency.exponentialRampToValueAtTime(isCritArmed ? 330 : 240, now + 0.016);
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.linearRampToValueAtTime(peak, now + 0.002);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
+        osc.connect(g).connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.022);
+    } catch (_) {}
+}
+
+// Critical Hit Impact: 12ms dry firing-pin snap + 30ms breath + heavy sub-bass slam & steel harmonic
 function playSuperSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
@@ -11566,121 +11716,134 @@ function playSuperSound() {
         if (!ctx) return;
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        try { window.HeartbeatAudio?.duck?.(1.1); } catch (_) {}
+        try { window.HeartbeatAudio?.duck?.(0.95); } catch (_) {}
 
-        // 1. Sub-reactor boom
+        // 1. Crisp 12ms firing-pin transient
+        _sfxNoiseBurst(ctx, now, 0.014, 4200, 4.2, 0.15 * v);
+        const pin = ctx.createOscillator();
+        const pinG = ctx.createGain();
+        pin.type = 'triangle';
+        pin.frequency.setValueAtTime(920, now);
+        pin.frequency.exponentialRampToValueAtTime(240, now + 0.012);
+        pinG.gain.setValueAtTime(0.0001, now);
+        pinG.gain.linearRampToValueAtTime(0.14 * v, now + 0.002);
+        pinG.gain.exponentialRampToValueAtTime(0.0001, now + 0.014);
+        pin.connect(pinG).connect(ctx.destination);
+        pin.start(now); pin.stop(now + 0.018);
+
+        // 2. 30ms psychoacoustic breath gap before the drop (t0 = now + 0.042)
+        const t0 = now + 0.042;
         const sub = ctx.createOscillator();
         const subG = ctx.createGain();
         sub.type = 'sine';
-        sub.frequency.setValueAtTime(105, now);
-        sub.frequency.exponentialRampToValueAtTime(34, now + 0.38);
-        subG.gain.setValueAtTime(0.0001, now);
-        subG.gain.linearRampToValueAtTime(0.32 * v, now + 0.01);
-        subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+        sub.frequency.setValueAtTime(94, t0);
+        sub.frequency.exponentialRampToValueAtTime(30, t0 + 0.34);
+        subG.gain.setValueAtTime(0.0001, t0);
+        subG.gain.linearRampToValueAtTime(0.34 * v, t0 + 0.008);
+        subG.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.48);
         sub.connect(subG).connect(ctx.destination);
-        sub.start(now); sub.stop(now + 0.58);
+        sub.start(t0); sub.stop(t0 + 0.50);
 
-        // 2. Cold dark power-fifth FM + sawtooth surge (A2, E3, A3, E4)
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
-        lp.frequency.setValueAtTime(240, now);
-        lp.frequency.exponentialRampToValueAtTime(1650, now + 0.32);
-        lp.frequency.exponentialRampToValueAtTime(280, now + 0.95);
-        lp.Q.value = 3.2;
+        lp.frequency.setValueAtTime(380, t0);
+        lp.frequency.exponentialRampToValueAtTime(2200, t0 + 0.12);
+        lp.frequency.exponentialRampToValueAtTime(320, t0 + 0.72);
+        lp.Q.value = 2.6;
         lp.connect(ctx.destination);
 
         [110.0, 164.81, 220.0, 329.63].forEach((f, i) => {
             const osc = ctx.createOscillator();
             const g = ctx.createGain();
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(f, now + i * 0.055);
-            osc.detune.value = (i % 2 === 0 ? -7 : 7);
-            g.gain.setValueAtTime(0.0001, now + i * 0.055);
-            g.gain.linearRampToValueAtTime(0.11 * v, now + i * 0.055 + 0.015);
-            g.gain.exponentialRampToValueAtTime(0.0001, now + 0.92);
+            osc.type = i % 2 === 0 ? 'triangle' : 'sawtooth';
+            const startAt = t0 + i * 0.018;
+            osc.frequency.setValueAtTime(f, startAt);
+            osc.detune.value = (i % 2 === 0 ? -5 : 5);
+            g.gain.setValueAtTime(0.0001, startAt);
+            g.gain.linearRampToValueAtTime((i < 2 ? 0.11 : 0.085) * v, startAt + 0.009);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.76);
             osc.connect(g).connect(lp);
-            osc.start(now + i * 0.055);
-            osc.stop(now + 0.96);
+            osc.start(startAt);
+            osc.stop(t0 + 0.79);
         });
 
-        _sfxNoiseBurst(ctx, now, 0.045, 3200, 3.2, 0.14 * v);
-        _sfxNoiseBurst(ctx, now + 0.09, 0.06, 1500, 2.4, 0.16 * v);
+        _sfxNoiseBurst(ctx, t0, 0.032, 2200, 2.8, 0.14 * v);
     } catch (e) { /* ignore */ }
 }
 
 function showNormalGlow() {
     if (window.FX && !window.FX.wantEffects()) return;
-    const glow = document.createElement('div');
-    glow.className = 'green-glow-overlay';
-    document.body.appendChild(glow);
-    glow.addEventListener('animationend', () => glow.remove());
+    _pqSpawnEdgeFlash('green-glow-overlay', 420);
+    _pqFlashPace('pass');
+    const stage = _pqActiveStage();
+    if (stage) {
+        const card = stage.querySelector('.answer-card.is-passed, .sr-result-banner.correct');
+        if (card) _pqPulseClass(card, 'pq-fx-pass', 320);
+        const diag = stage.querySelector('#pq-diag, .sr-top-meta');
+        if (diag) _pqPulseClass(diag, 'pq-diag-pulse-pass', 320);
+    }
 }
 
-function showSupercharged() {
+function showSupercharged(opts = {}) {
     const _fxOn = !window.FX || window.FX.wantEffects();   // true when FX absent or effects ON
-    if (_fxOn) {
-        try {
-            const glow = document.createElement('div');
-            glow.className = 'supercharged-glow-overlay';
-            document.body.appendChild(glow);
-            glow.addEventListener('animationend', () => glow.remove());
-        } catch (e) { console.error("Glow error:", e); }
-    }
-    let originX = window.innerWidth / 2;
-    let originY = window.innerHeight / 2;
-    const srDrawer = document.querySelector('#sr-practice-overlay .sr-practice-modal');
-    if (srDrawer && srDrawer.offsetParent !== null) {
-        const rect = srDrawer.getBoundingClientRect();
-        originX = rect.left + rect.width / 2; originY = rect.top + rect.height / 2;
-    } else {
-        const modal = document.querySelector('#practice-modal .modal-card');
-        if (modal && modal.offsetParent !== null) {
-            const rect = modal.getBoundingClientRect();
-            originX = rect.left + rect.width / 2; originY = rect.top + rect.height / 2;
-        }
+    const stage = _pqActiveStage();
+    let card = null;
+    if (stage && opts && opts.critLabel) {
+        card = _pqStampCritCard(stage, opts.critLabel);
+    } else if (stage) {
+        card = stage.querySelector('.answer-card.is-passed, .sr-result-banner.correct');
     }
     if (_fxOn) {
         try {
-            if (typeof burstEmojis === 'function') {
-                burstEmojis(originX, originY, 40, ['🎉','😄','🔥','✨','🥳','🎊','💯','🌟','😎','🏆'], 1.6);
-            } else {
-                const fallback = document.createElement('div');
-                fallback.textContent = '✨ CRITICAL HIT ✨';
-                fallback.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#c084fc;font-size:32px;font-weight:bold;text-shadow:0 0 20px #8b5cf6;z-index:10000;pointer-events:none;';
-                document.body.appendChild(fallback);
-                setTimeout(() => fallback.remove(), 800);
+            _pqSpawnEdgeFlash('supercharged-glow-overlay', 620);
+            _pqFlashPace('crit');
+            if (stage) {
+                const shell = stage.querySelector('.pq-shell, .sr-practice-modal');
+                if (shell) _pqPulseClass(shell, 'pq-fx-recoil', 180);
             }
-        } catch (e) { console.error("burstEmojis error:", e); }
+            if (card) {
+                _pqPulseClass(card, 'pq-fx-crit', 400);
+                _spawnCritSparks(card);
+            } else if (!stage) {
+                _spawnCritSparks(null);
+            }
+        } catch (e) { console.error("Crit FX error:", e); }
     }
-    try { if (typeof playSuperSound === 'function') playSuperSound(); } catch (e) {}   // self-gated by Sound
-    if (Math.random() < 0.15 && typeof activateOverheat === 'function') activateOverheat();  // gameplay — never gated
+    if (!opts || opts.sound !== false) {
+        try { if (typeof playSuperSound === 'function') playSuperSound(); } catch (e) {}   // self-gated by Sound
+    }
+    if ((!opts || opts.allowOverheat !== false) && Math.random() < 0.15 && typeof activateOverheat === 'function') activateOverheat();  // gameplay — never gated
 }
 
-// Live Round Verified: heavy sub-punch + hollow cold metallic FM chime + bolt lock
-function playCorrectSound() {
+// Streak-escalating mechanical fifth + bolt lock (semitone climb across 1..6)
+function playCorrectSound(streak) {
     if (window.FX && !window.FX.wantSound()) return;
     try {
         const ctx = _sharedSfxCtx();
         if (!ctx) return;
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        try { window.HeartbeatAudio?.duck?.(0.65); } catch (_) {}
+        try { window.HeartbeatAudio?.duck?.(0.55); } catch (_) {}
 
-        // Sub confirmation punch
+        const st = Math.max(1, Number(streak != null ? streak : (AppState.practiceCorrectStreak || 1)) || 1);
+        const semis = [0, 2, 4, 7, 9, 12];
+        const mult = Math.pow(2, semis[Math.min(5, st - 1)] / 12);
+
+        // Tight sub confirmation punch
         const sub = ctx.createOscillator();
         const subG = ctx.createGain();
         sub.type = 'sine';
-        sub.frequency.setValueAtTime(125, now);
-        sub.frequency.exponentialRampToValueAtTime(46, now + 0.16);
+        sub.frequency.setValueAtTime(118, now);
+        sub.frequency.exponentialRampToValueAtTime(48, now + 0.14);
         subG.gain.setValueAtTime(0.0001, now);
-        subG.gain.linearRampToValueAtTime(0.28 * v, now + 0.006);
-        subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+        subG.gain.linearRampToValueAtTime(0.24 * v, now + 0.005);
+        subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
         sub.connect(subG).connect(ctx.destination);
-        sub.start(now); sub.stop(now + 0.30);
+        sub.start(now); sub.stop(now + 0.24);
 
-        // Cold metallic FM fifth ring (A3 -> E4)
-        [220.0, 329.63].forEach((freq, i) => {
-            const t = now + i * 0.065;
+        // Ascending metallic FM fifth scaled cleanly with streak
+        [220.0 * mult, 329.63 * mult].forEach((freq, i) => {
+            const t = now + i * 0.055;
             const car = ctx.createOscillator();
             const mod = ctx.createOscillator();
             const mg = ctx.createGain();
@@ -11688,22 +11851,22 @@ function playCorrectSound() {
             car.type = 'sine'; mod.type = 'sine';
             car.frequency.setValueAtTime(freq, t);
             mod.frequency.setValueAtTime(freq * 1.414, t);
-            mg.gain.setValueAtTime(freq * 0.65, t);
-            mg.gain.exponentialRampToValueAtTime(1, t + 0.45);
+            mg.gain.setValueAtTime(freq * 0.55, t);
+            mg.gain.exponentialRampToValueAtTime(1, t + 0.34);
             g.gain.setValueAtTime(0.0001, t);
-            g.gain.linearRampToValueAtTime((i === 0 ? 0.13 : 0.11) * v, t + 0.008);
-            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.52);
+            g.gain.linearRampToValueAtTime((i === 0 ? 0.13 : 0.11) * v, t + 0.006);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
             mod.connect(mg).connect(car.frequency);
             car.connect(g).connect(ctx.destination);
             car.start(t); mod.start(t);
-            car.stop(t + 0.55); mod.stop(t + 0.55);
+            car.stop(t + 0.40); mod.stop(t + 0.40);
         });
 
-        _sfxNoiseBurst(ctx, now, 0.028, 2900, 3.2, 0.12 * v);
+        _sfxNoiseBurst(ctx, now, 0.018, 3400, 3.6, 0.11 * v);
     } catch (e) { /* ignore */ }
 }
 
-// Blank Shell / Misfire Slam: dry firing-pin click + dissonant minor-2nd shudder + sub drop
+// Dry damped mechanical misfire (~180ms, clean tactile stop without harsh sawtooth screech)
 function playWrongSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
@@ -11711,53 +11874,52 @@ function playWrongSound() {
         if (!ctx) return;
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        try { window.HeartbeatAudio?.duck?.(0.75); } catch (_) {}
+        try { window.HeartbeatAudio?.duck?.(0.45); } catch (_) {}
 
-        // 1. Dry hollow firing-pin misfire snap
-        _sfxNoiseBurst(ctx, now, 0.022, 3500, 4.0, 0.17 * v);
-        const pin = ctx.createOscillator();
-        const pinG = ctx.createGain();
-        pin.type = 'triangle';
-        pin.frequency.setValueAtTime(440, now);
-        pin.frequency.exponentialRampToValueAtTime(135, now + 0.032);
-        pinG.gain.setValueAtTime(0.0001, now);
-        pinG.gain.linearRampToValueAtTime(0.14 * v, now + 0.002);
-        pinG.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
-        pin.connect(pinG).connect(ctx.destination);
-        pin.start(now); pin.stop(now + 0.045);
+        // 1. Dull dry pin tick
+        _sfxNoiseBurst(ctx, now, 0.014, 1800, 2.8, 0.10 * v);
 
-        // 2. Heavy dissonant minor-second industrial shudder (A2 + Bb2) + sub drop
-        const t = now + 0.055;
+        // 2. Low-passed graphite/wood mechanical body knock + damped sub thump
+        const t = now + 0.018;
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
-        lp.frequency.setValueAtTime(460, t);
-        lp.frequency.exponentialRampToValueAtTime(75, t + 0.34);
-        lp.Q.value = 3.8;
+        lp.frequency.setValueAtTime(360, t);
+        lp.frequency.exponentialRampToValueAtTime(110, t + 0.13);
+        lp.Q.value = 1.4;
         lp.connect(ctx.destination);
 
-        [110.0, 116.54].forEach((freq) => {
-            const osc = ctx.createOscillator();
-            const g = ctx.createGain();
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(freq, t);
-            osc.frequency.exponentialRampToValueAtTime(freq * 0.72, t + 0.34);
-            g.gain.setValueAtTime(0.0001, t);
-            g.gain.linearRampToValueAtTime(0.16 * v, t + 0.008);
-            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.36);
-            osc.connect(g).connect(lp);
-            osc.start(t); osc.stop(t + 0.38);
-        });
+        const body = ctx.createOscillator();
+        const bodyG = ctx.createGain();
+        body.type = 'triangle';
+        body.frequency.setValueAtTime(145, t);
+        body.frequency.exponentialRampToValueAtTime(62, t + 0.13);
+        bodyG.gain.setValueAtTime(0.0001, t);
+        bodyG.gain.linearRampToValueAtTime(0.22 * v, t + 0.006);
+        bodyG.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+        body.connect(bodyG).connect(lp);
+        body.start(t); body.stop(t + 0.155);
 
-        const drop = ctx.createOscillator();
-        const dropG = ctx.createGain();
-        drop.type = 'sine';
-        drop.frequency.setValueAtTime(68, t);
-        drop.frequency.exponentialRampToValueAtTime(26, t + 0.30);
-        dropG.gain.setValueAtTime(0.0001, t);
-        dropG.gain.linearRampToValueAtTime(0.24 * v, t + 0.008);
-        dropG.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
-        drop.connect(dropG).connect(ctx.destination);
-        drop.start(t); drop.stop(t + 0.36);
+        const sub = ctx.createOscillator();
+        const subG = ctx.createGain();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(88, t);
+        sub.frequency.exponentialRampToValueAtTime(44, t + 0.15);
+        subG.gain.setValueAtTime(0.0001, t);
+        subG.gain.linearRampToValueAtTime(0.18 * v, t + 0.006);
+        subG.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        sub.connect(subG).connect(ctx.destination);
+        sub.start(t); sub.stop(t + 0.175);
+
+        const tap = ctx.createOscillator();
+        const tapG = ctx.createGain();
+        tap.type = 'triangle';
+        tap.frequency.setValueAtTime(185, t);
+        tap.frequency.exponentialRampToValueAtTime(155, t + 0.09);
+        tapG.gain.setValueAtTime(0.0001, t);
+        tapG.gain.linearRampToValueAtTime(0.06 * v, t + 0.004);
+        tapG.gain.exponentialRampToValueAtTime(0.0001, t + 0.10);
+        tap.connect(tapG).connect(lp);
+        tap.start(t); tap.stop(t + 0.11);
     } catch (e) { /* ignore audio errors */ }
 }
 
@@ -12086,38 +12248,60 @@ export function deactivateOverheat() {
         if (isWrong) {
             // NOTE: no changeCount() here — wrong answers must not inflate the
             // daily solved counter / error-matrix totals / streak data.
-            triggerRedFlash();
-            playWrongSound();
-            AppState._ckComboBreak = true; // FIX: combo always breaks on a miss
+            if (AppState._pqCritByIdx) delete AppState._pqCritByIdx[AppState.currentPracticeIndex];
 
             if (Math.random() < 0.2) {
                 triggerStreakShield();
             } else {
                 AppState.practiceCorrectStreak = 0;
             }
+            if (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function') {
+                AppState._ckComboBreak = false;
+                window.CK_ENGINE.onSolve({ correct: false, q: AppState.currentQ, isVault: false });
+            } else {
+                AppState._ckComboBreak = true;
+            }
+            triggerRedFlash();
+            playWrongSound();
         }
         else if (statusNow === 'solved' && !wasSolved) {
             AppState.practiceCorrectStreak++;
-
-            if (window._justWonBounty) {
+            const _justBounty = !!window._justWonBounty;
+            let forceCritLabel = null;
+            if (_justBounty) {
                 window._justWonBounty = false;
-                showNormalGlow();
             } else if (overheatActive && !overheatUsed) {
                 changeCount(AppState.currentQ.subject, 2);
                 _pqBumpSolvedDelta(2);
-                showSupercharged();
                 overheatUsed = true;
                 deactivateOverheat();
+                forceCritLabel = 'OVERHEAT';
             } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
                 AppState.bounty.payoffCount--;
                 saveAllAsync().catch(console.error);
-                showSupercharged();
+                forceCritLabel = 'BOUNTY';
+            }
+
+            const ckRes = (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function')
+                ? window.CK_ENGINE.onSolve({
+                    correct: true,
+                    q: AppState.currentQ,
+                    secs: AppState.practiceSeconds || 0,
+                    targetSecs: AppState._pqTargetSecs || (typeof _eloTargetSeconds === 'function' ? _eloTargetSeconds(AppState.currentQ) : 180),
+                    isVault: false,
+                    forceCritLabel,
+                    suppressCrit: _justBounty
+                })
+                : null;
+
+            if (ckRes && ckRes.crit && !_justBounty) {
+                AppState._pqCritByIdx = AppState._pqCritByIdx || {};
+                AppState._pqCritByIdx[AppState.currentPracticeIndex] = ckRes.critLabel;
+                _pqStampCritCard(document.getElementById('practice-modal'), ckRes.critLabel);
+                showSupercharged({ sound: true, critLabel: ckRes.critLabel });
             } else {
                 showNormalGlow();
-                playCorrectSound();
-                if (Math.random() < 0.15) {
-                    showSupercharged();
-                }
+                playCorrectSound(AppState.practiceCorrectStreak);
             }
         }
 
@@ -12140,41 +12324,47 @@ export function deactivateOverheat() {
             correctBtn.onclick = () => {
                 if (originalCorrectClick) originalCorrectClick();
                 AppState.practiceCorrectStreak++;
-
-                if (window._justWonBounty) {
+                const _justBounty = !!window._justWonBounty;
+                let forceCritLabel = null;
+                if (_justBounty) {
                     window._justWonBounty = false;
-                    showNormalGlow();
-                } else if (AppState.bounty.payoffCount > 0) {
+                } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
                     AppState.bounty.payoffCount--;
                     saveAllAsync().catch(console.error);
-                    const rect = correctBtn.getBoundingClientRect();
-                    burstEmojis(rect.left + rect.width / 2, rect.top + rect.height / 2, 40,
-                        ['🎉', '😄', '🔥', '✨', '🥳', '🎊', '💯', '🌟', '😎', '🏆'], 1.6);
-                    playSuperSound();
-                    const glow = document.createElement('div');
-                    glow.className = 'supercharged-glow-overlay';
-                    document.body.appendChild(glow);
-                    glow.addEventListener('animationend', () => glow.remove());
+                    forceCritLabel = 'BOUNTY';
+                } else if (overheatActive && !overheatUsed) {
+                    const _ohSubj = normSubjKeyStrict(AppState.currentQ && AppState.currentQ.subject);
+                    if (_ohSubj) {
+                        changeCount(_ohSubj, 2);
+                        _pqBumpSolvedDelta(2);
+                        AppState.currentQ._solvedCredit = (Number(AppState.currentQ._solvedCredit) || 0) + 2;
+                    }
+                    overheatUsed = true;
+                    deactivateOverheat();
+                    forceCritLabel = 'OVERHEAT';
+                }
+
+                const secs = AppState._frozenTextQSeconds || AppState.practiceSeconds || 0;
+                const ckRes = (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function')
+                    ? window.CK_ENGINE.onSolve({
+                        correct: true,
+                        q: AppState.currentQ,
+                        secs,
+                        targetSecs: AppState._pqTargetSecs || (typeof _eloTargetSeconds === 'function' ? _eloTargetSeconds(AppState.currentQ) : 180),
+                        isVault: false,
+                        forceCritLabel,
+                        suppressCrit: _justBounty
+                    })
+                    : null;
+
+                if (ckRes && ckRes.crit && !_justBounty) {
+                    AppState._pqCritByIdx = AppState._pqCritByIdx || {};
+                    AppState._pqCritByIdx[AppState.currentPracticeIndex] = ckRes.critLabel;
+                    _pqStampCritCard(document.getElementById('practice-modal'), ckRes.critLabel);
+                    showSupercharged({ sound: true, critLabel: ckRes.critLabel });
                 } else {
                     showNormalGlow();
-                    playCorrectSound();
-                    if (overheatActive && !overheatUsed) {
-                        const _ohSubj = normSubjKeyStrict(AppState.currentQ && AppState.currentQ.subject);
-                        if (_ohSubj) {
-                            changeCount(_ohSubj, 2);
-                            _pqBumpSolvedDelta(2);
-                            AppState.currentQ._solvedCredit = (Number(AppState.currentQ._solvedCredit) || 0) + 2;
-                        }
-                        showSupercharged();
-                        playSuperSound();
-                        overheatUsed = true;
-                        deactivateOverheat();
-                    } else {
-                        if (Math.random() < 0.15) {
-                            showSupercharged();
-                            playSuperSound();
-                        }
-                    }
+                    playCorrectSound(AppState.practiceCorrectStreak);
                 }
                 updateStreakVisualizer();
                 _flashStreakBadge();
@@ -12185,19 +12375,25 @@ export function deactivateOverheat() {
             const originalWrongClick = wrongBtn.onclick;
             wrongBtn.onclick = () => {
                 // Wrong follow-up answer — deliberately NOT counted as solved.
-                triggerRedFlash();
-                playWrongSound();
-                AppState._ckComboBreak = true; // FIX: combo always breaks on a miss
+                if (AppState._pqCritByIdx) delete AppState._pqCritByIdx[AppState.currentPracticeIndex];
 
                 if (Math.random() < 0.2) {
                     triggerStreakShield();
                 } else {
                     AppState.practiceCorrectStreak = 0;
                 }
-                updateStreakVisualizer();
-                _flashStreakBadge();
+                if (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function') {
+                    AppState._ckComboBreak = false;
+                    window.CK_ENGINE.onSolve({ correct: false, q: AppState.currentQ, isVault: false });
+                } else {
+                    AppState._ckComboBreak = true;
+                }
 
                 if (originalWrongClick) originalWrongClick();
+                triggerRedFlash();
+                playWrongSound();
+                updateStreakVisualizer();
+                _flashStreakBadge();
             };
         }
     };
@@ -13292,6 +13488,8 @@ window.playSuperSound = playSuperSound;
 // overlay and centres on the viewport). Sibling to playSuperSound — they are
 // the canonical celebration pair.
 window.burstEmojis = burstEmojis;
+window._pqPlayHoldTick = _pqPlayHoldTick;
+window._pqStampCritCard = _pqStampCritCard;
 window.activateOverheat = activateOverheat;
 window.deactivateOverheat = deactivateOverheat;
 window.updateStreakVisualizer = updateStreakVisualizer;
@@ -13806,6 +14004,7 @@ document.addEventListener('DOMContentLoaded', function () {
     built: false, sessionOpen: false,
     combo: 0, sessionCorrect: 0, sessionTarget: 1, lastStreak: 0,
     crit: 0, critPrimed: false, critFlashUntil: 0,
+    missFlashUntil: 0, missShielded: false, lastCritLabel: '',
     shields: 0,
     tickerIdx: 0, tickerAt: 0,
     last: {},           // text de-dup cache
@@ -13847,22 +14046,33 @@ document.addEventListener('DOMContentLoaded', function () {
     CK.built = true;
   }
 
+  const _ckPips = () => (CK.critPrimed ? 3 : Math.min(3, Math.floor((CK.crit + 1) / 34)));
+
+  function _ensureSessionOpen() {
+    if (!CK.sessionOpen) {
+      CK.sessionOpen = true;
+      CK.combo = 0;
+      CK.sessionCorrect = 0;
+      CK.lastStreak = AppState.practiceCorrectStreak || 0;
+      CK.sessionTarget = Math.max(1, (AppState.practiceQuestions && AppState.practiceQuestions.length) || 1);
+      CK.crit = 0;
+      CK.critPrimed = false;
+      CK.critFlashUntil = 0;
+      CK.missFlashUntil = 0;
+      CK.missShielded = false;
+      CK.lastCritLabel = '';
+    }
+  }
+
   function critPayout() {
-    CK.critFlashUntil = Date.now() + 2600;
-    try { if (typeof window.showSupercharged === 'function') window.showSupercharged(); } catch (e) {}
-    try { if (typeof window.playSuperSound === 'function') window.playSuperSound(); } catch (e) {}
-    try {
-      const stage = document.querySelector('#practice-modal.active .pq-shell, #sr-practice-overlay .sr-practice-modal');
-      if (stage && typeof window.burstEmojis === 'function') {
-        const r = stage.getBoundingClientRect();
-        window.burstEmojis(r.left + r.width / 2, r.top + Math.min(260, r.height * 0.45), 24, ['⚡', '🔥', '🛡', '✨'], 1.2);
-      }
-      if (typeof window.__jmaxAppToast === 'function') window.__jmaxAppToast('⚡ CRIT SURGE! +1 Streak Shield');
-    } catch (e) {}
+    CK.critFlashUntil = Date.now() + 2200;
+    CK.lastCritLabel = '3× CHAIN';
     CK.shields += 1; persistShields();
+    try { if (typeof window.showSupercharged === 'function') window.showSupercharged({ sound: true, critLabel: '3× CHAIN' }); } catch (e) {}
   }
 
   function paintCkHud(practiceModal, srOverlay, active) {
+    const now = Date.now();
     const isOverheat = document.body.classList.contains('overheat-active');
     const surge = !active ? '' : (isOverheat ? 'overheat' : (CK.critPrimed ? 'crit' : ''));
     if (CK.lastSurgeKey !== surge) {
@@ -13873,23 +14083,46 @@ document.addEventListener('DOMContentLoaded', function () {
         else el.removeAttribute('data-ck-surge');
       });
     }
-    const isCritFlash = CK.critFlashUntil > Date.now();
-    const label = isCritFlash
-      ? '⚡ CRIT SURGE · +1 🛡️'
+    const isCritFlash = CK.critFlashUntil > now;
+    const isMissFlash = !isCritFlash && CK.missFlashUntil > now;
+    const pips = isCritFlash ? 3 : _ckPips();
+    const tag = isCritFlash
+      ? 'CRIT'
       : isOverheat
-        ? ('🌡️ 3× OVERHEAT · 🔥 ' + CK.combo + ' · 🛡️ ' + CK.shields)
+        ? '3× OH'
         : CK.critPrimed
-          ? ('🔥 ' + CK.combo + ' · ⚡ CRIT ARMED! · 🛡️ ' + CK.shields)
-          : ('🔥 ' + CK.combo + ' · ⚡ ' + Math.min(100, Math.round(CK.crit)) + '% · 🛡️ ' + CK.shields);
-    const hudKey = label + '|' + (isCritFlash || CK.critPrimed ? '1' : '0') + '|' + (isOverheat ? '1' : '0');
+          ? 'ARMED'
+          : (isMissFlash && CK.missShielded ? 'SHIELDED' : '');
+    const hudKey = [CK.combo, pips, CK.shields, tag, isCritFlash ? 1 : 0, CK.critPrimed ? 1 : 0, isOverheat ? 1 : 0, isMissFlash ? 1 : 0].join('|');
     if (CK.lastHudKey === hudKey) return;
     CK.lastHudKey = hudKey;
+
+    let inner = '';
+    if (CK.combo > 0) inner += '<span class="ck-combo">' + CK.combo + '×</span>';
+    inner += '<span class="ck-pips" aria-hidden="true">'
+      + '<i class="ck-pip' + (pips >= 1 ? ' is-lit' : '') + '"></i>'
+      + '<i class="ck-pip' + (pips >= 2 ? ' is-lit' : '') + '"></i>'
+      + '<i class="ck-pip' + (pips >= 3 ? ' is-lit' : '') + '"></i>'
+      + '</span>';
+    if (tag) {
+      inner += '<span class="ck-tag' + (tag === 'SHIELDED' ? ' is-shield' : '') + '">' + tag + '</span>';
+    }
+    if (CK.shields > 0) {
+      inner += '<span class="ck-shield" title="Streak shields">S' + CK.shields + '</span>';
+    }
+    const aria = 'Combo ' + CK.combo + ', charge ' + pips + ' of 3'
+      + (CK.critPrimed ? ', crit armed' : '')
+      + (isCritFlash ? ', critical hit' : '')
+      + (CK.shields > 0 ? ', ' + CK.shields + ' shields' : '');
+
     ['pq-ck-hud', 'sr-ck-hud'].forEach((id) => {
       const el = $(id);
       if (!el) return;
-      el.textContent = label;
+      el.innerHTML = inner;
+      el.setAttribute('aria-label', aria);
       el.classList.toggle('is-crit', isCritFlash || CK.critPrimed);
       el.classList.toggle('is-overheat', isOverheat);
+      el.classList.toggle('is-miss', isMissFlash);
     });
   }
 
@@ -13902,24 +14135,23 @@ document.addEventListener('DOMContentLoaded', function () {
       const modalActive = !!(modal && modal.classList.contains('active')) || srOpen;
 
       if (modalActive) {
-        if (!CK.sessionOpen) {
-          CK.sessionOpen = true; CK.combo = 0; CK.sessionCorrect = 0;
-          CK.lastStreak = AppState.practiceCorrectStreak || 0;
-          CK.sessionTarget = Math.max(1, (AppState.practiceQuestions && AppState.practiceQuestions.length) || 1);
-          CK.crit = 0; CK.critPrimed = false;
-        }
+        _ensureSessionOpen();
         const st = AppState.practiceCorrectStreak || 0;
         const streakDropped = (st < CK.lastStreak && CK.lastStreak > 0);
-        // Unified miss handler: event-driven _ckComboBreak fires even when a rare
-        // streak-freeze shield saves practiceCorrectStreak, without double-penalizing.
+        // Unified miss handler fallback for callers outside CK_ENGINE.onSolve
         if (AppState._ckComboBreak || streakDropped) {
           AppState._ckComboBreak = false;
           CK.combo = 0; CK.critPrimed = false;
           if (CK.shields > 0) {
             CK.shields -= 1; persistShields();
+            CK.crit = Math.min(CK.crit, 67);
+            CK.missShielded = true;
           } else {
-            CK.crit = Math.max(0, CK.crit - 50);
+            CK.crit = 0;
+            CK.missShielded = false;
           }
+          CK.missFlashUntil = Date.now() + 900;
+          CK.critFlashUntil = 0;
         } else if (st > CK.lastStreak) {
           if (CK.critPrimed) { critPayout(); CK.critPrimed = false; CK.crit = 0; }
           const inc = st - CK.lastStreak;
@@ -13936,14 +14168,143 @@ document.addEventListener('DOMContentLoaded', function () {
       paintCkHud(modal, srOverlay, modalActive);
     } catch (e) { ckErr(e); }
   }
+
+  function onSolve(opts = {}) {
+    const modal = $('practice-modal');
+    const srOverlay = $('sr-practice-overlay');
+    _ensureSessionOpen();
+    AppState._ckComboBreak = false;
+
+    if (!opts.correct) {
+      CK.combo = 0;
+      CK.critPrimed = false;
+      let shieldUsed = false;
+      if (CK.shields > 0) {
+        CK.shields -= 1;
+        persistShields();
+        shieldUsed = true;
+        CK.crit = Math.min(CK.crit, 67);
+      } else {
+        CK.crit = 0;
+      }
+      CK.missFlashUntil = Date.now() + 900;
+      CK.missShielded = shieldUsed;
+      CK.critFlashUntil = 0;
+      CK.lastStreak = AppState.practiceCorrectStreak || 0;
+      CK.lastHudKey = '';
+      paintCkHud(modal, srOverlay, true);
+      return {
+        crit: false,
+        critLabel: null,
+        shieldUsed,
+        combo: CK.combo,
+        pips: _ckPips(),
+        shields: CK.shields,
+        streak: CK.lastStreak,
+      };
+    }
+
+    let critLabel = null;
+    if (!opts.suppressCrit) {
+      if (opts.forceCritLabel) {
+        critLabel = String(opts.forceCritLabel);
+      } else if (CK.critPrimed) {
+        critLabel = '3× CHAIN';
+        CK.critPrimed = false;
+        CK.crit = 0;
+        CK.shields += 1;
+        persistShields();
+      } else {
+        const q = opts.q || null;
+        const qElo = q ? (typeof _safeQElo === 'function' ? _safeQElo(q) : (Number(q.qElo) || 1200)) : 1200;
+        const secs = Number(opts.secs) || 0;
+        const targetSecs = Number(opts.targetSecs) || 0;
+        if (qElo >= 1600 && secs > 0 && targetSecs > 0 && (secs / targetSecs) <= 0.85) {
+          critLabel = 'UNDER PACE';
+        } else if (opts.isVault === true && q) {
+          const logs = Array.isArray(q.historyLogs) ? q.historyLogs : [];
+          const lastLog = logs.length ? logs[logs.length - 1] : null;
+          const hadMiss = q.status === 'error'
+            || q.status === 'wrong'
+            || (lastLog && lastLog.result === 'incorrect')
+            || (logs.length === 0 && (q.firstAttemptResult === 'incorrect' || (Number(q.mistakeCount) || 0) >= 1 || (Number(q.failCount) || 0) >= 1));
+          if (hadMiss) critLabel = 'REDEEMED';
+        }
+      }
+    }
+
+    if (critLabel !== '3× CHAIN') {
+      CK.crit = Math.min(100, CK.crit + 34);
+      if (CK.crit >= 100) CK.critPrimed = true;
+    }
+
+    CK.combo += 1;
+    CK.sessionCorrect = Math.min(CK.sessionTarget, CK.sessionCorrect + 1);
+    if (CK.combo > 0 && CK.combo % 5 === 0) {
+      CK.shields += 1;
+      persistShields();
+    }
+    if (critLabel) {
+      CK.critFlashUntil = Date.now() + 2200;
+      CK.lastCritLabel = critLabel;
+    }
+    CK.missFlashUntil = 0;
+    CK.missShielded = false;
+    CK.lastStreak = AppState.practiceCorrectStreak || 0;
+    CK.lastHudKey = '';
+    paintCkHud(modal, srOverlay, true);
+
+    return {
+      crit: !!critLabel,
+      critLabel,
+      combo: CK.combo,
+      critPrimed: CK.critPrimed,
+      pips: _ckPips(),
+      shields: CK.shields,
+      streak: CK.lastStreak,
+    };
+  }
+
   window.CK_ENGINE = {
     state: () => ({
       combo: CK.combo,
       crit: CK.crit,
+      pips: _ckPips(),
       critPrimed: CK.critPrimed,
       shields: CK.shields,
       sessionOpen: CK.sessionOpen,
+      lastCritLabel: CK.lastCritLabel,
     }),
+    onSolve,
+    snapshot: () => ({
+      combo: CK.combo,
+      crit: CK.crit,
+      critPrimed: CK.critPrimed,
+      critFlashUntil: CK.critFlashUntil,
+      missFlashUntil: CK.missFlashUntil,
+      missShielded: CK.missShielded,
+      shields: CK.shields,
+      lastStreak: CK.lastStreak,
+      sessionCorrect: CK.sessionCorrect,
+      sessionOpen: CK.sessionOpen,
+      lastCritLabel: CK.lastCritLabel,
+    }),
+    rollback: (snap) => {
+      if (!snap || typeof snap !== 'object') return;
+      CK.combo = snap.combo | 0;
+      CK.crit = Number(snap.crit) || 0;
+      CK.critPrimed = !!snap.critPrimed;
+      CK.critFlashUntil = snap.critFlashUntil || 0;
+      CK.missFlashUntil = snap.missFlashUntil || 0;
+      CK.missShielded = !!snap.missShielded;
+      if (typeof snap.shields === 'number') { CK.shields = snap.shields; persistShields(); }
+      CK.lastStreak = snap.lastStreak | 0;
+      CK.sessionCorrect = snap.sessionCorrect | 0;
+      CK.sessionOpen = !!snap.sessionOpen;
+      CK.lastCritLabel = snap.lastCritLabel || '';
+      CK.lastHudKey = '';
+      paintCkHud($('practice-modal'), $('sr-practice-overlay'), CK.sessionOpen);
+    },
     addShield: (n = 1) => {
       CK.shields = Math.max(0, CK.shields + (Number(n) || 0));
       persistShields();
@@ -13952,10 +14313,14 @@ document.addEventListener('DOMContentLoaded', function () {
       return CK.shields;
     },
     armCrit: () => {
+      const modal = $('practice-modal');
+      const srOverlay = $('sr-practice-overlay');
+      const activeNow = !!(modal && modal.classList.contains('active')) || !!(srOverlay && srOverlay.parentNode);
+      if (activeNow) _ensureSessionOpen();
       CK.crit = 100;
       CK.critPrimed = true;
       CK.lastHudKey = '';
-      paintCkHud($('practice-modal'), $('sr-practice-overlay'), CK.sessionOpen);
+      paintCkHud(modal, srOverlay, activeNow || CK.sessionOpen);
       return true;
     },
     fastTick,
@@ -13966,17 +14331,7 @@ document.addEventListener('DOMContentLoaded', function () {
       window.addEventListener('jmax:lockin-hotzone', () => {
         try { activateOverheat(); } catch (_) {}
         try { if (window.CK_ENGINE && typeof window.CK_ENGINE.armCrit === 'function') window.CK_ENGINE.armCrit(); } catch (_) {}
-        try { if (window.FX && window.FX.wantSound()) playSuperSound(); } catch (_) {}
-        try {
-          if (typeof burstEmojis === 'function') {
-            burstEmojis(window.innerWidth / 2, window.innerHeight * 0.35, 28, ['⚡', '🔥', '✨', '💥'], 1.4);
-          }
-        } catch (_) {}
-        try {
-          if (typeof window.__jmaxAppToast === 'function') {
-            window.__jmaxAppToast('🔥 4-SOLVE HOT ZONE · Overheat (3×) + Crit Armed!');
-          }
-        } catch (_) {}
+        try { showSupercharged({ sound: true, critLabel: 'HOT ZONE', allowOverheat: false }); } catch (_) {}
       });
     }
   } catch (_) {}
