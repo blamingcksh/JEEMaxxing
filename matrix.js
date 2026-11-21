@@ -708,19 +708,31 @@ function _getActiveVaultQueue(currentQId) {
 let _srIdleTimer = null;
 function _srArmChromeFade(overlay) {
     if (!overlay) return;
+    const schedule = (waitMs) => {
+        if (_srIdleTimer) { clearTimeout(_srIdleTimer); _srIdleTimer = null; }
+        if (!overlay.isConnected || _drawerState.resultLocked) return;
+        _srIdleTimer = setTimeout(() => {
+            _srIdleTimer = null;
+            if (!overlay.isConnected || _drawerState.resultLocked) return;
+            if (document.body && document.body.classList.contains('sp-deck-open')) {
+                schedule(5000);
+                return;
+            }
+            overlay.classList.add('pq-chrome-faded', 'pq-chrome-hidden');
+        }, waitMs);
+    };
     const resetIdle = () => {
         overlay.classList.remove('pq-chrome-faded', 'pq-chrome-hidden');
-        if (_srIdleTimer) { clearTimeout(_srIdleTimer); _srIdleTimer = null; }
-        if (!_drawerState.resultLocked) {
-            _srIdleTimer = setTimeout(() => {
-                if (!_drawerState.resultLocked) {
-                    overlay.classList.add('pq-chrome-faded', 'pq-chrome-hidden');
-                }
-            }, 3500);
-        }
+        schedule(10000);
     };
-    overlay.addEventListener('pointermove', resetIdle, { passive: true });
-    overlay.addEventListener('keydown', resetIdle, { passive: true });
+    if (!overlay.dataset.srChromeBound) {
+        overlay.dataset.srChromeBound = '1';
+        overlay.addEventListener('pointerdown', resetIdle, { passive: true });
+        overlay.addEventListener('pointermove', resetIdle, { passive: true });
+        overlay.addEventListener('keydown', resetIdle, { passive: true });
+        overlay.addEventListener('input', resetIdle, { passive: true });
+        overlay.addEventListener('scroll', resetIdle, { passive: true, capture: true });
+    }
     resetIdle();
 }
 
@@ -799,7 +811,7 @@ function _srBindHold(overlay) {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (_drawerState.resultLocked) return;
 
-        const interactive = e.target.closest('button, input, textarea, select, a, .sr-mcq-option, .sr-conf-btn, .sr-friction-pill, .sr-toggle-btn, .pq-corner, .sp-float-pill, .sr-hint-toggle, .sr-tagedit-x, .sr-tagedit-sugg');
+        const interactive = e.target.closest('button, input, textarea, select, a, .sr-mcq-option, .sr-conf-btn, .sr-friction-pill, .sr-toggle-btn, .pq-corner, .sr-top-meta, .sr-meta-toggle-btn, .sr-meta-drawer, .sr-self-btn, .pq-peep-btn, .sr-top-time-btn, .sp-float-pill, .sr-hint-toggle, .sr-tagedit-x, .sr-tagedit-sugg');
         const cb = document.getElementById('sr-confirm-btn') || document.getElementById('sr-reveal-answer-btn');
         const isConfirmBtn = cb && (cb === e.target || cb.contains(e.target));
         if (interactive && !isConfirmBtn) return;
@@ -999,6 +1011,9 @@ export function srOpenSolution() {
 // exists, hold-to-reveal ring, ambient pace line, continuous queue navigation,
 // and compact SR reflection card.
 
+const _SR_EYE_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const _SR_EYE_OFF_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 18c-6.5 0-10-6-10-6a20.6 20.6 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.5 10.5 0 0 1 12 4c6.5 0 10 6 10 6a20.6 20.6 0 0 1-4.12 5.06"/><path d="m2 2 20 20"/></svg>';
+
 export function openPracticeDrawer(qId, opts) {
     // Handler args arrive percent-encoded (_jsId); older callers may pass the
     // raw id — _findQByHandlerId tries both.
@@ -1057,6 +1072,8 @@ export function openPracticeDrawer(qId, opts) {
     overlay.className = `sr-practice-overlay pq-stage${splitView ? ' pq-has-media' : ''}${isFreeResponse ? ' pq-is-free-response' : ''}`;
     overlay.id = 'sr-practice-overlay';
     overlay.setAttribute('data-pq-state', 'solving');
+    overlay.setAttribute('data-pq-phase', 'pre-reveal');
+    overlay.setAttribute('data-pq-type', (q && q.type) ? String(q.type) : 'text');
 
     // Own the user's attention while a review is on stage (P0-1 gate).
     SessionFocus.acquire('vault-drawer');
@@ -1072,7 +1089,7 @@ export function openPracticeDrawer(qId, opts) {
         ? `<div class="latex sr-question-text" id="sr-question-text">${_decorateVaultQuestionText(q.extractedText)}</div>`
         : (hasImage ? '' : `<div class="sr-question-text sr-muted">No question text on file — refer to the image above.</div>`);
     const hintHtml = q.hint ? `<div class="sr-hint-block">
-        <button class="sr-hint-toggle" id="sr-hint-toggle" type="button" onclick="srToggleHint()">💡 Hint</button>
+        <button class="sr-hint-toggle" id="sr-hint-toggle" type="button" onclick="srToggleHint()">Hint</button>
         <div class="sr-hint-body" id="sr-hint-body" style="display:none;">${_esc(q.hint)}</div>
     </div>` : '';
 
@@ -1095,15 +1112,22 @@ export function openPracticeDrawer(qId, opts) {
             <span class="sr-drawer-sub" id="sr-stage-sub-title">${_esc(q.subject || '')}${dueInfo.label ? ' · ' + _esc(dueInfo.label) : ''}</span>
         </div>
 
-        <!-- Ghost corners -->
+        <!-- Ghost corners + centered top telemetry -->
         <nav class="pq-corner pq-corner-l pq-corner-tl" aria-label="Question Navigation">
             <button class="pq-ghost pq-corner-btn pq-prev sr-nav-prev" id="sr-nav-prev-btn" type="button" aria-label="Previous card ([)" title="Previous card ([)" onclick="srPracticePrev()" ${!queueInfo.prevId ? 'disabled' : ''}>‹</button>
-            <span class="pq-queue-pos" id="sr-queue-pos">${_esc(shortChapterName(q.chapter || 'Unknown'))} · ${queueInfo.index + 1}/${queueInfo.total}</span>
         </nav>
+
+        <div class="sr-top-meta" id="sr-top-meta" aria-live="polite">
+            <span class="pq-queue-pos" id="sr-queue-pos">${_esc(shortChapterName(q.chapter || 'Unknown'))} · ${queueInfo.index + 1}/${queueInfo.total}</span>
+            <span class="sr-top-sep" id="sr-top-sep" hidden>·</span>
+            <button type="button" class="sr-top-time-btn" id="sr-top-time-btn" hidden onclick="srToggleMetaDrawer('time')" title="Edit solve time"><span id="sr-top-time-val">00:00</span><span class="sr-top-target">/${_drawerState.targetTimeMins}m</span></button>
+            <span class="sr-top-sep" id="sr-top-rem-sep" hidden>·</span>
+            <span class="sr-top-remaining" id="sr-top-remaining" hidden></span>
+        </div>
 
         <nav class="pq-corner pq-corner-r pq-corner-tr" aria-label="Practice Controls">
             <button class="pq-ghost pq-corner-btn pq-next sr-nav-next" id="sr-nav-next-btn" type="button" aria-label="Next card (])" title="Next card (])" onclick="srPracticeNext()" ${!queueInfo.nextId ? 'disabled' : ''}>›</button>
-            ${hasImage ? `<button class="pq-ghost pq-corner-btn sr-hide-img-btn" id="sr-hide-img-btn" type="button" aria-label="Toggle diagram" title="Toggle diagram" onclick="srToggleImage()">👁</button>` : ''}
+            ${hasImage ? `<button class="pq-ghost pq-corner-btn sr-hide-img-btn" id="sr-hide-img-btn" type="button" aria-label="Toggle diagram" title="Toggle diagram" aria-pressed="false" onclick="srToggleImage()">${_SR_EYE_SVG}</button>` : ''}
             <button class="pq-ghost pq-corner-btn pq-corner-moon" id="sr-moon-btn" type="button" aria-label="Toggle Roast / Parchment theme" title="Toggle warm dark/light theme" style="${isRoast ? 'color:#d4a017;' : ''}" onclick="toggleImmersiveTheme()">${isRoast ? '◑' : '☾'}</button>
             <button class="pq-ghost pq-corner-btn pq-corner-close sr-drawer-close" type="button" onclick="closePracticeDrawer()" aria-label="Close practice drawer" title="Esc to close">✕</button>
         </nav>
@@ -1113,10 +1137,10 @@ export function openPracticeDrawer(qId, opts) {
             <div class="sr-practice-drawer sr-practice-modal pq-body pq-focus-container" id="sr-drawer-${_esc(qId)}" role="dialog" aria-modal="true">
                 <!-- Flow Lifeline ribbon -->
                 <div class="sr-lifeline-ribbon" id="sr-lifeline-ribbon" style="display:none">
-                    <span style="margin-right:8px">🌊 Lifeline active for 1× solve. Aim 80%+ first.</span>
-                    <button class="sr-lifeline-dismiss" style="font-size:11px;padding:2px 8px;background:none;border:1px solid rgba(147,197,253,0.4);color:#93c5fd;border-radius:3px;cursor:pointer"
+                    <span>Lifeline active for 1× solve. Aim 80%+ first.</span>
+                    <button class="sr-lifeline-dismiss" type="button"
                             onclick="if(window.__lifeline){window.__lifeline.dismissForCurrentSolve();document.getElementById('sr-lifeline-ribbon').style.display='none';}">
-                        I'd rather keep grinding
+                        Keep grinding
                     </button>
                 </div>
 
@@ -1150,23 +1174,23 @@ export function openPracticeDrawer(qId, opts) {
                         ${_renderTagStage()}
                     </div>
                 </div>
-
-                <div class="sr-drawer-footer pq-result-strip">
-                    <div class="sr-footer-meta">
-                        <div class="sr-streak-pill" title="Current solve streak">
-                            <div class="streak-visualizer${(Number(AppState.practiceCorrectStreak) || 0) <= 0 ? ' is-idle' : ''}" id="sr-streak-visualizer"><canvas id="sr-streak-canvas" width="22" height="22"></canvas></div>
-                            <span class="streak-number sr-streak-number" id="sr-streak-number">${AppState.practiceCorrectStreak || 0}</span>
-                        </div>
-                        <div id="sr-elo-header-slot" class="elo-header-slot"></div>
-                        <div class="sr-footer-summary" id="sr-footer-summary"></div>
-                        <span class="ck-hud-pill" id="sr-ck-hud" aria-label="Combo and Crit status"></span>
-                    </div>
-                    <div class="sr-footer-actions">
-                        <button class="sr-submit-next-btn" id="sr-submit-next-btn" onclick="submitPracticeLogAndNext()" disabled>Log &amp; Next →</button>
-                        <button class="sr-submit-btn" id="sr-submit-btn" onclick="submitPracticeLog()" disabled>Log Attempt</button>
-                    </div>
-                </div>
             </div>
+
+            <footer class="sr-drawer-footer pq-result-strip bottom-dock">
+                <div class="sr-footer-meta">
+                    <div class="sr-streak-pill" title="Current solve streak">
+                        <div class="streak-visualizer${(Number(AppState.practiceCorrectStreak) || 0) <= 0 ? ' is-idle' : ''}" id="sr-streak-visualizer"><canvas id="sr-streak-canvas" width="22" height="22"></canvas></div>
+                        <span class="streak-number sr-streak-number" id="sr-streak-number">${AppState.practiceCorrectStreak || 0}</span>
+                    </div>
+                    <div id="sr-elo-header-slot" class="elo-header-slot"></div>
+                    <div class="sr-footer-summary" id="sr-footer-summary"></div>
+                    <span class="ck-hud-pill" id="sr-ck-hud" aria-label="Combo and Crit status"></span>
+                </div>
+                <div class="sr-footer-actions">
+                    <button class="sr-submit-btn" id="sr-submit-btn" onclick="submitPracticeLog()" disabled>Log &amp; Close</button>
+                    <button class="sr-submit-next-btn" id="sr-submit-next-btn" onclick="submitPracticeLogAndNext()" disabled>Log &amp; Next →</button>
+                </div>
+            </footer>
         </div>
 
         <!-- Bottom-Center hold hint -->
@@ -1580,7 +1604,7 @@ function _renderQuestionMedia(q) {
     // Gem auto-crop diagram renders beneath the question image — parity with
     // the practice modal ("📐 Diagram:" block).
     const diagramHtml = (q.diagramImageUrl && q.diagramImageUrl.length > 100)
-        ? `<div class="sr-question-diagram"><div class="sr-diagram-label">📐 Diagram</div>` +
+        ? `<div class="sr-question-diagram"><div class="sr-diagram-label">Diagram</div>` +
           `<img class="sr-question-diagram-img" id="sr-question-diagram-img" src="${_safeImgSrc(q.diagramImageUrl)}" alt="Diagram" onclick="event.stopPropagation();window.openLightbox&&openLightbox(this.src)"></div>`
         : '';
     if (!imgHtml && !diagramHtml) return ''; // no media to show → no hide button either
@@ -1601,17 +1625,17 @@ function _renderQuestionMedia(q) {
  * (Brier scoring + overconfidence stinginess).
  */
 const CONFIDENCE_LEVELS = [
-    { key: 'sure',   label: '😎 Sure',    anchor: 0.92 },
-    { key: 'likely', label: '🤔 Likely',  anchor: 0.70 },
-    { key: 'guess',  label: '🎲 Guess',   anchor: 0.45 },
+    { key: 'sure',   label: 'Sure',   anchor: 0.92 },
+    { key: 'likely', label: 'Likely', anchor: 0.70 },
+    { key: 'guess',  label: 'Guess',  anchor: 0.45 },
 ];
 
 function _renderConfidenceSeg() {
     const btns = CONFIDENCE_LEVELS.map(c =>
         '<button class="sr-conf-btn" data-conf="' + c.key + '" type="button" onclick="srSetConfidence(\'' + c.key + '\')">' + c.label + '</button>'
     ).join('');
-    return '<div class="sr-conf-seg" id="sr-conf-seg">' +
-        '<div class="sr-conf-label">How confident are you?</div>' +
+    return '<div class="sr-conf-seg" id="sr-conf-seg" role="group" aria-label="Confidence">' +
+        '<span class="sr-conf-label">CONF</span>' +
         '<div class="sr-conf-btns">' + btns + '</div>' +
         '</div>';
 }
@@ -1650,19 +1674,23 @@ function _renderAnswerStage(q) {
             <div class="sr-mcq-block">
                 <div class="sr-mcq-label">${isMulti ? 'Select all that apply' : 'Select your answer'}</div>
                 <div class="sr-mcq-options">${optsHtml}</div>
-                ${_renderConfidenceSeg()}
-                <button class="sr-confirm-btn" id="sr-confirm-btn" type="button" onclick="srConfirmAnswer()" disabled>Confirm Answer</button>
+                <div class="sr-solve-bar">
+                    ${_renderConfidenceSeg()}
+                    <button class="sr-confirm-btn" id="sr-confirm-btn" type="button" onclick="srConfirmAnswer()" disabled>Lock In Answer</button>
+                </div>
             </div>`;
     }
     if (q.type === 'numeric') {
         return `
             <div class="sr-numeric-block">
-                <div class="sr-numeric-label">Enter numeric answer</div>
+                <label class="sr-numeric-label" for="sr-numeric-input">Numeric answer:</label>
                 <div class="sr-numeric-input-wrap">
-                    <input type="text" inputmode="decimal" class="sr-numeric-input" id="sr-numeric-input" placeholder="Type your answer…" oninput="srOnNumericInput(this.value)" onkeydown="if(event.key==='Enter'&&!this.disabled){srConfirmAnswer();}">
+                    <input type="text" inputmode="decimal" class="sr-numeric-input" id="sr-numeric-input" placeholder="0.00" oninput="srOnNumericInput(this.value)" onkeydown="if(event.key==='Enter'&&!this.disabled){srConfirmAnswer();}">
                 </div>
-                ${_renderConfidenceSeg()}
-                <button class="sr-confirm-btn" id="sr-confirm-btn" type="button" onclick="srConfirmAnswer()" disabled>Confirm Answer</button>
+                <div class="sr-solve-bar">
+                    ${_renderConfidenceSeg()}
+                    <button class="sr-confirm-btn" id="sr-confirm-btn" type="button" onclick="srConfirmAnswer()" disabled>Lock In Answer</button>
+                </div>
             </div>`;
     }
     // Non-MCQ: the answer stays HIDDEN until the user taps "Reveal Answer"
@@ -1681,8 +1709,8 @@ function _renderAnswerStage(q) {
             <div class="sr-self-report-label">No answer on file — were you correct?</div>
             ${_renderConfidenceSeg()}
             <div class="sr-self-report-btns">
-                <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
-                <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
+                <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">VERIFIED</button>
+                <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">FAILED</button>
             </div>
         </div>`;
 }
@@ -1721,18 +1749,18 @@ function _renderTagEditorRow() {
     ).join('');
     return `
         <div class="sr-row sr-tag-editor-row">
-            <div class="sr-row-label">Personal Tags <span style="opacity:.55;font-weight:400;">(#vocabulary the engine learns from — optional)</span></div>
+            <div class="sr-row-label">Tags</div>
             <div class="sr-tagedit" id="sr-tagedit">
-                <div class="sr-tagedit-chips" id="sr-tagedit-chips">${chips || '<span class="sr-tagedit-none">No tags yet</span>'}</div>
+                <div class="sr-tagedit-chips" id="sr-tagedit-chips">${chips || '<span class="sr-tagedit-none">None</span>'}</div>
                 <div class="sr-tagedit-inputrow">
                     <input type="text" class="sr-tagedit-input" id="sr-tagedit-input" maxlength="40"
-                        placeholder="${tags.length >= 6 ? 'Tag limit reached (6)' : 'Add a tag…'}"
+                        placeholder="${tags.length >= 6 ? 'Limit (6)' : 'Add tag…'}"
                         ${tags.length >= 6 ? 'disabled' : ''}
                         onkeydown="if(event.key==='Enter'){event.preventDefault();srAddTag(this.value);}"
                         onclick="event.stopPropagation()">
                     <span class="sr-tagedit-count">${tags.length}/6</span>
                 </div>
-                ${suggHtml ? '<div class="sr-tagedit-suggs" id="sr-tagedit-suggs"><span style="font-size:10px;color:#66708a;">Reuse:</span>' + suggHtml + '</div>' : ''}
+                ${suggHtml ? '<div class="sr-tagedit-suggs" id="sr-tagedit-suggs"><span class="sr-tagedit-reuse">Reuse</span>' + suggHtml + '</div>' : ''}
             </div>
         </div>`;
 }
@@ -1764,36 +1792,51 @@ window.srRemoveTag = function (encoded) {
 function _refreshTagEditor() {
     const holder = document.getElementById('sr-tag-editor-holder');
     if (holder) holder.innerHTML = _renderTagEditorRow();
+    const countEl = document.getElementById('sr-meta-count');
+    if (countEl) {
+        let n = 0;
+        try { n = _drawerTags().length; } catch (_) {}
+        countEl.textContent = n > 0 ? ` (${n})` : '';
+    }
 }
 
+const SR_FRICTION_SHORT = {
+    PERFECT:  'Clean',
+    CALC:     'Calc',
+    FORMULA:  'Formula',
+    CONCEPT:  'Concept',
+    APPROACH: 'Approach',
+};
+
 function _renderTagStage() {
+    let tagCount = 0;
+    try { tagCount = _drawerTags().length; } catch (_) {}
+    const swText = `${Math.floor(_drawerState.stopwatchSeconds / 60).toString().padStart(2, '0')}:${(_drawerState.stopwatchSeconds % 60).toString().padStart(2, '0')}`;
     return `
-        <div class="sr-tag-divider">Now log your attempt ↓</div>
-        <!-- Autonomy -->
-        <div class="sr-row sr-autonomy-row">
-            <div class="sr-row-label">Autonomy Level</div>
-            <div class="sr-toggle-group sr-toggle-group-3">
-                <button class="sr-toggle-btn${_drawerState.autonomy === 'independent' ? ' active' : ''}" data-group="autonomy" data-value="independent" onclick="srSetAutonomy('independent')">🧠 Independent</button>
-                <button class="sr-toggle-btn${_drawerState.autonomy === 'hint_used' ? ' active' : ''}" data-group="autonomy" data-value="hint_used" onclick="srSetAutonomy('hint_used')">💡 Hint Used</button>
-                <button class="sr-toggle-btn${_drawerState.autonomy === 'solution_read' ? ' active' : ''}" data-group="autonomy" data-value="solution_read" onclick="srSetAutonomy('solution_read')">📖 Soln Read</button>
+        <div class="sr-reflect-bar">
+            <div class="sr-friction-pills" role="group" aria-label="Friction Type">
+                ${SR_FRICTION_TYPES.map(ft => `<button type="button" class="sr-friction-pill${_drawerState.frictionTypes.includes(ft) ? ' active' : ''}" data-friction="${ft}" title="${_esc(SR_FRICTION_LABELS[ft] || ft)}" onclick="srToggleFriction('${ft}')">${_esc(SR_FRICTION_SHORT[ft] || SR_FRICTION_LABELS[ft] || ft)}</button>`).join('')}
+            </div>
+            <div class="sr-reflect-right">
+                <div class="sr-toggle-group sr-toggle-group-3" role="group" aria-label="Autonomy level">
+                    <button type="button" class="sr-toggle-btn${_drawerState.autonomy === 'independent' ? ' active' : ''}" data-group="autonomy" data-value="independent" title="Independent" onclick="srSetAutonomy('independent')">Indep</button>
+                    <button type="button" class="sr-toggle-btn${_drawerState.autonomy === 'hint_used' ? ' active' : ''}" data-group="autonomy" data-value="hint_used" title="Hint Used" onclick="srSetAutonomy('hint_used')">Hint</button>
+                    <button type="button" class="sr-toggle-btn${_drawerState.autonomy === 'solution_read' ? ' active' : ''}" data-group="autonomy" data-value="solution_read" title="Solution Read" onclick="srSetAutonomy('solution_read')">Soln</button>
+                </div>
+                <button type="button" class="sr-meta-toggle-btn" id="sr-meta-toggle-btn" aria-expanded="false" aria-controls="sr-meta-drawer" onclick="srToggleMetaDrawer()">
+                    + Tags<span class="sr-meta-count" id="sr-meta-count">${tagCount > 0 ? ` (${tagCount})` : ''}</span>
+                </button>
             </div>
         </div>
-        <!-- Friction Type -->
-        <div class="sr-row sr-friction-row">
-            <div class="sr-row-label">Friction Type <span class="sr-sub-label">(optional — tap any that apply)</span></div>
-            <div class="sr-friction-pills">
-                ${SR_FRICTION_TYPES.map(ft => `<button class="sr-friction-pill${_drawerState.frictionTypes.includes(ft) ? ' active' : ''}" data-friction="${ft}" onclick="srToggleFriction('${ft}')">${SR_FRICTION_LABELS[ft]}</button>`).join('')}
-            </div>
-        </div>
-        <!-- Compact Meta Row: Personal Tags & Manual Time -->
-        <div class="sr-compact-meta-row">
+        <div class="sr-meta-drawer" id="sr-meta-drawer" hidden>
             <div class="sr-meta-section sr-tags-section">
                 <div id="sr-tag-editor-holder">${_renderTagEditorRow()}</div>
             </div>
             <div class="sr-meta-section sr-time-section">
+                <div class="sr-row-label">Time</div>
                 <div class="sr-time-row">
-                    <span class="sr-stopwatch" id="sr-final-stopwatch">${Math.floor(_drawerState.stopwatchSeconds / 60).toString().padStart(2, '0')}:${(_drawerState.stopwatchSeconds % 60).toString().padStart(2, '0')}</span>
-                    <span class="sr-target-ref">Target: ${_drawerState.targetTimeMins}m</span>
+                    <span class="sr-stopwatch" id="sr-final-stopwatch">${swText}</span>
+                    <span class="sr-target-ref">Target ${_drawerState.targetTimeMins}m</span>
                     <button class="sr-manual-toggle" id="sr-manual-toggle" onclick="srToggleManualTime()" type="button">Manual</button>
                     <input type="number" class="sr-manual-input" id="sr-manual-input" style="display:none;" min="0" step="0.5" placeholder="0" oninput="srUpdateManualTime(this.value)">
                     <span class="sr-manual-unit" id="sr-manual-unit" style="display:none;">min</span>
@@ -1867,7 +1910,37 @@ function _applyResult(result, source, q) {
     const overlay = document.getElementById('sr-practice-overlay');
     if (overlay) {
         overlay.setAttribute('data-pq-state', 'answered');
+        overlay.setAttribute('data-pq-phase', 'resolved');
         overlay.classList.remove('pq-chrome-faded', 'pq-chrome-hidden');
+    }
+
+    const topTimeBtn = document.getElementById('sr-top-time-btn');
+    const topSep = document.getElementById('sr-top-sep');
+    const topTimeVal = document.getElementById('sr-top-time-val');
+    if (topTimeVal) {
+        const m = Math.floor(_drawerState.stopwatchSeconds / 60).toString().padStart(2, '0');
+        const s = (_drawerState.stopwatchSeconds % 60).toString().padStart(2, '0');
+        topTimeVal.textContent = `${m}:${s}`;
+    }
+    if (topSep) topSep.hidden = false;
+    if (topTimeBtn) topTimeBtn.hidden = false;
+
+    const topRem = document.getElementById('sr-top-remaining');
+    const topRemSep = document.getElementById('sr-top-rem-sep');
+    if (topRem && topRemSep) {
+        if (result === 'correct') {
+            const oh = document.body.classList.contains('overheat-active');
+            const pendingDelta = (q && q.status !== 'solved') ? (oh ? 3 : 1) : (oh ? 2 : 0);
+            const left = _targetRemaining(q && q.subject, pendingDelta);
+            if (left != null) {
+                topRem.textContent = left === 0 ? 'Target hit' : `${left} left`;
+                topRem.hidden = false;
+                topRemSep.hidden = false;
+            }
+        } else {
+            topRem.hidden = true;
+            topRemSep.hidden = true;
+        }
     }
 
     const zone = document.getElementById('sr-result-zone');
@@ -1875,33 +1948,42 @@ function _applyResult(result, source, q) {
         const correctAns = _hasLoadedAnswer(q)
             ? (Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer)
             : null;
-        let suffix = '';
-        if (source === 'auto' && correctAns) {
-            const escAns = typeof window.answerMathHTML === 'function' ? window.answerMathHTML(correctAns) : _esc(correctAns);
-            suffix = (result === 'correct' ? ` — answer: ${escAns}` : ` — correct answer: ${escAns}`);
-        } else if (source === 'self') {
-            suffix = ' (self-reported)';
+        let bodyHtml = '';
+        if (correctAns) {
+            bodyHtml = typeof window.answerMathHTML === 'function' ? window.answerMathHTML(correctAns) : _esc(correctAns);
+        } else {
+            bodyHtml = result === 'correct' ? 'Marked correct (self-reported)' : 'Marked incorrect (self-reported)';
         }
-        // Auto-cropped solution figure (Gem Diagram Map) surfaces beneath the
-        // result banner — parity with the practice modal's "Peep Solution".
+        // Auto-cropped solution figure (Gem Diagram Map) surfaces inside the
+        // collapsible solution block beneath the result banner.
         const solImg = (q.solutionImageUrl && q.solutionImageUrl.length > 100)
             ? `<img class="sr-solution-img" src="${_safeImgSrc(q.solutionImageUrl)}" alt="Solution diagram">`
             : '';
-        let solPeepBtn = '';
-        if ((q.solution && q.solution.trim().length > 0) || (q.solutionImageUrl && q.solutionImageUrl.length > 100)) {
-            solPeepBtn = `<button class="pq-peep-btn" id="sr-peep-sol-btn" type="button" onclick="srOpenSolution()">REVIEW SOLUTION</button>` +
-                `<div class="sr-solution-display" id="sr-solution-display-zone" style="display:none;">` +
-                `<div class="sr-sol-heading">Solution</div>` +
-                (q.solution ? `<div class="sr-sol-body">${_esc(q.solution)}</div>` : '') +
-                solImg +
-                `</div>`;
-        }
-        if (result === 'correct') {
-            const oh = document.body.classList.contains('overheat-active');
-            const pendingDelta = (q && q.status !== 'solved') ? (oh ? 3 : 1) : (oh ? 2 : 0);
-            zone.innerHTML = `<div class="sr-result-banner correct">VERIFIED${suffix}</div>${_keepGoingHTML(q, pendingDelta)}${solPeepBtn}`;
-        } else {
-            zone.innerHTML = `<div class="sr-result-banner incorrect">FAILED${suffix}</div>${solPeepBtn}`;
+        const hasSol = (q.solution && q.solution.trim().length > 0) || (q.solutionImageUrl && q.solutionImageUrl.length > 100);
+        const solPeepBtn = hasSol
+            ? `<div class="pq-ans-actions"><button class="pq-peep-btn" id="sr-peep-sol-btn" type="button" onclick="srOpenSolution()">REVIEW SOLUTION</button></div>`
+            : '';
+        const solDisplay = hasSol
+            ? `<div class="sr-solution-display" id="sr-solution-display-zone" style="display:none;">` +
+              `<div class="sr-sol-heading">Solution</div>` +
+              (q.solution ? `<div class="sr-sol-body">${_esc(q.solution)}</div>` : '') +
+              solImg +
+              `</div>`
+            : '';
+        const isPass = result === 'correct';
+        const kicker = isPass ? 'VERIFIED' : 'FAILED';
+        zone.innerHTML = `
+            <div class="sr-result-banner ${isPass ? 'correct' : 'incorrect'}">
+                <div class="pq-ans-main">
+                    <span class="pq-ans-kicker">${kicker}</span>
+                    <div class="pq-ans-body">${bodyHtml}</div>
+                </div>
+                ${solPeepBtn}
+            </div>
+            ${solDisplay}`;
+        if (window.katex) {
+            const ansBody = zone.querySelector('.pq-ans-body');
+            if (ansBody) _renderKatexIn(ansBody);
         }
     }
 
@@ -1917,7 +1999,9 @@ function _applyResult(result, source, q) {
         }
     }
 
-    // Hide the confirm button
+    // Hide the solve bar / confirm button
+    const solveBar = document.querySelector('#sr-answer-stage .sr-solve-bar');
+    if (solveBar) solveBar.style.display = 'none';
     const cb = document.getElementById('sr-confirm-btn');
     if (cb) cb.style.display = 'none';
 
@@ -2108,17 +2192,21 @@ function _applyResult(result, source, q) {
 // pick would grade as wrong, so degrade to the self-report path rather than
 // silently failing the user; the banner then reads "(self-reported)".
 function _showSelfReportPrompt(q) {
+    const overlay = document.getElementById('sr-practice-overlay');
+    if (overlay) overlay.setAttribute('data-pq-phase', 'grade-pending');
     const zone = document.getElementById('sr-result-zone');
     if (zone) {
         zone.innerHTML = `
             <div class="sr-self-report">
                 <div class="sr-self-report-label">${_hasLoadedAnswer(q) ? 'Stored answer could not be matched to any option — were you correct?' : 'No answer on file — were you correct?'}</div>
                 <div class="sr-self-report-btns">
-                    <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
-                    <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
+                    <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">VERIFIED</button>
+                    <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">FAILED</button>
                 </div>
             </div>`;
     }
+    const solveBar = document.querySelector('#sr-answer-stage .sr-solve-bar');
+    if (solveBar) solveBar.style.display = 'none';
     const cb = document.getElementById('sr-confirm-btn');
     if (cb) cb.style.display = 'none';
     // pointerEvents:none only blocks the mouse — drop the tiles out of the tab
@@ -2272,6 +2360,11 @@ export function srRevealAnswer() {
     if (!q) return;
     const stage = document.getElementById('sr-answer-stage');
     if (!stage) return;
+    const overlay = document.getElementById('sr-practice-overlay');
+    if (overlay) {
+        overlay.setAttribute('data-pq-phase', 'grade-pending');
+        overlay.classList.remove('pq-chrome-faded', 'pq-chrome-hidden');
+    }
     const correctAns = typeof window.answerMathHTML === 'function'
         ? window.answerMathHTML(q.correctAnswer)
         : _esc(Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer);
@@ -2282,17 +2375,22 @@ export function srRevealAnswer() {
     stage.innerHTML = `
         <div class="sr-self-report sr-self-report-inline">
             ${solImg}
-            <div class="sr-self-report-label">Correct answer: <strong>${correctAns}</strong>. Did you get it right?</div>
+            <div class="sr-answer-card">
+                <div class="pq-ans-main">
+                    <span class="pq-ans-kicker">ANSWER REVEALED</span>
+                    <div class="pq-ans-body"><strong>${correctAns}</strong></div>
+                </div>
+            </div>
             <div class="sr-self-report-btns">
-                <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">✔ Yes, correct</button>
-                <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">✖ No, incorrect</button>
+                <button class="sr-self-btn correct" type="button" onclick="srSelfReport('correct')">VERIFIED</button>
+                <button class="sr-self-btn incorrect" type="button" onclick="srSelfReport('incorrect')">FAILED</button>
             </div>
         </div>`;
     // Hydrate LaTeX inside the freshly revealed answer WITHOUT stripping the
     // <strong> emphasis wrapper (_renderKatexIn replaces innerHTML, so run it
-    // on the strong element itself, not the whole label).
+    // on the strong element itself).
     if (window.katex) {
-        const answerEl = stage.querySelector('.sr-self-report-label strong');
+        const answerEl = stage.querySelector('.sr-answer-card .pq-ans-body strong');
         if (answerEl) _renderKatexIn(answerEl);
     }
 }
@@ -2310,7 +2408,32 @@ export function srToggleImage() {
         const hasText = !!(q && q.extractedText && q.extractedText.trim().length > 0);
         overlay.classList.toggle('pq-has-media', !_drawerState.imageHidden && hasText);
     }
-    if (btn) btn.textContent = _drawerState.imageHidden ? '👁 Show Image' : '👁';
+    if (btn) {
+        btn.innerHTML = _drawerState.imageHidden ? _SR_EYE_OFF_SVG : _SR_EYE_SVG;
+        btn.setAttribute('aria-pressed', String(_drawerState.imageHidden));
+    }
+}
+
+export function srToggleMetaDrawer(focusMode) {
+    const drawer = document.getElementById('sr-meta-drawer');
+    const toggleBtn = document.getElementById('sr-meta-toggle-btn');
+    if (!drawer) return;
+    const shouldOpen = focusMode ? true : drawer.hidden;
+    drawer.hidden = !shouldOpen;
+    if (toggleBtn) {
+        toggleBtn.setAttribute('aria-expanded', String(shouldOpen));
+        toggleBtn.classList.toggle('is-open', shouldOpen);
+    }
+    if (shouldOpen && focusMode === 'time') {
+        const manBtn = document.getElementById('sr-manual-toggle');
+        const manInp = document.getElementById('sr-manual-input');
+        if (manBtn && !manBtn.classList.contains('active')) {
+            srToggleManualTime();
+        }
+        if (manInp) {
+            setTimeout(() => { try { manInp.focus(); manInp.select(); } catch (_) {} }, 20);
+        }
+    }
 }
 
 // Reveal/hide the Gem-provided hint WITHOUT revealing the answer — aligns with
@@ -2420,16 +2543,28 @@ export function srUpdateManualTime(val) {
 }
 
 function _updateDrawerUI() {
+    // Sync top-center time readout if manual time changed
+    const topTimeVal = document.getElementById('sr-top-time-val');
+    if (topTimeVal) {
+        if (_drawerState.timeSpentMins > 0) {
+            topTimeVal.textContent = `${Math.round(_drawerState.timeSpentMins * 10) / 10}m`;
+        } else {
+            const m = Math.floor(_drawerState.stopwatchSeconds / 60).toString().padStart(2, '0');
+            const s = (_drawerState.stopwatchSeconds % 60).toString().padStart(2, '0');
+            topTimeVal.textContent = `${m}:${s}`;
+        }
+    }
+
     // Update footer summary
     const summary = document.getElementById('sr-footer-summary');
     if (summary) {
         let parts = [];
-        if (_drawerState.result) parts.push(_drawerState.result === 'correct' ? '<span style="color:#10B981;">✓ Correct</span>' : '<span style="color:#EF4444;">✗ Incorrect</span>');
-        if (_drawerState.autonomy) parts.push(`<span style="color:#888;">· ${_drawerState.autonomy.replace('_', ' ')}</span>`);
-        if (_drawerState.frictionTypes.length > 0) parts.push(`<span style="color:#888;">· ${_drawerState.frictionTypes.length} friction${_drawerState.frictionTypes.length > 1 ? 's' : ''}</span>`);
+        if (_drawerState.result) parts.push(_drawerState.result === 'correct' ? '<span class="sr-sum-ok">Verified</span>' : '<span class="sr-sum-bad">Failed</span>');
+        if (_drawerState.autonomy) parts.push(`<span class="sr-sum-muted">${_esc(_drawerState.autonomy.replace('_', ' '))}</span>`);
+        if (_drawerState.frictionTypes.length > 0) parts.push(`<span class="sr-sum-muted">${_drawerState.frictionTypes.length} friction${_drawerState.frictionTypes.length > 1 ? 's' : ''}</span>`);
         const tSpent = _drawerState.timeSpentMins > 0 ? _drawerState.timeSpentMins : _drawerState.stopwatchSeconds / 60;
-        if (tSpent > 0) parts.push(`<span style="color:#888;">· ${Math.round(tSpent * 10) / 10}m</span>`);
-        summary.innerHTML = parts.join(' ');
+        if (tSpent > 0) parts.push(`<span class="sr-sum-muted">${Math.round(tSpent * 10) / 10}m</span>`);
+        summary.innerHTML = parts.join('<span class="sr-sum-dot"> · </span>');
     }
 
     // Enable/disable submit — a 0s answer must still be loggable: requiring
@@ -5258,6 +5393,7 @@ if (typeof window !== 'undefined') {
     window.srSelfReport = srSelfReport;
     window.srRevealAnswer = srRevealAnswer;
     window.srToggleImage = srToggleImage;
+    window.srToggleMetaDrawer = srToggleMetaDrawer;
     window.srToggleHint = srToggleHint;
     window.srSetResult = srSetResult;
     window.srSetAutonomy = srSetAutonomy;

@@ -5885,6 +5885,24 @@ function _pqIsGradedQuestion(q, idx) {
     return q.status === 'solved' || q.status === 'wrong' || q.status === 'error';
 }
 
+function _pqSyncGradeSlot(q, idx, submitted, graded) {
+    const slot = document.getElementById('pq-grade-slot');
+    if (!slot) return;
+    if (!q || !submitted || !graded) {
+        if (slot.innerHTML) slot.innerHTML = '';
+        return;
+    }
+    const autoGrade = q.status === 'solved' ? 3 : 1;
+    const activeGrade = (q.selfGrade && _PQ_GRADE_PERF[Number(q.selfGrade.g)]) ? Number(q.selfGrade.g) : autoGrade;
+    const gradeBtn = (g, label) =>
+        `<button type="button" data-pq-grade="${g}" class="${activeGrade === g ? 'is-set' : ''}" aria-pressed="${activeGrade === g}"><span class="t-num">[${g}]</span> ${label}</button>`;
+    slot.innerHTML = `<div class="pq-diag-grade" role="group" aria-label="Process grade">
+        ${gradeBtn(1, 'FAIL')}
+        ${gradeBtn(2, 'SLOW')}
+        ${gradeBtn(3, 'CLEAN')}
+    </div>`;
+}
+
 function _pqSyncState() {
     try {
         const modal = document.getElementById('practice-modal');
@@ -5898,6 +5916,7 @@ function _pqSyncState() {
         modal.setAttribute('data-pq-state', submitted ? 'answered' : 'solving');
         modal.setAttribute('data-pq-phase', phase);
         modal.setAttribute('data-pq-type', qType);
+        _pqSyncGradeSlot(q, idx, submitted, graded);
         const pendingBtn = document.getElementById('pq-next-pending');
         if (pendingBtn) {
             pendingBtn.style.display = (phase === 'grade-pending' && qType !== 'mcq') ? '' : 'none';
@@ -6100,11 +6119,12 @@ function _pqRenderDiag() {
             }
         }
     } catch (_) {}
+    el.classList.toggle('has-duel-split', Boolean(duelHtml));
     el.innerHTML = `
         <div class="pq-diag-grid audit-header">
             <span class="pq-diag-field"><i>TIME</i><b>${timeTxt}</b></span>
             <span class="pq-diag-field"><i>TIER</i><b>${tierTxt}</b></span>
-            <span class="pq-diag-field"><i>RETENTION</i><b>${retTxt}</b></span>
+            <span class="pq-diag-field"><i>RET</i><b>${retTxt}</b></span>
         </div>${duelHtml}`;
 }
 
@@ -6293,53 +6313,54 @@ function _pqBuildRevealZoneHTML(q, idx) {
     const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
     const updatedKey = AppState._pqKeyUpdatedByIdx && AppState._pqKeyUpdatedByIdx[idx];
     let html = `<div class="pq-reveal-row">`;
-    if (graded && q.status === 'solved') {
-        html += `<div class="result-banner correct answer-card is-passed"><span class="pq-ans-kicker">PASSED · ANSWER</span><div class="pq-ans-body">${correctAns}</div></div>`;
-    } else if (graded && (q.status === 'wrong' || q.status === 'error')) {
-        html += `<div class="result-banner wrong answer-card is-failed"><span class="pq-ans-kicker">FAILED · ANSWER</span><div class="pq-ans-body">${correctAns}</div></div>`;
+
+    let actionBtns = '';
+    if (!graded) {
+        if (hasSolution) {
+            actionBtns += `<button type="button" class="btn show-solution-btn" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
+        }
     } else {
-        html += `<div class="result-banner reveal answer-card"><span class="pq-ans-kicker">ANSWER REVEALED</span><div class="pq-ans-body">${correctAns}</div></div>`;
+        if (hasSolution) {
+            actionBtns += `<button type="button" class="btn show-solution-btn" onclick="showSolutionPopup()">SOLUTION</button>`;
+        }
+        if (q.status === 'wrong' || q.status === 'error') {
+            if (q.status === 'error' && q.errorReason) {
+                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button" disabled title="Already logged to the Vault">IN VAULT</button>`;
+            } else {
+                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button">VAULT<span class="pq-kbd-cap"> [V]</span></button>`;
+            }
+        }
+        if (snap) {
+            actionBtns += `<button class="btn pq-fix-key-btn" id="pq-fix-key-btn" type="button" aria-expanded="false" aria-controls="pq-override-bar">FIX KEY</button>`;
+        }
+        if (updatedKey) {
+            actionBtns += `<span class="pq-key-updated-badge">KEY → ${escapeHtml(updatedKey)}</span>`;
+        }
     }
+
+    const actionsHtml = actionBtns ? `<div class="pq-ans-actions">${actionBtns}</div>` : '';
+    let bannerCls = 'result-banner reveal answer-card';
+    let kickerText = 'ANSWER REVEALED';
+    if (graded && q.status === 'solved') {
+        bannerCls = 'result-banner correct answer-card is-passed';
+        kickerText = 'PASSED · ANSWER';
+    } else if (graded && (q.status === 'wrong' || q.status === 'error')) {
+        bannerCls = 'result-banner wrong answer-card is-failed';
+        kickerText = 'FAILED · ANSWER';
+    }
+    html += `<div class="${bannerCls}">
+        <div class="pq-ans-main">
+            <span class="pq-ans-kicker">${kickerText}</span>
+            <div class="pq-ans-body">${correctAns}</div>
+        </div>
+        ${actionsHtml}
+    </div>`;
 
     if (!graded) {
         html += `<div class="verdict-row">`;
         html += `<button type="button" class="btn btn-verify" id="text-correct-btn">VERIFIED<span class="pq-kbd-cap"> [Y]</span></button>`;
         html += `<button type="button" class="btn btn-fail" id="text-wrong-btn">FAILED<span class="pq-kbd-cap"> [N]</span></button>`;
-        if (hasSolution) {
-            html += `<button type="button" class="btn show-solution-btn" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
-        }
         html += `</div>`;
-    } else {
-        const autoGrade = q.status === 'solved' ? 3 : 1;
-        const activeGrade = (q.selfGrade && _PQ_GRADE_PERF[Number(q.selfGrade.g)]) ? Number(q.selfGrade.g) : autoGrade;
-        const gradeBtn = (g, label) =>
-            `<button type="button" data-pq-grade="${g}" class="${activeGrade === g ? 'is-set' : ''}" aria-pressed="${activeGrade === g}"><span class="t-num">[${g}]</span> ${label}</button>`;
-        html += `<div class="pq-diag-grade" role="group" aria-label="Process grade">
-            ${gradeBtn(1, 'CRITICAL FAIL')}
-            ${gradeBtn(2, 'FRICTION / SLOW')}
-            ${gradeBtn(3, 'CALIBRATED SOLVE')}
-        </div>`;
-
-        let actionBtns = '';
-        if (hasSolution) {
-            actionBtns += `<button type="button" class="btn show-solution-btn" onclick="showSolutionPopup()">REVIEW SOLUTION</button>`;
-        }
-        if (q.status === 'wrong' || q.status === 'error') {
-            if (q.status === 'error' && q.errorReason) {
-                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button" disabled title="Already logged to the Vault">LOGGED TO VAULT</button>`;
-            } else {
-                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button">SEND TO THE VAULT<span class="pq-kbd-cap"> [V]</span></button>`;
-            }
-        }
-        if (snap) {
-            actionBtns += `<button class="btn pq-fix-key-btn" id="pq-fix-key-btn" type="button" aria-expanded="false" aria-controls="pq-override-bar">FIX KEY / OVERRIDE</button>`;
-        }
-        if (updatedKey) {
-            actionBtns += `<span class="pq-key-updated-badge">KEY UPDATED → ${escapeHtml(updatedKey)}</span>`;
-        }
-        if (actionBtns) {
-            html += `<div class="action-row">${actionBtns}</div>`;
-        }
     }
 
     html += `</div>`;
@@ -6372,7 +6393,7 @@ function _pqToggleOverrideBar(idx) {
     const fixBtn = document.getElementById('pq-fix-key-btn');
     if (fixBtn) {
         fixBtn.setAttribute('aria-expanded', 'true');
-        fixBtn.textContent = 'CLOSE CORRECTION';
+        fixBtn.textContent = 'CLOSE';
     }
     _pqSyncOverrideBarUI();
 }
@@ -6386,7 +6407,7 @@ function _pqCloseOverrideBar() {
     const fixBtn = document.getElementById('pq-fix-key-btn');
     if (fixBtn) {
         fixBtn.setAttribute('aria-expanded', 'false');
-        fixBtn.textContent = 'FIX KEY / OVERRIDE';
+        fixBtn.textContent = 'FIX KEY';
     }
 }
 
