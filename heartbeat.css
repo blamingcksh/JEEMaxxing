@@ -88,7 +88,9 @@ body:not(.hb-void-active) .main-content {
     background: #010103;
     z-index: 5;
     overflow: hidden;
+    -webkit-user-select: none;
     user-select: none;
+    -webkit-touch-callout: none;
     font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 

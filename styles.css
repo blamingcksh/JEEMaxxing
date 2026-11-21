@@ -11984,7 +11984,9 @@ body.pomo-active .glow-wrapper::before {
     cursor: pointer;
     touch-action: none;                 /* hold-to-repeat must not scroll */
     transition: color 0.15s, background 0.15s, transform 0.1s;
+    -webkit-user-select: none;
     user-select: none;
+    -webkit-touch-callout: none;
     padding: 0;
 }
 .metro-step:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }

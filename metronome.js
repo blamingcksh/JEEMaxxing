@@ -415,6 +415,9 @@
     ui.tap.addEventListener('click', function (e) { e.stopPropagation(); tapTempo(); });
     ui.beatDec.addEventListener('pointerdown', attachHold(function () { setBeats(prefs.beats - 1); }));
     ui.beatInc.addEventListener('pointerdown', attachHold(function () { setBeats(prefs.beats + 1); }));
+    [ui.dec, ui.inc, ui.beatDec, ui.beatInc].forEach(function (btn) {
+      btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    });
     document.addEventListener('pointerdown', outsideClose);
 
     buildDots();

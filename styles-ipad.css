@@ -14,7 +14,8 @@
    coarse pointers removes the zoom-jump; desktop keeps the tighter look. */
 @media (pointer: coarse) {
     .pomo-input, textarea.pomo-input, .pomo-select,
-    .matrix-search, .sr-manual-input, .text-track-terminal-input {
+    .matrix-search, .sr-manual-input, .text-track-terminal-input,
+    .sr-tagedit-input, .pq-override-input {
         font-size: 16px !important;
     }
 }
@@ -359,7 +360,7 @@ html.jmax-standalone .sidebar.collapsed {
 .mr-topbar {
     padding-top: calc(10px + var(--sat));
 }
-.sr-practice-overlay {
+.sr-practice-overlay:not(.pq-stage) {
     padding-top: calc(24px + var(--sat));
 }
 .forest-lab-actions {
@@ -435,6 +436,11 @@ html.jmax-standalone body::before {
         height: 100vh;
         height: 100lvh;
     }
+    #practice-modal.pq-stage .pq-shell,
+    #sr-practice-overlay.pq-stage .pq-shell {
+        min-height: 100vh;
+        min-height: 100lvh;
+    }
     .mr-shell {
         height: calc(100vh - var(--sat));
         height: calc(100lvh - var(--sat));
@@ -453,6 +459,11 @@ html.jmax-standalone .app-container,
 html.jmax-standalone #gb-canvas {
     height: 100vh;
     height: 100lvh;
+}
+html.jmax-standalone #practice-modal.pq-stage .pq-shell,
+html.jmax-standalone #sr-practice-overlay.pq-stage .pq-shell {
+    min-height: 100vh;
+    min-height: 100lvh;
 }
 html.jmax-standalone .mr-shell {
     height: calc(100vh - var(--sat));

@@ -237,6 +237,15 @@ body.pq-active:not(.sp-deck-open):has(#practice-modal.pq-chrome-hidden) .sp-floa
     transition: opacity 2.8s ease, transform 2.8s ease;
 }
 
+@media (max-width: 1200px), (pointer: coarse) {
+    body.pq-active:not(.sp-deck-open):has(#practice-modal.active[data-pq-state="answered"]) .sp-float-pill,
+    body.pq-active:not(.sp-deck-open):has(#sr-practice-overlay[data-pq-state="answered"]) .sp-float-pill {
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(8px);
+    }
+}
+
 .sp-float-ghost {
     appearance: none;
     background: transparent;

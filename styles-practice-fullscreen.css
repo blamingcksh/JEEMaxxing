@@ -106,6 +106,7 @@ body.immersive-active #sr-practice-overlay.pq-stage {
   border: none !important;
   opacity: 1;
   transition: background .3s ease;
+  -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
   -webkit-backdrop-filter: none !important;
@@ -113,6 +114,33 @@ body.immersive-active #sr-practice-overlay.pq-stage {
 }
 #practice-modal.pq-stage:not(.active) {
   display: none !important;
+}
+#practice-modal.pq-stage *,
+#sr-practice-overlay.pq-stage * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+#practice-modal.pq-stage input,
+#practice-modal.pq-stage textarea,
+#practice-modal.pq-stage [contenteditable="true"],
+#sr-practice-overlay.pq-stage input,
+#sr-practice-overlay.pq-stage textarea,
+#sr-practice-overlay.pq-stage [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+/* Desktop mouse users can still copy question/answer text AFTER reveal */
+@media (pointer: fine) {
+  #practice-modal.pq-stage[data-pq-state="answered"] #latex-render,
+  #practice-modal.pq-stage[data-pq-state="answered"] .pq-ans-body,
+  #sr-practice-overlay.pq-stage[data-pq-state="answered"] #sr-question-text,
+  #sr-practice-overlay.pq-stage[data-pq-state="answered"] .sr-result-banner,
+  #sr-practice-overlay.pq-stage[data-pq-state="answered"] .sr-sol-body {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
 
 /* Dusk & Midnight lock-in immunity: stage ALWAYS stays Roast or Parchment */
@@ -165,7 +193,7 @@ html[data-mode="midnight"] body:not(.immersive-active) #sr-practice-overlay.pq-s
 /* ── Ghost Corner Navigation ── */
 .pq-corner {
   position: fixed;
-  top: 16px;
+  top: calc(14px + var(--sat, 0px));
   z-index: 5015;
   display: flex;
   align-items: center;
@@ -174,8 +202,8 @@ html[data-mode="midnight"] body:not(.immersive-active) #sr-practice-overlay.pq-s
 }
 .pq-corner-l { left: 18px; }
 .pq-corner-r { right: 18px; }
-.pq-corner-tl { top: 16px; left: 18px; bottom: auto; right: auto; }
-.pq-corner-tr { top: 16px; right: 18px; bottom: auto; left: auto; z-index: 5020; }
+.pq-corner-tl { top: calc(14px + var(--sat, 0px)); left: 18px; bottom: auto; right: auto; }
+.pq-corner-tr { top: calc(14px + var(--sat, 0px)); right: 18px; bottom: auto; left: auto; z-index: 5020; }
 .pq-corner-bl { bottom: 16px; left: 18px; top: auto; right: auto; }
 .pq-corner-br { bottom: 16px; right: 18px; top: auto; left: auto; pointer-events: none; }
 .pq-corner-br * { pointer-events: none; }
@@ -272,7 +300,7 @@ html[data-mode="midnight"] body:not(.immersive-active) #sr-practice-overlay.pq-s
   flex-direction: column;
   justify-content: flex-start;
   align-items: stretch;
-  padding: 48px 16px 64px;
+  padding: calc(56px + var(--sat, 0px)) 16px calc(32px + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 
@@ -324,7 +352,7 @@ html[data-mode="midnight"] body:not(.immersive-active) #sr-practice-overlay.pq-s
   align-items: center;
   width: 100%;
 }
-@media (max-width: 760px) {
+@media (max-width: 820px) {
   .pq-qa-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 20px;
@@ -340,6 +368,7 @@ html[data-mode="midnight"] body:not(.immersive-active) #sr-practice-overlay.pq-s
   min-width: 0;
   width: 100%;
   text-align: center;
+  overflow: hidden;
 }
 
 /* Roast dark mode diagram backing patch for seamless blend */
@@ -363,7 +392,7 @@ body:not(.immersive-active) .pq-qa-media {
   filter: contrast(1.08) !important;
   clip-path: inset(4px) !important;
   width: 100%;
-  min-width: 280px;
+  min-width: 0;
   max-width: 100% !important;
   max-height: 380px !important;
   object-fit: contain;
@@ -374,6 +403,11 @@ body:not(.immersive-active) .pq-qa-media {
   display: block;
   margin: 0 auto;
   cursor: zoom-in;
+  -webkit-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* ── Distance-Readable Typography (60cm Desk Distance) ── */
@@ -390,7 +424,6 @@ body:not(.immersive-active) .pq-qa-media {
   padding: 0 !important;
   margin: 0 0 16px !important;
   text-align: left;
-  user-select: text;
 }
 #practice-modal.pq-stage #latex-render .katex {
   color: var(--pq-ink) !important;
@@ -600,7 +633,7 @@ body:not(.immersive-active) .pq-qa-media {
   stroke-linecap: round;
   stroke-dasharray: 138.2;
   stroke-dashoffset: 138.2;
-  transition: stroke-dashoffset 0.8s linear;
+  transition: stroke-dashoffset 0.68s linear;
 }
 .pq-hold-ring-wrap.active .pq-hold-ring-fg {
   stroke-dashoffset: 0;
@@ -665,7 +698,7 @@ body:not(.immersive-active) .pq-qa-media {
   background: var(--pq-footer-bg) !important;
   border: 1px solid var(--pq-footer-border) !important;
   box-shadow: 0 12px 32px -16px var(--pq-shadow) !important;
-  transition: opacity .3s ease, transform .3s ease;
+  transition: opacity .2s ease;
 }
 #practice-modal.pq-has-media .pq-result-strip,
 #practice-modal:has(.pq-qa-grid) .pq-result-strip {
@@ -679,7 +712,7 @@ body:not(.immersive-active) .pq-qa-media {
 #practice-modal[data-pq-state="answered"] .pq-result-strip {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
+  transform: none;
   margin-top: 14px;
 }
 
@@ -1069,6 +1102,22 @@ body.immersive-active .ck-hud-pill.is-overheat {
   justify-content: center;
   width: 20px;
   height: 20px;
+  background: transparent !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+#sr-practice-overlay .sr-streak-pill .streak-visualizer.is-idle {
+  display: none !important;
+}
+#sr-practice-overlay .sr-streak-pill .streak-number {
+  position: static !important;
+  color: var(--pq-ink) !important;
+  text-shadow: none !important;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
 }
 #sr-practice-overlay #sr-streak-canvas {
   width: 20px;
@@ -1189,7 +1238,6 @@ body.immersive-active .ck-hud-pill.is-overheat {
   padding: 0 !important;
   margin: 0 0 16px !important;
   text-align: left;
-  user-select: text;
   white-space: normal;
 }
 #sr-practice-overlay.pq-stage #sr-question-text .katex {
@@ -1214,7 +1262,7 @@ body.immersive-active .ck-hud-pill.is-overheat {
   filter: contrast(1.08) !important;
   clip-path: inset(4px) !important;
   width: 100%;
-  min-width: 280px;
+  min-width: 0;
   max-width: 100% !important;
   max-height: 380px !important;
   object-fit: contain;
@@ -1225,6 +1273,11 @@ body.immersive-active .ck-hud-pill.is-overheat {
   display: block;
   margin: 0 auto;
   cursor: zoom-in;
+  -webkit-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 body.immersive-active #sr-practice-overlay.pq-stage .pq-qa-media,
 body.immersive-active #sr-practice-overlay.pq-stage .sr-question-media:not(.pq-qa-media *) {
@@ -1566,6 +1619,47 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
   color: var(--pq-ink-soft);
   margin-top: 6px;
 }
+#sr-practice-overlay.pq-stage .pq-peep-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--pq-btn-bg) !important;
+  border: 1px solid var(--pq-btn-border) !important;
+  color: var(--pq-btn-ink) !important;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+#sr-practice-overlay.pq-stage .pq-peep-btn:hover,
+#sr-practice-overlay.pq-stage .pq-peep-btn.active {
+  background: var(--pq-opt-hover) !important;
+  border-color: var(--pq-accent) !important;
+}
+#sr-practice-overlay.pq-stage .sr-solution-display {
+  margin-top: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--pq-opt-bg);
+  border: 1px solid var(--pq-opt-border);
+  border-left: 3px solid var(--pq-accent);
+  color: var(--pq-ink);
+  text-align: left;
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+#sr-practice-overlay.pq-stage .sr-sol-heading {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pq-ink-soft);
+  margin-bottom: 6px;
+}
 
 /* Compact SR Reflection Card */
 #sr-practice-overlay.pq-stage .sr-tag-stage {
@@ -1763,6 +1857,10 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
   width: 160px;
   border-color: var(--pq-accent) !important;
 }
+#sr-practice-overlay.pq-stage .sr-tagedit-input::placeholder {
+  color: var(--pq-input-placeholder);
+  opacity: 1;
+}
 #sr-practice-overlay.pq-stage .sr-tagedit-count {
   font-size: 10px;
   color: var(--pq-ink-soft);
@@ -1807,7 +1905,7 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
   border: 1px solid var(--pq-footer-border) !important;
   box-shadow: 0 12px 32px -16px var(--pq-shadow) !important;
   box-sizing: border-box;
-  transition: opacity .3s ease, transform .3s ease;
+  transition: opacity .2s ease;
 }
 #sr-practice-overlay.pq-stage.pq-has-media .sr-drawer-footer {
   max-width: 920px;
@@ -1818,7 +1916,7 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
 #sr-practice-overlay[data-pq-state="answered"] .sr-drawer-footer {
   display: flex !important;
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
 }
 #sr-practice-overlay.pq-stage .sr-footer-actions {
   display: flex;
@@ -1868,6 +1966,27 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
   font-size: 12px;
   color: var(--pq-ink-soft);
   font-weight: 600;
+}
+@media (pointer: coarse) {
+  #sr-practice-overlay.pq-stage .sr-drawer-footer {
+    position: static !important;
+    transform: none !important;
+    margin: 16px auto 0;
+  }
+  #sr-practice-overlay.pq-stage .sr-tag-stage {
+    margin-top: 12px;
+    padding: 14px 16px;
+    gap: 12px;
+  }
+}
+@media (max-width: 820px) {
+  #sr-practice-overlay.pq-stage #sr-question-img,
+  #sr-practice-overlay.pq-stage #sr-question-diagram-img {
+    max-height: 260px !important;
+  }
+  #sr-practice-overlay.pq-stage #sr-question-text {
+    font-size: 19px !important;
+  }
 }
 
 /* Chrome auto-fade on idle */
