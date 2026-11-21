@@ -218,7 +218,9 @@
 // v122 - HOLD-GESTURE ANTI-SELECTION & IPAD REVEAL POLISH: suppress text
 //        selection/callouts during hold-to-reveal gestures and declutter/fix
 //        iPad answer reveal layout across Practice & Vault SR stages.
-const VERSION = 'jeemax-v122';
+// v123 - 7-DAY PER-SUBJECT HEARTBEAT LEASH: strict one-way progressive
+//        overload ratchet calibrating per-subject unit floors every 7 days.
+const VERSION = 'jeemax-v123';
 
 const SHELL = [
   './',
