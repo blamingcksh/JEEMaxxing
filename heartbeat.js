@@ -27,9 +27,17 @@ import { HeartbeatAudio } from './heartbeat-audio.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 export const MAX_RESERVOIR_HOURS = 30.0;
-export const DAILY_UNIT_TARGET = 20.0;      // per subject (60.0u/day total)
-export const DAILY_UNIT_CAP = 26.0;         // overflow ceiling (+6.5h/subject)
+export const DAILY_UNIT_TARGET = 20.0;      // starting bedrock per subject (60.0u/day total)
+export const DAILY_UNIT_CAP = 26.0;         // starting overflow ceiling (+6.5h/subject)
 export const HOURS_PER_UNIT = 0.25;         // 20u = +5.0h; 26u = +6.5h
+export const SUBJECT_TARGET_HOURS = 5.0;    // break-even hours paid at 100% of each subject's floor
+export const OVERFLOW_CAP_RATIO = 1.3;      // 1.3x subject floor = +6.5h max per subject
+export const LEASH_EPOCH_DAYS = 7;          // 7-day rolling calibration window
+export const LEASH_MIN_FLOOR = DAILY_UNIT_TARGET; // 20.0u bedrock per subject (strictly one-way upward)
+export const LEASH_MAX_FLOOR = 40.0;        // hard per-subject ceiling (120.0u/day total)
+export const LEASH_TIGHTEN_THRESHOLD = 1.05;// tighten if 7d trimmed avg >= 1.05x current floor
+export const LEASH_STEP_BLEND = 0.50;       // move 50% of surplus above current floor
+export const LEASH_MAX_STEP_RATIO = 1.08;   // cap per-epoch jump at +8%
 export const DAILY_PACT_TARGET_MINS = 240;  // 4h/day deep Pact standard
 export const DAILY_PACT_CAP_MINS = 280;     // overflow ceiling (+10.5h raw)
 export const HOURS_PER_PACT_MIN = 9.0 / 240.0; // 0.0375h per Pact minute
@@ -56,14 +64,132 @@ const SPECTRUM_STOPS = [
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const round2 = (v) => Math.round(v * 100) / 100;
+const round3 = (v) => Math.round(v * 1000) / 1000;
 const lerp = (a, b, t) => a + (b - a) * t;
 const lerpVec3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
-function _safeTodayKey() {
-    try { return todayLocalKey(); } catch (_) {
-        const d = new Date();
+function _safeTodayKey(nowMs) {
+    const d = Number.isFinite(nowMs) ? new Date(nowMs) : new Date();
+    try { return todayLocalKey(d); } catch (_) {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
+}
+
+function _parseDateKey(key) {
+    if (typeof key !== 'string') return null;
+    const m = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+}
+
+function _formatDateKey(dt) {
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function _addCalendarDays(dateKey, deltaDays) {
+    const dt = _parseDateKey(dateKey);
+    if (!dt) return dateKey;
+    dt.setDate(dt.getDate() + deltaDays);
+    return _formatDateKey(dt);
+}
+
+function _daysBetweenKeys(fromKey, toKey) {
+    const a = _parseDateKey(fromKey);
+    const b = _parseDateKey(toKey);
+    if (!a || !b) return 0;
+    return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+function _normalizeFloorVal(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return LEASH_MIN_FLOOR;
+    const snapped = Math.round(n * 2) / 2;
+    return clamp(snapped, LEASH_MIN_FLOOR, LEASH_MAX_FLOOR);
+}
+
+function _freshLeashState() {
+    return {
+        epoch: 1,
+        floors: { physics: LEASH_MIN_FLOOR, chemistry: LEASH_MIN_FLOOR, maths: LEASH_MIN_FLOOR },
+        pendingDays: [],
+        history: [],
+        lastCalibration: null,
+    };
+}
+
+function _normalizeDayRecord(rec) {
+    if (!rec || typeof rec !== 'object' || typeof rec.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(rec.date)) {
+        return null;
+    }
+    const u = rec.units && typeof rec.units === 'object' ? rec.units : {};
+    const f = rec.floors && typeof rec.floors === 'object' ? rec.floors : {};
+    return {
+        date: rec.date,
+        units: {
+            physics: round2(Math.max(0, Number(u.physics) || 0)),
+            chemistry: round2(Math.max(0, Number(u.chemistry) || 0)),
+            maths: round2(Math.max(0, Number(u.maths) || 0)),
+        },
+        pactMins: round2(Math.max(0, Number(rec.pactMins) || 0)),
+        floors: {
+            physics: _normalizeFloorVal(f.physics),
+            chemistry: _normalizeFloorVal(f.chemistry),
+            maths: _normalizeFloorVal(f.maths),
+        },
+    };
+}
+
+function _mergeDayArrays(arrA, arrB, limit) {
+    const byDate = new Map();
+    for (const src of [arrA, arrB]) {
+        if (!Array.isArray(src)) continue;
+        for (const raw of src) {
+            const norm = _normalizeDayRecord(raw);
+            if (!norm) continue;
+            const prev = byDate.get(norm.date);
+            if (!prev) {
+                byDate.set(norm.date, norm);
+            } else {
+                byDate.set(norm.date, {
+                    date: norm.date,
+                    units: {
+                        physics: Math.max(prev.units.physics, norm.units.physics),
+                        chemistry: Math.max(prev.units.chemistry, norm.units.chemistry),
+                        maths: Math.max(prev.units.maths, norm.units.maths),
+                    },
+                    pactMins: Math.max(prev.pactMins, norm.pactMins),
+                    floors: {
+                        physics: Math.max(prev.floors.physics, norm.floors.physics),
+                        chemistry: Math.max(prev.floors.chemistry, norm.floors.chemistry),
+                        maths: Math.max(prev.floors.maths, norm.floors.maths),
+                    },
+                });
+            }
+        }
+    }
+    const sorted = Array.from(byDate.values()).sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+    return limit > 0 ? sorted.slice(-limit) : sorted;
+}
+
+function _normalizeCalibration(cal) {
+    if (!cal || typeof cal !== 'object' || typeof cal.date !== 'string') return null;
+    const prevFloors = {};
+    const nextFloors = {};
+    const trimmedAvgs = {};
+    for (const s of SUBJECTS) {
+        prevFloors[s] = _normalizeFloorVal(cal.prevFloors && cal.prevFloors[s]);
+        nextFloors[s] = Math.max(prevFloors[s], _normalizeFloorVal(cal.nextFloors && cal.nextFloors[s]));
+        trimmedAvgs[s] = round2(Math.max(0, Number(cal.trimmedAvgs && cal.trimmedAvgs[s]) || 0));
+    }
+    const tightened = SUBJECTS.filter(s => nextFloors[s] > prevFloors[s]);
+    return {
+        epoch: Math.max(2, Math.floor(Number(cal.epoch) || 2)),
+        date: cal.date,
+        prevFloors,
+        nextFloors,
+        trimmedAvgs,
+        tightened,
+    };
 }
 
 function _freshDaily(dateKey) {
@@ -86,7 +212,8 @@ function _freshHeartbeatState(now = Date.now()) {
         seededAt: now,
         lastParity: 1.0,
         flatlined: false,
-        daily: _freshDaily(_safeTodayKey()),
+        daily: _freshDaily(_safeTodayKey(now)),
+        leash: _freshLeashState(),
     };
 }
 
@@ -166,6 +293,19 @@ function _normalizeLoadedState(raw, now = Date.now()) {
     const parsedParity = (rawParity === null || rawParity === undefined || rawParity === '') ? NaN : Number(rawParity);
     const safeParity = Number.isFinite(parsedParity) ? clamp(parsedParity, 0, 1) : 1.0;
 
+    const lRaw = raw.leash && typeof raw.leash === 'object' ? raw.leash : {};
+    const leash = {
+        epoch: Math.max(1, Math.floor(Number(lRaw.epoch) || 1)),
+        floors: {
+            physics: _normalizeFloorVal(lRaw.floors && lRaw.floors.physics),
+            chemistry: _normalizeFloorVal(lRaw.floors && lRaw.floors.chemistry),
+            maths: _normalizeFloorVal(lRaw.floors && lRaw.floors.maths),
+        },
+        pendingDays: _mergeDayArrays(lRaw.pendingDays, [], 0),
+        history: _mergeDayArrays(lRaw.history, [], 28),
+        lastCalibration: _normalizeCalibration(lRaw.lastCalibration),
+    };
+
     return {
         version: 1,
         reservoirHours: safeHrs,
@@ -175,13 +315,14 @@ function _normalizeLoadedState(raw, now = Date.now()) {
         lastParity: safeParity,
         flatlined: Boolean(raw.flatlined) && safeHrs <= 0,
         daily: {
-            date: typeof d.date === 'string' && d.date ? d.date : _safeTodayKey(),
+            date: typeof d.date === 'string' && d.date ? d.date : _safeTodayKey(now),
             units: normUnits,
             pactMins: Math.max(0, Number(d.pactMins) || 0),
             creditedIds: Array.isArray(d.creditedIds) ? d.creditedIds.slice(-1500).map(String) : [],
             creditedPactHours: Math.max(0, Number(d.creditedPactHours) || 0),
             creditedSubjHours: normSubjHrs,
         },
+        leash,
     };
 }
 
@@ -232,6 +373,28 @@ function _mergeHeartbeatRecords(localRaw, remoteRaw, now = Date.now()) {
         };
     }
 
+    // Strictly monotonic ratchet merge within the same life: floors & epoch only move upward.
+    const la = a.leash;
+    const lb = b.leash;
+    const maxEpoch = Math.max(la.epoch, lb.epoch);
+    const mergedPending = la.epoch !== lb.epoch
+        ? (lb.epoch > la.epoch ? lb.pendingDays : la.pendingDays)
+        : _mergeDayArrays(la.pendingDays, lb.pendingDays, 0);
+    const mergedCal = lb.epoch > la.epoch
+        ? lb.lastCalibration
+        : (la.epoch > lb.epoch ? la.lastCalibration : (lb.lastCalibration || la.lastCalibration));
+    const leash = {
+        epoch: maxEpoch,
+        floors: {
+            physics: Math.max(la.floors.physics, lb.floors.physics),
+            chemistry: Math.max(la.floors.chemistry, lb.floors.chemistry),
+            maths: Math.max(la.floors.maths, lb.floors.maths),
+        },
+        pendingDays: mergedPending,
+        history: _mergeDayArrays(la.history, lb.history, 28),
+        lastCalibration: mergedCal,
+    };
+
     // Align both records to the newer wall-clock instant before taking the max so
     // a stale background tab can neither pull reservoir down nor inject phantom hours.
     const maxTick = Math.max(a.lastTickAt, b.lastTickAt);
@@ -249,6 +412,7 @@ function _mergeHeartbeatRecords(localRaw, remoteRaw, now = Date.now()) {
         lastParity: Math.max(a.lastParity, b.lastParity),
         flatlined: false,
         daily,
+        leash,
     };
 }
 
@@ -284,6 +448,7 @@ async function _loadState() {
         chosen = idbRaw || lsRaw;
     }
     _hb = _normalizeLoadedState(chosen, now);
+    _calibrateLeashIfReady(_safeTodayKey(now));
     _saveState({ silentBroadcast: true });
 }
 
@@ -292,12 +457,87 @@ function _adoptRemoteState(remoteRaw) {
     const now = Date.now();
     const merged = _mergeHeartbeatRecords(_hb, remoteRaw, now);
     _hb = merged;
+    _calibrateLeashIfReady(_safeTodayKey(now));
     if (!_hb.flatlined && _hb.reservoirHours > 0 && _flatlineActive && !_flatlineWipeDone) {
         _flatlineActive = false;
         const fl = typeof document !== 'undefined' ? document.getElementById('heartbeat-flatline-overlay') : null;
         if (fl) fl.hidden = true;
     }
     _refreshHudAndVitals();
+}
+
+// ── 7-Day Per-Subject Leash Ratchet ─────────────────────────────────────────
+function _getSubjectFloor(subj) {
+    const f = _hb.leash && _hb.leash.floors && _hb.leash.floors[subj];
+    return _normalizeFloorVal(f);
+}
+
+function _getSubjectCap(subj) {
+    return round2(_getSubjectFloor(subj) * OVERFLOW_CAP_RATIO);
+}
+
+function _getSubjectHoursPerUnit(subj) {
+    return SUBJECT_TARGET_HOURS / _getSubjectFloor(subj);
+}
+
+function _trimmedMean(values) {
+    const nums = (values || []).map(v => Math.max(0, Number(v) || 0));
+    if (nums.length === 0) return 0;
+    const sorted = nums.slice().sort((a, b) => a - b);
+    const core = sorted.length >= 3 ? sorted.slice(1, -1) : sorted;
+    const sum = core.reduce((acc, x) => acc + x, 0);
+    return round2(sum / core.length);
+}
+
+function _computeNextSubjectFloor(currentFloor, trimmedAvg) {
+    const cur = _normalizeFloorVal(currentFloor);
+    if (!Number.isFinite(trimmedAvg) || trimmedAvg < cur * LEASH_TIGHTEN_THRESHOLD) {
+        return cur;
+    }
+    if (cur >= LEASH_MAX_FLOOR) return LEASH_MAX_FLOOR;
+    const rawNext = Math.min(cur + LEASH_STEP_BLEND * (trimmedAvg - cur), cur * LEASH_MAX_STEP_RATIO);
+    const snapped = Math.round(rawNext * 2) / 2;
+    const next = Math.min(LEASH_MAX_FLOOR, Math.max(cur + 0.5, snapped));
+    return Math.max(cur, next);
+}
+
+function _recordCompletedDay(dayEntry) {
+    const norm = _normalizeDayRecord(dayEntry);
+    if (!norm) return;
+    if (!_hb.leash || typeof _hb.leash !== 'object') _hb.leash = _freshLeashState();
+    _hb.leash.history = _mergeDayArrays(_hb.leash.history, [norm], 28);
+    _hb.leash.pendingDays = _mergeDayArrays(_hb.leash.pendingDays, [norm], 0);
+}
+
+function _calibrateLeashIfReady(calDate) {
+    if (!_hb.leash || !Array.isArray(_hb.leash.pendingDays)) return;
+    while (_hb.leash.pendingDays.length >= LEASH_EPOCH_DAYS) {
+        const window7 = _hb.leash.pendingDays.splice(0, LEASH_EPOCH_DAYS);
+        const prevFloors = {
+            physics: _getSubjectFloor('physics'),
+            chemistry: _getSubjectFloor('chemistry'),
+            maths: _getSubjectFloor('maths'),
+        };
+        const nextFloors = {};
+        const trimmedAvgs = {};
+        const tightened = [];
+        for (const s of SUBJECTS) {
+            const avg = _trimmedMean(window7.map(d => (d.units && d.units[s]) || 0));
+            trimmedAvgs[s] = avg;
+            nextFloors[s] = _computeNextSubjectFloor(prevFloors[s], avg);
+            if (nextFloors[s] > prevFloors[s]) tightened.push(s);
+        }
+        _hb.leash.epoch = Math.max(1, Number(_hb.leash.epoch) || 1) + 1;
+        _hb.leash.floors = nextFloors;
+        _hb.leash.lastCalibration = {
+            epoch: _hb.leash.epoch,
+            date: calDate || _safeTodayKey(),
+            prevFloors,
+            nextFloors,
+            trimmedAvgs,
+            tightened,
+        };
+    }
 }
 
 // ── Freeze & Real-Time Wall-Clock Drain ─────────────────────────────────────
@@ -326,22 +566,49 @@ export function isDecayFrozen(nowMs = Date.now()) {
     return true;
 }
 
-function _ensureTodayBucket() {
-    const today = _safeTodayKey();
-    if (_hb.daily && _hb.daily.date === today) return;
+function _ensureTodayBucket(nowMs) {
+    if (!_hb.leash || typeof _hb.leash !== 'object') _hb.leash = _freshLeashState();
+    const targetKey = _safeTodayKey(nowMs);
+    if (_hb.daily && _hb.daily.date === targetKey) return;
+    if (_hb.daily && _hb.daily.date && targetKey < _hb.daily.date) return;
     if (_hb.daily) {
-        const pP = clamp((_hb.daily.units.physics || 0) / DAILY_UNIT_TARGET, 0, 1);
-        const pC = clamp((_hb.daily.units.chemistry || 0) / DAILY_UNIT_TARGET, 0, 1);
-        const pM = clamp((_hb.daily.units.maths || 0) / DAILY_UNIT_TARGET, 0, 1);
+        const fP = _getSubjectFloor('physics');
+        const fC = _getSubjectFloor('chemistry');
+        const fM = _getSubjectFloor('maths');
+        const pP = clamp((_hb.daily.units.physics || 0) / fP, 0, 1);
+        const pC = clamp((_hb.daily.units.chemistry || 0) / fC, 0, 1);
+        const pM = clamp((_hb.daily.units.maths || 0) / fM, 0, 1);
         const avgP = (pP + pC + pM) / 3;
         const minP = Math.min(pP, pC, pM);
         _hb.lastParity = avgP > 0 ? clamp(0.35 * avgP + 0.65 * minP, 0, 1) : 0;
+
+        if (_hb.daily.date) {
+            _recordCompletedDay({
+                date: _hb.daily.date,
+                units: { ..._hb.daily.units },
+                pactMins: _hb.daily.pactMins || 0,
+                floors: { physics: fP, chemistry: fC, maths: fM },
+            });
+            const gapDays = _daysBetweenKeys(_hb.daily.date, targetKey);
+            if (gapDays > 1) {
+                const backfill = Math.min(gapDays - 1, LEASH_EPOCH_DAYS - 1);
+                for (let k = 1; k <= backfill; k++) {
+                    _recordCompletedDay({
+                        date: _addCalendarDays(_hb.daily.date, k),
+                        units: { physics: 0, chemistry: 0, maths: 0 },
+                        pactMins: 0,
+                        floors: { physics: fP, chemistry: fC, maths: fM },
+                    });
+                }
+            }
+            _calibrateLeashIfReady(targetKey);
+        }
     }
-    _hb.daily = _freshDaily(today);
+    _hb.daily = _freshDaily(targetKey);
+    if (_initialized) _saveState({ silentBroadcast: true });
 }
 
 export function tickClock(nowMs = Date.now(), opts = {}) {
-    _ensureTodayBucket();
     if (!Number.isFinite(nowMs) || nowMs < MIN_VALID_EPOCH_MS) return;
     if (!Number.isFinite(_hb.reservoirHours)) _hb.reservoirHours = MAX_RESERVOIR_HOURS;
 
@@ -397,6 +664,7 @@ export function tickClock(nowMs = Date.now(), opts = {}) {
         return;
     }
 
+    _ensureTodayBucket(effNow);
     _hb.reservoirHours = nextHours;
     _hb.lastTickAt = effNow;
     _hb.highWaterMark = effNow;
@@ -423,8 +691,8 @@ function _applyDailyRechargeDelta() {
     let added = 0;
     const d = _hb.daily;
     for (const s of SUBJECTS) {
-        const cappedUnits = Math.min(DAILY_UNIT_CAP, d.units[s] || 0);
-        const earnedSubjHours = cappedUnits * HOURS_PER_UNIT;
+        const cappedUnits = Math.min(_getSubjectCap(s), d.units[s] || 0);
+        const earnedSubjHours = cappedUnits * _getSubjectHoursPerUnit(s);
         const prevCredited = d.creditedSubjHours[s] || 0;
         if (earnedSubjHours > prevCredited) {
             added += earnedSubjHours - prevCredited;
@@ -432,9 +700,9 @@ function _applyDailyRechargeDelta() {
         }
     }
 
-    const pP = clamp((d.units.physics || 0) / DAILY_UNIT_TARGET, 0, 1);
-    const pC = clamp((d.units.chemistry || 0) / DAILY_UNIT_TARGET, 0, 1);
-    const pM = clamp((d.units.maths || 0) / DAILY_UNIT_TARGET, 0, 1);
+    const pP = clamp((d.units.physics || 0) / _getSubjectFloor('physics'), 0, 1);
+    const pC = clamp((d.units.chemistry || 0) / _getSubjectFloor('chemistry'), 0, 1);
+    const pM = clamp((d.units.maths || 0) / _getSubjectFloor('maths'), 0, 1);
     const minP = Math.min(pP, pC, pM);
 
     const cappedPactMins = Math.min(DAILY_PACT_CAP_MINS, d.pactMins || 0);
@@ -599,9 +867,14 @@ export function getVitals(nowMs = Date.now()) {
     const totalUnits = uP + uC + uM;
     const pactMins = _hb.daily.pactMins || 0;
 
-    const pP = clamp(uP / DAILY_UNIT_TARGET, 0, 1);
-    const pC = clamp(uC / DAILY_UNIT_TARGET, 0, 1);
-    const pM = clamp(uM / DAILY_UNIT_TARGET, 0, 1);
+    const fP = _getSubjectFloor('physics');
+    const fC = _getSubjectFloor('chemistry');
+    const fM = _getSubjectFloor('maths');
+    const totalTarget = round2(fP + fC + fM);
+
+    const pP = clamp(uP / fP, 0, 1);
+    const pC = clamp(uC / fC, 0, 1);
+    const pM = clamp(uM / fM, 0, 1);
     const avgP = (pP + pC + pM) / 3;
     const minP = Math.min(pP, pC, pM);
     const parity = avgP > 0 ? clamp(minP / avgP, 0, 1) : 0;
@@ -610,14 +883,14 @@ export function getVitals(nowMs = Date.now()) {
     const speed = clamp(0.05 + 0.95 * reservoirRatio, 0.05, 1.0);
 
     // 2. Luminescence (0.00..1.00): 3-Subject Balance & Parity
-    // Smooth cold-start blend across the first 20.0u so first morning solve never cliffs.
+    // Smooth cold-start blend across the weakest floor so first morning solve never cliffs.
     const rawTodayLum = clamp(0.35 * avgP + 0.65 * minP, 0, 1);
     const dNow = new Date(nowMs);
     const rawHour = dNow.getHours() + dNow.getMinutes() / 60;
     const hoursIntoDay = (rawHour - 4 + 24) % 24;
     const morningFade = clamp(1 - hoursIntoDay / 12, 0, 1);
     const morningCarry = (_hb.lastParity || 0) * morningFade * 0.72;
-    const carryWeight = clamp(1 - totalUnits / DAILY_UNIT_TARGET, 0, 1);
+    const carryWeight = clamp(1 - totalUnits / Math.min(fP, fC, fM), 0, 1);
     const luminescenceScore = clamp(
         Math.max(rawTodayLum, morningCarry * carryWeight + rawTodayLum * (1 - carryWeight)),
         0,
@@ -627,7 +900,7 @@ export function getVitals(nowMs = Date.now()) {
     // 3. Persistence (0.00..1.00 normalized -> 0.35..0.88 crisp KLSR trail): Deep Pact + Weighted Output
     const rawTodayPers = clamp(
         0.55 * Math.min(1, pactMins / DAILY_PACT_TARGET_MINS) +
-        0.45 * Math.min(1, totalUnits / (DAILY_UNIT_TARGET * 3)),
+        0.45 * Math.min(1, totalUnits / totalTarget),
         0,
         1
     );
@@ -651,11 +924,46 @@ export function getVitals(nowMs = Date.now()) {
     const creditedPactHours = _hb.daily.creditedPactHours || 0;
     const lockedPactHours = round2(Math.max(0, rawPactHours - creditedPactHours));
     const subjEntries = [
-        { key: 'physics', label: 'Physics', u: uP },
-        { key: 'chemistry', label: 'Chemistry', u: uC },
-        { key: 'maths', label: 'Maths', u: uM },
-    ].sort((a, b) => a.u - b.u);
+        { key: 'physics', label: 'Physics', u: uP, r: pP },
+        { key: 'chemistry', label: 'Chemistry', u: uC, r: pC },
+        { key: 'maths', label: 'Maths', u: uM, r: pM },
+    ].sort((a, b) => (a.r - b.r) || (a.u - b.u));
     const weakestSubject = subjEntries[0].label;
+
+    const pending = (_hb.leash && Array.isArray(_hb.leash.pendingDays)) ? _hb.leash.pendingDays : [];
+    const pendingCount = pending.length;
+    const floors = { physics: fP, chemistry: fC, maths: fM };
+    const caps = { physics: _getSubjectCap('physics'), chemistry: _getSubjectCap('chemistry'), maths: _getSubjectCap('maths') };
+    const hoursPerUnit = {
+        physics: round3(_getSubjectHoursPerUnit('physics')),
+        chemistry: round3(_getSubjectHoursPerUnit('chemistry')),
+        maths: round3(_getSubjectHoursPerUnit('maths')),
+    };
+    const trailingAvgs = pendingCount > 0
+        ? {
+            physics: _trimmedMean(pending.map(d => (d.units && d.units.physics) || 0)),
+            chemistry: _trimmedMean(pending.map(d => (d.units && d.units.chemistry) || 0)),
+            maths: _trimmedMean(pending.map(d => (d.units && d.units.maths) || 0)),
+        }
+        : null;
+    const projectedFloors = {
+        physics: trailingAvgs ? _computeNextSubjectFloor(fP, trailingAvgs.physics) : fP,
+        chemistry: trailingAvgs ? _computeNextSubjectFloor(fC, trailingAvgs.chemistry) : fC,
+        maths: trailingAvgs ? _computeNextSubjectFloor(fM, trailingAvgs.maths) : fM,
+    };
+    const leash = {
+        epoch: (_hb.leash && Number(_hb.leash.epoch)) || 1,
+        dayInEpoch: clamp(pendingCount + 1, 1, LEASH_EPOCH_DAYS),
+        epochDays: LEASH_EPOCH_DAYS,
+        pendingCount,
+        floors,
+        caps,
+        hoursPerUnit,
+        totalTarget,
+        trailingAvgs,
+        projectedFloors,
+        lastCalibration: (_hb.leash && _hb.leash.lastCalibration) || null,
+    };
 
     return {
         reservoirHours,
@@ -683,21 +991,31 @@ export function getVitals(nowMs = Date.now()) {
             (_hb.daily.creditedSubjHours.maths || 0) +
             (_hb.daily.creditedPactHours || 0)
         ),
+        leash,
     };
 }
 
+export function getLeashStatus() {
+    return getVitals().leash;
+}
+
 export function getDiagnosticPrescription(v = getVitals()) {
+    const floors = (v.leash && v.leash.floors) || {
+        physics: DAILY_UNIT_TARGET,
+        chemistry: DAILY_UNIT_TARGET,
+        maths: DAILY_UNIT_TARGET,
+    };
     const gaps = {
-        physics: Math.max(0, round2(DAILY_UNIT_TARGET - v.units.physics)),
-        chemistry: Math.max(0, round2(DAILY_UNIT_TARGET - v.units.chemistry)),
-        maths: Math.max(0, round2(DAILY_UNIT_TARGET - v.units.maths)),
+        physics: Math.max(0, round2(floors.physics - v.units.physics)),
+        chemistry: Math.max(0, round2(floors.chemistry - v.units.chemistry)),
+        maths: Math.max(0, round2(floors.maths - v.units.maths)),
         pactMins: Math.max(0, Math.round(DAILY_PACT_TARGET_MINS - v.pactMins)),
     };
 
     const ratios = [
-        { name: 'Physics', r: v.units.physics / DAILY_UNIT_TARGET, gap: gaps.physics },
-        { name: 'Chemistry', r: v.units.chemistry / DAILY_UNIT_TARGET, gap: gaps.chemistry },
-        { name: 'Maths', r: v.units.maths / DAILY_UNIT_TARGET, gap: gaps.maths },
+        { name: 'Physics', r: v.units.physics / floors.physics, gap: gaps.physics },
+        { name: 'Chemistry', r: v.units.chemistry / floors.chemistry, gap: gaps.chemistry },
+        { name: 'Maths', r: v.units.maths / floors.maths, gap: gaps.maths },
     ];
     ratios.sort((a, b) => a.r - b.r);
     const maxR = Math.max(ratios[0].r, ratios[1].r, ratios[2].r);
@@ -2080,7 +2398,7 @@ function _renderVitals() {
             <div class="hb-vital-box">
                 <div class="hb-vital-top"><span>LUMINESCENCE</span><span class="hb-vital-val">${v.luminescence.toFixed(2)} / 1.00</span></div>
                 <div class="hb-vital-bar"><div class="hb-vital-bar-fill" style="width:${Math.round(v.luminescence * 100)}%"></div></div>
-                <div class="hb-vital-desc">3-subject balance (${Math.round(v.parity * 100)}% parity · ${multPct}% Pact pay). Full release at 20u weakest subject.</div>
+                <div class="hb-vital-desc">3-subject balance (${Math.round(v.parity * 100)}% parity · ${multPct}% Pact pay). Full release at weakest subject floor.</div>
             </div>
             <div class="hb-vital-box">
                 <div class="hb-vital-top"><span>PERSISTENCE</span><span class="hb-vital-val">${v.persistence.toFixed(2)} / 1.00</span></div>
@@ -2096,29 +2414,69 @@ function _renderVitals() {
     }
 
     if (prescEl) {
+        const SUBJ_META = {
+            physics: { name: 'PHYSICS', short: 'PHYS' },
+            chemistry: { name: 'CHEMISTRY', short: 'CHEM' },
+            maths: { name: 'MATHS', short: 'MATH' },
+        };
+        const L = v.leash || {
+            epoch: 1,
+            dayInEpoch: 1,
+            epochDays: LEASH_EPOCH_DAYS,
+            pendingCount: 0,
+            floors: { physics: DAILY_UNIT_TARGET, chemistry: DAILY_UNIT_TARGET, maths: DAILY_UNIT_TARGET },
+            hoursPerUnit: { physics: HOURS_PER_UNIT, chemistry: HOURS_PER_UNIT, maths: HOURS_PER_UNIT },
+            trailingAvgs: null,
+            projectedFloors: { physics: DAILY_UNIT_TARGET, chemistry: DAILY_UNIT_TARGET, maths: DAILY_UNIT_TARGET },
+            lastCalibration: null,
+        };
         const pct = (val, tgt) => clamp(Math.round((val / tgt) * 100), 0, 100);
         const cls = (val, tgt) => val >= tgt ? 'is-complete' : (val < tgt * 0.4 ? 'is-lagging' : '');
         const lockedRow = v.lockedPactHours > 0.05
             ? `<div class="hb-presc-locked">+${v.lockedPactHours.toFixed(2)}h LOCKED — feed ${v.weakestSubject} to release</div>`
             : '';
+        const subjRowsHtml = SUBJECTS.map(s => {
+            const val = v.units[s];
+            const tgt = L.floors[s];
+            const gap = gaps[s];
+            return `
+                <div class="hb-presc-row">
+                    <span class="hb-presc-lbl">${SUBJ_META[s].name}</span>
+                    <div class="hb-presc-track"><div class="hb-presc-fill ${cls(val, tgt)}" style="width:${pct(val, tgt)}%"></div></div>
+                    <span class="hb-presc-num">${val.toFixed(1)} / ${tgt.toFixed(1)}u${gap > 0 ? ` (−${gap.toFixed(1)})` : ' ✓'}</span>
+                </div>`;
+        }).join('');
+        const leashCellsHtml = SUBJECTS.map(s => {
+            const fl = L.floors[s];
+            const hpu = L.hoursPerUnit[s];
+            const avg = L.trailingAvgs ? L.trailingAvgs[s] : null;
+            const proj = L.projectedFloors ? L.projectedFloors[s] : fl;
+            const tightenedCls = fl > LEASH_MIN_FLOOR ? ' is-tightened' : '';
+            let trendHtml = `<div class="hb-leash-trend">CALIBRATING (${L.dayInEpoch}/${L.epochDays})</div>`;
+            if (avg !== null && avg !== undefined) {
+                trendHtml = proj > fl
+                    ? `<div class="hb-leash-trend is-rising">AVG ${avg.toFixed(1)}u → ↑ ${proj.toFixed(1)}u</div>`
+                    : `<div class="hb-leash-trend">AVG ${avg.toFixed(1)}u → HOLD</div>`;
+            }
+            return `
+                <div class="hb-leash-cell${tightenedCls}">
+                    <div class="hb-leash-top">
+                        <span class="hb-leash-subj">${SUBJ_META[s].short}</span>
+                        <span class="hb-leash-floor">${fl.toFixed(1)}u</span>
+                    </div>
+                    <div class="hb-leash-yield">${hpu.toFixed(2)}h / u · +5.0h floor</div>
+                    ${trendHtml}
+                </div>`;
+        }).join('');
+        const cal = L.lastCalibration;
+        const calLogHtml = (cal && Array.isArray(cal.tightened) && cal.tightened.length > 0)
+            ? `<div class="hb-leash-log">EPOCH ${String(cal.epoch).padStart(2, '0')} TIGHTENED: ${cal.tightened.map(s => `${SUBJ_META[s].short} +${(cal.nextFloors[s] - cal.prevFloors[s]).toFixed(1)}u`).join(' · ')}</div>`
+            : '';
+
         prescEl.innerHTML = `
             <div class="hb-presc-title">DAILY RECHARGE STANDARD (+24.0H BREAK-EVEN · +30.0H OVERFLOW CAP)</div>
             <div class="hb-presc-rows">
-                <div class="hb-presc-row">
-                    <span class="hb-presc-lbl">PHYSICS</span>
-                    <div class="hb-presc-track"><div class="hb-presc-fill ${cls(v.units.physics, DAILY_UNIT_TARGET)}" style="width:${pct(v.units.physics, DAILY_UNIT_TARGET)}%"></div></div>
-                    <span class="hb-presc-num">${v.units.physics.toFixed(1)} / 20.0u${gaps.physics > 0 ? ` (−${gaps.physics.toFixed(1)})` : ' ✓'}</span>
-                </div>
-                <div class="hb-presc-row">
-                    <span class="hb-presc-lbl">CHEMISTRY</span>
-                    <div class="hb-presc-track"><div class="hb-presc-fill ${cls(v.units.chemistry, DAILY_UNIT_TARGET)}" style="width:${pct(v.units.chemistry, DAILY_UNIT_TARGET)}%"></div></div>
-                    <span class="hb-presc-num">${v.units.chemistry.toFixed(1)} / 20.0u${gaps.chemistry > 0 ? ` (−${gaps.chemistry.toFixed(1)})` : ' ✓'}</span>
-                </div>
-                <div class="hb-presc-row">
-                    <span class="hb-presc-lbl">MATHS</span>
-                    <div class="hb-presc-track"><div class="hb-presc-fill ${cls(v.units.maths, DAILY_UNIT_TARGET)}" style="width:${pct(v.units.maths, DAILY_UNIT_TARGET)}%"></div></div>
-                    <span class="hb-presc-num">${v.units.maths.toFixed(1)} / 20.0u${gaps.maths > 0 ? ` (−${gaps.maths.toFixed(1)})` : ' ✓'}</span>
-                </div>
+                ${subjRowsHtml}
                 <div class="hb-presc-row">
                     <span class="hb-presc-lbl">DEEP PACT</span>
                     <div class="hb-presc-track"><div class="hb-presc-fill ${cls(v.pactMins, DAILY_PACT_TARGET_MINS)}" style="width:${pct(v.pactMins, DAILY_PACT_TARGET_MINS)}%"></div></div>
@@ -2127,6 +2485,14 @@ function _renderVitals() {
                 ${lockedRow}
             </div>
             <div class="hb-presc-verdict ${critical ? 'is-critical' : ''}">${verdict}</div>
+            <div class="hb-leash-panel">
+                <div class="hb-leash-head">
+                    <span class="hb-presc-title">7-DAY LEASH // EPOCH ${String(L.epoch).padStart(2, '0')} · DAY ${L.dayInEpoch}/${L.epochDays}</span>
+                    <span class="hb-leash-badge">ONE-WAY RATCHET</span>
+                </div>
+                <div class="hb-leash-grid">${leashCellsHtml}</div>
+                ${calLogHtml}
+            </div>
         `;
     }
 }
@@ -2463,6 +2829,7 @@ export const Heartbeat = {
     tickClock,
     getState,
     getVitals,
+    getLeashStatus,
     getDiagnosticPrescription,
     getQuestionUnitWeight,
     recordProblemUnit,

@@ -562,6 +562,103 @@ body:not(.hb-void-active) .main-content {
     color: #fecdd3;
 }
 
+.hb-leash-panel {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.hb-leash-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.hb-leash-head .hb-presc-title {
+    margin-bottom: 0;
+}
+
+.hb-leash-badge {
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    padding: 2px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 2px;
+    color: rgba(210, 224, 248, 0.72);
+    white-space: nowrap;
+}
+
+.hb-leash-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+@media (max-width: 520px) {
+    .hb-leash-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.hb-leash-cell {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+    padding: 8px 10px;
+    border-radius: 3px;
+}
+
+.hb-leash-cell.is-tightened {
+    border-color: rgba(251, 191, 36, 0.35);
+}
+
+.hb-leash-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.hb-leash-subj {
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    color: rgba(196, 210, 236, 0.62);
+}
+
+.hb-leash-floor {
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    font-variant-numeric: tabular-nums;
+}
+
+.hb-leash-yield {
+    margin-top: 3px;
+    font-size: 9.5px;
+    color: rgba(190, 204, 230, 0.56);
+    font-variant-numeric: tabular-nums;
+}
+
+.hb-leash-trend {
+    margin-top: 4px;
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    color: rgba(205, 218, 240, 0.68);
+    font-variant-numeric: tabular-nums;
+}
+
+.hb-leash-trend.is-rising {
+    color: #fbbf24;
+}
+
+.hb-leash-log {
+    margin-top: 8px;
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    color: rgba(251, 191, 36, 0.85);
+}
+
 /* Flatline Death Sequence Overlay (unskippable) */
 .hb-flatline-overlay {
     position: fixed;
