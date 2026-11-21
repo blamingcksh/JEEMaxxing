@@ -829,6 +829,7 @@ function _srBindHold(overlay) {
 
         _srHoldRingTimer = setTimeout(() => {
             if (ringWrap) ringWrap.classList.add('active');
+            try { if (typeof window._pqPlayHoldTick === 'function') window._pqPlayHoldTick(overlay.getAttribute('data-ck-surge') === 'crit'); } catch (_) {}
         }, 120);
 
         _srHoldTimer = setTimeout(() => {
@@ -927,22 +928,24 @@ function _srUpdatePace() {
         const paceEl = document.getElementById('sr-pace');
         const overlay = document.getElementById('sr-practice-overlay');
         if (!paceEl || !overlay) return;
+        paceEl.style.opacity = '';
+        paceEl.style.background = '';
         if (_drawerState.resultLocked) {
-            paceEl.style.opacity = '0';
+            paceEl.style.setProperty('--pq-pace-o', '0');
             return;
         }
         const targetSecs = (_drawerState.targetTimeMins || 5) * 60;
         const secs = _drawerState.stopwatchSeconds || 0;
         const ratio = secs / Math.max(60, targetSecs);
         if (ratio < 0.8) {
-            paceEl.style.opacity = '0';
+            paceEl.style.setProperty('--pq-pace-o', '0');
         } else {
             const factor = Math.min(1.0, (ratio - 0.8) / 0.2);
-            paceEl.style.opacity = (0.2 + factor * 0.75).toFixed(2);
+            paceEl.style.setProperty('--pq-pace-o', (0.2 + factor * 0.75).toFixed(2));
             if (factor >= 0.5) {
-                paceEl.style.background = 'var(--pq-pace-to)';
+                paceEl.style.setProperty('--pq-pace-bg', 'var(--pq-pace-to)');
             } else {
-                paceEl.style.background = 'var(--pq-pace-from)';
+                paceEl.style.setProperty('--pq-pace-bg', 'var(--pq-pace-from)');
             }
         }
     } catch (_) {}
@@ -1280,6 +1283,9 @@ export function closePracticeDrawer(opts) {
             }
             if (_snap.preOverheatActive && !document.body.classList.contains('overheat-active') && typeof window.activateOverheat === 'function') {
                 try { window.activateOverheat(); } catch (_) {}
+            }
+            if (_snap.preCkSnap && window.CK_ENGINE && typeof window.CK_ENGINE.rollback === 'function') {
+                try { window.CK_ENGINE.rollback(_snap.preCkSnap); } catch (_) {}
             }
             if (typeof window.updateStreakVisualizer === 'function') window.updateStreakVisualizer();
             saveAllAsync().catch(console.error);
@@ -2079,25 +2085,32 @@ function _applyResult(result, source, q) {
         preJustWonBounty: !!window._justWonBounty,
         preBountyPayoff: (AppState.bounty && Number.isFinite(Number(AppState.bounty.payoffCount))) ? Number(AppState.bounty.payoffCount) : null,
         preOverheatActive: document.body.classList.contains('overheat-active'),
+        preCkSnap: (window.CK_ENGINE && typeof window.CK_ENGINE.snapshot === 'function') ? window.CK_ENGINE.snapshot() : null,
         overheatDelta: 0,
         overheatSubj: null,
     };
     _drawerState.preBridgeSnapshot = _abortSnap;
 
     if (_drawerState.result === 'incorrect') {
-        if (typeof window.triggerRedFlash === 'function') window.triggerRedFlash();
-        if (typeof window.playWrongSound === 'function') window.playWrongSound();
-        AppState._ckComboBreak = true;
         if (Math.random() < 0.2) {
             if (typeof window.triggerStreakShield === 'function') window.triggerStreakShield();
         } else {
             AppState.practiceCorrectStreak = 0;
         }
+        if (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function') {
+            AppState._ckComboBreak = false;
+            window.CK_ENGINE.onSolve({ correct: false, q, isVault: true });
+        } else {
+            AppState._ckComboBreak = true;
+        }
+        if (typeof window.triggerRedFlash === 'function') window.triggerRedFlash();
+        if (typeof window.playWrongSound === 'function') window.playWrongSound();
     } else if (_drawerState.result === 'correct') {
         AppState.practiceCorrectStreak++;
-        if (window._justWonBounty) {
+        const _justBounty = !!window._justWonBounty;
+        let forceCritLabel = null;
+        if (_justBounty) {
             window._justWonBounty = false;
-            if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
         } else if (document.body.classList.contains('overheat-active')) {
             // changeCount indexes solved[physics|chemistry|maths]. Use the STRICT
             // normalizer and skip a non-canonical subject: normSubjKey's
@@ -2113,18 +2126,36 @@ function _applyResult(result, source, q) {
                 _abortSnap.overheatDelta += 2;
                 _abortSnap.overheatSubj = _overheatKey;
             }
-            if (typeof window.showSupercharged === 'function') window.showSupercharged();
             if (typeof window.deactivateOverheat === 'function') window.deactivateOverheat();
+            forceCritLabel = 'OVERHEAT';
         } else if (AppState.bounty && AppState.bounty.payoffCount > 0) {
             AppState.bounty.payoffCount--;
             saveAllAsync().catch(console.error);
-            if (typeof window.showSupercharged === 'function') window.showSupercharged();
+            forceCritLabel = 'BOUNTY';
+        }
+
+        const ckRes = (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function')
+            ? window.CK_ENGINE.onSolve({
+                correct: true,
+                q,
+                secs: Math.max(0, Math.round((_drawerState.frozenTimeMins || 0) * 60)),
+                targetSecs: (_drawerState.targetTimeMins || 5) * 60,
+                isVault: true,
+                forceCritLabel,
+                suppressCrit: _justBounty,
+            })
+            : null;
+
+        if (ckRes && ckRes.crit && !_justBounty) {
+            if (typeof window._pqStampCritCard === 'function') {
+                window._pqStampCritCard(overlay, ckRes.critLabel);
+            }
+            if (typeof window.showSupercharged === 'function') {
+                window.showSupercharged({ sound: true, critLabel: ckRes.critLabel });
+            }
         } else {
             if (typeof window.showNormalGlow === 'function') window.showNormalGlow();
-            if (typeof window.playCorrectSound === 'function') window.playCorrectSound();
-            if (Math.random() < 0.15) {
-                if (typeof window.showSupercharged === 'function') window.showSupercharged();
-            }
+            if (typeof window.playCorrectSound === 'function') window.playCorrectSound(AppState.practiceCorrectStreak);
         }
     }
     if (typeof window.updateStreakVisualizer === 'function') window.updateStreakVisualizer();
