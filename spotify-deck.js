@@ -1701,7 +1701,7 @@ export function closeDeck() {
         document.body.classList.remove('sp-deck-open');
         const pqModal = document.getElementById('practice-modal');
         if (pqModal && pqModal.classList.contains('active')) {
-            pqModal.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+            pqModal.dispatchEvent(new CustomEvent('pq:chrome-activity'));
         }
     } catch (_) {}
     _scheduleNextPoll();

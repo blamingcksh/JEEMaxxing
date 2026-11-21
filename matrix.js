@@ -793,6 +793,9 @@ function _srBindHold(overlay) {
     });
 
     overlay.addEventListener('pointerdown', (e) => {
+        if (!e.isTrusted) return;
+        if (!Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) return;
+        if (document.body && document.body.classList.contains('sp-deck-open')) return;
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (_drawerState.resultLocked) return;
 
@@ -817,6 +820,10 @@ function _srBindHold(overlay) {
         }, 120);
 
         _srHoldTimer = setTimeout(() => {
+            if (document.body && document.body.classList.contains('sp-deck-open')) {
+                cancelHold();
+                return;
+            }
             cancelHold();
             _srClearSelection();
             _srJustHeld = true;

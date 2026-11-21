@@ -220,7 +220,10 @@
 //        iPad answer reveal layout across Practice & Vault SR stages.
 // v123 - 7-DAY PER-SUBJECT HEARTBEAT LEASH: strict one-way progressive
 //        overload ratchet calibrating per-subject unit floors every 7 days.
-const VERSION = 'jeemax-v123';
+// v124 - FIX IPAD HOLD-REVEAL ON SPOTIFY DECK CLOSE: use dedicated
+//        pq:chrome-activity event instead of synthetic pointerdown, and guard
+//        Practice & Vault SR hold listeners against untrusted/overlay pointers.
+const VERSION = 'jeemax-v124';
 
 const SHELL = [
   './',
