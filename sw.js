@@ -236,7 +236,11 @@
 //        3 inline 44px touch reason words (Concept/Calc/Misread), quiet 4-question-later
 //        Rematch engine with optional 2nd-miss hairline reminder, 600ms hold-option Sure,
 //        and surface dissectionNote/lastWrongPick in Vault drawer. styles-practice-fullscreen.css?v=14.
-const VERSION = 'jeemax-v127';
+// v128 - RESTORE 70/30 HEARTBEAT SPLIT ON PRACTICE MISSES: require both 1-tap reason
+//        (Concept/Calc/Misread) and brief written note (>=8 chars) via always-available
+//        inline hairline input on missed practice items to award 70% immediately (+30%
+//        unlocked on Rematch pass or due Vault solve). styles-practice-fullscreen.css?v=15.
+const VERSION = 'jeemax-v128';
 
 const SHELL = [
   './',
@@ -279,7 +283,7 @@ const SHELL = [
   './styles-telemetry.css',
   './styles-modes.css',
   './styles-dashboard.css',
-  './styles-practice-fullscreen.css?v=14',
+  './styles-practice-fullscreen.css?v=15',
   './atmosphere.js',
   './glyphs.js',
   './matrix.js',

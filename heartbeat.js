@@ -740,7 +740,8 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
         const reason = String((opts && opts.reason) ?? (q && q.errorReason) ?? '').trim();
         const note = String((opts && opts.note) ?? (q && q.dissectionNote) ?? '').trim();
         const quickTag = Boolean(opts && opts.quickTag);
-        if (!reason || (!quickTag && note.length < 30)) {
+        const minNoteLen = quickTag ? 8 : 30;
+        if (!reason || note.length < minNoteLen) {
             return { credited: false, reason: 'dissection-incomplete', subject: subj, weight: 0, hoursAdded: 0 };
         }
         const dissectKey = qid ? `dissect:${qid}` : null;
@@ -752,7 +753,7 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
             q._hbVaultLocked30 = true;
             if (note) q.dissectionNote = note;
         }
-        weight = round2(baseWeight * (quickTag ? 0.50 : 0.70));
+        weight = round2(baseWeight * 0.70);
     } else {
         if (qid && _hb.daily.creditedIds.includes(qid)) {
             return { credited: false, reason: 'duplicate', subject: subj };

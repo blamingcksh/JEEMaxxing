@@ -2174,15 +2174,24 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
   color: var(--pq-accent, var(--ink-primary)) !important;
 }
 
-/* 2nd-miss hairline reminder input (16px prevents iPadOS Safari focus zoom) */
+/* Hairline mistake note input (16px prevents iPadOS Safari focus zoom) */
 #practice-modal.pq-stage .pq-scar-row {
   margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--pq-border);
+  transition: border-color 0.18s ease;
+}
+#practice-modal.pq-stage .pq-scar-row:focus-within {
+  border-bottom-color: var(--pq-accent);
 }
 #practice-modal.pq-stage .pq-scar-input {
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--pq-border);
   border-radius: 0;
   padding: 8px 2px;
   font-family: inherit;
@@ -2190,14 +2199,23 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
   line-height: 1.4;
   color: var(--pq-ink);
   outline: none;
-  transition: border-color 0.18s ease;
 }
 #practice-modal.pq-stage .pq-scar-input::placeholder {
   color: var(--pq-input-placeholder, var(--pq-ink-soft));
   opacity: 0.7;
 }
-#practice-modal.pq-stage .pq-scar-input:focus {
-  border-bottom-color: var(--pq-accent);
+#practice-modal.pq-stage .pq-scar-status {
+  flex: 0 0 auto;
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--pass-ink, var(--pq-accent));
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+#practice-modal.pq-stage .pq-scar-row.is-credited .pq-scar-status {
+  opacity: 1;
 }
 
 /* Prior / cleared reminder echo */

@@ -5955,6 +5955,7 @@ function _pqResetRematchSession() {
     _pqStandardMaxIdx = 0;
     AppState._pqRematchResultByIdx = {};
     AppState._pqReasonTappedByIdx = {};
+    AppState._pqDissectCreditedByIdx = {};
     AppState._pqPriorPickByIdx = {};
     AppState._pqLastSubmitOutcome = null;
 }
@@ -6033,6 +6034,37 @@ function _pqAutoVaultWrong(q, userAns, idx) {
     try { renderChapterDecayGrid(); } catch (_) {}
 }
 
+function _pqTryCreditMistakeDissection(q, idx) {
+    if (!q || idx == null) return null;
+    if (AppState._pqDissectCreditedByIdx && AppState._pqDissectCreditedByIdx[idx]) return null;
+    const tappedReason = AppState._pqReasonTappedByIdx && AppState._pqReasonTappedByIdx[idx];
+    const note = String((q && q.dissectionNote) || '').trim();
+    if (!tappedReason || note.length < 8) return null;
+
+    let res = null;
+    try {
+        res = Heartbeat.recordProblemUnit(q, 'dissection', {
+            reason: tappedReason,
+            note,
+            quickTag: true,
+        });
+    } catch (_) {}
+
+    if (res && res.credited) {
+        AppState._pqDissectCreditedByIdx = AppState._pqDissectCreditedByIdx || {};
+        AppState._pqDissectCreditedByIdx[idx] = true;
+        try {
+            const row = document.querySelector('#practice-modal .pq-scar-row');
+            if (row) row.classList.add('is-credited');
+            const stEl = document.getElementById('pq-scar-status');
+            if (stEl) stEl.textContent = '+70%';
+        } catch (_) {}
+        try { window.FX?.haptic?.(12); } catch (_) {}
+        saveAllAsync().catch(console.error);
+    }
+    return res;
+}
+
 function _pqApplyMistakeReason(reason) {
     if (!_PQ_VALID_MISTAKE_REASONS.has(reason)) return;
     const q = AppState.currentQ;
@@ -6049,7 +6081,7 @@ function _pqApplyMistakeReason(reason) {
 
     try { window.FX?.sound?.('tick'); } catch (_) {}
     try { window.FX?.haptic?.(12); } catch (_) {}
-    try { Heartbeat.recordProblemUnit(q, 'dissection', { reason, quickTag: true }); } catch (_) {}
+    _pqTryCreditMistakeDissection(q, idx);
 
     if (reason === 'calculation' || reason === 'misread') {
         _pqDisarmRematch(q);
@@ -6273,12 +6305,14 @@ function _pqBindStageKeys() {
 
     const _saveScarNote = (val, persist) => {
         const q = AppState.currentQ;
+        const idx = AppState.currentPracticeIndex;
         if (!q) return;
         const trimmed = String(val == null ? '' : val).trim().slice(0, 120);
         if (trimmed) q.dissectionNote = trimmed;
         else delete q.dissectionNote;
         q.srUpdatedAt = Date.now();
         _pqSyncQuestionToBank(q);
+        _pqTryCreditMistakeDissection(q, idx);
         if (persist) saveAllAsync().catch(console.error);
     };
     document.addEventListener('input', (e) => {
@@ -6289,6 +6323,13 @@ function _pqBindStageKeys() {
     document.addEventListener('change', (e) => {
         if (e.target && e.target.id === 'pq-scar-input') {
             _saveScarNote(e.target.value, true);
+        }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.target && e.target.id === 'pq-scar-input' && e.key === 'Enter') {
+            e.preventDefault();
+            _saveScarNote(e.target.value, true);
+            try { e.target.blur(); } catch (_) {}
         }
     });
 }
@@ -6607,14 +6648,14 @@ function _pqBuildRevealZoneHTML(q, idx) {
     }
 
     html += `</div>`;
-    if (graded && rmRes === 'failed') {
-        html += `<div class="pq-scar-row">
-            <input type="text" class="pq-scar-input" id="pq-scar-input" maxlength="120" autocomplete="off" spellcheck="false" placeholder="One-line reminder..." value="${escapeAttribute(q.dissectionNote || '')}">
+    if (graded && isFailedOutcome) {
+        const credited70 = Boolean(AppState._pqDissectCreditedByIdx && AppState._pqDissectCreditedByIdx[idx]);
+        html += `<div class="pq-scar-row${credited70 ? ' is-credited' : ''}">
+            <input type="text" class="pq-scar-input" id="pq-scar-input" maxlength="120" autocomplete="off" spellcheck="false" placeholder="What went wrong..." value="${escapeAttribute(q.dissectionNote || '')}">
+            <span class="pq-scar-status" id="pq-scar-status" aria-live="polite">${credited70 ? '+70%' : ''}</span>
         </div>`;
     } else if (graded && rmRes === 'passed' && q.dissectionNote && String(q.dissectionNote).trim()) {
         html += `<div class="pq-scar-echo is-cleared">${escapeHtml(String(q.dissectionNote).trim())}</div>`;
-    } else if (graded && isFailedOutcome && q.dissectionNote && String(q.dissectionNote).trim()) {
-        html += `<div class="pq-scar-echo is-repeat">${escapeHtml(String(q.dissectionNote).trim())}</div>`;
     }
     if (graded && snap && !rematchEntry) html += _pqBuildOverrideBarHTML(q, idx);
     return html;
@@ -9147,6 +9188,7 @@ function _serveModeEntry(entry) {
     AppState._pqKeyUpdatedByIdx = {};
     AppState._pqRematchResultByIdx = {};
     AppState._pqReasonTappedByIdx = {};
+    AppState._pqDissectCreditedByIdx = {};
     AppState._pqPriorPickByIdx = {};
     AppState.practiceQuestions = [entry.q];
     AppState.practiceSubmittedFlags = [!!entry.submitted];
