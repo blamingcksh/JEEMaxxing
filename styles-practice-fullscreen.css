@@ -2045,3 +2045,203 @@ body.immersive-active #sr-practice-overlay.pq-stage .sr-result-banner.incorrect 
 }
 
 
+
+/* ════════════════════════════════════════════════════════════════════
+   MINIMAL MISTAKE FEEDBACK LOOP (iPad-first, Roast & Parchment native)
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Touch ergonomics: prevent 300ms double-tap zoom delay on primary taps */
+#practice-modal.pq-stage .mcq-option,
+#practice-modal.pq-stage .pq-reason-btn,
+#practice-modal.pq-stage .pq-continue-btn,
+#sr-practice-overlay.pq-stage .sr-mcq-option {
+  touch-action: manipulation;
+}
+
+/* Keep graded MCQ options visible on paper for direct visual collision */
+#practice-modal.pq-stage .pq-opts.is-graded .mcq-option {
+  pointer-events: none;
+  cursor: default;
+  transform: none !important;
+}
+#practice-modal.pq-stage .pq-opts.is-graded .mcq-option.is-dimmed {
+  opacity: 0.34;
+}
+#practice-modal.pq-stage .pq-opts.is-graded .mcq-option.is-correct {
+  background: var(--pass-bg, #e6efdb) !important;
+  border-color: var(--pass-border, #9db87f) !important;
+  color: var(--pass-ink, var(--pq-ink)) !important;
+}
+#practice-modal.pq-stage .pq-opts.is-graded .mcq-option.is-correct .pq-opt-letter {
+  background: var(--pass-ink, #3d6b2f) !important;
+  color: var(--bg-canvas, #fff) !important;
+  border-color: transparent !important;
+}
+#practice-modal.pq-stage .pq-opts.is-graded .mcq-option.is-wrong-pick {
+  background: var(--fail-bg, #f3ddd2) !important;
+  border-color: var(--fail-border, #cf9377) !important;
+  color: var(--fail-ink, var(--pq-ink)) !important;
+}
+#practice-modal.pq-stage .pq-opts.is-graded .mcq-option.is-wrong-pick .pq-opt-letter {
+  background: var(--fail-ink, #8f3a22) !important;
+  color: var(--bg-canvas, #fff) !important;
+  border-color: transparent !important;
+}
+#practice-modal.pq-stage .pq-opts.is-graded .mcq-option.is-wrong-pick .pq-opt-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+}
+#practice-modal.pq-stage .pq-opt-repeat,
+#sr-practice-overlay.pq-stage .pq-opt-repeat {
+  margin-left: auto;
+  padding-left: 10px;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 500;
+  opacity: 0.85;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Numeric inline collision diff */
+#practice-modal.pq-stage .pq-num-wrong {
+  text-decoration: line-through;
+  opacity: 0.72;
+}
+#practice-modal.pq-stage .pq-num-arrow {
+  opacity: 0.55;
+  margin: 0 2px;
+}
+
+/* 1.2s touch hold-off sweep on Continue/Next after a miss */
+@keyframes pqBeatSweep {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+#practice-modal.pq-stage .pq-continue-btn.is-beat-locked,
+#practice-modal.pq-stage .pq-next.is-beat-locked {
+  position: relative;
+  overflow: hidden;
+  opacity: 0.72 !important;
+  pointer-events: none;
+  cursor: default;
+}
+#practice-modal.pq-stage .pq-continue-btn.is-beat-locked::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(212, 160, 23, 0.32);
+  transform-origin: left center;
+  animation: pqBeatSweep 1.2s linear forwards;
+  pointer-events: none;
+}
+
+/* 3 inline touch reason words (Concept · Calc · Misread) in dock */
+#practice-modal.pq-stage .pq-reason-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  background: var(--bg-canvas, var(--pq-bg));
+  border: 1px solid var(--border-subtle, var(--pq-border));
+  border-radius: var(--radius-control, 8px);
+}
+#practice-modal.pq-stage .pq-reason-btn {
+  min-height: 44px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-secondary, var(--pq-ink-soft));
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+#practice-modal.pq-stage .pq-reason-btn:hover,
+#practice-modal.pq-stage .pq-reason-btn:focus-visible {
+  color: var(--ink-primary, var(--pq-ink));
+}
+#practice-modal.pq-stage .pq-reason-btn.is-set {
+  background: var(--pq-accent-soft, rgba(140, 98, 57, 0.14)) !important;
+  border-color: var(--pq-accent, var(--border-strong)) !important;
+  color: var(--pq-accent, var(--ink-primary)) !important;
+}
+
+/* 2nd-miss hairline reminder input (16px prevents iPadOS Safari focus zoom) */
+#practice-modal.pq-stage .pq-scar-row {
+  margin-top: 10px;
+}
+#practice-modal.pq-stage .pq-scar-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--pq-border);
+  border-radius: 0;
+  padding: 8px 2px;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--pq-ink);
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+#practice-modal.pq-stage .pq-scar-input::placeholder {
+  color: var(--pq-input-placeholder, var(--pq-ink-soft));
+  opacity: 0.7;
+}
+#practice-modal.pq-stage .pq-scar-input:focus {
+  border-bottom-color: var(--pq-accent);
+}
+
+/* Prior / cleared reminder echo */
+#practice-modal.pq-stage .pq-scar-echo,
+#sr-practice-overlay.pq-stage .sr-scar-note {
+  margin-top: 8px;
+  padding: 6px 10px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--pq-ink-soft);
+}
+#practice-modal.pq-stage .pq-scar-echo.is-cleared,
+#sr-practice-overlay.pq-stage .sr-scar-note.is-cleared {
+  text-decoration: line-through;
+  opacity: 0.72;
+}
+#practice-modal.pq-stage .pq-scar-echo.is-repeat,
+#sr-practice-overlay.pq-stage .sr-scar-note.is-repeat {
+  border-left: 2px solid var(--fail-border, #cf9377);
+  color: var(--fail-ink, var(--pq-ink));
+}
+
+/* Quiet Rematch cue during solving (beats telemetry #pq-diag display:none) */
+#practice-modal.pq-stage[data-pq-state="solving"] #pq-diag:has(.pq-rematch-cue) {
+  display: block;
+  position: fixed;
+  top: calc(18px + var(--sat, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5012;
+  pointer-events: none;
+}
+#practice-modal.pq-stage .pq-rematch-cue {
+  font-family: var(--font-num, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pq-ink-soft);
+  opacity: 0.75;
+}
+
+/* 600ms golden hold-ring on single-MCQ option for "Sure" */
+body #practice-modal.pq-stage .pq-hold-ring-wrap.is-sure .pq-hold-ring-fg {
+  stroke: #d4a017 !important;
+  transition: stroke-dashoffset 0.48s linear;
+}

@@ -230,7 +230,13 @@
 //        (0ms crit/miss evaluation, 3-pip charge HUD, UNDER PACE / REDEEMED),
 //        perimeter-only edge flashes, pitch-escalating streak audio, and
 //        crisp damped wrong-answer tactile misfire.
-const VERSION = 'jeemax-v126';
+// v127 - MINIMAL IPAD MISTAKE LOOP: keep MCQ options on paper with visual collision +
+//        repeated-pick detection, numeric inline diff, 600ms audio vacuum + deeper thud,
+//        kill random error Streak Shield, 1.2s Continue beat lock, silent auto-vault with
+//        3 inline 44px touch reason words (Concept/Calc/Misread), quiet 4-question-later
+//        Rematch engine with optional 2nd-miss hairline reminder, 600ms hold-option Sure,
+//        and surface dissectionNote/lastWrongPick in Vault drawer. styles-practice-fullscreen.css?v=14.
+const VERSION = 'jeemax-v127';
 
 const SHELL = [
   './',
@@ -273,7 +279,7 @@ const SHELL = [
   './styles-telemetry.css',
   './styles-modes.css',
   './styles-dashboard.css',
-  './styles-practice-fullscreen.css?v=13',
+  './styles-practice-fullscreen.css?v=14',
   './atmosphere.js',
   './glyphs.js',
   './matrix.js',

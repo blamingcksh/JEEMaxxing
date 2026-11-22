@@ -237,6 +237,7 @@ const SR_MERGE_FIELDS = [
     'errorReason',        // vault classification
     'firstAttemptResult', // locked first attempt (accuracy is immutable)
     'dissectionNote',     // >=30c written error dissection note
+    'lastWrongPick',      // last wrong choice for repeated-trap callout
     '_hbVaultLocked30',   // Heartbeat 30% Vault unlock escrow flag
     '_hbEverSolved',      // Heartbeat cross-day repeat-solve guard
 ];

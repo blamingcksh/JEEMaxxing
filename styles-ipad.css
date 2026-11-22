@@ -15,7 +15,7 @@
 @media (pointer: coarse) {
     .pomo-input, textarea.pomo-input, .pomo-select,
     .matrix-search, .sr-manual-input, .text-track-terminal-input,
-    .sr-tagedit-input, .pq-override-input {
+    .sr-tagedit-input, .pq-override-input, .pq-scar-input {
         font-size: 16px !important;
     }
 }
@@ -227,8 +227,9 @@ body.dc-active #sidebar .metro-fab,
     #practice-modal .hide-toggle.pm-close {
         opacity: 0.85;
     }
-    /* Primary nav rows reach Apple HIG minimum */
-    .nav-item {
+    /* Primary nav rows and inline mistake reason pills reach Apple HIG minimum */
+    .nav-item,
+    #practice-modal.pq-stage .pq-reason-btn {
         min-height: 44px;
     }
 }

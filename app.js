@@ -1006,6 +1006,8 @@ export function closeModal(e, id, force) {
             } catch (_) {}
             if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
             try { _pqCancelChromeFade(); } catch (_) {}
+            try { _pqClearFailBeat(); } catch (_) {}
+            try { _pqResetRematchSession(); } catch (_) {}
             // Parity with closePracticeModal(): a backdrop dismiss used to
             // leak the run's Flow/Hardcore navigation stacks into the next
             // session and keep a lifeline pick armed for an unrelated solve.
@@ -5311,6 +5313,9 @@ export function startPracticeWithQuestion(questions, index, opts = null) {
     _stampServedMode('standard');
     _destroyLiveFlowSlider();
     _modeAdaptive.targetPwin = null;
+    _pqClearFailBeat();
+    _pqResetRematchSession();
+    _pqStandardMaxIdx = index;
     AppState.practiceQuestions = questions;
     AppState.currentPracticeIndex = index;
     AppState.practiceSubmittedFlags = new Array(questions.length).fill(false);
@@ -5402,6 +5407,8 @@ export function tryAssignDailyBounty(questionId) {
     window._bountyQuestion = q;
     window._bountyTimeLimit = AppState.bounty.timeLimit;
     AppState.bountyMode = true;
+    _pqClearFailBeat();
+    _pqResetRematchSession();
     _resetSessionRecap({ subject: q && q.subject, chapter: q && q.chapter, mode: 'hardcore' });
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
@@ -5560,6 +5567,8 @@ function _armBountySession(q) {
     window._bountyQuestion = q;
     window._bountyTimeLimit = AppState.bounty.timeLimit;
     AppState.bountyMode = true;
+    _pqClearFailBeat();
+    _pqResetRematchSession();
     _resetSessionRecap({ subject: q && q.subject, chapter: q && q.chapter, mode: 'hardcore' });
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
@@ -5888,11 +5897,200 @@ function _pqIsGradedQuestion(q, idx) {
     return q.status === 'solved' || q.status === 'wrong' || q.status === 'error';
 }
 
+let _pqFailBeatUntil = 0;
+let _pqFailBeatTimer = null;
+let _pqRematchQueue = [];
+let _pqSessionStep = 0;
+let _pqActiveRematch = null;
+let _pqRematchByIdx = {};
+let _pqRematchFailedIds = new Set();
+let _pqStandardMaxIdx = 0;
+
+function _pqClearFailBeat() {
+    if (_pqFailBeatTimer) {
+        clearTimeout(_pqFailBeatTimer);
+        _pqFailBeatTimer = null;
+    }
+    _pqFailBeatUntil = 0;
+    try {
+        [document.getElementById('practice-continue-btn'), document.getElementById('practice-next-btn')].forEach(btn => {
+            if (!btn) return;
+            btn.disabled = false;
+            btn.classList.remove('is-beat-locked');
+        });
+    } catch (_) {}
+}
+
+function _pqArmFailBeat() {
+    _pqClearFailBeat();
+    _pqFailBeatUntil = Date.now() + 1200;
+    try {
+        [document.getElementById('practice-continue-btn'), document.getElementById('practice-next-btn')].forEach(btn => {
+            if (!btn) return;
+            btn.disabled = true;
+            btn.classList.remove('is-beat-locked');
+            try { void btn.offsetWidth; } catch (_) {}
+            btn.classList.add('is-beat-locked');
+        });
+    } catch (_) {}
+    _pqFailBeatTimer = setTimeout(() => {
+        _pqFailBeatTimer = null;
+        _pqFailBeatUntil = 0;
+        try {
+            [document.getElementById('practice-continue-btn'), document.getElementById('practice-next-btn')].forEach(btn => {
+                if (!btn) return;
+                btn.disabled = false;
+                btn.classList.remove('is-beat-locked');
+            });
+        } catch (_) {}
+    }, 1200);
+}
+
+function _pqResetRematchSession() {
+    _pqRematchQueue = [];
+    _pqSessionStep = 0;
+    _pqActiveRematch = null;
+    _pqRematchByIdx = {};
+    _pqRematchFailedIds = new Set();
+    _pqStandardMaxIdx = 0;
+    AppState._pqRematchResultByIdx = {};
+    AppState._pqReasonTappedByIdx = {};
+    AppState._pqPriorPickByIdx = {};
+    AppState._pqLastSubmitOutcome = null;
+}
+
+function _pqIsActiveRematch(q, idx) {
+    if (!q) return null;
+    if (_pqActiveRematch && _pqActiveRematch.q === q) return _pqActiveRematch;
+    if (idx != null && _pqRematchByIdx && _pqRematchByIdx[idx] && _pqRematchByIdx[idx].q === q) {
+        return _pqRematchByIdx[idx];
+    }
+    return null;
+}
+
+function _pqArmRematch(q, userAns) {
+    if (!q || AppState.bountyMode) return;
+    if (_pqIsActiveRematch(q, AppState.currentPracticeIndex)) return;
+    const qid = q.id != null ? String(q.id) : null;
+    if (qid && _pqRematchFailedIds.has(qid)) return;
+    const alreadyQueued = _pqRematchQueue.some(item =>
+        item && (item.q === q || (qid && item.q && item.q.id != null && String(item.q.id) === qid))
+    );
+    if (alreadyQueued) return;
+    _pqRematchQueue.push({
+        q,
+        armedAtStep: _pqSessionStep,
+        dueAtStep: _pqSessionStep + 4,
+        priorPick: (userAns != null && String(userAns).trim() !== '') ? String(userAns).trim() : (q.lastWrongPick || null),
+        armedAtMs: Date.now(),
+    });
+}
+
+function _pqDisarmRematch(q) {
+    if (!q) return;
+    const qid = q.id != null ? String(q.id) : null;
+    _pqRematchQueue = _pqRematchQueue.filter(item => {
+        if (!item || !item.q) return false;
+        if (item.q === q) return false;
+        if (qid && item.q.id != null && String(item.q.id) === qid) return false;
+        return true;
+    });
+}
+
+function _pqPopDueRematch(allowEarly = false) {
+    if (!_pqRematchQueue.length) return null;
+    let matchIdx = _pqRematchQueue.findIndex(item => item && item.dueAtStep <= _pqSessionStep);
+    if (matchIdx === -1 && allowEarly) {
+        matchIdx = _pqRematchQueue.findIndex(item => item && item.armedAtStep + 1 < _pqSessionStep);
+    }
+    if (matchIdx === -1) return null;
+    return _pqRematchQueue.splice(matchIdx, 1)[0] || null;
+}
+
+const _PQ_VALID_MISTAKE_REASONS = new Set(['conceptual', 'calculation', 'misread']);
+
+function _pqAutoVaultWrong(q, userAns, idx) {
+    if (!q || typeof q !== 'object') return;
+    const priorPick = q.lastWrongPick ? String(q.lastWrongPick) : null;
+    AppState._pqPriorPickByIdx = AppState._pqPriorPickByIdx || {};
+    if (priorPick) AppState._pqPriorPickByIdx[idx] = priorPick;
+    if (userAns != null && String(userAns).trim() !== '') {
+        q.lastWrongPick = String(userAns).trim();
+    }
+    q.status = 'error';
+    if (!q.errorReason) q.errorReason = 'conceptual';
+    q.lastReviewedAt = new Date().toISOString();
+    if (!(typeof q.createdAt === 'string' && q.createdAt && !isNaN(Date.parse(q.createdAt)))) {
+        q.createdAt = new Date().toISOString();
+    }
+    if (typeof q.easeFactor !== 'number' || !isFinite(q.easeFactor)) {
+        q.easeFactor = 2.5;
+    }
+    q.srUpdatedAt = Date.now();
+    _pqSyncQuestionToBank(q);
+    try { _invalidateMatrixCtx(); } catch (_) {}
+    try { renderErrorMatrixFromBank(); } catch (_) {}
+    try { renderChapterDecayGrid(); } catch (_) {}
+}
+
+function _pqApplyMistakeReason(reason) {
+    if (!_PQ_VALID_MISTAKE_REASONS.has(reason)) return;
+    const q = AppState.currentQ;
+    const idx = AppState.currentPracticeIndex;
+    if (!q) return;
+    const submitted = !!(AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[idx]);
+    if (!submitted || !_pqIsGradedQuestion(q, idx)) return;
+
+    q.errorReason = reason;
+    q.status = 'error';
+    q.srUpdatedAt = Date.now();
+    AppState._pqReasonTappedByIdx = AppState._pqReasonTappedByIdx || {};
+    AppState._pqReasonTappedByIdx[idx] = reason;
+
+    try { window.FX?.sound?.('tick'); } catch (_) {}
+    try { window.FX?.haptic?.(12); } catch (_) {}
+    try { Heartbeat.recordProblemUnit(q, 'dissection', { reason, quickTag: true }); } catch (_) {}
+
+    if (reason === 'calculation' || reason === 'misread') {
+        _pqDisarmRematch(q);
+    } else if (reason === 'conceptual') {
+        const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
+        _pqArmRematch(q, snap ? snap.userSelectedOption : null);
+    }
+
+    document.querySelectorAll('#practice-modal .pq-reason-strip [data-pq-reason]').forEach(btn => {
+        const isActive = btn.dataset.pqReason === reason;
+        btn.classList.toggle('is-set', isActive);
+        btn.setAttribute('aria-pressed', String(isActive));
+    });
+
+    _pqSyncQuestionToBank(q);
+    saveAllAsync().catch(console.error);
+    try { renderErrorMatrixFromBank(); } catch (_) {}
+    try { renderChapterDecayGrid(); } catch (_) {}
+}
+
 function _pqSyncGradeSlot(q, idx, submitted, graded) {
     const slot = document.getElementById('pq-grade-slot');
     if (!slot) return;
     if (!q || !submitted || !graded) {
         if (slot.innerHTML) slot.innerHTML = '';
+        return;
+    }
+    const rmRes = AppState._pqRematchResultByIdx && AppState._pqRematchResultByIdx[idx];
+    if (rmRes === 'passed') {
+        if (slot.innerHTML) slot.innerHTML = '';
+        return;
+    }
+    if (q.status === 'wrong' || q.status === 'error' || rmRes === 'failed') {
+        const tapped = (AppState._pqReasonTappedByIdx && AppState._pqReasonTappedByIdx[idx]) || null;
+        const reasonBtn = (key, label) =>
+            `<button type="button" class="pq-reason-btn${tapped === key ? ' is-set' : ''}" data-pq-reason="${key}" aria-pressed="${tapped === key}">${label}</button>`;
+        slot.innerHTML = `<div class="pq-reason-strip" role="group" aria-label="Why missed">
+            ${reasonBtn('conceptual', 'Concept')}
+            ${reasonBtn('calculation', 'Calc')}
+            ${reasonBtn('misread', 'Misread')}
+        </div>`;
         return;
     }
     const autoGrade = q.status === 'solved' ? 3 : 1;
@@ -5996,7 +6194,15 @@ function _pqBindStageKeys() {
         if (/^[1-3]$/.test(e.key)) {
             if (phase === 'resolved') {
                 e.preventDefault();
-                _pqApplyGrade(Number(e.key));
+                const q = AppState.currentQ;
+                const idx = AppState.currentPracticeIndex;
+                const rmRes = AppState._pqRematchResultByIdx && AppState._pqRematchResultByIdx[idx];
+                if (q && (q.status === 'wrong' || q.status === 'error') && rmRes !== 'passed') {
+                    const map = { '1': 'conceptual', '2': 'calculation', '3': 'misread' };
+                    _pqApplyMistakeReason(map[e.key]);
+                } else {
+                    _pqApplyGrade(Number(e.key));
+                }
             }
             return;
         }
@@ -6012,15 +6218,6 @@ function _pqBindStageKeys() {
                 if (noBtn) { e.preventDefault(); noBtn.click(); }
                 return;
             }
-        }
-
-        if (phase === 'resolved' && (e.key === 'v' || e.key === 'V')) {
-            const vaultBtn = modal.querySelector('.pq-vault-btn:not([disabled])');
-            if (vaultBtn) {
-                e.preventDefault();
-                vaultBtn.click();
-            }
-            return;
         }
 
         const q = AppState.currentQ;
@@ -6047,6 +6244,7 @@ function _pqBindStageKeys() {
                     practiceSubmit();
                 }
             } else if (phase === 'resolved' && !document.getElementById('text-correct-btn')) {
+                if (Date.now() < _pqFailBeatUntil) return;
                 e.preventDefault();
                 if (typeof window.continuePractice === 'function') window.continuePractice();
             }
@@ -6065,7 +6263,33 @@ function _pqBindStageKeys() {
 
     document.addEventListener('click', (e) => {
         const gradeBtn = e.target.closest('#practice-modal .pq-diag-grade [data-pq-grade]');
-        if (gradeBtn) _pqApplyGrade(Number(gradeBtn.dataset.pqGrade));
+        if (gradeBtn) {
+            _pqApplyGrade(Number(gradeBtn.dataset.pqGrade));
+            return;
+        }
+        const reasonBtn = e.target.closest('#practice-modal .pq-reason-strip [data-pq-reason]');
+        if (reasonBtn) _pqApplyMistakeReason(reasonBtn.dataset.pqReason);
+    });
+
+    const _saveScarNote = (val, persist) => {
+        const q = AppState.currentQ;
+        if (!q) return;
+        const trimmed = String(val == null ? '' : val).trim().slice(0, 120);
+        if (trimmed) q.dissectionNote = trimmed;
+        else delete q.dissectionNote;
+        q.srUpdatedAt = Date.now();
+        _pqSyncQuestionToBank(q);
+        if (persist) saveAllAsync().catch(console.error);
+    };
+    document.addEventListener('input', (e) => {
+        if (e.target && e.target.id === 'pq-scar-input') {
+            _saveScarNote(e.target.value, false);
+        }
+    });
+    document.addEventListener('change', (e) => {
+        if (e.target && e.target.id === 'pq-scar-input') {
+            _saveScarNote(e.target.value, true);
+        }
     });
 }
 
@@ -6076,7 +6300,8 @@ function _pqRenderDiag() {
     const idx = AppState.currentPracticeIndex;
     const submitted = !!(q && AppState.practiceSubmittedFlags && AppState.practiceSubmittedFlags[idx]);
     if (!q || !submitted) {
-        el.innerHTML = '';
+        el.classList.remove('has-duel-split');
+        el.innerHTML = (q && _pqIsActiveRematch(q, idx)) ? '<div class="pq-rematch-cue">Rematch</div>' : '';
         return;
     }
     const time = Math.max(0, Number(q.timeTaken) || 0);
@@ -6143,6 +6368,7 @@ const _PQ_SNAPSHOT_FIELDS = [
     'lastSolvedAt', 'isAnomaly', 'difficulty', 'difficultyLabel', 'growSeconds',
     'plantCumStudy', 'oak', 'stability', 'difficultyD', 'reps', 'lapses',
     'lastReviewedAt', 'easeFactor', 'errorReason', 'srUpdatedAt',
+    'lastWrongPick', 'dissectionNote',
     '_fastSuspectAt', '_lifelineAssisted',
 ];
 
@@ -6315,6 +6541,9 @@ function _pqBuildRevealZoneHTML(q, idx) {
     const hasSolution = !!(q.solution && String(q.solution).trim().length > 0);
     const snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[idx];
     const updatedKey = AppState._pqKeyUpdatedByIdx && AppState._pqKeyUpdatedByIdx[idx];
+    const rematchEntry = _pqIsActiveRematch(q, idx);
+    const rmRes = AppState._pqRematchResultByIdx && AppState._pqRematchResultByIdx[idx];
+    const eloRes = AppState._pqEloByIdx && AppState._pqEloByIdx[idx];
     let html = `<div class="pq-reveal-row">`;
 
     let actionBtns = '';
@@ -6326,14 +6555,7 @@ function _pqBuildRevealZoneHTML(q, idx) {
         if (hasSolution) {
             actionBtns += `<button type="button" class="btn show-solution-btn" onclick="showSolutionPopup()">SOLUTION</button>`;
         }
-        if (q.status === 'wrong' || q.status === 'error') {
-            if (q.status === 'error' && q.errorReason) {
-                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button" disabled title="Already logged to the Vault">IN VAULT</button>`;
-            } else {
-                actionBtns += `<button class="btn btn-danger pq-vault-btn" type="button">VAULT<span class="pq-kbd-cap"> [V]</span></button>`;
-            }
-        }
-        if (snap) {
+        if (snap && !rematchEntry) {
             actionBtns += `<button class="btn pq-fix-key-btn" id="pq-fix-key-btn" type="button" aria-expanded="false" aria-controls="pq-override-bar">FIX KEY</button>`;
         }
         if (updatedKey) {
@@ -6343,21 +6565,36 @@ function _pqBuildRevealZoneHTML(q, idx) {
 
     const actionsHtml = actionBtns ? `<div class="pq-ans-actions">${actionBtns}</div>` : '';
     const critLabel = AppState._pqCritByIdx && AppState._pqCritByIdx[idx];
+    const isFailedOutcome = (rmRes === 'failed') || (!rmRes && (q.status === 'wrong' || q.status === 'error'));
     let bannerCls = 'result-banner reveal answer-card';
     let kickerText = 'ANSWER REVEALED';
-    if (graded && q.status === 'solved') {
+    if (graded && rmRes === 'passed') {
+        bannerCls = 'result-banner correct answer-card is-passed';
+        kickerText = 'REMATCH · CLEARED';
+    } else if (graded && rmRes === 'failed') {
+        bannerCls = 'result-banner wrong answer-card is-failed';
+        kickerText = 'MISSED AGAIN · ANSWER';
+    } else if (graded && q.status === 'solved') {
         bannerCls = critLabel
             ? 'result-banner correct answer-card is-passed is-crit'
             : 'result-banner correct answer-card is-passed';
-        kickerText = critLabel ? ('CRIT · ' + escapeHtml(critLabel)) : 'PASSED · ANSWER';
-    } else if (graded && (q.status === 'wrong' || q.status === 'error')) {
+        kickerText = critLabel
+            ? ('CRIT · ' + escapeHtml(critLabel))
+            : (eloRes && eloRes.calibrationCall === 'snipe' ? 'PASSED · SURE' : 'PASSED · ANSWER');
+    } else if (graded && isFailedOutcome) {
         bannerCls = 'result-banner wrong answer-card is-failed';
-        kickerText = 'FAILED · ANSWER';
+        kickerText = (eloRes && eloRes.calibrationCall === 'trap') ? 'MISSED · CALLED SURE' : 'FAILED · ANSWER';
     }
+
+    let ansBodyHtml = correctAns;
+    if (graded && isFailedOutcome && q.type === 'numeric' && snap && snap.userSelectedOption != null && snap.userSelectedOption !== '') {
+        ansBodyHtml = `<span class="pq-num-wrong">${escapeHtml(snap.userSelectedOption)}</span><span class="pq-num-arrow"> → </span>${correctAns}`;
+    }
+
     html += `<div class="${bannerCls}">
         <div class="pq-ans-main">
             <span class="pq-ans-kicker">${kickerText}</span>
-            <div class="pq-ans-body">${correctAns}</div>
+            <div class="pq-ans-body">${ansBodyHtml}</div>
         </div>
         ${actionsHtml}
     </div>`;
@@ -6370,7 +6607,16 @@ function _pqBuildRevealZoneHTML(q, idx) {
     }
 
     html += `</div>`;
-    if (graded && snap) html += _pqBuildOverrideBarHTML(q, idx);
+    if (graded && rmRes === 'failed') {
+        html += `<div class="pq-scar-row">
+            <input type="text" class="pq-scar-input" id="pq-scar-input" maxlength="120" autocomplete="off" spellcheck="false" placeholder="One-line reminder..." value="${escapeAttribute(q.dissectionNote || '')}">
+        </div>`;
+    } else if (graded && rmRes === 'passed' && q.dissectionNote && String(q.dissectionNote).trim()) {
+        html += `<div class="pq-scar-echo is-cleared">${escapeHtml(String(q.dissectionNote).trim())}</div>`;
+    } else if (graded && isFailedOutcome && q.dissectionNote && String(q.dissectionNote).trim()) {
+        html += `<div class="pq-scar-echo is-repeat">${escapeHtml(String(q.dissectionNote).trim())}</div>`;
+    }
+    if (graded && snap && !rematchEntry) html += _pqBuildOverrideBarHTML(q, idx);
     return html;
 }
 
@@ -6632,6 +6878,15 @@ function _pqCommitKeyOverride() {
 
     // ── 2. Apply the corrected attempt impact ──
     q.status = newIsCorrect ? 'solved' : 'wrong';
+    if (newIsCorrect) {
+        _pqDisarmRematch(q);
+        _pqClearFailBeat();
+        if (AppState._pqReasonTappedByIdx) delete AppState._pqReasonTappedByIdx[idx];
+        if (AppState._pqPriorPickByIdx) delete AppState._pqPriorPickByIdx[idx];
+    } else {
+        _pqAutoVaultWrong(q, snap.userSelectedOption || null, idx);
+        _pqArmRematch(q, snap.userSelectedOption || null);
+    }
     if (!snap.preQ || !snap.preQ.firstAttemptResult) {
         q.firstAttemptResult = newIsCorrect ? 'correct' : 'incorrect';
     }
@@ -6743,7 +6998,7 @@ function _pqBindHold() {
         if (_pqHoldRingTimer) { clearTimeout(_pqHoldRingTimer); _pqHoldRingTimer = null; }
         modal.classList.remove('pq-holding');
         if (ringWrap) {
-            ringWrap.classList.remove('active');
+            ringWrap.classList.remove('active', 'is-sure');
         }
     };
 
@@ -6782,13 +7037,18 @@ function _pqBindHold() {
         if (_pqChromeOverlayOpen()) return;
 
         const q = AppState.currentQ;
-        const isFreeResponse = (!q || (q.type !== 'mcq' && q.type !== 'numeric'));
+        const optEl = e.target.closest('.mcq-option');
+        const isSingleMcqOptHold = !!(
+            optEl &&
+            !optEl.closest('.pq-opts.is-graded') &&
+            q && q.type === 'mcq' && !Array.isArray(q.correctAnswer)
+        );
 
         const submitBtn = document.getElementById('practice-submit-btn');
         const isSubmitBtn = submitBtn && (submitBtn === e.target || submitBtn.contains(e.target));
 
         const interactive = e.target.closest('button, input, textarea, select, a, .mcq-option, .skip-popover, #practice-image-lightbox, .pq-corner, .flow-slider-dock, .sp-float-pill');
-        if (interactive && !isSubmitBtn) {
+        if (interactive && !isSubmitBtn && !isSingleMcqOptHold) {
             return;
         }
 
@@ -6807,9 +7067,14 @@ function _pqBindHold() {
             ringWrap.style.top = e.clientY + 'px';
         }
 
+        const holdMs = isSingleMcqOptHold ? 600 : 800;
+
         _pqHoldRingTimer = setTimeout(() => {
-            if (ringWrap) ringWrap.classList.add('active');
-            try { _pqPlayHoldTick(modal.getAttribute('data-ck-surge') === 'crit'); } catch (_) {}
+            if (ringWrap) {
+                ringWrap.classList.toggle('is-sure', isSingleMcqOptHold);
+                ringWrap.classList.add('active');
+            }
+            try { _pqPlayHoldTick(isSingleMcqOptHold || modal.getAttribute('data-ck-surge') === 'crit'); } catch (_) {}
         }, 120);
 
         _pqHoldTimer = setTimeout(() => {
@@ -6821,15 +7086,22 @@ function _pqBindHold() {
             _pqClearSelection();
             _pqJustHeld = true;
             setTimeout(() => { _pqJustHeld = false; }, 450);
-            try { if (navigator.vibrate) navigator.vibrate(40); } catch (_) {}
+            if (isSingleMcqOptHold) {
+                const optText = decodeOption(optEl.getAttribute('data-option'));
+                toggleMcqOption(optEl, optText);
+                window._pendingSolveConfidence = 'sure';
+                try { if (navigator.vibrate) navigator.vibrate(35); } catch (_) {}
+            } else {
+                try { if (navigator.vibrate) navigator.vibrate(40); } catch (_) {}
+            }
             practiceSubmit();
-        }, 800);
+        }, holdMs);
     }, { passive: true });
 
     modal.addEventListener('pointermove', (e) => {
         if (!_pqHoldTimer) return;
         const dist = Math.hypot(e.clientX - _pqHoldStartX, e.clientY - _pqHoldStartY);
-        if (dist > 22) {
+        if (dist > 18) {
             cancelHold();
         }
     }, { passive: true });
@@ -6917,6 +7189,36 @@ export function renderPracticeQuestionModal() {
     }
 
     if (submitted) {
+        const _curQ = AppState.currentQ;
+        if (_curQ.type === 'mcq' && Array.isArray(_curQ.options) && _curQ.options.length > 0 && _pqIsGradedQuestion(_curQ, _pqIdx)) {
+            const _letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+            const _snap = AppState._pqAttemptSnapByIdx && AppState._pqAttemptSnapByIdx[_pqIdx];
+            const _pickedSet = new Set(String((_snap && _snap.userSelectedOption) || '').toUpperCase().split(/[^A-Z]+/).filter(Boolean));
+            let _correctLetters = [];
+            try { _correctLetters = resolveMcqCorrectLetters(_curQ); } catch (_) {}
+            const _correctSet = new Set((_correctLetters || []).map(l => String(l).toUpperCase()));
+            const _rmRes = AppState._pqRematchResultByIdx && AppState._pqRematchResultByIdx[_pqIdx];
+            const _isFailed = (_rmRes === 'failed') || (!_rmRes && (_curQ.status === 'wrong' || _curQ.status === 'error'));
+            const _priorRaw = (AppState._pqPriorPickByIdx && AppState._pqPriorPickByIdx[_pqIdx]) || '';
+            const _priorSet = new Set(String(_priorRaw).toUpperCase().split(/[^A-Z]+/).filter(Boolean));
+            html += `<div class="pq-opts is-graded" style="margin-top:6px;">`;
+            _curQ.options.forEach((opt, _oi) => {
+                const optImg = _gemOptionImageUrl(_curQ, opt)
+                    ? `<img src="${_safeImgSrc(_gemOptionImageUrl(_curQ, opt))}" alt="Option figure" style="display:block; max-width:140px; max-height:140px; border-radius:8px; margin:8px auto 0; border:1px solid rgba(59,130,246,0.5);">`
+                    : '';
+                const _ltr = _letters[_oi] || String(_oi + 1);
+                const _isCorr = _correctSet.has(_ltr);
+                const _isWrongPick = _pickedSet.has(_ltr) && !_isCorr;
+                const _cls = _isCorr ? 'is-correct' : (_isWrongPick ? 'is-wrong-pick' : 'is-dimmed');
+                const _repeatHtml = (_isFailed && _isWrongPick && _priorSet.has(_ltr))
+                    ? `<span class="pq-opt-repeat">picked before</span>`
+                    : '';
+                html += `<div class="mcq-option has-letter ${_cls}" data-option="${escapeAttribute(opt)}">
+                        <span class="pq-opt-letter">${_ltr}</span><span class="pq-opt-text">${escapeHtml(opt)}${optImg}</span>${_repeatHtml}
+                      </div>`;
+            });
+            html += `</div>`;
+        }
         html += _pqBuildRevealZoneHTML(AppState.currentQ, _pqIdx);
         html += `</div>`;
         container.innerHTML = html;
@@ -6924,16 +7226,6 @@ export function renderPracticeQuestionModal() {
         // stale render stamp so a re-render is never skipped.
         container.removeAttribute('data-math-rendered');
         processElementMath(container);
-        container.querySelectorAll('.mcq-option').forEach(div => {
-            div.addEventListener('click', function (e) {
-                // dataset.option is already entity-decoded by the parser —
-                // use it verbatim (a DOMParser re-parse would swallow any
-                // "<" in the option text as a phantom tag).
-                toggleMcqOption(e.currentTarget, e.currentTarget.dataset.option);
-                document.querySelectorAll('.mcq-option').forEach(el => el.classList.remove('selected'));
-                e.currentTarget.classList.add('selected');
-            });
-        });
         document.getElementById('practice-submit-btn').style.display = 'none';
         const _contBtn = document.getElementById('practice-continue-btn');
         if (_contBtn) {
@@ -8672,6 +8964,26 @@ function skipQuestion(reason) {
     const q = AppState.practiceQuestions[AppState.currentPracticeIndex];
     if (!q) return;
     if (AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return; // already answered
+    if (_pqIsActiveRematch(q, AppState.currentPracticeIndex)) {
+        _pqClearFailBeat();
+        _pqActiveRematch = null;
+        _pqSessionStep++;
+        const rebuildRm = _rebuildPracticeQuestionsForMode(_modeSeenIds, { fromSkip: true });
+        if (AppState.practiceQuestions.length > 0) {
+            _serveModeEntry({ q: AppState.practiceQuestions[0], submitted: false });
+            _hideModeContinueButton();
+        } else if (rebuildRm === 'refill' || rebuildRm === 'victory' || rebuildRm === 'expired' || isLockinAwaitingRefill()) {
+            if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+            if (document.getElementById('practice-question-list-view')?.classList.contains('active')) {
+                showQuestionList();
+            }
+        } else {
+            if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+            closePracticeModal();
+            showQuestionList();
+        }
+        return;
+    }
     const before = {
         skips: q.skips || 0,
         lastSkippedAt: q.lastSkippedAt,
@@ -8745,6 +9057,29 @@ function _modeAdvance() {
     }
     const curQ = AppState.practiceQuestions[AppState.currentPracticeIndex];
     if (curQ) _modeSeenIds.add(curQ);
+    _pqClearFailBeat();
+    _pqActiveRematch = null;
+    _pqSessionStep++;
+    const dueRm = _pqPopDueRematch(false);
+    if (dueRm) {
+        _pqActiveRematch = dueRm;
+        _serveModeEntry({ q: dueRm.q, submitted: false });
+        _hideModeContinueButton();
+        return;
+    }
+    if (_pqRematchQueue.some(item => item && item.armedAtStep + 1 < _pqSessionStep) && !isLockinAwaitingRefill()) {
+        const val = _applyFlowSlider(AppState.flowSlider, { syncEntry: false, syncLive: false });
+        const hasFresh = !!_pickFlowQuestionInfinite(AppState.currentSubject, AppState.currentChapter, val, _modeSeenIds);
+        if (!hasFresh) {
+            const tailRm = _pqPopDueRematch(true);
+            if (tailRm) {
+                _pqActiveRematch = tailRm;
+                _serveModeEntry({ q: tailRm.q, submitted: false });
+                _hideModeContinueButton();
+                return;
+            }
+        }
+    }
     const rebuildRes = _rebuildPracticeQuestionsForMode(_modeSeenIds, { fromSkip: false });
     if (AppState.practiceQuestions.length > 0) {
         _serveModeEntry({ q: AppState.practiceQuestions[0], submitted: false });
@@ -8803,12 +9138,16 @@ function _hideModeContinueButton() {
 /** Present a mode question (history entry or fresh pick) as the current one. */
 function _serveModeEntry(entry) {
     if (!entry || !entry.q) return;
+    _pqClearFailBeat();
     window._pendingSolveConfidence = null;   // fresh item → stale tap discarded
     AppState._pqHealthByIdx = {};
     AppState._pqEloByIdx = {};
     AppState._pqCritByIdx = {};
     AppState._pqAttemptSnapByIdx = {};
     AppState._pqKeyUpdatedByIdx = {};
+    AppState._pqRematchResultByIdx = {};
+    AppState._pqReasonTappedByIdx = {};
+    AppState._pqPriorPickByIdx = {};
     AppState.practiceQuestions = [entry.q];
     AppState.practiceSubmittedFlags = [!!entry.submitted];
     AppState.currentPracticeIndex = 0;
@@ -9147,6 +9486,8 @@ function _setPracticeMode(mode, opts) {
     if (!preserveSeen) {
         _clearModeHistory();
         _modeAdaptive.hist = [];
+        _pqClearFailBeat();
+        _pqResetRematchSession();
     }
     _modeAdaptive.targetPwin = _flowPWinForValue(value);
     saveAllAsync().catch(console.error);
@@ -10715,6 +11056,7 @@ function _enterSelfReportFlow(userSelectedOption) {
 
 export function practiceSubmit() {
     if (AppState.practiceSubmittedFlags[AppState.currentPracticeIndex]) return;
+    AppState._pqLastSubmitOutcome = null;
 
     let userAns = "";
     let isCorrect = false;
@@ -10821,13 +11163,67 @@ export function practiceSubmit() {
         return;
     }
 
-    AppState.practiceSubmittedFlags[AppState.currentPracticeIndex] = true;
-    AppState.currentQ.timeTaken = AppState.practiceSeconds;
-    _pqCaptureAttemptSnapshot(AppState.currentQ, AppState.currentPracticeIndex, userAns || null);
+    const _idx = AppState.currentPracticeIndex;
+    const _q = AppState.currentQ;
+    const rematchEntry = _pqIsActiveRematch(_q, _idx);
+
+    AppState.practiceSubmittedFlags[_idx] = true;
+    if (!rematchEntry) _q.timeTaken = AppState.practiceSeconds;
+    _pqCaptureAttemptSnapshot(_q, _idx, userAns || null);
     // ⏱ Converge practice time into the daily/subjective study counters.
     // Runs exactly once — the flag above is already true, so the guard at
     // the top of practiceSubmit() blocks any re-entry from double-counting.
     _injectPracticeTimeIntoStudySecs();
+    AppState._pqLastSubmitOutcome = { idx: _idx, isCorrect, isRematch: Boolean(rematchEntry) };
+
+    if (rematchEntry) {
+        AppState._pqRematchResultByIdx = AppState._pqRematchResultByIdx || {};
+        AppState._pqRematchResultByIdx[_idx] = isCorrect ? 'passed' : 'failed';
+        if (isCorrect) {
+            _q.status = 'error';
+            _q.stability = Math.max(Number(_q.stability) || 0.5, 1.8);
+            _q.currentInterval = Math.max(Number(_q.currentInterval) || 0, 2);
+            _q.nextReviewAt = new Date(Date.now() + 2 * 86400000).toISOString();
+            _q.lastReviewedAt = new Date().toISOString();
+            _q.srUpdatedAt = Date.now();
+            try { Heartbeat.recordProblemUnit(_q, 'solve', { isRematchPass: true }); } catch (_) {}
+        } else {
+            if (_q.id != null) _pqRematchFailedIds.add(String(_q.id));
+            AppState._pqPriorPickByIdx = AppState._pqPriorPickByIdx || {};
+            const _prior = rematchEntry.priorPick || _q.lastWrongPick || null;
+            if (_prior) AppState._pqPriorPickByIdx[_idx] = _prior;
+            if (userAns != null && String(userAns).trim() !== '') {
+                _q.lastWrongPick = String(userAns).trim();
+            }
+            _q.status = 'error';
+            _q.stability = 0.5;
+            _q.lapses = (Number(_q.lapses) || 0) + 1;
+            _q.lastReviewedAt = new Date().toISOString();
+            _q.nextReviewAt = new Date(Date.now() + 0.5 * 86400000).toISOString();
+            _q.srUpdatedAt = Date.now();
+        }
+        _pqSyncQuestionToBank(_q);
+        try { _invalidateMatrixCtx(); } catch (_) {}
+        saveAllAsync().catch(console.error);
+        try { renderErrorMatrixFromBank(); } catch (_) {}
+        try { renderChapterDecayGrid(); } catch (_) {}
+        if (AppState.practiceTimer) {
+            clearInterval(AppState.practiceTimer);
+            AppState.practiceTimer = null;
+        }
+        renderPracticeQuestionModal();
+        if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard' && !AppState.bountyMode) {
+            _showModeContinueButton();
+        } else {
+            const contBtn = document.getElementById('practice-continue-btn');
+            if (contBtn && !AppState.bountyMode) {
+                _pqSetContinueLabel(contBtn, false);
+                contBtn.style.display = '';
+            }
+        }
+        if (!isCorrect && !AppState.bountyMode) _pqArmFailBeat();
+        return;
+    }
 
     // Lock the first-attempt result — accuracy only counts the FIRST attempt,
     // so re-solving the same question later must NOT change it.
@@ -10878,6 +11274,10 @@ export function practiceSubmit() {
  }
  if (_eloResult) applyDifficulty(AppState.currentQ, AppState.currentQ.subject, _eloResult);
  if (AppState.currentQ && AppState.currentQ.status === 'solved') stampPlantCum(AppState.currentQ, AppState.currentQ.subject);
+ if (!isCorrect && !AppState.bountyMode) {
+     _pqAutoVaultWrong(AppState.currentQ, userAns, _idx);
+     _pqArmRematch(AppState.currentQ, userAns);
+ }
  _pqFinishAttemptSnapshot(AppState.currentQ, AppState.currentPracticeIndex, isCorrect, _eloResult, _pqSolvedDeltaApplied);
  saveAllAsync().catch(console.error);
 
@@ -10932,6 +11332,7 @@ export function practiceSubmit() {
             contBtn.style.display = '';
         }
     }
+    if (!isCorrect && !AppState.bountyMode) _pqArmFailBeat();
 }
 
 export function addTextQuestionFollowUp() {
@@ -10952,7 +11353,41 @@ export function addTextQuestionFollowUp() {
     }
 
     correctBtn.onclick = () => {
-        if (AppState._pqPendingSelfReportByIdx) delete AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex];
+        const _idx = AppState.currentPracticeIndex;
+        const _q = AppState.currentQ;
+        const rematchEntry = _pqIsActiveRematch(_q, _idx);
+        AppState._pqLastSubmitOutcome = { idx: _idx, isCorrect: true, isRematch: Boolean(rematchEntry) };
+        if (AppState._pqPendingSelfReportByIdx) delete AppState._pqPendingSelfReportByIdx[_idx];
+        if (rematchEntry) {
+            AppState._pqRematchResultByIdx = AppState._pqRematchResultByIdx || {};
+            AppState._pqRematchResultByIdx[_idx] = 'passed';
+            _q.status = 'error';
+            _q.stability = Math.max(Number(_q.stability) || 0.5, 1.8);
+            _q.currentInterval = Math.max(Number(_q.currentInterval) || 0, 2);
+            _q.nextReviewAt = new Date(Date.now() + 2 * 86400000).toISOString();
+            _q.lastReviewedAt = new Date().toISOString();
+            _q.srUpdatedAt = Date.now();
+            try { Heartbeat.recordProblemUnit(_q, 'solve', { isRematchPass: true }); } catch (_) {}
+            _pqSyncQuestionToBank(_q);
+            try { _invalidateMatrixCtx(); } catch (_) {}
+            saveAllAsync().catch(console.error);
+            try { renderErrorMatrixFromBank(); } catch (_) {}
+            try { renderChapterDecayGrid(); } catch (_) {}
+            if (verdictRow) verdictRow.remove();
+            renderPracticeQuestionModal();
+            if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard' && !AppState.bountyMode) {
+                _showModeContinueButton();
+            } else {
+                const contBtn = document.getElementById('practice-continue-btn');
+                if (contBtn) {
+                    _pqSetContinueLabel(contBtn, false);
+                    contBtn.style.display = '';
+                }
+            }
+            try { _pqSyncState(); } catch (_) {}
+            try { _pqRenderDiag(); } catch (_) {}
+            return;
+        }
         const wasAlreadySolved = (AppState.currentQ.status === 'solved') || Boolean(AppState.currentQ._hbEverSolved);
         const wasDue = Boolean(AppState.currentQ.nextReviewAt && getDueStatus(AppState.currentQ).status === 'ready');
         const _wasSelfGraded = !!AppState.currentQ.selfGrade;
@@ -11019,7 +11454,42 @@ export function addTextQuestionFollowUp() {
     };
 
     wrongBtn.onclick = () => {
-        if (AppState._pqPendingSelfReportByIdx) delete AppState._pqPendingSelfReportByIdx[AppState.currentPracticeIndex];
+        const _idx = AppState.currentPracticeIndex;
+        const _q = AppState.currentQ;
+        const rematchEntry = _pqIsActiveRematch(_q, _idx);
+        AppState._pqLastSubmitOutcome = { idx: _idx, isCorrect: false, isRematch: Boolean(rematchEntry) };
+        if (AppState._pqPendingSelfReportByIdx) delete AppState._pqPendingSelfReportByIdx[_idx];
+        if (rematchEntry) {
+            AppState._pqRematchResultByIdx = AppState._pqRematchResultByIdx || {};
+            AppState._pqRematchResultByIdx[_idx] = 'failed';
+            if (_q.id != null) _pqRematchFailedIds.add(String(_q.id));
+            _q.status = 'error';
+            _q.stability = 0.5;
+            _q.lapses = (Number(_q.lapses) || 0) + 1;
+            _q.lastReviewedAt = new Date().toISOString();
+            _q.nextReviewAt = new Date(Date.now() + 0.5 * 86400000).toISOString();
+            _q.srUpdatedAt = Date.now();
+            _pqSyncQuestionToBank(_q);
+            try { _invalidateMatrixCtx(); } catch (_) {}
+            saveAllAsync().catch(console.error);
+            try { renderErrorMatrixFromBank(); } catch (_) {}
+            try { renderChapterDecayGrid(); } catch (_) {}
+            if (verdictRow) verdictRow.remove();
+            renderPracticeQuestionModal();
+            if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard' && !AppState.bountyMode) {
+                _showModeContinueButton();
+            } else {
+                const contBtn = document.getElementById('practice-continue-btn');
+                if (contBtn) {
+                    _pqSetContinueLabel(contBtn, false);
+                    contBtn.style.display = '';
+                }
+            }
+            try { _pqSyncState(); } catch (_) {}
+            try { _pqRenderDiag(); } catch (_) {}
+            _pqArmFailBeat();
+            return;
+        }
         const _wasSelfGraded = !!AppState.currentQ.selfGrade;
         if (!AppState.currentQ.selfGrade) AppState.currentQ.selfGrade = { g: 1, t: Date.now() };
         AppState.currentQ.frictionFlag = false;
@@ -11044,6 +11514,10 @@ export function addTextQuestionFollowUp() {
       if (!_wasSelfGraded && AppState.currentQ.selfGrade) {
           if (!_pqPreTagDiffMap.has(AppState.currentQ)) _pqPreTagDiffMap.set(AppState.currentQ, AppState.currentQ.difficultyD);
           try { refineDifficultyAfterTag(AppState.currentQ, _PQ_GRADE_PERF[AppState.currentQ.selfGrade.g]); } catch (_) {}
+      }
+      if (!AppState.bountyMode) {
+          _pqAutoVaultWrong(AppState.currentQ, null, _idx);
+          _pqArmRematch(AppState.currentQ, null);
       }
       _pqFinishAttemptSnapshot(AppState.currentQ, AppState.currentPracticeIndex, false, _eloRes, 0);
       saveAllAsync().catch(console.error);
@@ -11073,6 +11547,7 @@ export function addTextQuestionFollowUp() {
         }
         try { _pqSyncState(); } catch (_) {}
         try { _pqRenderDiag(); } catch (_) {}
+        _pqArmFailBeat();
     };
 
     document.getElementById('practice-submit-btn').style.display = 'none';
@@ -11159,9 +11634,22 @@ export function practiceNext() {
     // (_modeAdvance) and the Skip action — there is no Next in mode. Guard
     // against stray calls (legacy hooks) so they can't double-advance.
     if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
+    _pqClearFailBeat();
     const _curIdx = AppState.currentPracticeIndex;
     if (!AppState.practiceSubmittedFlags[_curIdx] || (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[_curIdx])) {
         _noteSessionSkip(AppState.practiceQuestions[_curIdx]);
+    }
+    const _nextIdx = _curIdx + 1;
+    const _atEnd = _nextIdx >= AppState.practiceQuestions.length;
+    if (_nextIdx > _pqStandardMaxIdx || _atEnd) {
+        _pqSessionStep++;
+        _pqStandardMaxIdx = Math.max(_pqStandardMaxIdx, _nextIdx);
+        const _dueRm = _pqPopDueRematch(_atEnd);
+        if (_dueRm) {
+            AppState.practiceQuestions.splice(_nextIdx, 0, _dueRm.q);
+            AppState.practiceSubmittedFlags.splice(_nextIdx, 0, false);
+            _pqRematchByIdx[_nextIdx] = _dueRm;
+        }
     }
     if (AppState.currentPracticeIndex + 1 < AppState.practiceQuestions.length) {
         AppState.currentPracticeIndex++;
@@ -11197,6 +11685,7 @@ export function practiceNext() {
 export function practicePrev() {
     // Flow / Hardcore mode: no Prev — review happens on the result screen only.
     if (AppState.practiceFlowMode && AppState.practiceFlowMode !== 'standard') return;
+    _pqClearFailBeat();
     if (AppState.currentPracticeIndex > 0) {
         const _curIdx = AppState.currentPracticeIndex;
         if (!AppState.practiceSubmittedFlags[_curIdx] || (AppState._pqPendingSelfReportByIdx && AppState._pqPendingSelfReportByIdx[_curIdx])) {
@@ -11347,6 +11836,7 @@ export function closePracticeModal(opts) {
         headerSlot.innerHTML = '';
     }
     if (AppState.practiceTimer) { clearInterval(AppState.practiceTimer); AppState.practiceTimer = null; }
+    _pqClearFailBeat();
     // A lifeline pick that never reached a graded solve must not penalize the
     // next unrelated solve with its ×0.65 flag (leaked until the NEXT
     // lifeline/calibrated solve cleared it).
@@ -11364,7 +11854,10 @@ export function closePracticeModal(opts) {
     // A closed modal must not leak its run's navigation history into the next
     // session — without this, a standard session started right after closing a
     // Flow/Hardcore run could inherit stale back/forward stacks.
-    if (!_keepModeHistory) _clearModeHistory();
+    if (!_keepModeHistory) {
+        _clearModeHistory();
+        _pqResetRematchSession();
+    }
     if (document.getElementById('practice-question-list-view').classList.contains('active')) {
         showQuestionList();
     }
@@ -11874,7 +12367,7 @@ function playWrongSound() {
         if (!ctx) return;
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        try { window.HeartbeatAudio?.duck?.(0.45); } catch (_) {}
+        try { window.HeartbeatAudio?.duck?.(0.62, 0.02); } catch (_) {}
 
         // 1. Dull dry pin tick
         _sfxNoiseBurst(ctx, now, 0.014, 1800, 2.8, 0.10 * v);
@@ -11902,13 +12395,13 @@ function playWrongSound() {
         const sub = ctx.createOscillator();
         const subG = ctx.createGain();
         sub.type = 'sine';
-        sub.frequency.setValueAtTime(88, t);
-        sub.frequency.exponentialRampToValueAtTime(44, t + 0.15);
+        sub.frequency.setValueAtTime(92, t);
+        sub.frequency.exponentialRampToValueAtTime(40, t + 0.18);
         subG.gain.setValueAtTime(0.0001, t);
-        subG.gain.linearRampToValueAtTime(0.18 * v, t + 0.006);
-        subG.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        subG.gain.linearRampToValueAtTime(0.20 * v, t + 0.006);
+        subG.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
         sub.connect(subG).connect(ctx.destination);
-        sub.start(t); sub.stop(t + 0.175);
+        sub.start(t); sub.stop(t + 0.195);
 
         const tap = ctx.createOscillator();
         const tapG = ctx.createGain();
@@ -12240,6 +12733,21 @@ export function deactivateOverheat() {
 
         originalSubmit();
 
+        const _out = AppState._pqLastSubmitOutcome;
+        if (_out && _out.isRematch) {
+            if (_out.isCorrect) {
+                showNormalGlow();
+                playCorrectSound(Math.max(1, AppState.practiceCorrectStreak || 1));
+            } else {
+                AppState.practiceCorrectStreak = 0;
+                triggerRedFlash();
+                playWrongSound();
+            }
+            updateStreakVisualizer();
+            _flashStreakBadge();
+            return;
+        }
+
         const statusNow = AppState.currentQ && AppState.currentQ.status;
 
         const isWrong = (wasUnsolved && statusNow !== 'solved' && statusNow !== 'unsolved') ||
@@ -12250,11 +12758,7 @@ export function deactivateOverheat() {
             // daily solved counter / error-matrix totals / streak data.
             if (AppState._pqCritByIdx) delete AppState._pqCritByIdx[AppState.currentPracticeIndex];
 
-            if (Math.random() < 0.2) {
-                triggerStreakShield();
-            } else {
-                AppState.practiceCorrectStreak = 0;
-            }
+            AppState.practiceCorrectStreak = 0;
             if (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function') {
                 AppState._ckComboBreak = false;
                 window.CK_ENGINE.onSolve({ correct: false, q: AppState.currentQ, isVault: false });
@@ -12323,6 +12827,14 @@ export function deactivateOverheat() {
             const originalCorrectClick = correctBtn.onclick;
             correctBtn.onclick = () => {
                 if (originalCorrectClick) originalCorrectClick();
+                const _out = AppState._pqLastSubmitOutcome;
+                if (_out && _out.isRematch) {
+                    showNormalGlow();
+                    playCorrectSound(Math.max(1, AppState.practiceCorrectStreak || 1));
+                    updateStreakVisualizer();
+                    _flashStreakBadge();
+                    return;
+                }
                 AppState.practiceCorrectStreak++;
                 const _justBounty = !!window._justWonBounty;
                 let forceCritLabel = null;
@@ -12374,19 +12886,18 @@ export function deactivateOverheat() {
         if (wrongBtn) {
             const originalWrongClick = wrongBtn.onclick;
             wrongBtn.onclick = () => {
+                const _isRm = Boolean(_pqIsActiveRematch(AppState.currentQ, AppState.currentPracticeIndex));
                 // Wrong follow-up answer — deliberately NOT counted as solved.
                 if (AppState._pqCritByIdx) delete AppState._pqCritByIdx[AppState.currentPracticeIndex];
 
-                if (Math.random() < 0.2) {
-                    triggerStreakShield();
-                } else {
-                    AppState.practiceCorrectStreak = 0;
-                }
-                if (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function') {
-                    AppState._ckComboBreak = false;
-                    window.CK_ENGINE.onSolve({ correct: false, q: AppState.currentQ, isVault: false });
-                } else {
-                    AppState._ckComboBreak = true;
+                AppState.practiceCorrectStreak = 0;
+                if (!_isRm) {
+                    if (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function') {
+                        AppState._ckComboBreak = false;
+                        window.CK_ENGINE.onSolve({ correct: false, q: AppState.currentQ, isVault: false });
+                    } else {
+                        AppState._ckComboBreak = true;
+                    }
                 }
 
                 if (originalWrongClick) originalWrongClick();

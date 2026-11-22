@@ -560,6 +560,7 @@ const _BRIDGE_WRITTEN_FIELDS = [
     '_lifelineAssisted',                              // lifeline flag (conditional write)
     '_solvedCredit',                                  // overheat credit tracking
     'status', 'firstAttemptResult', 'errorReason',    // question verdict status fields
+    'lastWrongPick',                                  // repeated-trap pick memory
     'srUpdatedAt',                                      // merge clock
 ];
 
@@ -1949,6 +1950,9 @@ function _applyResult(result, source, q) {
         }
     }
 
+    const _priorWrongPick = q && q.lastWrongPick ? String(q.lastWrongPick) : '';
+    const _priorScarNote = q && q.dissectionNote ? String(q.dissectionNote).trim() : '';
+
     const zone = document.getElementById('sr-result-zone');
     if (zone) {
         const correctAns = _hasLoadedAnswer(q)
@@ -1978,6 +1982,9 @@ function _applyResult(result, source, q) {
             : '';
         const isPass = result === 'correct';
         const kicker = isPass ? 'VERIFIED' : 'FAILED';
+        const scarEchoHtml = _priorScarNote
+            ? `<div class="sr-scar-note ${isPass ? 'is-cleared' : 'is-repeat'}">${_esc(_priorScarNote)}</div>`
+            : '';
         zone.innerHTML = `
             <div class="sr-result-banner ${isPass ? 'correct' : 'incorrect'}">
                 <div class="pq-ans-main">
@@ -1986,6 +1993,7 @@ function _applyResult(result, source, q) {
                 </div>
                 ${solPeepBtn}
             </div>
+            ${scarEchoHtml}
             ${solDisplay}`;
         if (window.katex) {
             const ansBody = zone.querySelector('.pq-ans-body');
@@ -2022,13 +2030,22 @@ function _applyResult(result, source, q) {
     if (source === 'auto') {
         // Mark MCQ options: correct → green, selected-wrong → red
         const correctSet = new Set(resolveMcqCorrectLetters(q));
+        const priorSet = new Set(_priorWrongPick.toUpperCase().split(/[^A-Z]+/).filter(Boolean));
         document.querySelectorAll('.sr-mcq-option').forEach(opt => {
             opt.style.pointerEvents = 'none';
             const letter = opt.getAttribute('data-letter');
             const wasSelected = _drawerState.selectedOptions.includes(letter);
             opt.classList.remove('correct-mark', 'wrong-mark');
             if (correctSet.has(letter)) opt.classList.add('correct-mark');
-            else if (wasSelected) opt.classList.add('wrong-mark');
+            else if (wasSelected) {
+                opt.classList.add('wrong-mark');
+                if (result !== 'correct' && priorSet.has(letter) && !opt.querySelector('.pq-opt-repeat')) {
+                    const tag = document.createElement('span');
+                    tag.className = 'pq-opt-repeat';
+                    tag.textContent = 'picked before';
+                    opt.appendChild(tag);
+                }
+            }
         });
     } else {
         // Self-report: lock MCQ options if any, otherwise hide the answer stage
@@ -2092,10 +2109,12 @@ function _applyResult(result, source, q) {
     _drawerState.preBridgeSnapshot = _abortSnap;
 
     if (_drawerState.result === 'incorrect') {
-        if (Math.random() < 0.2) {
-            if (typeof window.triggerStreakShield === 'function') window.triggerStreakShield();
-        } else {
-            AppState.practiceCorrectStreak = 0;
+        AppState.practiceCorrectStreak = 0;
+        if (q) {
+            const pick = (_drawerState.selectedOptions && _drawerState.selectedOptions.length)
+                ? _drawerState.selectedOptions.join(',')
+                : (_drawerState.numericAnswer || '');
+            if (pick) q.lastWrongPick = String(pick);
         }
         if (window.CK_ENGINE && typeof window.CK_ENGINE.onSolve === 'function') {
             AppState._ckComboBreak = false;

@@ -1089,14 +1089,16 @@ export function playFlatlineDrop() {
 }
 
 /** Briefly duck the industrial ambience so heavy mechanical SFX cut cleanly through. */
-export function duck(secs = 0.75) {
+export function duck(secs = 0.75, floor = 0.32) {
     if (!_enabled || _spotifyYield || !_ac || !_duckBus || _ac.state !== 'running') return;
     try {
         const now = _ac.currentTime;
         const hold = Math.max(0.15, Math.min(3.0, Number(secs) || 0.75));
+        const rawFloor = Number(floor);
+        const targetFloor = Number.isFinite(rawFloor) ? Math.max(0.01, Math.min(0.9, rawFloor)) : 0.32;
         _duckBus.gain.cancelScheduledValues(now);
         _duckBus.gain.setValueAtTime(_duckBus.gain.value, now);
-        _duckBus.gain.linearRampToValueAtTime(0.32, now + 0.025);
+        _duckBus.gain.linearRampToValueAtTime(targetFloor, now + 0.025);
         _duckBus.gain.exponentialRampToValueAtTime(1.0, now + hold);
     } catch (_) {}
 }

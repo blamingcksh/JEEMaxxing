@@ -739,7 +739,8 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
     if (kind === 'dissection') {
         const reason = String((opts && opts.reason) ?? (q && q.errorReason) ?? '').trim();
         const note = String((opts && opts.note) ?? (q && q.dissectionNote) ?? '').trim();
-        if (!reason || note.length < 30) {
+        const quickTag = Boolean(opts && opts.quickTag);
+        if (!reason || (!quickTag && note.length < 30)) {
             return { credited: false, reason: 'dissection-incomplete', subject: subj, weight: 0, hoursAdded: 0 };
         }
         const dissectKey = qid ? `dissect:${qid}` : null;
@@ -749,9 +750,9 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
         if (dissectKey) _hb.daily.creditedIds.push(dissectKey);
         if (q && typeof q === 'object') {
             q._hbVaultLocked30 = true;
-            q.dissectionNote = note;
+            if (note) q.dissectionNote = note;
         }
-        weight = round2(baseWeight * 0.70);
+        weight = round2(baseWeight * (quickTag ? 0.50 : 0.70));
     } else {
         if (qid && _hb.daily.creditedIds.includes(qid)) {
             return { credited: false, reason: 'duplicate', subject: subj };
@@ -762,7 +763,8 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
                     ? opts.isDue
                     : (q.nextReviewAt ? getDueStatus(q).status === 'ready' : true)
             );
-            if (!isDue) {
+            const isRematchPass = Boolean(opts && opts.isRematchPass);
+            if (!isDue && !isRematchPass) {
                 return { credited: false, reason: 'not-due', subject: subj, weight: 0, hoursAdded: 0 };
             }
             weight = round2(baseWeight * 0.30);
