@@ -240,7 +240,11 @@
 //        (Concept/Calc/Misread) and brief written note (>=8 chars) via always-available
 //        inline hairline input on missed practice items to award 70% immediately (+30%
 //        unlocked on Rematch pass or due Vault solve). styles-practice-fullscreen.css?v=15.
-const VERSION = 'jeemax-v128';
+// v129 - HEARTBEAT 18h/13h ECONOMY, 00:00–08:00 SLEEP FREEZE & CIRCADIAN MULTIPLIER:
+//        heartbeat.js updated with 8h sleep freeze, grandfathered 18h reservoir,
+//        and x1.20 / x1.00 / x0.70 circadian yield; sw.js stops auto-reloading
+//        active study sessions on update.
+const VERSION = 'jeemax-v129';
 
 const SHELL = [
   './',
@@ -366,35 +370,20 @@ self.addEventListener('install', (event) => {
           ...CDN_SHELL.map((u) => cache.add(u)),
         ])
       )
-      .then(() => self.skipWaiting())
   );
-});self.addEventListener('activate', (event) => {
+});
+
+self.addEventListener('message', (event) => {
+  if (event && event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
-  );
-  // ── Force stale pages to reload — THE iPad PWA update fix ────────────────
-  // iOS keeps an installed PWA "running" in the app switcher for days; opening
-  // the icon just foregrounds the OLD page, which keeps executing OLD code and
-  // never picks up fixes. When a new SW version activates, navigate every open
-  // window client so it loads the fresh shell exactly once. Runs on activation
-  // of a NEW version only — the reloaded page re-checks the SW, finds the same
-  // bytes, and doesn't activate again, so there is no reload loop.
-  //
-  // CRITICAL: this must NEVER be able to fail the activation. client.navigate()
-  // returns a promise, and on Safari/WebKit (and some desktop browsers) it
-  // rejects for cross-context/control reasons — the old try/catch only caught
-  // synchronous throws. An unhandled rejection rejects event.waitUntil and
-  // ABORTS the entire activation: the browser discards the new SW, the OLD SW
-  // keeps serving its stale caches (old index.html + old app.js) forever, and
-  // no update ever lands again. Swallow every failure.
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clients) => Promise.allSettled(clients.map((client) =>
-        Promise.resolve().then(() => client.navigate(client.url || './')).catch(() => {})
-      )))
-      .catch(() => {})
   );
 });
 

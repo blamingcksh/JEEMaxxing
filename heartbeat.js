@@ -3,8 +3,9 @@
  *
  * Psychological survival engine for JEEMaxxing:
  *   - Exclusively renders the Aizawa Toroidal Flux Manifold (WebGL2 HDR + 2D fallback)
- *   - 30.0h leaky reservoir draining -1.0h per real-world hour (-24.0h/day)
- *   - Decay freezes ONLY while locked into an active Pact / study session
+ *   - 18.0h waking reservoir draining -1.0h per waking hour (-16.0h/day; 00:00–08:00 sleep freeze)
+ *   - Decay freezes during 00:00–08:00 local sleep hours AND while locked into an active Pact / study session
+ *   - Circadian multiplier: ×1.20 before 14:00 (up to 70% floor), ×1.00 14:00–17:00, ×0.70 after 17:00, ×0.50 00:30–05:00
  *   - Speed, Luminescence, Persistence, and Spread (0.50 max, reverse collapse)
  *     each measure a distinct clinical pillar
  *   - Continuous 5-stage RGB light spectrum (Xenon -> Ion -> UV -> Amber -> Crimson)
@@ -26,21 +27,34 @@ import {
 import { HeartbeatAudio } from './heartbeat-audio.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
-export const MAX_RESERVOIR_HOURS = 30.0;
-export const DAILY_UNIT_TARGET = 20.0;      // starting bedrock per subject (60.0u/day total)
-export const DAILY_UNIT_CAP = 26.0;         // starting overflow ceiling (+6.5h/subject)
-export const HOURS_PER_UNIT = 0.25;         // 20u = +5.0h; 26u = +6.5h
-export const SUBJECT_TARGET_HOURS = 5.0;    // break-even hours paid at 100% of each subject's floor
-export const OVERFLOW_CAP_RATIO = 1.3;      // 1.3x subject floor = +6.5h max per subject
-export const LEASH_EPOCH_DAYS = 7;          // 7-day rolling calibration window
+export const MAX_RESERVOIR_HOURS = 18.0;
+export const LEGACY_MAX_RESERVOIR_HOURS = 30.0; // Grandfather existing pre-overhaul balances >18h without chopping
+export const SLEEP_FREEZE_START_HOUR = 0;       // 00:00 local
+export const SLEEP_FREEZE_END_HOUR = 8;         // 08:00 local (8h sleep freeze -> 16.0h waking drain/day)
+export const DAILY_UNIT_TARGET = 20.0;          // starting bedrock per subject (60.0u/day total)
+export const DAILY_UNIT_CAP = 26.0;             // starting overflow ceiling (1.3x floor)
+export const SUBJECT_TARGET_HOURS = 3.0;        // break-even hours paid at 100% of each subject's floor (+9.0h total)
+export const HOURS_PER_UNIT = SUBJECT_TARGET_HOURS / DAILY_UNIT_TARGET; // 0.15h/u at 20u floor
+export const OVERFLOW_CAP_RATIO = 1.3;          // 1.3x subject floor = +3.9h max per subject (+11.7h total)
+export const LEASH_EPOCH_DAYS = 7;              // 7-day rolling calibration window
 export const LEASH_MIN_FLOOR = DAILY_UNIT_TARGET; // 20.0u bedrock per subject (strictly one-way upward)
-export const LEASH_MAX_FLOOR = 40.0;        // hard per-subject ceiling (120.0u/day total)
-export const LEASH_TIGHTEN_THRESHOLD = 1.05;// tighten if 7d trimmed avg >= 1.05x current floor
-export const LEASH_STEP_BLEND = 0.50;       // move 50% of surplus above current floor
-export const LEASH_MAX_STEP_RATIO = 1.08;   // cap per-epoch jump at +8%
-export const DAILY_PACT_TARGET_MINS = 240;  // 4h/day deep Pact standard
-export const DAILY_PACT_CAP_MINS = 280;     // overflow ceiling (+10.5h raw)
-export const HOURS_PER_PACT_MIN = 9.0 / 240.0; // 0.0375h per Pact minute
+export const LEASH_MAX_FLOOR = 40.0;            // hard per-subject ceiling (120.0u/day total)
+export const LEASH_TIGHTEN_THRESHOLD = 1.05;    // tighten if 7d trimmed avg >= 1.05x current floor
+export const LEASH_STEP_BLEND = 0.50;           // move 50% of surplus above current floor
+export const LEASH_MAX_STEP_RATIO = 1.08;       // cap per-epoch jump at +8%
+export const DAILY_PACT_TARGET_MINS = 240;      // 4h/day deep Pact standard
+export const DAILY_PACT_CAP_MINS = 280;         // overflow ceiling (+4.67h raw)
+export const PACT_TARGET_HOURS = 4.0;           // +4.0h for 240m Pact (+1.0h per Pact hour)
+export const HOURS_PER_PACT_MIN = PACT_TARGET_HOURS / DAILY_PACT_TARGET_MINS;
+export const MORNING_BONUS_START_HOUR = 5;      // 05:00 local
+export const MORNING_BONUS_END_HOUR = 14;       // 14:00 local
+export const MORNING_BONUS_FLOOR_RATIO = 0.70;  // x1.20 applies up to 70% of each subject's floor
+export const MORNING_MULTIPLIER = 1.20;
+export const EVENING_DRAG_START_HOUR = 17;      // 17:00 local
+export const EVENING_MULTIPLIER = 0.70;         // x0.70 on fresh solves after 17:00
+export const LATE_NIGHT_START_MIN = 30;         // 00:30 local
+export const LATE_NIGHT_END_HOUR = 5;           // 05:00 local
+export const LATE_NIGHT_MULTIPLIER = 0.50;      // x0.50 during 00:30–05:00 to block freeze-farming
 export const FREEZE_IDLE_LIMIT_MS = 35 * 60 * 1000;     // 35m max without solve/interaction
 export const STOPWATCH_MAX_FREEZE_MS = 3 * 3600 * 1000; // 3h continuous freeze cap
 
@@ -54,12 +68,12 @@ const BOOT_DRAIN_MS = 1600;
 const BOOT_TOTAL_MS = BOOT_HOLD_MS + BOOT_DRAIN_MS;
 
 const SPECTRUM_STOPS = [
-    { h: 0.0,  name: 'ARTERIAL CRIMSON', core: [1.0, 0.38, 0.38],  edge: [0.88, 0.03, 0.06], accent: [1.0, 0.12, 0.16], css: '#ff2b3d' },
-    { h: 3.0,  name: 'AMBER ARC',        core: [1.0, 0.96, 0.88],  edge: [1.0, 0.54, 0.16],  accent: [1.0, 0.78, 0.36], css: '#ff9436' },
-    { h: 8.0,  name: 'UV LASER',         core: [0.99, 0.95, 1.0],  edge: [0.64, 0.32, 1.0],  accent: [0.34, 0.86, 1.0], css: '#a864ff' },
-    { h: 16.0, name: 'ION SILVER',       core: [0.97, 0.98, 1.0],  edge: [0.46, 0.56, 0.98], accent: [0.72, 0.62, 1.0], css: '#86a2ff' },
-    { h: 24.0, name: 'XENON WHITE',      core: [1.0, 0.995, 0.985], edge: [0.58, 0.82, 1.0], accent: [0.85, 0.92, 1.0], css: '#bce4ff' },
-    { h: 30.0, name: 'XENON WHITE',      core: [1.0, 0.995, 0.985], edge: [0.58, 0.82, 1.0], accent: [0.85, 0.92, 1.0], css: '#e6f4ff' },
+    { r: 0.00, name: 'ARTERIAL CRIMSON', core: [1.0, 0.38, 0.38],  edge: [0.88, 0.03, 0.06], accent: [1.0, 0.12, 0.16], css: '#ff2b3d' },
+    { r: 0.10, name: 'AMBER ARC',        core: [1.0, 0.96, 0.88],  edge: [1.0, 0.54, 0.16],  accent: [1.0, 0.78, 0.36], css: '#ff9436' },
+    { r: 0.27, name: 'UV LASER',         core: [0.99, 0.95, 1.0],  edge: [0.64, 0.32, 1.0],  accent: [0.34, 0.86, 1.0], css: '#a864ff' },
+    { r: 0.53, name: 'ION SILVER',       core: [0.97, 0.98, 1.0],  edge: [0.46, 0.56, 0.98], accent: [0.72, 0.62, 1.0], css: '#86a2ff' },
+    { r: 0.80, name: 'XENON WHITE',      core: [1.0, 0.995, 0.985], edge: [0.58, 0.82, 1.0], accent: [0.85, 0.92, 1.0], css: '#bce4ff' },
+    { r: 1.00, name: 'XENON WHITE',      core: [1.0, 0.995, 0.985], edge: [0.58, 0.82, 1.0], accent: [0.85, 0.92, 1.0], css: '#e6f4ff' },
 ];
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -196,6 +210,8 @@ function _freshDaily(dateKey) {
     return {
         date: dateKey || _safeTodayKey(),
         units: { physics: 0, chemistry: 0, maths: 0 },
+        effectiveUnits: { physics: 0, chemistry: 0, maths: 0 },
+        morningRawUnits: { physics: 0, chemistry: 0, maths: 0 },
         pactMins: 0,
         creditedIds: [],
         creditedPactHours: 0,
@@ -280,15 +296,27 @@ function _normalizeLoadedState(raw, now = Date.now()) {
         chemistry: Math.max(0, Number(d.units && d.units.chemistry) || 0),
         maths: Math.max(0, Number(d.units && d.units.maths) || 0),
     };
+    const hasEff = d.effectiveUnits && typeof d.effectiveUnits === 'object';
+    const normEffUnits = {
+        physics: hasEff ? Math.max(0, Number(d.effectiveUnits.physics) || 0) : normUnits.physics,
+        chemistry: hasEff ? Math.max(0, Number(d.effectiveUnits.chemistry) || 0) : normUnits.chemistry,
+        maths: hasEff ? Math.max(0, Number(d.effectiveUnits.maths) || 0) : normUnits.maths,
+    };
+    const normMorningRaw = {
+        physics: Math.max(0, Number(d.morningRawUnits && d.morningRawUnits.physics) || 0),
+        chemistry: Math.max(0, Number(d.morningRawUnits && d.morningRawUnits.chemistry) || 0),
+        maths: Math.max(0, Number(d.morningRawUnits && d.morningRawUnits.maths) || 0),
+    };
     const normSubjHrs = {
         physics: Math.max(0, Number(d.creditedSubjHours && d.creditedSubjHours.physics) || 0),
         chemistry: Math.max(0, Number(d.creditedSubjHours && d.creditedSubjHours.chemistry) || 0),
         maths: Math.max(0, Number(d.creditedSubjHours && d.creditedSubjHours.maths) || 0),
     };
     // Guard against corrupt NaN / "" / non-finite reservoirHours turning into 0 and falsely wiping.
+    // Allow legacy balances up to LEGACY_MAX_RESERVOIR_HOURS so existing users never lose hours on upgrade.
     const rawHrs = raw.reservoirHours;
     const parsedHrs = (rawHrs === null || rawHrs === undefined || rawHrs === '') ? NaN : Number(rawHrs);
-    const safeHrs = Number.isFinite(parsedHrs) ? clamp(parsedHrs, 0, MAX_RESERVOIR_HOURS) : MAX_RESERVOIR_HOURS;
+    const safeHrs = Number.isFinite(parsedHrs) ? clamp(parsedHrs, 0, LEGACY_MAX_RESERVOIR_HOURS) : MAX_RESERVOIR_HOURS;
     const rawParity = raw.lastParity;
     const parsedParity = (rawParity === null || rawParity === undefined || rawParity === '') ? NaN : Number(rawParity);
     const safeParity = Number.isFinite(parsedParity) ? clamp(parsedParity, 0, 1) : 1.0;
@@ -317,6 +345,8 @@ function _normalizeLoadedState(raw, now = Date.now()) {
         daily: {
             date: typeof d.date === 'string' && d.date ? d.date : _safeTodayKey(now),
             units: normUnits,
+            effectiveUnits: normEffUnits,
+            morningRawUnits: normMorningRaw,
             pactMins: Math.max(0, Number(d.pactMins) || 0),
             creditedIds: Array.isArray(d.creditedIds) ? d.creditedIds.slice(-1500).map(String) : [],
             creditedPactHours: Math.max(0, Number(d.creditedPactHours) || 0),
@@ -362,6 +392,16 @@ function _mergeHeartbeatRecords(localRaw, remoteRaw, now = Date.now()) {
                 chemistry: Math.max(a.daily.units.chemistry, b.daily.units.chemistry),
                 maths: Math.max(a.daily.units.maths, b.daily.units.maths),
             },
+            effectiveUnits: {
+                physics: Math.max(a.daily.effectiveUnits.physics, b.daily.effectiveUnits.physics),
+                chemistry: Math.max(a.daily.effectiveUnits.chemistry, b.daily.effectiveUnits.chemistry),
+                maths: Math.max(a.daily.effectiveUnits.maths, b.daily.effectiveUnits.maths),
+            },
+            morningRawUnits: {
+                physics: Math.max(a.daily.morningRawUnits.physics, b.daily.morningRawUnits.physics),
+                chemistry: Math.max(a.daily.morningRawUnits.chemistry, b.daily.morningRawUnits.chemistry),
+                maths: Math.max(a.daily.morningRawUnits.maths, b.daily.morningRawUnits.maths),
+            },
             pactMins: Math.max(a.daily.pactMins, b.daily.pactMins),
             creditedIds: ids,
             creditedPactHours: Math.max(a.daily.creditedPactHours, b.daily.creditedPactHours),
@@ -395,17 +435,18 @@ function _mergeHeartbeatRecords(localRaw, remoteRaw, now = Date.now()) {
         lastCalibration: mergedCal,
     };
 
-    // Align both records to the newer wall-clock instant before taking the max so
-    // a stale background tab can neither pull reservoir down nor inject phantom hours.
+    // Align both records to the newer wall-clock instant (excluding 00:00-08:00 sleep freeze)
+    // before taking the max so a stale background tab can neither pull reservoir down nor inject phantom hours.
     const maxTick = Math.max(a.lastTickAt, b.lastTickAt);
     const maxHwm = Math.max(a.highWaterMark, b.highWaterMark);
-    const effA = Math.max(0, a.reservoirHours - Math.max(0, (maxTick - a.lastTickAt) / 3600000));
-    const effB = Math.max(0, b.reservoirHours - Math.max(0, (maxTick - b.lastTickAt) / 3600000));
+    const effA = Math.max(0, a.reservoirHours - computeDrainableMs(a.lastTickAt, maxTick) / 3600000);
+    const effB = Math.max(0, b.reservoirHours - computeDrainableMs(b.lastTickAt, maxTick) / 3600000);
     const reservoirHours = Math.max(effA, effB);
+    const ceiling = Math.min(LEGACY_MAX_RESERVOIR_HOURS, Math.max(MAX_RESERVOIR_HOURS, a.reservoirHours, b.reservoirHours));
 
     return {
         version: 1,
-        reservoirHours: clamp(reservoirHours, 0, MAX_RESERVOIR_HOURS),
+        reservoirHours: clamp(reservoirHours, 0, ceiling),
         lastTickAt: maxTick,
         highWaterMark: maxHwm,
         seededAt: Math.max(a.seededAt, b.seededAt),
@@ -545,6 +586,35 @@ export function touchActivity(nowMs = Date.now()) {
     if (Number.isFinite(nowMs) && nowMs > 0) _lastActivityAt = nowMs;
 }
 
+export function isSleepFreezeTime(nowMs = Date.now()) {
+    const dt = Number.isFinite(nowMs) ? new Date(nowMs) : new Date();
+    const h = dt.getHours();
+    return h >= SLEEP_FREEZE_START_HOUR && h < SLEEP_FREEZE_END_HOUR;
+}
+
+/**
+ * Integrate waking-hour drainable milliseconds across [fromMs, toMs),
+ * excluding every local [00:00, 08:00) sleep-freeze window.
+ */
+export function computeDrainableMs(fromMs, toMs) {
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) return 0;
+    const totalMs = toMs - fromMs;
+    const startDt = new Date(fromMs);
+    const y = startDt.getFullYear();
+    const m = startDt.getMonth();
+    const d = startDt.getDate();
+    let frozenMs = 0;
+    for (let i = 0; i <= 400; i++) {
+        const wStart = new Date(y, m, d + i, SLEEP_FREEZE_START_HOUR, 0, 0, 0).getTime();
+        if (wStart >= toMs) break;
+        const wEnd = new Date(y, m, d + i, SLEEP_FREEZE_END_HOUR, 0, 0, 0).getTime();
+        const ovStart = Math.max(fromMs, wStart);
+        const ovEnd = Math.min(toMs, wEnd);
+        if (ovEnd > ovStart) frozenMs += (ovEnd - ovStart);
+    }
+    return Math.max(0, totalMs - frozenMs);
+}
+
 export function isDecayFrozen(nowMs = Date.now()) {
     let rawActive = false;
     try {
@@ -648,7 +718,7 @@ export function tickClock(nowMs = Date.now(), opts = {}) {
         return;
     }
 
-    const elapsedHours = deltaMs / 3600000;
+    const elapsedHours = computeDrainableMs(lastTick, effNow) / 3600000;
     const nextHours = (!isDecayFrozen(effNow) && elapsedHours > 0)
         ? Math.max(0, _hb.reservoirHours - elapsedHours)
         : _hb.reservoirHours;
@@ -669,7 +739,7 @@ export function tickClock(nowMs = Date.now(), opts = {}) {
     _hb.lastTickAt = effNow;
     _hb.highWaterMark = effNow;
 
-    if (elapsedHours > 0.0002) {
+    if (elapsedHours > 0.0002 || (effNow - lastTick) > 60000) {
         _saveState();
     }
 }
@@ -687,12 +757,43 @@ export function getQuestionUnitWeight(q) {
     return qElo < 800 ? 0.75 : (qElo > 2550 ? 1.75 : 1.00);
 }
 
+export function getCircadianContext(nowMs = Date.now(), opts = {}) {
+    const dt = Number.isFinite(nowMs) ? new Date(nowMs) : new Date();
+    const h = dt.getHours();
+    const mins = h * 60 + dt.getMinutes();
+
+    // Anti-rollback guard: if live clock moved backward vs highWaterMark, strip morning bonus.
+    const rolledBack = !(opts && opts.fromExplicitNow) &&
+        _hb && _isValidEpoch(_hb.highWaterMark) &&
+        Number.isFinite(nowMs) && nowMs < _hb.highWaterMark - 5 * 60 * 1000;
+
+    if (mins >= LATE_NIGHT_START_MIN && h < LATE_NIGHT_END_HOUR) {
+        return { window: 'night', multiplier: LATE_NIGHT_MULTIPLIER, label: '00:30–05:00' };
+    }
+    if (h >= MORNING_BONUS_START_HOUR && h < MORNING_BONUS_END_HOUR) {
+        return {
+            window: 'morning',
+            multiplier: rolledBack ? 1.0 : MORNING_MULTIPLIER,
+            label: '05:00–14:00',
+        };
+    }
+    if (h >= MORNING_BONUS_END_HOUR && h < EVENING_DRAG_START_HOUR) {
+        return { window: 'neutral', multiplier: 1.0, label: '14:00–17:00' };
+    }
+    if (opts && opts.isVaultEveningExempt) {
+        return { window: 'evening-vault', multiplier: 1.0, label: '17:00–00:30' };
+    }
+    return { window: 'evening', multiplier: EVENING_MULTIPLIER, label: '17:00–00:30' };
+}
+
 function _applyDailyRechargeDelta() {
     let added = 0;
     const d = _hb.daily;
+    const maxSubjHours = SUBJECT_TARGET_HOURS * OVERFLOW_CAP_RATIO;
     for (const s of SUBJECTS) {
-        const cappedUnits = Math.min(_getSubjectCap(s), d.units[s] || 0);
-        const earnedSubjHours = cappedUnits * _getSubjectHoursPerUnit(s);
+        const floor = _getSubjectFloor(s);
+        const effUnits = (d.effectiveUnits && Number(d.effectiveUnits[s])) || 0;
+        const earnedSubjHours = Math.min(maxSubjHours, effUnits * (SUBJECT_TARGET_HOURS / floor));
         const prevCredited = d.creditedSubjHours[s] || 0;
         if (earnedSubjHours > prevCredited) {
             added += earnedSubjHours - prevCredited;
@@ -714,7 +815,9 @@ function _applyDailyRechargeDelta() {
     }
 
     if (added > 0) {
-        _hb.reservoirHours = clamp(_hb.reservoirHours + added, 0, MAX_RESERVOIR_HOURS);
+        // Grandfather existing >18h balances while capping normal recharges at MAX_RESERVOIR_HOURS
+        const cap = Math.max(MAX_RESERVOIR_HOURS, _hb.reservoirHours);
+        _hb.reservoirHours = Math.min(cap, Math.max(0, _hb.reservoirHours + added));
     }
     return added;
 }
@@ -735,6 +838,7 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
     const qid = (q && q.id != null && q.id !== '') ? String(q.id) : null;
     const baseWeight = getQuestionUnitWeight(q);
     let weight = baseWeight;
+    let isVaultEveningExempt = false;
 
     if (kind === 'dissection') {
         const reason = String((opts && opts.reason) ?? (q && q.errorReason) ?? '').trim();
@@ -754,6 +858,7 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
             if (note) q.dissectionNote = note;
         }
         weight = round2(baseWeight * 0.70);
+        isVaultEveningExempt = true;
     } else {
         if (qid && _hb.daily.creditedIds.includes(qid)) {
             return { credited: false, reason: 'duplicate', subject: subj };
@@ -771,6 +876,7 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
             weight = round2(baseWeight * 0.30);
             q._hbVaultLocked30 = false;
             q._hbEverSolved = true;
+            isVaultEveningExempt = true;
             if (qid) _hb.daily.creditedIds.push(qid);
         } else {
             const wasAlreadySolved = (opts && opts.wasAlreadySolved !== undefined)
@@ -786,6 +892,7 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
             }
             if (wasAlreadySolved && isDue) {
                 weight = round2(baseWeight * 0.50);
+                isVaultEveningExempt = true;
             } else {
                 weight = round2(baseWeight * 1.00);
                 if (q && typeof q === 'object') q._hbEverSolved = true;
@@ -794,14 +901,56 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
         }
     }
 
-    _hb.daily.units[subj] = round2((_hb.daily.units[subj] || 0) + weight);
+    const explicitNow = Boolean(opts && Number.isFinite(opts.nowMs));
+    const circNowMs = explicitNow ? opts.nowMs : Date.now();
+    const circ = getCircadianContext(circNowMs, { isVaultEveningExempt, fromExplicitNow: explicitNow });
+
+    if (!_hb.daily.effectiveUnits || typeof _hb.daily.effectiveUnits !== 'object') {
+        _hb.daily.effectiveUnits = {
+            physics: Number(_hb.daily.units.physics) || 0,
+            chemistry: Number(_hb.daily.units.chemistry) || 0,
+            maths: Number(_hb.daily.units.maths) || 0,
+        };
+    }
+    if (!_hb.daily.morningRawUnits || typeof _hb.daily.morningRawUnits !== 'object') {
+        _hb.daily.morningRawUnits = { physics: 0, chemistry: 0, maths: 0 };
+    }
+
+    const floor = _getSubjectFloor(subj);
+    const rawCap = _getSubjectCap(subj);
+    const morningCap = round2(floor * MORNING_BONUS_FLOOR_RATIO);
+    const prevRaw = _hb.daily.units[subj] || 0;
+    const billableRaw = Math.max(0, Math.min(weight, rawCap - prevRaw));
+
+    let effectiveWeight = 0;
+    if (circ.window === 'morning') {
+        const prevMorn = _hb.daily.morningRawUnits[subj] || 0;
+        const bonusPart = Math.max(0, Math.min(billableRaw, morningCap - prevMorn));
+        const normalPart = Math.max(0, billableRaw - bonusPart);
+        effectiveWeight = bonusPart * circ.multiplier + normalPart;
+        _hb.daily.morningRawUnits[subj] = round2(prevMorn + billableRaw);
+    } else {
+        effectiveWeight = billableRaw * circ.multiplier;
+    }
+
+    _hb.daily.units[subj] = round2(prevRaw + weight);
+    _hb.daily.effectiveUnits[subj] = round2((_hb.daily.effectiveUnits[subj] || 0) + effectiveWeight);
     const hoursAdded = _applyDailyRechargeDelta();
     _pulseBoost = 1.0;
     try { HeartbeatAudio.playChamberLoad(); } catch (_) {}
     _saveState();
     _refreshHudAndVitals();
 
-    return { credited: true, kind, subject: subj, weight, hoursAdded };
+    return {
+        credited: true,
+        kind,
+        subject: subj,
+        weight,
+        effectiveWeight: round2(effectiveWeight),
+        multiplier: billableRaw > 0 ? round2(effectiveWeight / billableRaw) : circ.multiplier,
+        circadianWindow: circ.window,
+        hoursAdded,
+    };
 }
 
 /**
@@ -827,28 +976,28 @@ export function recordPactBlock(mins, subj) {
 
 // ── Vitals & Continuous 5-Stage Spectrum ────────────────────────────────────
 export function interpolateSpectrum(reservoirHours) {
-    const h = clamp(Number(reservoirHours) || 0, 0, MAX_RESERVOIR_HOURS);
+    const ratio = clamp((Number(reservoirHours) || 0) / MAX_RESERVOIR_HOURS, 0, 1);
     let lo = SPECTRUM_STOPS[0];
     let hi = SPECTRUM_STOPS[SPECTRUM_STOPS.length - 1];
     for (let i = 0; i < SPECTRUM_STOPS.length - 1; i++) {
-        if (h >= SPECTRUM_STOPS[i].h && h <= SPECTRUM_STOPS[i + 1].h) {
+        if (ratio >= SPECTRUM_STOPS[i].r && ratio <= SPECTRUM_STOPS[i + 1].r) {
             lo = SPECTRUM_STOPS[i];
             hi = SPECTRUM_STOPS[i + 1];
             break;
         }
     }
-    const span = Math.max(0.0001, hi.h - lo.h);
-    const t = clamp((h - lo.h) / span, 0, 1);
+    const span = Math.max(0.0001, hi.r - lo.r);
+    const t = clamp((ratio - lo.r) / span, 0, 1);
 
     let stageName = 'ARTERIAL CRIMSON';
-    if (h >= 24.0) stageName = 'XENON WHITE';
-    else if (h >= 16.0) stageName = 'ION SILVER';
-    else if (h >= 8.0) stageName = 'UV LASER';
-    else if (h >= 3.0) stageName = 'AMBER ARC';
+    if (ratio >= 0.80) stageName = 'XENON WHITE';
+    else if (ratio >= 0.53) stageName = 'ION SILVER';
+    else if (ratio >= 0.27) stageName = 'UV LASER';
+    else if (ratio >= 0.10) stageName = 'AMBER ARC';
 
     const edge = lerpVec3(lo.edge, hi.edge, t);
     const accent = lerpVec3(lo.accent, hi.accent, t);
-    const css = h >= 24 ? '#bce4ff' : h >= 16 ? '#86a2ff' : h >= 8 ? '#a864ff' : h >= 3 ? '#ff9436' : '#ff2b3d';
+    const css = ratio >= 0.80 ? '#bce4ff' : ratio >= 0.53 ? '#86a2ff' : ratio >= 0.27 ? '#a864ff' : ratio >= 0.10 ? '#ff9436' : '#ff2b3d';
 
     return {
         name: stageName,
@@ -859,10 +1008,12 @@ export function interpolateSpectrum(reservoirHours) {
     };
 }
 
-export function getVitals(nowMs = Date.now()) {
-    _ensureTodayBucket();
-    const reservoirHours = clamp(_hb.reservoirHours, 0, MAX_RESERVOIR_HOURS);
-    const reservoirRatio = reservoirHours / MAX_RESERVOIR_HOURS;
+export function getVitals(nowMs) {
+    const explicitNow = nowMs !== undefined && Number.isFinite(nowMs);
+    const effNow = explicitNow ? nowMs : Date.now();
+    _ensureTodayBucket(effNow);
+    const reservoirHours = clamp(_hb.reservoirHours, 0, LEGACY_MAX_RESERVOIR_HOURS);
+    const reservoirRatio = clamp(reservoirHours / MAX_RESERVOIR_HOURS, 0, 1);
 
     const uP = _hb.daily.units.physics || 0;
     const uC = _hb.daily.units.chemistry || 0;
@@ -888,7 +1039,7 @@ export function getVitals(nowMs = Date.now()) {
     // 2. Luminescence (0.00..1.00): 3-Subject Balance & Parity
     // Smooth cold-start blend across the weakest floor so first morning solve never cliffs.
     const rawTodayLum = clamp(0.35 * avgP + 0.65 * minP, 0, 1);
-    const dNow = new Date(nowMs);
+    const dNow = new Date(effNow);
     const rawHour = dNow.getHours() + dNow.getMinutes() / 60;
     const hoursIntoDay = (rawHour - 4 + 24) % 24;
     const morningFade = clamp(1 - hoursIntoDay / 12, 0, 1);
@@ -909,7 +1060,7 @@ export function getVitals(nowMs = Date.now()) {
     );
     let persistenceScore = rawTodayPers;
     if (totalUnits === 0 && pactMins === 0) {
-        const ageHours = Math.max(0, (nowMs - (_hb.seededAt || nowMs)) / 3600000);
+        const ageHours = Math.max(0, (effNow - (_hb.seededAt || effNow)) / 3600000);
         if (ageHours < 6) {
             const seedFade = clamp(1 - ageHours / 6, 0, 1);
             persistenceScore = clamp(Math.max(rawTodayPers, reservoirRatio * seedFade * 0.7), 0, 1);
@@ -917,7 +1068,7 @@ export function getVitals(nowMs = Date.now()) {
     }
     const klsrPersistence = 0.35 + persistenceScore * 0.53;
 
-    // 4. Spread (0.00..0.50 max, reverse collapse): 0.50 at 30h, 0.00 at 0h
+    // 4. Spread (0.00..0.50 max, reverse collapse): 0.50 at full cap, 0.00 at 0h
     const spread = round2(0.50 * reservoirRatio);
 
     const spectrum = interpolateSpectrum(reservoirHours);
@@ -968,10 +1119,22 @@ export function getVitals(nowMs = Date.now()) {
         lastCalibration: (_hb.leash && _hb.leash.lastCalibration) || null,
     };
 
+    const pactFrozen = isDecayFrozen(effNow);
+    const sleepFrozen = isSleepFreezeTime(effNow);
+    const frozen = pactFrozen || sleepFrozen;
+    const freezeReason = pactFrozen ? 'pact' : (sleepFrozen ? 'sleep' : null);
+    const circadian = getCircadianContext(effNow, { fromExplicitNow: explicitNow });
+    const mornRaw = (_hb.daily && _hb.daily.morningRawUnits) || { physics: 0, chemistry: 0, maths: 0 };
+
     return {
         reservoirHours,
+        maxReservoirHours: MAX_RESERVOIR_HOURS,
         reservoirRatio,
-        frozen: isDecayFrozen(nowMs),
+        frozen,
+        pactFrozen,
+        sleepFrozen,
+        freezeReason,
+        circadian,
         flatlined: Boolean(_hb.flatlined || reservoirHours <= 0),
         speed: round2(speed),
         luminescence: round2(luminescenceScore),
@@ -986,6 +1149,11 @@ export function getVitals(nowMs = Date.now()) {
         lockedPactHours,
         weakestSubject,
         units: { physics: round2(uP), chemistry: round2(uC), maths: round2(uM) },
+        morningRawUnits: {
+            physics: round2(mornRaw.physics || 0),
+            chemistry: round2(mornRaw.chemistry || 0),
+            maths: round2(mornRaw.maths || 0),
+        },
         totalUnits: round2(totalUnits),
         pactMins: round2(pactMins),
         creditedHoursToday: round2(
@@ -1032,21 +1200,21 @@ export function getDiagnosticPrescription(v = getVitals()) {
 
     let verdict = '';
     let critical = false;
-    if (v.reservoirHours < 6.0) {
+    if (v.reservoirHours < 4.0) {
         critical = true;
         verdict = `CRITICAL RESERVOIR (${v.reservoirHours.toFixed(1)}h left). Complete ${gaps.pactMins > 0 ? gaps.pactMins + 'm Pact + ' : ''}balanced P/C/M solves or Error-Matrix dissections immediately to avert total data wipe.${lockNote}`;
     } else if (maxR - minR > 0.22 && lagging.length > 0) {
         verdict = `3-SUBJECT IMBALANCE: ${lagging.join(' & ')} lagging. Luminescence & Pact recharge multiplier (${multPct}%) are throttled until all 3 subjects advance.${lockNote}`;
     } else if (gaps.pactMins > 0 && v.persistence < 0.7) {
-        verdict = `ENDURANCE DEFICIT: ${gaps.pactMins}m of completed Lock-In Pact blocks remaining today to maximize Persistence and seal the +9.0h focus injection.${lockNote}`;
+        verdict = `ENDURANCE DEFICIT: ${gaps.pactMins}m of completed Lock-In Pact blocks remaining today to maximize Persistence and seal the +4.0h focus injection.${lockNote}`;
     } else if (gaps.physics > 0 || gaps.chemistry > 0 || gaps.maths > 0) {
         const parts = [];
         if (gaps.physics > 0) parts.push(`${gaps.physics}u Phys`);
         if (gaps.chemistry > 0) parts.push(`${gaps.chemistry}u Chem`);
         if (gaps.maths > 0) parts.push(`${gaps.maths}u Math`);
-        verdict = `DAILY STANDARD INCOMPLETE: Need ${parts.join(', ')}${gaps.pactMins > 0 ? ` + ${gaps.pactMins}m Pact` : ''} to hit +24.0h break-even.${lockNote}`;
+        verdict = `DAILY STANDARD INCOMPLETE: Need ${parts.join(', ')}${gaps.pactMins > 0 ? ` + ${gaps.pactMins}m Pact` : ''} to hit +13.0h base.${lockNote}`;
     } else {
-        verdict = `DAILY STANDARD CLEARED (+24h break-even locked). Overflow units & Pact blocks recover lost reservoir life up to +30.0h/day.`;
+        verdict = `DAILY STANDARD CLEARED (+13.0h base locked). Overflow units & Pact blocks recover lost reservoir life up to +16.4h/day.`;
     }
 
     return { gaps, verdict, critical };
@@ -2307,8 +2475,8 @@ function _ensureDomContainers() {
             <div class="hb-vitals-head">
                 <div>
                     <div class="hb-vitals-kicker">KLSR // AIZAWA FLUX TELEMETRY</div>
-                    <div class="hb-vitals-clock" id="hb-vitals-clock">30:00:00</div>
-                    <div class="hb-vitals-sub" id="hb-vitals-sub">30.0h / 30.0h RESERVOIR</div>
+                    <div class="hb-vitals-clock" id="hb-vitals-clock">18:00:00</div>
+                    <div class="hb-vitals-sub" id="hb-vitals-sub">18.0h / 18.0h RESERVOIR</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
                     <span class="hb-vitals-stage" id="hb-vitals-stage">XENON WHITE</span>
@@ -2382,8 +2550,12 @@ function _renderVitals() {
     const lockedSub = v.lockedPactHours > 0.05
         ? ` · +${v.lockedPactHours.toFixed(2)}h LOCKED (feed ${v.weakestSubject})`
         : '';
+    const freezeLabel = v.freezeReason === 'pact'
+        ? 'FROZEN IN PACT'
+        : (v.freezeReason === 'sleep' ? 'SLEEP FREEZE (00:00–08:00)' : '−1.0h / HR · 00–08 SLEEP FREEZE');
+    const rateLabel = `RATE ×${v.circadian.multiplier.toFixed(2)} (${v.circadian.label})`;
     if (clockEl) clockEl.textContent = _formatCountdown(v.reservoirHours);
-    if (subEl) subEl.textContent = `${v.reservoirHours.toFixed(2)}h / 30.0h · ${v.frozen ? 'FROZEN IN PACT' : '−1.0h / REAL HR'} · +${v.creditedHoursToday.toFixed(2)}h TODAY${lockedSub}`;
+    if (subEl) subEl.textContent = `${v.reservoirHours.toFixed(2)}h / ${MAX_RESERVOIR_HOURS.toFixed(1)}h · ${freezeLabel} · ${rateLabel} · +${v.creditedHoursToday.toFixed(2)}h TODAY${lockedSub}`;
     if (stageEl) {
         stageEl.textContent = v.spectrum.name;
         stageEl.style.color = v.spectrum.css;
@@ -2396,7 +2568,7 @@ function _renderVitals() {
             <div class="hb-vital-box">
                 <div class="hb-vital-top"><span>SPEED</span><span class="hb-vital-val">${v.speed.toFixed(2)} / 1.00</span></div>
                 <div class="hb-vital-bar"><div class="hb-vital-bar-fill" style="width:${Math.round(v.speed * 100)}%"></div></div>
-                <div class="hb-vital-desc">30h reservoir life remaining (${Math.round(v.reservoirRatio * 100)}%). Decays toward 0.05 stutter.</div>
+                <div class="hb-vital-desc">18h reservoir life remaining (${Math.round(v.reservoirRatio * 100)}%). Decays toward 0.05 stutter.</div>
             </div>
             <div class="hb-vital-box">
                 <div class="hb-vital-top"><span>LUMINESCENCE</span><span class="hb-vital-val">${v.luminescence.toFixed(2)} / 1.00</span></div>
@@ -2467,7 +2639,7 @@ function _renderVitals() {
                         <span class="hb-leash-subj">${SUBJ_META[s].short}</span>
                         <span class="hb-leash-floor">${fl.toFixed(1)}u</span>
                     </div>
-                    <div class="hb-leash-yield">${hpu.toFixed(2)}h / u · +5.0h floor</div>
+                    <div class="hb-leash-yield">${hpu.toFixed(2)}h / u · +${SUBJECT_TARGET_HOURS.toFixed(1)}h floor</div>
                     ${trendHtml}
                 </div>`;
         }).join('');
@@ -2477,7 +2649,7 @@ function _renderVitals() {
             : '';
 
         prescEl.innerHTML = `
-            <div class="hb-presc-title">DAILY RECHARGE STANDARD (+24.0H BREAK-EVEN · +30.0H OVERFLOW CAP)</div>
+            <div class="hb-presc-title">DAILY RECHARGE STANDARD (+13.0H BASE · +16.4H OVERFLOW · 00–08 FREEZE)</div>
             <div class="hb-presc-rows">
                 ${subjRowsHtml}
                 <div class="hb-presc-row">
@@ -2572,10 +2744,10 @@ async function _enterFlatlineSequence(checkNowMs = Date.now()) {
             const p = _normalizeLoadedState(persistedRaw, checkNowMs);
             if (!p.flatlined && p.reservoirHours > 0) {
                 const eff = Math.max(checkNowMs, p.highWaterMark, p.lastTickAt);
-                const elapsed = Math.max(0, (eff - p.lastTickAt) / 3600000);
+                const elapsed = computeDrainableMs(p.lastTickAt, eff) / 3600000;
                 const remaining = p.reservoirHours - elapsed;
                 if (remaining > 0.001) {
-                    _hb = { ...p, reservoirHours: clamp(remaining, 0, MAX_RESERVOIR_HOURS), lastTickAt: eff, highWaterMark: eff, flatlined: false };
+                    _hb = { ...p, reservoirHours: clamp(remaining, 0, LEGACY_MAX_RESERVOIR_HOURS), lastTickAt: eff, highWaterMark: eff, flatlined: false };
                     _flatlineActive = false;
                     _saveState({ silentBroadcast: true });
                     _refreshHudAndVitals();
@@ -2603,7 +2775,7 @@ async function _enterFlatlineSequence(checkNowMs = Date.now()) {
         const msg = document.getElementById('hb-flatline-msg');
         const btn = document.getElementById('hb-flatline-reset-btn');
         if (fl) fl.hidden = false;
-        if (msg) msg.textContent = '30.0h reservoir exhausted. Scorched-earth termination in progress — all local databases, question bank, Vault, Mocks, history & checkpoints are being wiped.';
+        if (msg) msg.textContent = '18.0h reservoir exhausted. Scorched-earth termination in progress — all local databases, question bank, Vault, Mocks, history & checkpoints are being wiped.';
         if (btn) { btn.disabled = true; btn.textContent = 'TERMINATING DATA...'; }
     }
 
@@ -2839,6 +3011,9 @@ export const Heartbeat = {
     recordPactBlock,
     touchActivity,
     isDecayFrozen,
+    isSleepFreezeTime,
+    computeDrainableMs,
+    getCircadianContext,
     isFlatlined: () => Boolean(_hb.flatlined || _flatlineActive),
     openVitals,
     closeVitals,
