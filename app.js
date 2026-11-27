@@ -502,10 +502,10 @@ function _clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 // auto-crops every referenced diagram via cropImageFromBBox — no manual
 // bounding-box drawing.
 // PRIMARY aliases are unambiguous (any non-empty value is trusted).
-const _GEM_TAG_PRIMARY_ALIASES = ['imageRef', 'imageTag', 'diagramRef', 'imgTag', 'sourceImage'];
+const _GEM_TAG_PRIMARY_ALIASES = ['imageRef', 'imageTag', 'diagramRef', 'imgTag', 'sourceImage', 'pageRef', 'pdfPage'];
 // EXTENDED aliases (image/img/figure/…) are only trusted when the value looks
 // like a short tag token — a data URL / http URL / long blob is NOT a tag.
-const _GEM_TAG_EXTENDED_ALIASES = ['image', 'img', 'figure', 'figRef', 'sourceImg', 'imageNumber', 'figureNumber', 'imageIndex'];
+const _GEM_TAG_EXTENDED_ALIASES = ['image', 'img', 'figure', 'figRef', 'sourceImg', 'imageNumber', 'figureNumber', 'imageIndex', 'page', 'pageNumber', 'pageNum', 'pageIndex'];
 const _GEM_BBOX_ALIASES = ['cropBox', 'bbox', 'box', 'crop', 'region', 'coords', 'cropCoords'];
 
 // A tag value is trusted only when it's a SHORT single-token string ("a1",
@@ -521,9 +521,16 @@ function _looksLikeGemTag(v) {
 }
 
 // In-session store: normalized tag -> base64 data URL of the uploaded source
-// screenshot. Deliberately in-memory only — survives modal reopens during the
-// session, never touches storage quota.
+// screenshot or rendered PDF page. Deliberately in-memory only — survives
+// modal reopens during the session, never touches storage quota.
 let _gemImageSources = {};
+// Per-tag source provenance: normTag -> { type: 'image'|'pdf', fileName, pageNum? }
+let _gemSourceMeta = {};
+// Rendered pages of the uploaded PDF (in-memory only): [{ pageNum, dataUrl, width, height }]
+let _gemPdfPages = [];
+let _gemPdfName = '';
+// Active chooser state inside #gem-image-map-modal: 'choose' | 'images' | 'pdf'
+let _gemMapSourceMode = 'choose';
 
 function _firstDefined(obj, keys) {
     for (const k of keys) {
@@ -593,7 +600,7 @@ function _parseGemImageRef(obj) {
  * stores crops keyed by option letter ("A"), but dumps can also tag options by
  * their full string — try exact first, then a leading-letter match.
  */
-function _gemOptionImageUrl(q, opt) {
+function _gemOptionImageUrl(q, opt, optIdx) {
     if (!q || !q.optionImageUrls || typeof opt !== 'string') return null;
     const direct = q.optionImageUrls[opt];
     if (direct) return direct;
@@ -603,6 +610,23 @@ function _gemOptionImageUrl(q, opt) {
     const m = opt.match(/^\s*([A-Za-z])\s*[\)\.:]/);
     if (m) {
         return q.optionImageUrls[m[1].toUpperCase()] || q.optionImageUrls[m[1]] || null;
+    }
+    if (Number.isInteger(optIdx) && optIdx >= 0 && optIdx < 26) {
+        const letter = String.fromCharCode(65 + optIdx);
+        return q.optionImageUrls[letter] || q.optionImageUrls[letter.toLowerCase()] || null;
+    }
+    return null;
+}
+
+function _gemOptionKeyForIndex(q, opt, optIdx) {
+    if (typeof opt === 'string') {
+        if (q && q.optionImageUrls && q.optionImageUrls[opt]) return opt;
+        if (q && q.optionImageUrls && q.optionImageUrls[opt.toUpperCase()]) return opt.toUpperCase();
+        const m = opt.match(/^\s*([A-Za-z])\s*[\)\.:]/);
+        if (m) return m[1].toUpperCase();
+    }
+    if (Number.isInteger(optIdx) && optIdx >= 0 && optIdx < 26) {
+        return String.fromCharCode(65 + optIdx);
     }
     return null;
 }
@@ -2635,7 +2659,10 @@ function endDraw(e) {
             // bounds or hijack a different question.
             if (Array.isArray(AppState.extractedItems)
                 && targetIdx >= 0 && targetIdx < AppState.extractedItems.length) {
-                AppState.extractedItems[targetIdx].diagramImageUrl = croppedDataUrl;
+                const targetItem = AppState.extractedItems[targetIdx];
+                targetItem.diagramImageUrl = croppedDataUrl;
+                targetItem._diagramSourceDataUrl = cropSession.sourceImages[sourceId]?.dataUrl || null;
+                targetItem._diagramCropBbox = { ...bbox };
             }
             // Cleanup sequence: detach canvas listeners, clear refs, reset
             // surgical flag, close modal, refresh preview.
@@ -4243,6 +4270,10 @@ export async function processGemTextDump() {
         AppState.extractedItems = parsedItems;
         // Fresh dump → fresh diagram map (previous session uploads are stale).
         _gemImageSources = {};
+        _gemSourceMeta = {};
+        _gemPdfPages = [];
+        _gemPdfName = '';
+        _gemMapSourceMode = 'choose';
         hideLoading();
 
         // ── Bug 2 fix: dismiss the parent upload-modal SYNCHRONOUSLY so it
@@ -4257,14 +4288,13 @@ export async function processGemTextDump() {
         forceHideModal('upload-modal');
 
         // ── Gem diagram auto-crop map ──
-        // When the dump carries imageRef tags + cropBox coordinates, route to
-        // the mapping modal first: the user uploads one image per tagged source
-        // screenshot and the baked-in coordinates auto-crop every referenced
-        // diagram (no manual bounding-box drawing). Plain dumps skip straight
-        // to the preview grid as before.
+        // When the dump carries imageRef/page tags + cropBox coordinates, route
+        // to the source chooser first: the user picks either Images (upload
+        // tagged screenshots as usual) or PDF (renders all pages and auto-crops
+        // every referenced diagram). Plain dumps skip straight to preview.
         const gemTags = _collectGemImageTags(parsedItems);
         if (gemTags.length) {
-            (window.__jmaxAppToast || alert)(`🗺 ${parsedItems.length} items compiled — upload the ${gemTags.length} tagged source image${gemTags.length !== 1 ? 's' : ''} to auto-crop diagrams.`);
+            (window.__jmaxAppToast || alert)(`🗺 ${parsedItems.length} items compiled — choose Images or upload a PDF to auto-crop diagrams.`);
             openGemImageMappingModal();
         } else {
             (window.__jmaxAppToast || alert)(`✅ ${parsedItems.length} items compiled successfully.`);
@@ -4278,14 +4308,31 @@ export async function processGemTextDump() {
         alert(`Ingestion failed: ${err.message}. Ensure your copied text contains complete question definitions.`);
     }
 }
-export function showPreviewModal() {
+export function showPreviewModal(scrollToIdx = null) {
     let container = document.getElementById('extracted-questions-list');
     if (!container) return;
     container.innerHTML = '';
-    
+
+    const hasPdfPages = Array.isArray(_gemPdfPages) && _gemPdfPages.length > 0;
+
     AppState.extractedItems.forEach((q, idx) => {
         let div = document.createElement('div');
         div.className = 'question-preview-item';
+        div.setAttribute('data-preview-q-idx', String(idx));
+
+        // Helper: check whether we have a source image/page in memory to reopen
+        // in the Adjust Crop editor for a given tag/kind.
+        const diagTag = q._diagramSourceTag || (q.gemImage && q.gemImage.tag) || null;
+        const diagNormTag = diagTag ? _normGemTag(diagTag) : '';
+        const hasDiagSource = !!(
+            (diagNormTag && _gemImageSources[diagNormTag])
+            || q._diagramSourceDataUrl
+            || (Number.isInteger(q._diagramPdfPage) && _gemPdfPages[q._diagramPdfPage - 1])
+            || hasPdfPages
+        );
+        const diagPdfPage = Number.isInteger(q._diagramPdfPage)
+            ? q._diagramPdfPage
+            : (diagNormTag && _gemSourceMeta[diagNormTag]?.type === 'pdf' ? _gemSourceMeta[diagNormTag].pageNum : null);
 
         // ── Visual asset container: legacy crop image vs surgical diagram slot ──
         let visualAssetContainerHtml = '';
@@ -4294,29 +4341,51 @@ export function showPreviewModal() {
             visualAssetContainerHtml = `<img src="${_safeImgSrc(q.imageDataUrl)}" style="max-width:200px; border-radius:12px;">`;
         } else {
             if (q.diagramImageUrl) {
-                const srcTag = (q.gemImage && q.gemImage.tag)
-                    ? ` · 📍 from <b>${escapeHtml(q.gemImage.tag)}</b>${q._gemAutoMapped ? ' · auto-crop' : ''}`
+                const pageBadge = diagPdfPage ? ` (Page ${diagPdfPage})` : '';
+                const srcTag = diagTag
+                    ? ` · 📍 from <b>${escapeHtml(diagTag)}</b>${pageBadge}${q._gemAutoMapped ? ' · auto-crop' : ''}`
+                    : (pageBadge ? ` · 📄 Page ${diagPdfPage}` : '');
+                const editBtnHtml = hasDiagSource
+                    ? `<button type="button" class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); window.openAdjustCropModal(${idx}, 'diagram')" title="Open original page with this crop box selected to adjust">✏️ Edit</button>`
                     : '';
                 visualAssetContainerHtml = `
                     <div class="surgical-asset-box" style="border: 1px solid var(--glow-orange); padding:8px; border-radius:8px; background:rgba(249,115,22,0.05); flex-shrink:0;">
                         <small style="color: #f97316; font-weight:700;">📐 Diagram Mapped${srcTag}</small><br>
-                        <img src="${_safeImgSrc(q.diagramImageUrl)}" style="max-width:140px; border-radius:6px; margin:6px 0;">
-                        <button class="btn btn-danger btn-xs" style="display:block; width:100%; padding:2px;" onclick="event.stopPropagation(); window.yeetSurgicalDiagram(${idx})">✕ Wipe Asset</button>
+                        <img src="${_safeImgSrc(q.diagramImageUrl)}" style="max-width:140px; border-radius:6px; margin:6px 0; display:block;">
+                        <div class="surgical-asset-actions">
+                            ${editBtnHtml}
+                            <button type="button" class="btn btn-danger btn-xs" onclick="event.stopPropagation(); window.yeetSurgicalDiagram(${idx})">✕ Wipe</button>
+                        </div>
                     </div>`;
             } else if (q.gemImage && q.gemImage.tag) {
-                // Tagged source image still waiting for its upload → the 🗺
-                // Diagram Map (top of the modal) auto-crops it; manual crop
-                // stays available as a fallback.
-                visualAssetContainerHtml = `
-                    <div class="surgical-asset-trigger" style="text-align:center; padding:10px; border:1px dashed #b45309; border-radius:8px; flex-shrink:0; min-width:140px; background:rgba(249,115,22,0.04);">
-                        <span class="gem-ref-chip" style="margin-left:0; display:inline-block; margin-bottom:6px;">📍${escapeHtml(q.gemImage.tag)}</span>
-                        <button class="btn btn-secondary btn-sm" style="display:block; width:100%;" onclick="event.stopPropagation(); window.triggerSurgicalDiagramUpload(${idx})">➕ Add Diagram</button>
-                        <p style="font-size:10px; color:#fbbf24; margin-top:4px; line-height:1.1;">Auto-crop pending — upload tag <b>${escapeHtml(q.gemImage.tag)}</b> in 🗺 Diagram Map.</p>
-                    </div>`;
+                const tagLoaded = !!(diagNormTag && _gemImageSources[diagNormTag]);
+                if (tagLoaded) {
+                    const pageText = diagPdfPage ? `Page ${diagPdfPage}` : escapeHtml(q.gemImage.tag);
+                    visualAssetContainerHtml = `
+                        <div class="surgical-asset-trigger" style="text-align:center; padding:10px; border:1px dashed #38bdf8; border-radius:8px; flex-shrink:0; min-width:150px; background:rgba(56,189,248,0.05);">
+                            <span class="gem-ref-chip" style="margin-left:0; display:inline-block; margin-bottom:6px;">📍${escapeHtml(q.gemImage.tag)}${diagPdfPage ? ` · p.${diagPdfPage}` : ''}</span>
+                            <button type="button" class="btn btn-primary btn-sm" style="display:block; width:100%;" onclick="event.stopPropagation(); window.openAdjustCropModal(${idx}, 'diagram')">✂️ Crop from ${pageText}</button>
+                            <button type="button" class="btn btn-secondary btn-xs" style="display:block; width:100%; margin-top:5px;" onclick="event.stopPropagation(); window.triggerSurgicalDiagramUpload(${idx})">➕ Upload Photo</button>
+                        </div>`;
+                } else {
+                    // Tagged source image still waiting for its upload → the 🗺
+                    // Diagram Map (top of the modal) auto-crops it; manual crop
+                    // stays available as a fallback.
+                    visualAssetContainerHtml = `
+                        <div class="surgical-asset-trigger" style="text-align:center; padding:10px; border:1px dashed #b45309; border-radius:8px; flex-shrink:0; min-width:150px; background:rgba(249,115,22,0.04);">
+                            <span class="gem-ref-chip" style="margin-left:0; display:inline-block; margin-bottom:6px;">📍${escapeHtml(q.gemImage.tag)}</span>
+                            <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%;" onclick="event.stopPropagation(); window.triggerSurgicalDiagramUpload(${idx})">➕ Add Diagram</button>
+                            <p style="font-size:10px; color:#fbbf24; margin-top:4px; line-height:1.1;">Auto-crop pending — upload tag <b>${escapeHtml(q.gemImage.tag)}</b> or PDF in 🗺 Diagram Map.</p>
+                        </div>`;
+                }
             } else {
+                const pdfCropBtn = hasPdfPages
+                    ? `<button type="button" class="btn btn-primary btn-sm" style="display:block; width:100%; margin-bottom:5px;" onclick="event.stopPropagation(); window.openAdjustCropModal(${idx}, 'diagram')">📄 Crop from PDF</button>`
+                    : '';
                 visualAssetContainerHtml = `
-                    <div class="surgical-asset-trigger" style="text-align:center; padding:10px; border:1px dashed #4a4a6a; border-radius:8px; flex-shrink:0; min-width:140px;">
-                        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); window.triggerSurgicalDiagramUpload(${idx})">➕ Add Diagram</button>
+                    <div class="surgical-asset-trigger" style="text-align:center; padding:10px; border:1px dashed #4a4a6a; border-radius:8px; flex-shrink:0; min-width:150px;">
+                        ${pdfCropBtn}
+                        <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%;" onclick="event.stopPropagation(); window.triggerSurgicalDiagramUpload(${idx})">➕ Add Diagram</button>
                         <p style="font-size:10px; color:#64748b; margin-top:4px; line-height:1.1;">Optional: Bind crop asset if needed.</p>
                     </div>`;
             }
@@ -4339,10 +4408,24 @@ export function showPreviewModal() {
         let optionsPreview = '';
         if (q.options && q.options.length) {
             optionsPreview = `<div style="margin: 6px 0; padding-left: 8px; border-left: 2px solid #3b82f6;">
-                ${q.options.map(o => {
-                    const optImg = _gemOptionImageUrl(q, o)
-                        ? `<div style="margin:2px 0 6px;"><img src="${_safeImgSrc(_gemOptionImageUrl(q, o))}" style="max-width:130px; border-radius:6px; border:1px solid rgba(59,130,246,0.5);"></div>`
-                        : '';
+                ${q.options.map((o, optIdx) => {
+                    const resolvedOptUrl = _gemOptionImageUrl(q, o, optIdx);
+                    const optKey = _gemOptionKeyForIndex(q, o, optIdx);
+                    let optImg = '';
+                    if (resolvedOptUrl) {
+                        const optMeta = q._optionCropMeta && optKey ? q._optionCropMeta[optKey] : null;
+                        const optRef = q.gemOptionImages && optKey ? q.gemOptionImages[optKey] : null;
+                        const optTag = (optMeta && optMeta.tag) || (optRef && optRef.tag) || null;
+                        const canEditOpt = !!(optKey && ((optTag && _gemImageSources[_normGemTag(optTag)]) || hasPdfPages));
+                        const safeOptArg = escapeAttribute(optKey || '');
+                        optImg = `<div class="preview-mini-asset">
+                            <img src="${_safeImgSrc(resolvedOptUrl)}" style="max-width:130px; border-radius:6px; border:1px solid rgba(59,130,246,0.5);">
+                            <div class="preview-mini-actions">
+                                ${canEditOpt ? `<button type="button" class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); window.openAdjustCropModal(${idx}, 'option', '${safeOptArg}')">✏️ Edit</button>` : ''}
+                                ${optKey ? `<button type="button" class="btn btn-danger btn-xs" onclick="event.stopPropagation(); window.yeetOptionDiagram(${idx}, '${safeOptArg}')">✕</button>` : ''}
+                            </div>
+                        </div>`;
+                    }
                     return `<p style="font-size:13px; color:#93c5fd; margin:2px 0;">${escapeHtml(o)}</p>${optImg}`;
                 }).join('')}
             </div>`;
@@ -4350,7 +4433,16 @@ export function showPreviewModal() {
         
         let solutionPreview = q.solution ? `<p style="font-size:12px; color:#6ee7b7; margin-top:4px; font-weight:500;">📝 Solution Context Loaded</p>` : '';
         if (q.solutionImageUrl) {
-            solutionPreview += `<div style="margin-top:4px;"><small style="color:#6ee7b7; font-weight:700;">💡 Solution Diagram</small><br><img src="${_safeImgSrc(q.solutionImageUrl)}" style="max-width:140px; border-radius:6px; border:1px solid rgba(110,231,183,0.4);"></div>`;
+            const solTag = (q._solutionCropMeta && q._solutionCropMeta.tag) || (q.gemSolutionImage && q.gemSolutionImage.tag) || null;
+            const canEditSol = !!((solTag && _gemImageSources[_normGemTag(solTag)]) || hasPdfPages);
+            solutionPreview += `<div class="preview-mini-asset is-solution" style="margin-top:6px;">
+                <small style="color:#6ee7b7; font-weight:700;">💡 Solution Diagram</small>
+                <img src="${_safeImgSrc(q.solutionImageUrl)}" style="max-width:140px; border-radius:6px; border:1px solid rgba(110,231,183,0.4);">
+                <div class="preview-mini-actions">
+                    ${canEditSol ? `<button type="button" class="btn btn-secondary btn-xs" onclick="event.stopPropagation(); window.openAdjustCropModal(${idx}, 'solution')">✏️ Edit</button>` : ''}
+                    <button type="button" class="btn btn-danger btn-xs" onclick="event.stopPropagation(); window.yeetSolutionDiagram(${idx})">✕</button>
+                </div>
+            </div>`;
         }
 
         // ── Pending auto-crop chips: option/solution refs still waiting for
@@ -4360,12 +4452,22 @@ export function showPreviewModal() {
             for (const k of Object.keys(q.gemOptionImages)) {
                 const ref = q.gemOptionImages[k];
                 if (ref && ref.tag && !(q.optionImageUrls && q.optionImageUrls[k])) {
-                    pendingAssetHtml += `<span class="gem-ref-chip" style="margin:2px 4px 0 0; display:inline-block;">📄 opt ${escapeHtml(k)} ← <b>${escapeHtml(ref.tag)}</b></span>`;
+                    const hasOptSrc = !!(_gemImageSources[_normGemTag(ref.tag)] || hasPdfPages);
+                    if (hasOptSrc) {
+                        pendingAssetHtml += `<button type="button" class="gem-ref-chip" style="margin:2px 4px 0 0; display:inline-block; cursor:pointer;" onclick="event.stopPropagation(); window.openAdjustCropModal(${idx}, 'option', '${escapeAttribute(k)}')">✂️ Crop opt ${escapeHtml(k)} (${escapeHtml(ref.tag)})</button>`;
+                    } else {
+                        pendingAssetHtml += `<span class="gem-ref-chip" style="margin:2px 4px 0 0; display:inline-block;">📄 opt ${escapeHtml(k)} ← <b>${escapeHtml(ref.tag)}</b></span>`;
+                    }
                 }
             }
         }
         if (q.gemSolutionImage && q.gemSolutionImage.tag && !q.solutionImageUrl) {
-            pendingAssetHtml += `<span class="gem-ref-chip" style="margin:2px 4px 0 0; display:inline-block;">💡 solution ← <b>${escapeHtml(q.gemSolutionImage.tag)}</b></span>`;
+            const hasSolSrc = !!(_gemImageSources[_normGemTag(q.gemSolutionImage.tag)] || hasPdfPages);
+            if (hasSolSrc) {
+                pendingAssetHtml += `<button type="button" class="gem-ref-chip" style="margin:2px 4px 0 0; display:inline-block; cursor:pointer;" onclick="event.stopPropagation(); window.openAdjustCropModal(${idx}, 'solution')">✂️ Crop solution (${escapeHtml(q.gemSolutionImage.tag)})</button>`;
+            } else {
+                pendingAssetHtml += `<span class="gem-ref-chip" style="margin:2px 4px 0 0; display:inline-block;">💡 solution ← <b>${escapeHtml(q.gemSolutionImage.tag)}</b></span>`;
+            }
         }
         let hintPreview = q.hint ? `<p style="font-size:12px; color:#fbbf24; margin-top:2px; font-weight:500;">💡 Hint Loaded</p>` : '';
         let answerDisplay = Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || '');
@@ -4399,11 +4501,20 @@ export function showPreviewModal() {
     });
 
     // ── 🗺 Diagram Map reopen: visible whenever any question in this batch
-    // references a tagged source image (lets the user upload/map later, or
-    // re-map after wiping an auto-crop). ──
-    const anyGemRef = (AppState.extractedItems || []).some(it => it.gemImage && it.gemImage.tag);
+    // references a tagged source image (diagram, option, or solution). ──
+    const anyGemRef = _collectGemImageTags(AppState.extractedItems || []).length > 0;
     const btnReopen = document.getElementById('btn-reopen-gem-map');
     if (btnReopen) btnReopen.style.display = anyGemRef ? 'inline-block' : 'none';
+
+    const btnPreviewPdf = document.getElementById('btn-preview-upload-pdf');
+    if (btnPreviewPdf) {
+        if (hasPdfPages) {
+            const shortPdf = _gemPdfName.length > 22 ? _gemPdfName.slice(0, 19) + '…' : _gemPdfName;
+            btnPreviewPdf.textContent = `📄 PDF: ${shortPdf} (${_gemPdfPages.length}p)`;
+        } else {
+            btnPreviewPdf.textContent = '📄 Upload PDF';
+        }
+    }
 
     // ── No-tag guidance banner ──
     // When the dump carried no imageRef tags at all, the per-tag upload prompt
@@ -4418,16 +4529,25 @@ export function showPreviewModal() {
         banner.innerHTML = `
             <div style="flex:1;min-width:220px;">
                 <b>🗺 No tagged images in this dump</b> — so there's no per-image upload prompt here.
-                Questions whose diagrams live inside screenshots need <code>imageRef</code> + <code>cropBox</code>
+                Questions whose diagrams live inside screenshots or PDFs need <code>imageRef</code> + <code>cropBox</code>
                 fields in the dump to be auto-cropped. Paste the instruction block into your Gemini Gem,
-                re-generate, and this screen will ask you to upload each tagged image (a1, a2, …).
+                re-generate, and this screen will let you choose Images or upload a PDF to auto-crop every page.
             </div>
             <button class="btn btn-secondary btn-sm" onclick="window.copyGemImageInstructions()">📋 Copy Gemini instructions</button>
-            <span style="font-size:11px;color:var(--text-muted);">…or use <b>➕ Add Diagram</b> on each question below.</span>`;
+            <span style="font-size:11px;color:var(--text-muted);">…or use <b>📄 Upload PDF</b> / <b>➕ Add Diagram</b> below.</span>`;
         container.insertBefore(banner, container.firstChild);
     }
 
     openModal('preview-modal');
+
+    if (Number.isInteger(scrollToIdx)) {
+        requestAnimationFrame(() => {
+            const card = container.querySelector(`[data-preview-q-idx="${scrollToIdx}"]`);
+            if (card && typeof card.scrollIntoView === 'function') {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+    }
 }
 
 // Export module logic to global window context
@@ -4445,10 +4565,14 @@ window.loadJsonDumpFile = function (input) {
     r.onload = () => {
         const ta = document.getElementById('text-add-terminal');
         if (ta) ta.value = r.result;
+        try { input.value = ''; } catch (_) {}
         // Zero extra steps: kick off ingestion right after the file loads.
         try { processGemTextDump(); } catch (e) { console.error('loadJsonDumpFile → processGemTextDump:', e); }
     };
-    r.onerror = () => alert('Could not read that file. Make sure it is a plain .json / .txt file.');
+    r.onerror = () => {
+        try { input.value = ''; } catch (_) {}
+        alert('Could not read that file. Make sure it is a plain .json / .txt file.');
+    };
     r.readAsText(f);
 };
 
@@ -4481,7 +4605,8 @@ CASE 3 — TWO OR MORE figures (in the stem, across options, or both): crop the 
    question — never spill into the neighbour.
 
 Tagging:
-- Label the uploaded screenshots a1, a2, a3, ... (or s1, s2, ...) in upload order and use EXACTLY those labels as imageRef — I will re-upload the same screenshots under the same tags in JEEMaxxing.
+- For screenshots: label them a1, a2, a3, ... (or s1, s2, ...) in upload order.
+- For a PDF: label pages p1, p2, p3, ... (or 1, 2, 3, ...) matching 1-based PDF page numbers — uploading the PDF in JEEMaxxing auto-crops every page.
 - One question gets at most ONE imageRef/cropBox pair; many questions may share a tag with different cropBox values.
 
 Coordinates (the app crops EXACTLY this region — be precise):
@@ -4497,10 +4622,276 @@ function _gemIdKey(key) {
     return String(key).replace(/[^a-z0-9_-]/gi, '_');
 }
 
+// ==================== PDF.JS LOADER & MULTI-PAGE AUTO-CROP ====================
+let _pdfjsLibPromise = null;
+async function _loadPdfJs() {
+    if (_pdfjsLibPromise) return _pdfjsLibPromise;
+    _pdfjsLibPromise = (async () => {
+        const localUrl = new URL('./vendor/pdfjs/pdf.min.mjs', import.meta.url).href;
+        const localWorkerUrl = new URL('./vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+        const cdnUrl = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/legacy/build/pdf.min.mjs';
+        const cdnWorkerUrl = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/legacy/build/pdf.worker.min.mjs';
+        let mod = null;
+        let workerSrc = localWorkerUrl;
+        try {
+            mod = await import(localUrl);
+        } catch (localErr) {
+            console.warn('[pdfjs] local vendor load failed, trying CDN:', localErr);
+            mod = await import(cdnUrl);
+            workerSrc = cdnWorkerUrl;
+        }
+        if (mod && mod.GlobalWorkerOptions) {
+            mod.GlobalWorkerOptions.workerSrc = workerSrc;
+        }
+        return mod;
+    })().catch((err) => {
+        _pdfjsLibPromise = null;
+        throw err;
+    });
+    return _pdfjsLibPromise;
+}
+
 /**
- * Open the 🗺 Gem Diagram Map modal. Counts the distinct tagged source images
- * the batch references ("how many are there"), renders one upload tile per
- * tag, and previews the crop regions as overlays once an image is picked.
+ * Extract a 1-based (or 0-based) page number from a dump tag such as
+ * "p2", "page 3", "page_4", "a1", "s2", "img5", or "7". Returns null when
+ * no unambiguous page index is embedded.
+ */
+function _extractPdfPageNum(tag) {
+    const s = String(tag == null ? '' : tag).trim();
+    if (!s) return null;
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    const m = s.match(/^(?:a|p|pg|page|pdf|s|img|image|fig|figure|slide|sheet)[\s_#-]*(\d+)$/i);
+    if (m) return parseInt(m[1], 10);
+    const m2 = s.match(/[\s_#-](\d+)$/);
+    if (m2) return parseInt(m2[1], 10);
+    return null;
+}
+
+/**
+ * Map distinct dump tags to 1-based PDF page numbers.
+ * Honors explicit page numbers embedded in tags (e.g. a1→1, p4→4, page_2→2),
+ * auto-shifts pure 0-based tags (0..N-1 → 1..N), and falls back to positional
+ * order for unnumbered tags.
+ */
+function _mapGemTagsToPdfPages(tags, numPages) {
+    const map = {};
+    const warnings = [];
+    if (!tags || !tags.length || numPages < 1) return { map, warnings };
+
+    const parsed = tags.map((tag) => ({
+        tag,
+        key: _normGemTag(tag),
+        num: _extractPdfPageNum(tag),
+    }));
+
+    const numericOnly = parsed.filter((p) => p.num !== null);
+    const allZeroIndexed = numericOnly.length === parsed.length
+        && numericOnly.length > 0
+        && Math.min(...numericOnly.map((p) => p.num)) === 0
+        && Math.max(...numericOnly.map((p) => p.num)) < numPages;
+
+    let fallbackIdx = 0;
+    for (const entry of parsed) {
+        let pageNum = entry.num;
+        if (pageNum !== null && allZeroIndexed) pageNum += 1;
+        if (pageNum !== null && pageNum >= 1 && pageNum <= numPages) {
+            map[entry.key] = pageNum;
+        } else {
+            const clamped = Math.min(fallbackIdx + 1, numPages);
+            map[entry.key] = clamped;
+            if (pageNum !== null && pageNum > numPages) {
+                warnings.push(`Tag "${entry.tag}" asked for page ${pageNum} (PDF has ${numPages} page${numPages !== 1 ? 's' : ''}) — mapped to page ${clamped}.`);
+            }
+            fallbackIdx++;
+        }
+    }
+    return { map, warnings };
+}
+
+/**
+ * Render all pages of a PDF File into crisp in-memory data URLs.
+ * Caps max pixel dimension (~2200px) so iPadOS Safari never hits canvas RAM limits.
+ */
+async function _renderPdfToPages(file, onProgress) {
+    const pdfjsLib = await _loadPdfJs();
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(arrayBuffer),
+        useSystemFonts: true,
+    });
+    const pdf = await loadingTask.promise;
+    const numPages = pdf.numPages || 0;
+    const pages = [];
+    try {
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const vp1 = page.getViewport({ scale: 1 });
+            const maxDim = Math.max(vp1.width, vp1.height) || 1;
+            const scale = Math.min(1.75, 1800 / maxDim);
+            const viewport = page.getViewport({ scale });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(viewport.width));
+            canvas.height = Math.max(1, Math.round(viewport.height));
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            // JPEG @ 0.93 over white backing is ~10x faster to encode/decode and
+            // ~6x lighter in RAM than full-page PNG while keeping diagrams razor-sharp.
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.93);
+            const width = canvas.width;
+            const height = canvas.height;
+            // Release backing bitmap immediately to keep memory lean on mobile/iPad.
+            canvas.width = 0;
+            canvas.height = 0;
+            try { page.cleanup(); } catch (_) {}
+
+            pages.push({ pageNum, dataUrl, width, height });
+            if (typeof onProgress === 'function') onProgress(pageNum, numPages);
+        }
+    } finally {
+        // Non-blocking teardown: pdf.destroy() in PDF.js v4 can wait on worker
+        // shutdown after the final page has already been exported to data URLs.
+        try { Promise.resolve(pdf.destroy()).catch(() => {}); } catch (_) {}
+    }
+    return pages;
+}
+
+let _gemPdfDropBound = false;
+
+/**
+ * Switch the Diagram Source modal between the two options:
+ *   'choose' — show the two option cards prominently
+ *   'images' — show the familiar per-tag photo upload slots
+ *   'pdf'    — show the PDF upload dropzone & page-mapping status
+ */
+function selectGemMapSourceMode(mode) {
+    _gemMapSourceMode = mode === 'images' || mode === 'pdf' ? mode : 'choose';
+    const imgCard = document.getElementById('gem-choice-images');
+    const pdfCard = document.getElementById('gem-choice-pdf');
+    const imgSec = document.getElementById('gem-images-section');
+    const pdfSec = document.getElementById('gem-pdf-section');
+    const applyBtn = document.getElementById('btn-gem-apply-crops');
+
+    if (imgCard) imgCard.classList.toggle('active', _gemMapSourceMode === 'images');
+    if (pdfCard) pdfCard.classList.toggle('active', _gemMapSourceMode === 'pdf');
+    if (imgSec) imgSec.style.display = _gemMapSourceMode === 'images' ? 'block' : 'none';
+    if (pdfSec) pdfSec.style.display = _gemMapSourceMode === 'pdf' ? 'block' : 'none';
+    if (applyBtn) {
+        const hasAnySources = Object.keys(_gemImageSources || {}).length > 0;
+        applyBtn.style.display = (_gemMapSourceMode === 'images' || (_gemMapSourceMode === 'pdf' && hasAnySources))
+            ? 'inline-block'
+            : 'none';
+    }
+}
+
+/**
+ * Handle a PDF upload from either #gem-image-map-modal or #preview-modal:
+ * renders ALL pages of the PDF, maps every referenced tag to its page,
+ * auto-crops every diagram / option image / solution image across all pages,
+ * and opens the Review screen (#preview-modal).
+ */
+async function handleGemPdfFileSelect(inputOrFile) {
+    const file = (inputOrFile && inputOrFile.files) ? inputOrFile.files[0] : inputOrFile;
+    if (inputOrFile && inputOrFile.tagName === 'INPUT') {
+        try { inputOrFile.value = ''; } catch (_) {}
+    }
+    if (!file) return;
+    const isPdf = (file.type && file.type.toLowerCase().includes('pdf'))
+        || /\.pdf$/i.test(file.name || '');
+    if (!isPdf) {
+        alert('Please select a valid .pdf file.');
+        return;
+    }
+
+    selectGemMapSourceMode('pdf');
+    const progWrap = document.getElementById('gem-pdf-progress-wrap');
+    const progFill = document.getElementById('gem-pdf-progress-fill');
+    const progText = document.getElementById('gem-pdf-progress-text');
+    const summaryEl = document.getElementById('gem-pdf-summary');
+    const statusEl = document.getElementById('gem-image-map-status');
+    if (progWrap) progWrap.style.display = 'block';
+    if (progFill) progFill.style.width = '4%';
+    if (progText) progText.textContent = `Opening ${file.name}…`;
+    if (summaryEl) summaryEl.style.display = 'none';
+
+    showLoading(`Loading PDF (${file.name})…`);
+    try {
+        const pages = await _renderPdfToPages(file, (cur, total) => {
+            const pct = Math.round((cur / Math.max(1, total)) * 100);
+            if (progFill) progFill.style.width = pct + '%';
+            if (progText) progText.textContent = `Rendering page ${cur} of ${total}…`;
+            showLoading(`Rendering PDF page ${cur} of ${total}…`);
+        });
+        if (!pages.length) {
+            throw new Error('This PDF has no renderable pages.');
+        }
+
+        _gemPdfPages = pages;
+        _gemPdfName = file.name || 'document.pdf';
+
+        const items = AppState.extractedItems || [];
+        const tags = _collectGemImageTags(items);
+        const { map, warnings } = _mapGemTagsToPdfPages(tags, pages.length);
+
+        tags.forEach((tag) => {
+            const key = _normGemTag(tag);
+            const pageNum = map[key];
+            const pageObj = pages[pageNum - 1];
+            if (pageObj) {
+                _gemImageSources[key] = pageObj.dataUrl;
+                _gemSourceMeta[key] = {
+                    type: 'pdf',
+                    fileName: _gemPdfName,
+                    pageNum: pageObj.pageNum,
+                    totalPages: pages.length,
+                };
+            }
+        });
+
+        if (progWrap) progWrap.style.display = 'none';
+        if (summaryEl) {
+            const mappingSummary = tags.length
+                ? tags.map((t) => `<b>${escapeHtml(t)}</b> → p.${map[_normGemTag(t)]}`).join(' · ')
+                : 'No imageRef tags in JSON — you can crop from any PDF page on the review screen.';
+            summaryEl.innerHTML =
+                `✔ Loaded <b>${escapeHtml(_gemPdfName)}</b> (${pages.length} page${pages.length !== 1 ? 's' : ''}).<br>` +
+                `<span style="opacity:0.9">${mappingSummary}</span>` +
+                (warnings.length ? `<br><span style="color:#fbbf24">${escapeHtml(warnings.join(' '))}</span>` : '');
+            summaryEl.style.display = 'block';
+        }
+        const dropTitle = document.getElementById('gem-pdf-drop-title');
+        if (dropTitle) dropTitle.textContent = `✔ ${_gemPdfName} (${pages.length} pages) — click to replace`;
+
+        hideLoading();
+
+        if (tags.length) {
+            // Auto-crop from ALL mapped PDF pages immediately and proceed to Review.
+            await applyGemImageCrops({ autoAdvanceMs: 450 });
+        } else {
+            forceHideModal('gem-image-map-modal');
+            (window.__jmaxAppToast || alert)(`📄 Loaded ${pages.length} PDF page${pages.length !== 1 ? 's' : ''} — click "Crop from PDF" on any question to bind diagrams.`);
+            showPreviewModal();
+        }
+    } catch (err) {
+        console.error('[gem-pdf] failed to process PDF:', err);
+        hideLoading();
+        if (progWrap) progWrap.style.display = 'none';
+        if (statusEl) {
+            statusEl.textContent = `PDF error: ${err.message || err}`;
+            statusEl.className = 'gem-map-status gem-map-status-warn';
+        } else {
+            alert(`Could not read PDF: ${err.message || err}`);
+        }
+    }
+}
+
+/**
+ * Open the 🗺 Diagram Source / Gem Diagram Map modal. Presents two clear
+ * options right after JSON upload/paste — Choose Images (usual per-tag photo
+ * uploads) OR Upload PDF (renders & auto-crops from all pages).
  */
 function openGemImageMappingModal() {
     const items = AppState.extractedItems || [];
@@ -4516,9 +4907,18 @@ function openGemImageMappingModal() {
 
     if (intro) {
         intro.innerHTML =
-            `The dump references <b>${tags.length}</b> tagged source image${tags.length !== 1 ? 's' : ''}: ` +
-            `<b>${escapeHtml(tags.join(', '))}</b>. Upload each tagged image below — the coordinates baked ` +
-            `into the dump auto-crop every diagram, option image and solution image. No manual cropping.`;
+            `The dump references <b>${tags.length}</b> source page${tags.length !== 1 ? 's' : ''}/image${tags.length !== 1 ? 's' : ''}: ` +
+            `<b>${escapeHtml(tags.join(', '))}</b>. Choose whether to upload individual diagram photos as usual or upload a PDF to auto-crop from all pages.`;
+    }
+    const imgDesc = document.getElementById('gem-choice-images-desc');
+    if (imgDesc) {
+        imgDesc.textContent = `Upload ${tags.length} tagged photo${tags.length !== 1 ? 's' : ''} (${tags.slice(0, 4).join(', ')}${tags.length > 4 ? '…' : ''}) as usual`;
+    }
+    const pdfDesc = document.getElementById('gem-choice-pdf-desc');
+    if (pdfDesc) {
+        pdfDesc.textContent = _gemPdfPages.length
+            ? `Loaded: ${_gemPdfName} (${_gemPdfPages.length} pages) — click to replace`
+            : 'Render all pages & auto-crop every diagram automatically';
     }
 
     // tag (normalized) -> { indices, kinds }
@@ -4571,12 +4971,50 @@ function openGemImageMappingModal() {
         if (_gemImageSources[key]) {
             const nameEl = row.querySelector('.file-selected-text');
             if (nameEl) {
-                nameEl.textContent = '✔ Locked (kept in session)';
+                const meta = _gemSourceMeta[key];
+                nameEl.textContent = meta && meta.type === 'pdf'
+                    ? `✔ Mapped from PDF Page ${meta.pageNum} (${meta.fileName})`
+                    : '✔ Locked (kept in session)';
                 nameEl.style.color = 'var(--glow-green)';
             }
             _drawGemBboxOverlay(tag);
         }
     });
+
+    // Wire drag-and-drop onto PDF dropzone and PDF option card once.
+    if (!_gemPdfDropBound) {
+        _gemPdfDropBound = true;
+        ['gem-pdf-dropzone', 'gem-choice-pdf'].forEach((elId) => {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            el.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                el.classList.add('dragover');
+            });
+            el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+            el.addEventListener('drop', (e) => {
+                e.preventDefault();
+                el.classList.remove('dragover');
+                const dropped = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                if (dropped) handleGemPdfFileSelect(dropped);
+            });
+        });
+    }
+
+    // Reset PDF progress UI when reopening cleanly.
+    const progWrap = document.getElementById('gem-pdf-progress-wrap');
+    if (progWrap) progWrap.style.display = 'none';
+    const summaryEl = document.getElementById('gem-pdf-summary');
+    if (summaryEl && !_gemPdfPages.length) summaryEl.style.display = 'none';
+    const dropTitle = document.getElementById('gem-pdf-drop-title');
+    if (dropTitle) {
+        dropTitle.textContent = _gemPdfPages.length
+            ? `✔ ${_gemPdfName} (${_gemPdfPages.length} pages) — click or drop to replace`
+            : 'Tap to select a PDF — or drag & drop here';
+    }
+
+    // Show the two-option chooser on fresh dumps; restore active mode on reopen.
+    selectGemMapSourceMode(_gemMapSourceMode);
 
     // ── Modal-stacking fix: #gem-image-map-modal sits EARLIER in the DOM than
     // #preview-modal, so with equal .modal-overlay z-index the preview would
@@ -4609,6 +5047,7 @@ async function handleGemImageFileSelect(tag, input) {
     try {
         const b64 = await readFileAsBase64(file);
         _gemImageSources[key] = b64;
+        _gemSourceMeta[key] = { type: 'image', fileName: file.name || tag };
         const nameEl = document.getElementById('gem-img-name-' + idKey);
         if (nameEl) {
             nameEl.textContent = '✔ Locked: ' + file.name;
@@ -4669,11 +5108,11 @@ function _drawGemBboxOverlay(tag) {
 
 /**
  * The "enter" step: crop every referenced diagram from its uploaded tagged
- * image using the dump's coordinates, bind each crop to diagramImageUrl, then
- * hand off to the preview grid. Any tag without an upload (or any failed
- * crop) is reported inline and falls back to the manual ➕ Add Diagram flow.
+ * image or rendered PDF page using the dump's coordinates, bind each crop and
+ * preserve its source page + resolved cropBox so the Review screen's Edit
+ * button can reopen the exact same page with the exact same box pre-selected.
  */
-async function applyGemImageCrops() {
+async function applyGemImageCrops(opts = {}) {
     const items = AppState.extractedItems || [];
     // Every (item, tagged-image-ref) pair is a crop job — diagrams, per-option
     // images and the solution image all flow through the same map.
@@ -4685,21 +5124,53 @@ async function applyGemImageCrops() {
         return;
     }
 
-    showLoading('Auto-cropping diagrams, option images and solution images from tagged screenshots...');
-    const dimsCache = {};
+    showLoading('Auto-cropping diagrams, option images and solution images...');
+    const imgCache = {};
+    const cropFromDecodedImg = (img, nb) => {
+        const sx = nb.x * img.width;
+        const sy = nb.y * img.height;
+        const sw = Math.max(1, Math.round(nb.w * img.width));
+        const sh = Math.max(1, Math.round(nb.h * img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = sw;
+        canvas.height = sh;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+        const out = canvas.toDataURL('image/png');
+        canvas.width = 0;
+        canvas.height = 0;
+        return out;
+    };
     const counts = { diagram: 0, option: 0, solution: 0 };
     const totals = { diagram: 0, option: 0, solution: 0 };
     let failed = 0;
     const missingTags = [];
-    const assignCrop = (it, entry, crop) => {
+    const assignCrop = (it, entry, crop, resolvedBbox, key) => {
+        const meta = _gemSourceMeta[key];
+        const pdfPage = meta && meta.type === 'pdf' ? meta.pageNum : null;
         if (entry.kind === 'diagram') {
             it.diagramImageUrl = crop;
             it._gemAutoMapped = true;
+            it._diagramSourceTag = entry.tag;
+            it._diagramCropBbox = { ...resolvedBbox };
+            if (pdfPage) it._diagramPdfPage = pdfPage;
+            else delete it._diagramPdfPage;
         } else if (entry.kind === 'option') {
             it.optionImageUrls = it.optionImageUrls || {};
             it.optionImageUrls[entry.opt] = crop;
+            it._optionCropMeta = it._optionCropMeta || {};
+            it._optionCropMeta[entry.opt] = {
+                tag: entry.tag,
+                bbox: { ...resolvedBbox },
+                pdfPage,
+            };
         } else {
             it.solutionImageUrl = crop;
+            it._solutionCropMeta = {
+                tag: entry.tag,
+                bbox: { ...resolvedBbox },
+                pdfPage,
+            };
         }
     };
     try {
@@ -4711,21 +5182,21 @@ async function applyGemImageCrops() {
                 if (!missingTags.includes(entry.tag)) missingTags.push(entry.tag);
                 continue;
             }
-            if (!dimsCache[key]) {
-                dimsCache[key] = await new Promise(res => {
+            if (!(key in imgCache)) {
+                imgCache[key] = await new Promise(res => {
                     const img = new Image();
-                    img.onload = () => res({ w: img.width, h: img.height });
+                    img.onload = () => res(img);
                     img.onerror = () => res(null);
                     img.src = src;
                 });
             }
-            const dims = dimsCache[key];
-            if (!dims) { failed++; continue; }
-            const nb = _resolveGemBbox(entry.bbox, dims.w, dims.h);
+            const img = imgCache[key];
+            if (!img) { failed++; continue; }
+            const nb = _resolveGemBbox(entry.bbox, img.width, img.height);
             if (!nb) { failed++; continue; }
-            const crop = await cropImageFromBBox(src, nb);
+            const crop = cropFromDecodedImg(img, nb);
             if (crop) {
-                assignCrop(it, entry, crop);
+                assignCrop(it, entry, crop, nb, key);
                 counts[entry.kind]++;
             } else {
                 failed++;
@@ -4744,20 +5215,595 @@ async function applyGemImageCrops() {
         `${counts.solution}/${totals.solution} solution image${totals.solution !== 1 ? 's' : ''}.`,
     ];
     if (missingTags.length) parts.push(`Missing upload${missingTags.length !== 1 ? 's' : ''}: ${missingTags.join(', ')}.`);
-    if (failed) parts.push(`${failed} crop${failed !== 1 ? 's' : ''} failed — use ➕ Add Diagram / manual binds for those.`);
+    if (failed) parts.push(`${failed} crop${failed !== 1 ? 's' : ''} had missing/invalid coords — click Edit / Crop on the review screen to adjust.`);
     if (status) {
         status.textContent = parts.join(' ');
         status.className = 'gem-map-status ' + (missingTags.length || failed ? 'gem-map-status-warn' : 'gem-map-status-ok');
     }
+    const delayMs = typeof opts.autoAdvanceMs === 'number' ? opts.autoAdvanceMs : 900;
     setTimeout(() => {
         forceHideModal('gem-image-map-modal');
         showPreviewModal();
-    }, 1100);
+    }, delayMs);
 }
 
 function skipGemImageMapping() {
     forceHideModal('gem-image-map-modal');
     showPreviewModal();
+}
+
+// ==================== INTERACTIVE ADJUST-CROP EDITOR (REVIEW SCREEN) ====================
+// Opens from the Review screen's "✏️ Edit" button on the exact same source page
+// (PDF page or uploaded photo) with the exact same crop box already selected,
+// allowing drag on corners, edges, interior (move), or exterior (redraw).
+let _adjustCropState = null;
+
+function _clampAdjustBbox(b) {
+    const MIN_SIZE = 0.015;
+    let x = Math.max(0, Math.min(1 - MIN_SIZE, b.x));
+    let y = Math.max(0, Math.min(1 - MIN_SIZE, b.y));
+    let w = Math.max(MIN_SIZE, Math.min(1 - x, b.w));
+    let h = Math.max(MIN_SIZE, Math.min(1 - y, b.h));
+    return { x, y, w, h };
+}
+
+function _computeAdjustCanvasSize(img) {
+    const natW = img.naturalWidth || img.width || 1;
+    const natH = img.naturalHeight || img.height || 1;
+    const stage = document.getElementById('adjust-crop-stage');
+    const maxW = Math.max(260, Math.min(960, (stage ? stage.clientWidth - 24 : 0) || (window.innerWidth * 0.88)));
+    const maxH = Math.max(220, Math.min(window.innerHeight * 0.62, 640));
+    const scale = Math.min(maxW / natW, maxH / natH, 1.5);
+    return {
+        w: Math.max(1, Math.round(natW * scale)),
+        h: Math.max(1, Math.round(natH * scale)),
+    };
+}
+
+function _hitTestAdjustHandle(state, px, py) {
+    const { displayW, displayH, bbox } = state;
+    const rx = bbox.x * displayW;
+    const ry = bbox.y * displayH;
+    const rw = bbox.w * displayW;
+    const rh = bbox.h * displayH;
+    const rx2 = rx + rw;
+    const ry2 = ry + rh;
+    const mx = rx + rw / 2;
+    const my = ry + rh / 2;
+    const R = 18; // generous touch + mouse hit radius (CSS px)
+
+    const near = (ax, ay) => Math.hypot(px - ax, py - ay) <= R;
+    if (near(rx, ry)) return 'nw';
+    if (near(rx2, ry)) return 'ne';
+    if (near(rx, ry2)) return 'sw';
+    if (near(rx2, ry2)) return 'se';
+
+    // Edge midpoint handles + whole edge rails
+    const EDGE_BAND = 12;
+    if (near(mx, ry) || (px >= rx + R * 0.5 && px <= rx2 - R * 0.5 && Math.abs(py - ry) <= EDGE_BAND)) return 'n';
+    if (near(mx, ry2) || (px >= rx + R * 0.5 && px <= rx2 - R * 0.5 && Math.abs(py - ry2) <= EDGE_BAND)) return 's';
+    if (near(rx, my) || (py >= ry + R * 0.5 && py <= ry2 - R * 0.5 && Math.abs(px - rx) <= EDGE_BAND)) return 'w';
+    if (near(rx2, my) || (py >= ry + R * 0.5 && py <= ry2 - R * 0.5 && Math.abs(px - rx2) <= EDGE_BAND)) return 'e';
+
+    if (px >= rx && px <= rx2 && py >= ry && py <= ry2) return 'move';
+    return 'redraw';
+}
+
+function _cursorForAdjustMode(mode) {
+    switch (mode) {
+        case 'nw': case 'se': return 'nwse-resize';
+        case 'ne': case 'sw': return 'nesw-resize';
+        case 'n':  case 's':  return 'ns-resize';
+        case 'w':  case 'e':  return 'ew-resize';
+        case 'move': return 'move';
+        default: return 'crosshair';
+    }
+}
+
+function _renderAdjustCropCanvas() {
+    const st = _adjustCropState;
+    if (!st || !st.img || !st.canvas) return;
+    const { canvas, img, displayW, displayH, dpr, bbox } = st;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, displayW, displayH);
+
+    // 1. Draw full page image
+    ctx.drawImage(img, 0, 0, displayW, displayH);
+
+    const rx = bbox.x * displayW;
+    const ry = bbox.y * displayH;
+    const rw = bbox.w * displayW;
+    const rh = bbox.h * displayH;
+
+    // 2. Dim outside the crop box so leaked edges stand out immediately
+    ctx.fillStyle = 'rgba(6, 7, 10, 0.58)';
+    ctx.fillRect(0, 0, displayW, Math.max(0, ry));
+    ctx.fillRect(0, ry + rh, displayW, Math.max(0, displayH - (ry + rh)));
+    ctx.fillRect(0, ry, Math.max(0, rx), rh);
+    ctx.fillRect(rx + rw, ry, Math.max(0, displayW - (rx + rw)), rh);
+
+    // 3. Subtle alignment thirds grid while actively dragging
+    if (st.drag) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(rx + rw / 3, ry); ctx.lineTo(rx + rw / 3, ry + rh);
+        ctx.moveTo(rx + (2 * rw) / 3, ry); ctx.lineTo(rx + (2 * rw) / 3, ry + rh);
+        ctx.moveTo(rx, ry + rh / 3); ctx.lineTo(rx + rw, ry + rh / 3);
+        ctx.moveTo(rx, ry + (2 * rh) / 3); ctx.lineTo(rx + rw, ry + (2 * rh) / 3);
+        ctx.stroke();
+    }
+
+    // 4. Selection border (crisp dual stroke for visibility on both white & dark pages)
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.strokeStyle = '#f97316';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(rx, ry, rw, rh);
+
+    // 5. Corner circular handles
+    const corners = [
+        [rx, ry],
+        [rx + rw, ry],
+        [rx, ry + rh],
+        [rx + rw, ry + rh],
+    ];
+    corners.forEach(([cx, cy]) => {
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#f97316';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+    });
+
+    // 6. Edge midpoint pill handles (for easy single-side trim)
+    const drawEdgePill = (cx, cy, horiz) => {
+        const pw = horiz ? 18 : 6;
+        const ph = horiz ? 6 : 18;
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(cx - pw / 2, cy - ph / 2, pw, ph, 3);
+        } else {
+            ctx.rect(cx - pw / 2, cy - ph / 2, pw, ph);
+        }
+        ctx.fill();
+        ctx.stroke();
+    };
+    if (rw >= 36) {
+        drawEdgePill(rx + rw / 2, ry, true);
+        drawEdgePill(rx + rw / 2, ry + rh, true);
+    }
+    if (rh >= 36) {
+        drawEdgePill(rx, ry + rh / 2, false);
+        drawEdgePill(rx + rw, ry + rh / 2, false);
+    }
+
+    ctx.restore();
+    _updateAdjustCropLivePreview();
+}
+
+function _updateAdjustCropLivePreview() {
+    const st = _adjustCropState;
+    if (!st || !st.img) return;
+    const prevCanvas = document.getElementById('adjust-crop-live-preview');
+    const dimsEl = document.getElementById('adjust-crop-dims');
+    const natW = st.img.naturalWidth || st.img.width || 1;
+    const natH = st.img.naturalHeight || st.img.height || 1;
+    const sx = st.bbox.x * natW;
+    const sy = st.bbox.y * natH;
+    const sw = Math.max(1, st.bbox.w * natW);
+    const sh = Math.max(1, st.bbox.h * natH);
+
+    if (dimsEl) {
+        dimsEl.textContent = `${Math.round(sw)} × ${Math.round(sh)} px`;
+    }
+    if (!prevCanvas) return;
+    const pctx = prevCanvas.getContext('2d');
+    if (!pctx) return;
+    const pw = prevCanvas.width;
+    const ph = prevCanvas.height;
+    pctx.fillStyle = '#ffffff';
+    pctx.fillRect(0, 0, pw, ph);
+    const fit = Math.min(pw / sw, ph / sh);
+    const dw = sw * fit;
+    const dh = sh * fit;
+    pctx.drawImage(st.img, sx, sy, sw, sh, (pw - dw) / 2, (ph - dh) / 2, dw, dh);
+}
+
+function _loadAdjustCropImage(dataUrl) {
+    const st = _adjustCropState;
+    if (!st || !dataUrl) return;
+    st.sourceDataUrl = dataUrl;
+    const img = new Image();
+    img.onload = () => {
+        if (_adjustCropState !== st) return;
+        st.img = img;
+        // Resolve the initial bbox against real image pixels once on load if needed.
+        if (st.pendingRawBbox) {
+            const resolved = _resolveGemBbox(st.pendingRawBbox, img.naturalWidth, img.naturalHeight);
+            st.bbox = resolved ? _clampAdjustBbox(resolved) : { x: 0.12, y: 0.15, w: 0.76, h: 0.38 };
+            st.initialBbox = { ...st.bbox };
+            st.pendingRawBbox = null;
+        }
+        const size = _computeAdjustCanvasSize(img);
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        st.displayW = size.w;
+        st.displayH = size.h;
+        st.dpr = dpr;
+        st.canvas.width = Math.max(1, Math.round(size.w * dpr));
+        st.canvas.height = Math.max(1, Math.round(size.h * dpr));
+        st.canvas.style.width = size.w + 'px';
+        st.canvas.style.height = size.h + 'px';
+        _renderAdjustCropCanvas();
+    };
+    img.onerror = () => {
+        alert('Could not decode source page image for editing.');
+        closeAdjustCropModal();
+    };
+    img.src = dataUrl;
+}
+
+function _syncAdjustCropHeader() {
+    const st = _adjustCropState;
+    if (!st) return;
+    const titleEl = document.getElementById('adjust-crop-title');
+    const badgeEl = document.getElementById('adjust-crop-source-badge');
+    const pageNav = document.getElementById('adjust-crop-page-nav');
+    const pageLabel = document.getElementById('adjust-crop-page-label');
+    const prevBtn = document.getElementById('adjust-crop-prev-page');
+    const nextBtn = document.getElementById('adjust-crop-next-page');
+
+    const kindLabel = st.kind === 'option'
+        ? `Option ${st.optKey}`
+        : st.kind === 'solution'
+            ? 'Solution Diagram'
+            : 'Diagram';
+    if (titleEl) titleEl.textContent = `✏️ Adjust ${kindLabel} — Q${st.idx + 1}`;
+    if (badgeEl) {
+        if (st.pdfPage) {
+            badgeEl.textContent = (st.tag ? `${st.tag} · ` : '') + `Page ${st.pdfPage}`;
+        } else if (st.tag) {
+            badgeEl.textContent = `Source: ${st.tag}`;
+        } else {
+            badgeEl.textContent = 'Uploaded photo';
+        }
+    }
+    const totalPdfPages = Array.isArray(_gemPdfPages) ? _gemPdfPages.length : 0;
+    if (pageNav) {
+        if (totalPdfPages > 1 && st.pdfPage) {
+            pageNav.style.display = 'inline-flex';
+            if (pageLabel) pageLabel.textContent = `Page ${st.pdfPage} / ${totalPdfPages}`;
+            if (prevBtn) prevBtn.disabled = st.pdfPage <= 1;
+            if (nextBtn) nextBtn.disabled = st.pdfPage >= totalPdfPages;
+        } else {
+            pageNav.style.display = 'none';
+        }
+    }
+}
+
+function _bindAdjustCropListeners(canvas) {
+    const getPos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: Math.max(0, Math.min(rect.width, e.clientX - rect.left)),
+            y: Math.max(0, Math.min(rect.height, e.clientY - rect.top)),
+        };
+    };
+
+    const onPointerDown = (e) => {
+        const st = _adjustCropState;
+        if (!st || !st.img) return;
+        e.preventDefault();
+        const pos = getPos(e);
+        const mode = _hitTestAdjustHandle(st, pos.x, pos.y);
+        st.drag = {
+            mode,
+            pointerId: e.pointerId,
+            startPx: pos.x,
+            startPy: pos.y,
+            startBbox: { ...st.bbox },
+        };
+        if (mode === 'redraw') {
+            const nx = pos.x / st.displayW;
+            const ny = pos.y / st.displayH;
+            st.bbox = _clampAdjustBbox({ x: nx, y: ny, w: 0.015, h: 0.015 });
+        }
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+        canvas.style.cursor = _cursorForAdjustMode(mode);
+        _renderAdjustCropCanvas();
+    };
+
+    const onPointerMove = (e) => {
+        const st = _adjustCropState;
+        if (!st || !st.img) return;
+        const pos = getPos(e);
+        if (!st.drag) {
+            canvas.style.cursor = _cursorForAdjustMode(_hitTestAdjustHandle(st, pos.x, pos.y));
+            return;
+        }
+        e.preventDefault();
+        const { mode, startPx, startPy, startBbox } = st.drag;
+        const dx = (pos.x - startPx) / st.displayW;
+        const dy = (pos.y - startPy) / st.displayH;
+        const MIN = 0.02;
+
+        let x1 = startBbox.x;
+        let y1 = startBbox.y;
+        let x2 = startBbox.x + startBbox.w;
+        let y2 = startBbox.y + startBbox.h;
+
+        if (mode === 'move') {
+            const w = startBbox.w;
+            const h = startBbox.h;
+            const nx = Math.max(0, Math.min(1 - w, startBbox.x + dx));
+            const ny = Math.max(0, Math.min(1 - h, startBbox.y + dy));
+            st.bbox = { x: nx, y: ny, w, h };
+        } else if (mode === 'redraw') {
+            const sx = startPx / st.displayW;
+            const sy = startPy / st.displayH;
+            const ex = pos.x / st.displayW;
+            const ey = pos.y / st.displayH;
+            const rx = Math.min(sx, ex);
+            const ry = Math.min(sy, ey);
+            const rw = Math.max(MIN, Math.abs(ex - sx));
+            const rh = Math.max(MIN, Math.abs(ey - sy));
+            st.bbox = _clampAdjustBbox({ x: rx, y: ry, w: rw, h: rh });
+        } else {
+            if (mode.includes('w')) x1 = Math.max(0, Math.min(x2 - MIN, x1 + dx));
+            if (mode.includes('e')) x2 = Math.min(1, Math.max(x1 + MIN, x2 + dx));
+            if (mode.includes('n')) y1 = Math.max(0, Math.min(y2 - MIN, y1 + dy));
+            if (mode.includes('s')) y2 = Math.min(1, Math.max(y1 + MIN, y2 + dy));
+            st.bbox = _clampAdjustBbox({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+        }
+        _renderAdjustCropCanvas();
+    };
+
+    const onPointerUp = (e) => {
+        const st = _adjustCropState;
+        if (!st || !st.drag) return;
+        try { canvas.releasePointerCapture(st.drag.pointerId); } catch (_) {}
+        st.drag = null;
+        _renderAdjustCropCanvas();
+    };
+
+    const onKeyDown = (e) => {
+        if (!_adjustCropState) return;
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeAdjustCropModal();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            applyAdjustCrop();
+        }
+    };
+
+    const onResize = () => {
+        const st = _adjustCropState;
+        if (!st || !st.img || !st.canvas) return;
+        const size = _computeAdjustCanvasSize(st.img);
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        st.displayW = size.w;
+        st.displayH = size.h;
+        st.dpr = dpr;
+        st.canvas.width = Math.max(1, Math.round(size.w * dpr));
+        st.canvas.height = Math.max(1, Math.round(size.h * dpr));
+        st.canvas.style.width = size.w + 'px';
+        st.canvas.style.height = size.h + 'px';
+        _renderAdjustCropCanvas();
+    };
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerUp);
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('resize', onResize);
+
+    return () => {
+        canvas.removeEventListener('pointerdown', onPointerDown);
+        canvas.removeEventListener('pointermove', onPointerMove);
+        canvas.removeEventListener('pointerup', onPointerUp);
+        canvas.removeEventListener('pointercancel', onPointerUp);
+        window.removeEventListener('keydown', onKeyDown, true);
+        window.removeEventListener('resize', onResize);
+    };
+}
+
+/**
+ * Open the interactive Adjust Crop editor for a question's diagram, option
+ * image, or solution image on the Review screen. Reopens the exact same page
+ * with the exact same crop box already selected so the user can tighten any
+ * leaking edges and click "✓ Apply & Add".
+ */
+function openAdjustCropModal(idx, kind = 'diagram', optKey = null) {
+    const items = AppState.extractedItems || [];
+    const item = items[idx];
+    if (!item) return;
+
+    let tag = null;
+    let pdfPage = null;
+    let sourceDataUrl = null;
+    let rawBbox = null;
+
+    if (kind === 'option' && optKey) {
+        const meta = item._optionCropMeta && item._optionCropMeta[optKey];
+        const ref = item.gemOptionImages && item.gemOptionImages[optKey];
+        tag = (meta && meta.tag) || (ref && ref.tag) || null;
+        const normTag = tag ? _normGemTag(tag) : '';
+        pdfPage = (meta && Number.isInteger(meta.pdfPage)) ? meta.pdfPage
+            : (normTag && _gemSourceMeta[normTag]?.type === 'pdf' ? _gemSourceMeta[normTag].pageNum
+                : (_gemPdfPages.length ? 1 : null));
+        sourceDataUrl = (pdfPage && _gemPdfPages[pdfPage - 1]?.dataUrl)
+            || (normTag && _gemImageSources[normTag])
+            || null;
+        rawBbox = (meta && meta.bbox) || (ref && ref.bbox) || null;
+    } else if (kind === 'solution') {
+        const meta = item._solutionCropMeta;
+        const ref = item.gemSolutionImage;
+        tag = (meta && meta.tag) || (ref && ref.tag) || null;
+        const normTag = tag ? _normGemTag(tag) : '';
+        pdfPage = (meta && Number.isInteger(meta.pdfPage)) ? meta.pdfPage
+            : (normTag && _gemSourceMeta[normTag]?.type === 'pdf' ? _gemSourceMeta[normTag].pageNum
+                : (_gemPdfPages.length ? 1 : null));
+        sourceDataUrl = (pdfPage && _gemPdfPages[pdfPage - 1]?.dataUrl)
+            || (normTag && _gemImageSources[normTag])
+            || null;
+        rawBbox = (meta && meta.bbox) || (ref && ref.bbox) || null;
+    } else {
+        tag = item._diagramSourceTag || (item.gemImage && item.gemImage.tag) || null;
+        const normTag = tag ? _normGemTag(tag) : '';
+        pdfPage = Number.isInteger(item._diagramPdfPage) ? item._diagramPdfPage
+            : (normTag && _gemSourceMeta[normTag]?.type === 'pdf' ? _gemSourceMeta[normTag].pageNum
+                : (!item._diagramSourceDataUrl && !(normTag && _gemImageSources[normTag]) && _gemPdfPages.length ? 1 : null));
+        sourceDataUrl = (pdfPage && _gemPdfPages[pdfPage - 1]?.dataUrl)
+            || (normTag && _gemImageSources[normTag])
+            || item._diagramSourceDataUrl
+            || null;
+        rawBbox = item._diagramCropBbox || (item.gemImage && item.gemImage.bbox) || null;
+    }
+
+    if (!sourceDataUrl) {
+        alert('Original source page is not loaded in memory — use 🗺 Diagram Map or ➕ Add Diagram to upload it.');
+        return;
+    }
+
+    if (_adjustCropState && typeof _adjustCropState.cleanup === 'function') {
+        _adjustCropState.cleanup();
+    }
+
+    const canvas = document.getElementById('adjust-crop-canvas');
+    if (!canvas) return;
+
+    // Dismiss preview synchronously so #adjust-crop-modal sits cleanly on top.
+    forceHideModal('preview-modal');
+    const modal = document.getElementById('adjust-crop-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+    }
+
+    _adjustCropState = {
+        idx,
+        kind,
+        optKey,
+        tag,
+        pdfPage,
+        sourceDataUrl,
+        canvas,
+        img: null,
+        displayW: 1,
+        displayH: 1,
+        dpr: 1,
+        bbox: { x: 0.12, y: 0.15, w: 0.76, h: 0.38 },
+        initialBbox: { x: 0.12, y: 0.15, w: 0.76, h: 0.38 },
+        pendingRawBbox: rawBbox || { x: 0.12, y: 0.15, w: 0.76, h: 0.38 },
+        drag: null,
+        cleanup: null,
+    };
+    _adjustCropState.cleanup = _bindAdjustCropListeners(canvas);
+    _syncAdjustCropHeader();
+    _loadAdjustCropImage(sourceDataUrl);
+}
+
+function adjustCropChangePage(delta) {
+    const st = _adjustCropState;
+    if (!st || !Array.isArray(_gemPdfPages) || !_gemPdfPages.length || !st.pdfPage) return;
+    const nextPage = Math.max(1, Math.min(_gemPdfPages.length, st.pdfPage + delta));
+    if (nextPage === st.pdfPage) return;
+    st.pdfPage = nextPage;
+    _syncAdjustCropHeader();
+    _loadAdjustCropImage(_gemPdfPages[nextPage - 1].dataUrl);
+}
+
+function resetAdjustCropBox() {
+    const st = _adjustCropState;
+    if (!st || !st.initialBbox) return;
+    st.bbox = { ...st.initialBbox };
+    _renderAdjustCropCanvas();
+}
+
+function closeAdjustCropModal() {
+    const returnIdx = _adjustCropState ? _adjustCropState.idx : null;
+    if (_adjustCropState && typeof _adjustCropState.cleanup === 'function') {
+        _adjustCropState.cleanup();
+    }
+    _adjustCropState = null;
+    forceHideModal('adjust-crop-modal');
+    showPreviewModal(returnIdx);
+}
+
+async function applyAdjustCrop() {
+    const st = _adjustCropState;
+    if (!st || !st.sourceDataUrl || !st.bbox) return;
+    const items = AppState.extractedItems || [];
+    const item = items[st.idx];
+    if (!item) {
+        closeAdjustCropModal();
+        return;
+    }
+
+    const applyBtn = document.getElementById('adjust-crop-apply-btn');
+    if (applyBtn) applyBtn.disabled = true;
+    try {
+        const finalBbox = _clampAdjustBbox(st.bbox);
+        const cropped = await cropImageFromBBox(st.sourceDataUrl, finalBbox);
+        if (!cropped) {
+            alert('Could not crop that region — try a slightly larger selection.');
+            return;
+        }
+        if (st.kind === 'option' && st.optKey) {
+            item.optionImageUrls = item.optionImageUrls || {};
+            item.optionImageUrls[st.optKey] = cropped;
+            item._optionCropMeta = item._optionCropMeta || {};
+            item._optionCropMeta[st.optKey] = {
+                tag: st.tag,
+                bbox: { ...finalBbox },
+                pdfPage: st.pdfPage || null,
+            };
+            if (item.gemOptionImages && item.gemOptionImages[st.optKey]) {
+                item.gemOptionImages[st.optKey].bbox = { ...finalBbox };
+            }
+        } else if (st.kind === 'solution') {
+            item.solutionImageUrl = cropped;
+            item._solutionCropMeta = {
+                tag: st.tag,
+                bbox: { ...finalBbox },
+                pdfPage: st.pdfPage || null,
+            };
+            if (item.gemSolutionImage) {
+                item.gemSolutionImage.bbox = { ...finalBbox };
+            }
+        } else {
+            item.diagramImageUrl = cropped;
+            item._gemAutoMapped = false;
+            item._diagramCropBbox = { ...finalBbox };
+            if (st.tag) item._diagramSourceTag = st.tag;
+            if (st.pdfPage) item._diagramPdfPage = st.pdfPage;
+            if (item.gemImage) {
+                item.gemImage.bbox = { ...finalBbox };
+            }
+        }
+
+        const returnIdx = st.idx;
+        if (typeof st.cleanup === 'function') st.cleanup();
+        _adjustCropState = null;
+        forceHideModal('adjust-crop-modal');
+        showPreviewModal(returnIdx);
+    } finally {
+        if (applyBtn) applyBtn.disabled = false;
+    }
 }
 
 function copyGemImageInstructions() {
@@ -13939,15 +14985,43 @@ window.triggerSurgicalDiagramUpload = function(index) {
 };
 
 window.yeetSurgicalDiagram = function(index) {
-    AppState.extractedItems[index].diagramImageUrl = null;
-    showPreviewModal();
+    const it = AppState.extractedItems[index];
+    if (it) {
+        it.diagramImageUrl = null;
+        it._gemAutoMapped = false;
+    }
+    showPreviewModal(index);
 };
 
-// ── Gem Diagram Auto-Crop Map bridges (inline onclick hooks in index.html) ──
+window.yeetOptionDiagram = function(index, optKey) {
+    const it = AppState.extractedItems[index];
+    if (it && it.optionImageUrls && optKey) {
+        delete it.optionImageUrls[optKey];
+        if (!Object.keys(it.optionImageUrls).length) it.optionImageUrls = null;
+    }
+    showPreviewModal(index);
+};
+
+window.yeetSolutionDiagram = function(index) {
+    const it = AppState.extractedItems[index];
+    if (it) {
+        it.solutionImageUrl = null;
+    }
+    showPreviewModal(index);
+};
+
+// ── Gem Diagram Auto-Crop Map & PDF / Adjust-Crop bridges (inline onclick hooks in index.html) ──
 window.openGemImageMappingModal = openGemImageMappingModal;
+window.selectGemMapSourceMode = selectGemMapSourceMode;
+window.handleGemPdfFileSelect = handleGemPdfFileSelect;
 window.skipGemImageMapping = skipGemImageMapping;
 window.applyGemImageCrops = applyGemImageCrops;
 window.copyGemImageInstructions = copyGemImageInstructions;
+window.openAdjustCropModal = openAdjustCropModal;
+window.closeAdjustCropModal = closeAdjustCropModal;
+window.resetAdjustCropBox = resetAdjustCropBox;
+window.applyAdjustCrop = applyAdjustCrop;
+window.adjustCropChangePage = adjustCropChangePage;
 // Expose applyFilter globally so the inline `onchange="applyFilter()"`
 // attribute on #question-filter (inside #practice-question-list-view) can
 // resolve it. Without this, the function stays module-scoped and the filter

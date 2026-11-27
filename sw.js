@@ -244,7 +244,11 @@
 //        heartbeat.js updated with 8h sleep freeze, grandfathered 18h reservoir,
 //        and x1.20 / x1.00 / x0.70 circadian yield; sw.js stops auto-reloading
 //        active study sessions on update.
-const VERSION = 'jeemax-v129';
+// v130 - PDF MULTI-PAGE AUTO-CROP & REVIEW EDIT CROPPER:
+//        Vendored PDF.js legacy build (vendor/pdfjs/pdf.min.mjs + worker) for
+//        Images-vs-PDF diagram ingestion, automatic multi-page PDF cropping,
+//        and review-screen interactive crop-box adjustment on the original page.
+const VERSION = 'jeemax-v130';
 
 const SHELL = [
   './',
@@ -304,6 +308,8 @@ const SHELL = [
   './nightguard.js',
   './cortex.js',
   './vendor/three/three.module.min.js',
+  './vendor/pdfjs/pdf.min.mjs',
+  './vendor/pdfjs/pdf.worker.min.mjs',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -443,7 +449,7 @@ self.addEventListener('fetch', (event) => {
   // for local files — index.html is served with ?v= hashing in some setups).
   // .html included so the manifest start_url (./index.html) is served from
   // cache offline; .woff2 for the vendored KaTeX fonts.
-  if (isLocal && url.pathname.includes('.') && !/(\.js|\.css|\.png|\.webmanifest|\.ico|\.woff2?|\.html|\.mp3|\.wav|\.svg)$/.test(url.pathname)) {
+  if (isLocal && url.pathname.includes('.') && !/(\.m?js|\.css|\.png|\.webmanifest|\.ico|\.woff2?|\.html|\.mp3|\.wav|\.svg)$/.test(url.pathname)) {
     return;
   }
 

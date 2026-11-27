@@ -8685,6 +8685,255 @@ body.fi-full-open { overflow: hidden; }
     font-size: 11.5px;
 }
 
+/* ── Diagram source chooser (Images vs PDF) inside #gem-image-map-modal ── */
+.gem-source-chooser {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.gem-source-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 18px 14px;
+    border: 1.5px solid var(--line-strong, rgba(255, 255, 255, 0.16));
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-primary, #f1f5f9);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+    font-family: inherit;
+    user-select: none;
+}
+.gem-source-card:hover {
+    border-color: rgba(56, 189, 248, 0.55);
+    background: rgba(56, 189, 248, 0.07);
+    transform: translateY(-1px);
+}
+.gem-source-card.active {
+    border-color: rgba(56, 189, 248, 0.85);
+    background: rgba(56, 189, 248, 0.11);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.gem-source-icon {
+    font-size: 26px;
+    line-height: 1;
+}
+.gem-source-title {
+    font-size: 14.5px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+.gem-source-desc {
+    font-size: 11.5px;
+    color: var(--text-muted, #94a3b8);
+    line-height: 1.35;
+}
+.gem-pdf-dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 24px 16px;
+    border: 1.5px dashed rgba(56, 189, 248, 0.45);
+    border-radius: 12px;
+    background: rgba(56, 189, 248, 0.04);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease;
+    margin-bottom: 10px;
+}
+.gem-pdf-dropzone:hover,
+.gem-pdf-dropzone.dragover {
+    border-color: rgba(56, 189, 248, 0.9);
+    background: rgba(56, 189, 248, 0.1);
+}
+.gem-pdf-drop-icon { font-size: 28px; line-height: 1; }
+.gem-pdf-drop-title { font-size: 13.5px; font-weight: 600; color: var(--text-primary, #f1f5f9); }
+.gem-pdf-drop-hint { font-size: 11.5px; color: var(--text-muted, #94a3b8); }
+.gem-pdf-progress-wrap { margin: 10px 0; }
+.gem-pdf-progress-text { font-size: 12px; color: #7dd3fc; margin-top: 6px; font-weight: 600; }
+.gem-pdf-summary {
+    padding: 10px 12px;
+    border: 1px solid rgba(110, 231, 183, 0.35);
+    border-radius: 10px;
+    background: rgba(16, 185, 129, 0.07);
+    font-size: 12px;
+    color: #d1fae5;
+    line-height: 1.45;
+    margin-top: 8px;
+}
+
+/* ── Review-screen compact Edit / Wipe action rows ── */
+.surgical-asset-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+.surgical-asset-actions .btn {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 11.5px;
+    white-space: nowrap;
+}
+.preview-mini-asset {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 4px 0 8px;
+    padding: 6px;
+    border-radius: 8px;
+    border: 1px solid rgba(59, 130, 246, 0.32);
+    background: rgba(59, 130, 246, 0.05);
+}
+.preview-mini-asset.is-solution {
+    border-color: rgba(110, 231, 183, 0.35);
+    background: rgba(16, 185, 129, 0.05);
+}
+.preview-mini-actions {
+    display: flex;
+    gap: 6px;
+}
+.preview-mini-actions .btn {
+    padding: 2px 8px;
+    font-size: 11px;
+}
+
+/* ── Interactive Adjust Crop Editor (#adjust-crop-modal) ── */
+.adjust-crop-modal-card {
+    max-width: min(96vw, 1020px);
+    width: 100%;
+    max-height: 94vh;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 20px;
+    overflow: hidden;
+}
+.adjust-crop-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-right: 36px;
+}
+.adjust-crop-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.adjust-crop-title-wrap h2 {
+    margin: 0;
+    font-size: 17px;
+}
+.adjust-crop-page-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.adjust-crop-page-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary, #cbd5e1);
+    min-width: 84px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.adjust-crop-hint {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-muted, #94a3b8);
+}
+.adjust-crop-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 7, 10, 0.72);
+    border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+    border-radius: 12px;
+    padding: 10px;
+    overflow: hidden;
+}
+.adjust-crop-canvas {
+    display: block;
+    border-radius: 6px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.adjust-crop-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding-top: 6px;
+    border-top: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+}
+.adjust-crop-live-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.adjust-crop-live-preview {
+    width: 112px;
+    height: 70px;
+    object-fit: contain;
+    background: #ffffff;
+    border-radius: 6px;
+    border: 1px solid rgba(249, 115, 22, 0.55);
+}
+.adjust-crop-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.adjust-crop-meta-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fb923c;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.adjust-crop-dims {
+    font-size: 12px;
+    color: var(--text-secondary, #cbd5e1);
+    font-variant-numeric: tabular-nums;
+}
+.adjust-crop-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+@media (max-width: 640px) {
+    .gem-source-chooser {
+        grid-template-columns: 1fr;
+    }
+    .adjust-crop-modal-card {
+        padding: 14px;
+        max-height: 98vh;
+    }
+    .adjust-crop-footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .adjust-crop-actions {
+        justify-content: flex-end;
+    }
+}
+
 /* ── SR drawer + error-matrix cards: Gem auto-crop media (diagram, per-option
       and solution figures) — parity with the practice modal rendering ── */
 .sr-question-diagram {

@@ -999,14 +999,48 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
     </div>
 </div>
 
-<!-- Gem Diagram Auto-Crop Map: one upload per tagged source screenshot; the
-     cropBox coordinates baked into the dump auto-crop every referenced diagram. -->
+<!-- Gem Diagram Auto-Crop Map: choose between uploading individual tagged
+     photos as usual OR uploading a full PDF to auto-crop from all pages. -->
 <div id="gem-image-map-modal" class="modal-overlay" onclick="closeModal(event, 'gem-image-map-modal')">
     <div class="modal-card gem-map-modal-card">
         <button class="close-btn" onclick="closeModalStr('gem-image-map-modal')" aria-label="Close">✕</button>
-        <h2><svg class="g"><use href="#g-map"></use></svg> Gem Diagram Map</h2>
+        <h2><svg class="g"><use href="#g-map"></use></svg> Diagram Source</h2>
         <p id="gem-map-intro" class="box-desc" style="margin-bottom:14px;"></p>
-        <div id="gem-image-map-body"></div>
+
+        <!-- Two-option chooser shown right after JSON upload / paste -->
+        <div id="gem-source-chooser" class="gem-source-chooser" role="group" aria-label="Choose diagram source type">
+            <button type="button" id="gem-choice-images" class="gem-source-card" onclick="window.selectGemMapSourceMode('images')">
+                <span class="gem-source-icon" aria-hidden="true">🖼️</span>
+                <span class="gem-source-title">Choose Images</span>
+                <span class="gem-source-desc" id="gem-choice-images-desc">Upload tagged diagram photos as usual</span>
+            </button>
+            <label for="gem-pdf-file-input" id="gem-choice-pdf" class="gem-source-card" onclick="window.selectGemMapSourceMode('pdf')">
+                <span class="gem-source-icon" aria-hidden="true">📄</span>
+                <span class="gem-source-title">Upload PDF</span>
+                <span class="gem-source-desc" id="gem-choice-pdf-desc">Auto-crop diagrams from all PDF pages</span>
+            </label>
+            <input type="file" id="gem-pdf-file-input" accept=".pdf,application/pdf" style="display:none" onchange="window.handleGemPdfFileSelect(this)">
+        </div>
+
+        <!-- Option 1: Per-tag photo uploads (existing workflow) -->
+        <div id="gem-images-section" style="display:none;">
+            <div id="gem-image-map-body"></div>
+        </div>
+
+        <!-- Option 2: Full PDF upload + page render progress -->
+        <div id="gem-pdf-section" style="display:none;">
+            <label for="gem-pdf-file-input" id="gem-pdf-dropzone" class="gem-pdf-dropzone">
+                <span class="gem-pdf-drop-icon" aria-hidden="true">📄</span>
+                <span class="gem-pdf-drop-title" id="gem-pdf-drop-title">Tap to select a PDF — or drag &amp; drop here</span>
+                <span class="gem-pdf-drop-hint" id="gem-pdf-drop-hint">All pages are rendered locally &amp; every diagram is auto-cropped automatically</span>
+            </label>
+            <div id="gem-pdf-progress-wrap" class="gem-pdf-progress-wrap" style="display:none;">
+                <div class="progress-bar"><div class="progress-fill" id="gem-pdf-progress-fill"></div></div>
+                <div id="gem-pdf-progress-text" class="gem-pdf-progress-text"></div>
+            </div>
+            <div id="gem-pdf-summary" class="gem-pdf-summary" style="display:none;"></div>
+        </div>
+
         <div id="gem-image-map-status" class="gem-map-status"></div>
         <details class="gem-map-instructions" id="gem-map-instructions">
             <summary><svg class="g"><use href="#g-copy"></use></svg> Copy this into Gemini so your dumps carry crop coordinates</summary>
@@ -1017,7 +1051,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
         </details>
         <div style="display:flex;gap:12px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap;">
             <button class="btn btn-secondary" onclick="window.skipGemImageMapping()">Skip → Preview</button>
-            <button class="btn btn-primary" onclick="window.applyGemImageCrops()">🗺 Auto-Crop & Map →</button>
+            <button class="btn btn-primary" id="btn-gem-apply-crops" onclick="window.applyGemImageCrops()" style="display:none;">🗺 Auto-Crop &amp; Map →</button>
         </div>
     </div>
 </div>
@@ -1050,6 +1084,8 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <input type="file" id="answer-key-image" accept="image/*" style="display:none">
             <button class="btn btn-secondary" onclick="processAnswerKey()">Map Answers via Image</button>
             <button class="btn btn-secondary" id="btn-reopen-gem-map" onclick="window.openGemImageMappingModal()" style="display:none">🗺 Diagram Map</button>
+            <label class="btn btn-secondary" id="btn-preview-upload-pdf" for="preview-pdf-file-input" style="cursor:pointer;">📄 Upload PDF</label>
+            <input type="file" id="preview-pdf-file-input" accept=".pdf,application/pdf" style="display:none" onchange="window.handleGemPdfFileSelect(this)">
         </div>
         <textarea id="answer-key-text" class="pomo-input" rows="3" placeholder="Or paste the answer key below (AI will figure it out)…"></textarea>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0">
@@ -1058,6 +1094,43 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <button class="btn btn-success" onclick="saveAllQuestions()">Import All Questions</button>
         </div>
         <div id="extracted-questions-list"></div>
+    </div>
+</div>
+
+<!-- Adjust Diagram Crop Modal (Review-screen Edit: opens the exact same page
+     with the exact same diagram crop box already selected for fine tuning) -->
+<div id="adjust-crop-modal" class="modal-overlay" data-keep-escape="true">
+    <div class="modal-card adjust-crop-modal-card">
+        <div class="adjust-crop-header">
+            <div class="adjust-crop-title-wrap">
+                <h2 id="adjust-crop-title">✏️ Adjust Crop</h2>
+                <span id="adjust-crop-source-badge" class="gem-ref-chip" style="margin-left:0;"></span>
+            </div>
+            <div class="adjust-crop-page-nav" id="adjust-crop-page-nav" style="display:none;">
+                <button type="button" class="btn btn-secondary btn-sm" id="adjust-crop-prev-page" onclick="window.adjustCropChangePage(-1)" aria-label="Previous PDF page">◀</button>
+                <span id="adjust-crop-page-label" class="adjust-crop-page-label">Page 1 / 1</span>
+                <button type="button" class="btn btn-secondary btn-sm" id="adjust-crop-next-page" onclick="window.adjustCropChangePage(1)" aria-label="Next PDF page">▶</button>
+            </div>
+            <button class="close-btn" onclick="window.closeAdjustCropModal()" aria-label="Close">✕</button>
+        </div>
+        <p class="adjust-crop-hint">Drag corners or edges to tighten the crop · Drag inside box to move · Drag outside to draw a new box</p>
+        <div class="adjust-crop-stage" id="adjust-crop-stage">
+            <canvas id="adjust-crop-canvas" class="adjust-crop-canvas"></canvas>
+        </div>
+        <div class="adjust-crop-footer">
+            <div class="adjust-crop-live-wrap">
+                <canvas id="adjust-crop-live-preview" class="adjust-crop-live-preview" width="120" height="80"></canvas>
+                <div class="adjust-crop-meta">
+                    <span class="adjust-crop-meta-label">Crop Preview</span>
+                    <span id="adjust-crop-dims" class="adjust-crop-dims">—</span>
+                </div>
+            </div>
+            <div class="adjust-crop-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="adjust-crop-reset-btn" onclick="window.resetAdjustCropBox()">↺ Reset Box</button>
+                <button type="button" class="btn btn-secondary" onclick="window.closeAdjustCropModal()">Cancel</button>
+                <button type="button" class="btn btn-success" id="adjust-crop-apply-btn" onclick="window.applyAdjustCrop()">✓ Apply &amp; Add</button>
+            </div>
+        </div>
     </div>
 </div>
 
