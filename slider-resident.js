@@ -3050,10 +3050,21 @@ export function mountFlowSlider(host, opts = {}) {
   if (!api) { try { root.remove(); } catch (_) {} return null; }
 
   let lastEmitted = null;
+  let lastHardcore = null;
+  const hardcore = (v) => v >= 98;
+  const syncHardcoreClass = (v) => {
+    const hc = hardcore(v);
+    if (hc === lastHardcore) return;
+    lastHardcore = hc;
+    root.classList.toggle('is-hardcore', hc);
+    host.classList.toggle('is-hardcore', hc);
+    try { api.refreshTheme(); } catch (_) {}
+  };
   const emit = () => {
     const v = api.getValue();
     if (v === lastEmitted) return;
     lastEmitted = v;
+    syncHardcoreClass(v);
     if (typeof opts.onInput === 'function') opts.onInput(v);
   };
   input.addEventListener('input', emit);
@@ -3063,19 +3074,20 @@ export function mountFlowSlider(host, opts = {}) {
   document.addEventListener('jeemax:themechange', onTheme);
   document.addEventListener('jeemax:modechange', onTheme);
 
-  const hardcore = (v) => v >= 98;
-  root.classList.toggle('is-hardcore', hardcore(api.getValue()));
+  syncHardcoreClass(api.getValue());
 
   return {
     root,
     setValue(v) {
       api.setValue(v);
       lastEmitted = api.getValue();
-      root.classList.toggle('is-hardcore', hardcore(lastEmitted));
+      syncHardcoreClass(lastEmitted);
     },
     getValue: () => api.getValue(),
     setHardcore(on) {
-      root.classList.toggle('is-hardcore', !!on);
+      lastHardcore = !!on;
+      root.classList.toggle('is-hardcore', lastHardcore);
+      host.classList.toggle('is-hardcore', lastHardcore);
       api.refreshTheme();
     },
     refreshTheme: api.refreshTheme,

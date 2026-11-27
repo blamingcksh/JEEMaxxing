@@ -248,7 +248,11 @@
 //        Vendored PDF.js legacy build (vendor/pdfjs/pdf.min.mjs + worker) for
 //        Images-vs-PDF diagram ingestion, automatic multi-page PDF cropping,
 //        and review-screen interactive crop-box adjustment on the original page.
-const VERSION = 'jeemax-v130';
+// v131 - SIGN THE PACT CHAMBER OVERHAUL:
+//        Two-column Observatory Instrument Folio layout for #lockin-setup-modal,
+//        genuine Flow (starlight/brass) vs Hardcore (forge ember) reactive
+//        atmosphere, hairline stepper bay, rival dossier strip, and zero-scroll fit.
+const VERSION = 'jeemax-v131';
 
 const SHELL = [
   './',

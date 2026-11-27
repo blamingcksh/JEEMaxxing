@@ -2042,6 +2042,8 @@ function _syncLockinDuelUI() {
             recEl.hidden = true;
         }
     }
+    const emptyEl = document.getElementById('lockin-duel-empty');
+    if (emptyEl) emptyEl.hidden = active;
     const intelBox = document.getElementById('lockin-duel-intel');
     const intelTitle = document.getElementById('lockin-duel-intel-title');
     const intelSub = document.getElementById('lockin-duel-intel-sub');
@@ -2126,6 +2128,17 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
 
     _initDuelDraft(ctx.duelPrefs || loadLastDuelPrefs());
     _syncLockinDuelUI();
+
+    const scopePill = document.getElementById('lockin-scope-pill');
+    if (scopePill) {
+        const subjName = lockinSession.subject === 'chemistry' ? 'CHEMISTRY'
+            : (lockinSession.subject === 'maths' ? 'MATHS' : 'PHYSICS');
+        const chapCount = Array.isArray(lockinSession.chapterSelection) ? lockinSession.chapterSelection.length : 0;
+        const scopeTail = chapCount > 1
+            ? `${chapCount} CHAPTERS`
+            : (lockinSession.chapter ? String(lockinSession.chapter).toUpperCase() : 'DEEP PRACTICE');
+        scopePill.textContent = `${subjName} · ${scopeTail}`;
+    }
 
     _mountEntrySlider();
     _syncLockinIntensityUI();
