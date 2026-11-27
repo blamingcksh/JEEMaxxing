@@ -256,7 +256,12 @@
 //        Fix atmosphere.js data-obs-focus stuck-on bug (hasAttribute vs !!""),
 //        and replace Practice background moon plates with an intricate celestial
 //        star constellation planisphere (atmos-i-horizon-night/dusk.svg).
-const VERSION = 'jeemax-v132';
+// v133 - ASTROLABE GALAXY CHAPTER NAVIGATOR:
+//        Add Hybrid Astrolabe Galaxy chapter navigator (Constellations by
+//        Syllabus Unit + spring-morphed Urgency Orrery lens, 2.5D canvas,
+//        collision-resolved labels, Flow flight-path selector, Galaxy/Ledger
+//        toggle, and interruptible radial warp into questions).
+const VERSION = 'jeemax-v133';
 
 const SHELL = [
   './',
@@ -265,6 +270,8 @@ const SHELL = [
   './heartbeat.css',
   './heartbeat.js',
   './heartbeat-audio.js',
+  './chapter-galaxy.js',
+  './styles-chapter-galaxy.css',
   './spotify.css',
   './spotify-auth.js',
   './spotify-api.js',

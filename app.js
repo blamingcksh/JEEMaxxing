@@ -71,6 +71,7 @@ import { Heartbeat } from './heartbeat.js';
 import './bridge.js';
 import './tuckin.js';
 import { SessionRecap } from './mario-recap.js';
+import { ChapterGalaxy } from './chapter-galaxy.js';
 // Flow intensity dial — pure math + the pixel-room slider component.
 import {
     FLOW_SLIDER_DEFAULT,
@@ -1192,6 +1193,8 @@ export async function switchTab(viewId, element) {
         try { updateQuickLaunchAndArena(); } catch (_) {}
         try { window.Bridge?.renderBanner?.(); } catch (_) {}
         try { window.TuckIn?.renderDoor?.(); } catch (_) {}
+    } else {
+        try { ChapterGalaxy.onLeaveView(); } catch (_) {}
     }
     if (viewId === 'errors') {
         assignDailyBountyIfNeeded();
@@ -1214,6 +1217,9 @@ export function showPracticeSubview(id) {
     document.querySelectorAll('#view-practice .practice-subview').forEach(el => el.classList.remove('active'));
     const target = document.getElementById(id);
     if (target) target.classList.add('active');
+    if (id !== 'practice-chapters-view') {
+        try { ChapterGalaxy.onLeaveView(); } catch (_) {}
+    }
     try { Heartbeat.syncVoidState(); } catch (_) {}
 }
 
@@ -2013,13 +2019,18 @@ export function shiftMonth(dir) {
     renderCalendar();
 }
 
+let _lastOpenedChapterName = null;
+let _lastAddedChapterName = null;
+
 // ==================== PRACTICE: SUBJECTS & CHAPTERS ====================
 export function selectSubject(s) {
+    _lastOpenedChapterName = null;
     AppState.currentSubject = s;
     renderChaptersList();
     showPracticeSubview('practice-chapters-view');
     const titleEl = document.getElementById('chapters-subject-title');
     if (titleEl) titleEl.innerText = 'Chapters';
+    try { ChapterGalaxy.onEnterView({ fromVoid: true }); } catch (_) {}
     try { Heartbeat.syncVoidState(); } catch (_) {}
 }
 
@@ -2031,6 +2042,7 @@ export function goToSubjects() {
 export function goToChapters() {
     renderChaptersList();
     showPracticeSubview('practice-chapters-view');
+    try { ChapterGalaxy.onEnterView({ returnFromChapter: _lastOpenedChapterName }); } catch (_) {}
 }
 
 export function goToChapterDetail() {
@@ -2112,25 +2124,43 @@ window.updateMultiChapterSummary = function(changedInput) {
     }
 };
 
-export function startMultiChapterMode() {
-    const options = document.querySelectorAll('#multi-chapter-options input[type="checkbox"]:checked');
-    const chapters = Array.from(options).map(input => input.value);
-    if (!_multiChapterMode || !chapters.length) return;
+function _launchMultiChapterFlowDirect(chapters, requestedMode = 'flow') {
+    if (!Array.isArray(chapters) || !chapters.length) return;
     AppState.currentChapter = chapters.join(' • ');
     AppState.currentChapterSelection = chapters;
     AppState.currentFilter = 'all';
-    closeModalStr('multi-chapter-mode-modal');
     // The multi-chapter picker is chapter scope only. Intensity comes from the
     // dial; it is never forced here (so a 100 dial still enters Hardcore and a
     // 72 dial still enters Flow). Only a legacy 'hardcore' caller is upgraded.
-    const requested = (_multiChapterMode === 'hardcore' && clampFlowValue(AppState.flowSlider) < HARDCORE_THRESHOLD)
+    const requested = (requestedMode === 'hardcore' && clampFlowValue(AppState.flowSlider) < HARDCORE_THRESHOLD)
         ? 100
         : clampFlowValue(AppState.flowSlider);
     _applyFlowSlider(requested, { syncEntry: true, syncLive: false });
     _ensureLockinSetup(_flowModeForValue(clampFlowValue(AppState.flowSlider)));
 }
 
-export function openChapterDetail(ch) {
+export function startMultiChapterMode() {
+    const options = document.querySelectorAll('#multi-chapter-options input[type="checkbox"]:checked');
+    const chapters = Array.from(options).map(input => input.value);
+    if (!_multiChapterMode || !chapters.length) return;
+    closeModalStr('multi-chapter-mode-modal');
+    _launchMultiChapterFlowDirect(chapters, _multiChapterMode);
+}
+
+window.onChaptersFlowButtonClick = function () {
+    const chView = document.getElementById('practice-chapters-view');
+    if (chView && chView.classList.contains('active') && ChapterGalaxy.isGalaxyMode()) {
+        ChapterGalaxy.toggleFlowMode();
+        return;
+    }
+    openMultiChapterMode('flow');
+};
+
+export function openChapterDetail(ch, opts) {
+    _lastOpenedChapterName = ch;
+    if (!(opts && opts.fromWarp)) {
+        try { ChapterGalaxy.cancelWarp(); } catch (_) {}
+    }
     AppState.currentChapterSelection = null;
     AppState.currentChapter = ch;
     AppState.currentFilter = 'all';
@@ -2166,13 +2196,20 @@ export function renderChaptersList() {
     for (const q of (AppState.questionBank || [])) {
         if (q.subject !== AppState.currentSubject) continue;
         const _k = String(q.chapter || '').trim().toLowerCase();
-        const _stat = _statByCh.get(_k) || { count: 0, solved: 0, attempted: 0, correct: 0 };
+        const _stat = _statByCh.get(_k) || { count: 0, solved: 0, attempted: 0, correct: 0, dueErrors: 0, flowCount: 0, universe: [] };
         _stat.count++;
+        _stat.universe.push(q);
         if (q.status === 'solved') _stat.solved++;
         const _first = _firstAttemptResult(q);
         if (_first) {
             _stat.attempted++;
             if (_first === 'correct') _stat.correct++;
+        }
+        if ((q.status === 'wrong' || q.status === 'error') && getDueStatus(q).status === 'ready') {
+            _stat.dueErrors++;
+        }
+        if (_isUnexecutedModeQuestion(q) && typeof q.qElo === 'number' && isFinite(q.qElo) && !q.isAnomaly && !q.modeRetired) {
+            _stat.flowCount++;
         }
         _statByCh.set(_k, _stat);
     }
@@ -2182,8 +2219,10 @@ export function renderChaptersList() {
     }
 
     // Header counts: live eligible numbers beside Flow / Hardcore.
+    let _totalFlowCount = 0;
     try {
         const flowSnap = _modeSnapshot('flow');
+        _totalFlowCount = flowSnap.count || 0;
         const hcSnap = _modeSnapshot('hardcore');
         const flowCount = document.getElementById('chapters-flow-count');
         if (flowCount) flowCount.textContent = String(flowSnap.count);
@@ -2195,26 +2234,33 @@ export function renderChaptersList() {
     // ── Ghost review row: pre-label-era uploads with no chapter render
     // nowhere (and are now hidden from dashboard progress too), so they get
     // an explicit review-and-purge row instead of lingering invisibly. ──
+    let _ghostCount = 0;
     try {
         const _g = countGhostQuestions(AppState.currentSubject);
-        const _n = (_g.stamped || 0) + (_g.blank || 0);
-        if (_n > 0) {
+        _ghostCount = (_g.stamped || 0) + (_g.blank || 0);
+        if (_ghostCount > 0) {
             const grow = document.createElement('div');
             grow.className = 'chapter-item ghost-review-row';
             grow.innerHTML =
-                `<span>👻 ${_n} ghost question${_n === 1 ? '' : 's'} (no chapter — old test leftovers)` +
+                `<span>👻 ${_ghostCount} ghost question${_ghostCount === 1 ? '' : 's'} (no chapter — old test leftovers)` +
                 `<span class="ghost-review-sub">tap Delete to purge them forever</span></span>` +
                 `<span class="delete-chapter" onclick="event.stopPropagation(); purgeGhostChapterQuestions()">🗑</span>`;
             cont.appendChild(grow);
         }
     } catch (_) {}
+
+    const _galaxyChapters = [];
+    const _nowMs = Date.now();
+    const _weightMaps = { overrides: AppState.userChapterWeights, ai: AppState.chapterWeights };
+
     (AppState.chapters[AppState.currentSubject] || []).forEach(ch => {
         let div = document.createElement('div');
         div.className = 'chapter-item';
         // Mock-test chapters wear their label + badge so test uploads are
         // visibly grouped instead of masquerading as syllabus chapters.
-        const _mockBadge = isMockChapterName(ch) ? '<span class="mock-chapter-badge" title="Mock test chapter">TEST</span>' : '';
-        const _stat = _statByCh.get(String(ch || '').trim().toLowerCase()) || { count: 0, solved: 0, attempted: 0, correct: 0 };
+        const _isMock = isMockChapterName(ch);
+        const _mockBadge = _isMock ? '<span class="mock-chapter-badge" title="Mock test chapter">TEST</span>' : '';
+        const _stat = _statByCh.get(String(ch || '').trim().toLowerCase()) || { count: 0, solved: 0, attempted: 0, correct: 0, dueErrors: 0, flowCount: 0, universe: [] };
         const qCount = _stat.count;
         const hitPct = _stat.attempted > 0 ? Math.round((_stat.correct / _stat.attempted) * 100) : 0;
         const doneFrac = qCount > 0 ? _stat.solved / qCount : 0;
@@ -2227,7 +2273,54 @@ export function renderChaptersList() {
             `<span class="chapter-item-right"><span class="delete-chapter" role="button" aria-label="Purge chapter ${escapeAttribute(ch)}" onclick="event.stopPropagation(); deleteChapter('${escapeAttribute(ch)}')">&times;</span></span>`;
         div.onclick = () => openChapterDetail(ch);
         cont.appendChild(div);
+
+        let health = 50;
+        if (_stat.universe.length > 0) {
+            const reviewed = _stat.universe.filter(hasReviewRecord);
+            if (reviewed.length === 0) {
+                health = 10;
+            } else {
+                try {
+                    const mStats = chapterMemoryStats(reviewed, { universe: _stat.universe, nowMs: _nowMs });
+                    health = mStats ? Math.max(10, Math.min(100, mStats.health)) : 10;
+                } catch (_) {
+                    health = 50;
+                }
+            }
+        }
+        _galaxyChapters.push({
+            name: ch,
+            qCount,
+            solved: _stat.solved,
+            attempted: _stat.attempted,
+            correct: _stat.correct,
+            hitPct,
+            doneFrac,
+            health,
+            dueErrors: _stat.dueErrors,
+            flowCount: _stat.flowCount,
+            isMock: _isMock,
+            weightMaps: _weightMaps,
+        });
     });
+
+    const justAdded = _lastAddedChapterName;
+    _lastAddedChapterName = null;
+    try {
+        ChapterGalaxy.sync({
+            subject: AppState.currentSubject,
+            chapters: _galaxyChapters,
+            ghostCount: _ghostCount,
+            totalFlowCount: _totalFlowCount,
+            justAddedChapter: justAdded,
+            callbacks: {
+                onOpenChapter: (ch) => openChapterDetail(ch, { fromWarp: true }),
+                onDeleteChapter: (ch) => deleteChapter(ch),
+                onLaunchFlow: (chs) => _launchMultiChapterFlowDirect(chs, 'flow'),
+                onOpenMultiModal: () => openMultiChapterMode('flow'),
+            },
+        });
+    } catch (_) {}
 }
 
 export function deleteChapter(ch) {
@@ -2290,6 +2383,7 @@ export function addChapter() {
     let name = document.getElementById('new-chapter-input').value.trim();
     if (name && !AppState.chapters[AppState.currentSubject].some(c => _chaptersMatch(c, name))) {
         AppState.chapters[AppState.currentSubject].push(name);
+        _lastAddedChapterName = name;
         saveAllAsync().catch(console.error);
         renderChaptersList();
     }
@@ -15150,6 +15244,7 @@ window.openChapterProgress = openChapterProgress;
 
 // Expose state for debugging / cross-module access
 window.bounty = AppState.bounty;
+window.ChapterGalaxy = ChapterGalaxy;
 
 // ── Forest sync fix: expose live state safely ─────────────────────────────
 window.AppState = AppState;

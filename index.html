@@ -84,6 +84,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <link rel="stylesheet" href="styles-modes.css">
 <link rel="stylesheet" href="heartbeat.css">
 <link rel="stylesheet" href="spotify.css">
+<link rel="stylesheet" href="styles-chapter-galaxy.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
 <body class="hb-void-active">
@@ -501,12 +502,21 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         <span class="dz-rule" aria-hidden="true"></span>
                     </div>
                     <div class="chapter-actions" role="group" aria-label="Chapter actions">
-                        <button class="mode-text-btn" id="chapters-mode-flow" onclick="openMultiChapterMode('flow')" title="Flow · intensity 0–100 · 98+ is Hardcore">Flow <span class="mode-count" id="chapters-flow-count">0</span></button>
+                        <div class="cg-seg" id="cg-lens-seg" role="group" aria-label="Galaxy layout lens">
+                            <button type="button" class="cg-seg-btn is-active" data-cg-lens="constellations" aria-pressed="true">Constellations</button>
+                            <button type="button" class="cg-seg-btn" data-cg-lens="orrery" aria-pressed="false">Orrery</button>
+                        </div>
+                        <div class="cg-seg" id="cg-view-toggle" role="group" aria-label="Chapter view mode">
+                            <button type="button" class="cg-seg-btn is-active" data-cg-view="galaxy" aria-pressed="true">Galaxy</button>
+                            <button type="button" class="cg-seg-btn" data-cg-view="ledger" aria-pressed="false">Ledger</button>
+                        </div>
+                        <button class="mode-text-btn" id="chapters-mode-flow" onclick="window.onChaptersFlowButtonClick ? window.onChaptersFlowButtonClick() : openMultiChapterMode('flow')" title="Flow · intensity 0–100 · 98+ is Hardcore">Flow <span class="mode-count" id="chapters-flow-count">0</span></button>
                         <button class="btn btn-primary" onclick="openModal('add-chapter-modal')">+ New Chapter</button>
                     </div>
                 </div>
 
                 <div class="chapter-list" id="chapters-list-container"></div>
+                <div id="chapter-galaxy-stage" class="cg-stage" aria-label="Interactive chapter galaxy map" hidden></div>
             </div>
 
             <!-- Subview: chapter detail -->
@@ -530,6 +540,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                 <div class="stats-row" id="stats-row" style="display:none"></div>
                 <div class="questions-grid" id="questions-grid-container"></div>
             </div>
+            <div id="cg-warp-veil" class="cg-warp-veil" aria-hidden="true" hidden></div>
         </section>
 
         <!-- ═══════════════════════════════════════════
