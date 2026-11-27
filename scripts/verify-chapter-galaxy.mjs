@@ -443,6 +443,26 @@ try {
     const rm2 = await page.evaluate(() => window.ChapterGalaxy.getDebugState());
     check(!rm2.rafRunning && rm1.frameCount === rm2.frameCount, 'prefers-reduced-motion: reduce halts rAF loop');
 
+    console.log('\n── [9] Sustained Performance & Zero Idle DOM Churn ──');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.evaluate(() => {
+        window.selectSubject('physics');
+    });
+    await page.waitForTimeout(600); // let arrival/interact settle to calm idle
+    const perfStats = await page.evaluate(async () => {
+        const stage = document.getElementById('chapter-galaxy-stage');
+        let mutations = 0;
+        const obs = new MutationObserver((recs) => { mutations += recs.length; });
+        obs.observe(stage, { attributes: true, childList: true, subtree: true });
+        const startFrames = window.ChapterGalaxy.getDebugState().frameCount;
+        await new Promise(r => setTimeout(r, 1200));
+        obs.disconnect();
+        const dbg = window.ChapterGalaxy.getDebugState();
+        return { mutations, frames: dbg.frameCount - startFrames, avgDrawMs: dbg.avgDrawMs, lastDrawMs: dbg.lastDrawMs };
+    });
+    check(perfStats.mutations === 0, `Zero DOM mutations during 1.2s idle animation (got ${perfStats.mutations})`);
+    check(perfStats.avgDrawMs < 5.0, `Fast canvas draw frame time (${perfStats.avgDrawMs} ms avg, ${perfStats.frames} idle frames/1.2s)`);
+
     check(errors.length === 0, `Zero console/page errors (${errors.length} errors)`);
     if (errors.length) console.error('Errors:', errors);
 } finally {

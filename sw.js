@@ -261,7 +261,11 @@
 //        Syllabus Unit + spring-morphed Urgency Orrery lens, 2.5D canvas,
 //        collision-resolved labels, Flow flight-path selector, Galaxy/Ledger
 //        toggle, and interruptible radial warp into questions).
-const VERSION = 'jeemax-v133';
+// v134 - ASTROLABE GALAXY PERFORMANCE PASS:
+//        Pre-baked offscreen nebula/dial/star sprites, batched canvas paths,
+//        dirty-flagged diffed DOM label updates (zero idle mutations),
+//        adaptive 30fps idle cadence, and removal of live HUD backdrop-filter.
+const VERSION = 'jeemax-v134';
 
 const SHELL = [
   './',

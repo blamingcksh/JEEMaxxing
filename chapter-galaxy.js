@@ -838,7 +838,18 @@ class AstrolabeGalaxyController {
         this._warpVeil = null;
 
         this._palette = this._readPalette();
+        this._colors = null;
+        this._bgCanvas = null;
+        this._dialCanvas = null;
+        this._dialHalf = 0;
+        this._starSprites = null;
+        this._labelsDirty = true;
+        this._lastInteractMs = 0;
+        this._lastDrawAtMs = 0;
+        this._lastDrawMs = 0;
+        this._avgDrawMs = 0;
         this._observersWired = false;
+        this._buildColorTable();
     }
 
     isGalaxyMode() {
@@ -892,6 +903,194 @@ class AstrolabeGalaxyController {
         return this._palette.phys;
     }
 
+    _buildColorTable() {
+        const pal = this._palette;
+        const subj = this._subjectRgb();
+        this._colors = {
+            subj,
+            nebula0: _rgba(subj, 0.055),
+            nebula1: _rgba(pal.ink, 0.02),
+            dialOuter: _rgba(pal.ink, 0.075),
+            dialInner: _rgba(pal.bone, 0.04),
+            tickMajor: _rgba(pal.ink, 0.14),
+            tickMinor: _rgba(pal.ink, 0.06),
+            edgeIdle: _rgba(subj, 0.15),
+            edgeChord: _rgba(subj, 0.08),
+            edgeHl: _rgba(pal.ink, 0.42),
+            edgeDim: _rgba(subj, 0.04),
+            beadIdle: _rgba(pal.bone, 0.22),
+            beadHl: _rgba(pal.bone, 0.55),
+            secIdle: _rgba(pal.bone, 0.12),
+            secHl: _rgba(pal.ink, 0.32),
+            ringPrio: _rgba(pal.crit, 0.22),
+            ringOther: _rgba(pal.ink, 0.13),
+            ringLbl: _rgba(pal.bone, 0.32),
+            coreLbl: _rgba(pal.bone, 0.68),
+            flowSpline: _rgba(pal.flow, 0.72),
+            flowRing: _rgba(pal.flow, 0.95),
+            flowMoon: _rgba(pal.flow, 0.78),
+            critMoon: _rgba(pal.crit, 0.92),
+            beam: _rgba(pal.ink, 0.34),
+            planetRingIdle: _rgba(pal.bone, 0.22),
+            planetRingUntouched: _rgba(pal.bone, 0.14),
+            planetRingFlow: _rgba(pal.flow, 0.28),
+            covArc: _rgba(pal.ink, 0.78),
+            covArcFlow: _rgba(pal.flow, 0.78),
+            untouchedStroke: _rgba(subj, 0.45),
+            untouchedDot: _rgba(subj, 0.55),
+            glint: _rgba(pal.bone, 0.65),
+            mockFill: _rgba(subj, 0.92),
+            mockCritFill: _rgba(pal.crit, 0.92),
+            mockMasterFill: _rgba(pal.bone, 0.92),
+            mockFlowFill: _rgba(pal.flow, 0.92),
+            mockStroke: _rgba(pal.ink, 0.85),
+            reticleLock: _rgba(pal.ink, 0.95),
+            reticleHover: _rgba(pal.ink, 0.72),
+            reticleFlow: _rgba(pal.flow, 0.95),
+        };
+    }
+
+    _rebuildSprites() {
+        if (!isBrowser || typeof document.createElement !== 'function') return;
+        const size = 128;
+        const mid = 64;
+        const sr = 22; // nominal star radius inside 128x128 sprite
+        const pal = this._palette;
+        const subj = this._subjectRgb();
+
+        const make = (coreRgb, auraScale, auraAlpha, isMastered, isCoreOnly) => {
+            const c = document.createElement('canvas');
+            c.width = size;
+            c.height = size;
+            const g = c.getContext('2d');
+            if (!g) return c;
+
+            const auraR = sr * auraScale;
+            const aura = g.createRadialGradient(mid, mid, sr * 0.2, mid, mid, auraR);
+            aura.addColorStop(0, _rgba(coreRgb, auraAlpha));
+            aura.addColorStop(1, _rgba(coreRgb, 0));
+            g.fillStyle = aura;
+            g.beginPath();
+            g.arc(mid, mid, auraR, 0, Math.PI * 2);
+            g.fill();
+
+            if (!isCoreOnly) {
+                const body = g.createRadialGradient(mid - sr * 0.3, mid - sr * 0.3, 1, mid, mid, sr);
+                body.addColorStop(0, _rgba(pal.bone, isMastered ? 1 : 0.88));
+                body.addColorStop(0.55, _rgba(coreRgb, 0.92));
+                body.addColorStop(1, _rgba(coreRgb, 0.42));
+                g.fillStyle = body;
+                g.beginPath();
+                g.arc(mid, mid, sr, 0, Math.PI * 2);
+                g.fill();
+                g.strokeStyle = _rgba(pal.bone, 0.35);
+                g.lineWidth = 0.9;
+                g.stroke();
+            } else {
+                const cg = g.createRadialGradient(mid, mid, 1, mid, mid, auraR);
+                cg.addColorStop(0, _rgba(pal.bone, 0.92));
+                cg.addColorStop(0.35, _rgba(coreRgb, 0.55));
+                cg.addColorStop(1, _rgba(coreRgb, 0));
+                g.fillStyle = cg;
+                g.beginPath();
+                g.arc(mid, mid, auraR, 0, Math.PI * 2);
+                g.fill();
+            }
+            return c;
+        };
+
+        this._starSprites = {
+            subj:     make(subj, 2.15, 0.34, false, false),
+            crit:     make(pal.crit, 2.50, 0.45, false, false),
+            mastered: make(pal.bone, 2.15, 0.34, true, false),
+            flow:     make(pal.flow, 2.15, 0.36, false, false),
+            core:     make(subj, 2.40, 0.55, false, true),
+        };
+    }
+
+    _rebuildStaticCanvases() {
+        if (!isBrowser || !this._stageW || !this._stageH || typeof document.createElement !== 'function') return;
+        const w = this._stageW;
+        const h = this._stageH;
+        const dpr = this._dpr;
+        const pal = this._palette;
+        const cols = this._colors || (this._buildColorTable(), this._colors);
+
+        // 1. Pre-baked nebula + deep starfield backdrop
+        const bg = this._bgCanvas || document.createElement('canvas');
+        bg.width = Math.round(w * dpr);
+        bg.height = Math.round(h * dpr);
+        const bctx = bg.getContext('2d');
+        if (bctx) {
+            bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            bctx.clearRect(0, 0, w, h);
+            const cx = w * 0.5;
+            const cy = h * 0.5;
+            const grad = bctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(w, h) * 0.58);
+            grad.addColorStop(0, cols.nebula0);
+            grad.addColorStop(0.5, cols.nebula1);
+            grad.addColorStop(1, 'rgba(4,5,9,0)');
+            bctx.fillStyle = grad;
+            bctx.fillRect(0, 0, w, h);
+
+            for (let i = 0; i < BG_STARS.length; i++) {
+                const st = BG_STARS[i];
+                const px = ((st.x + cx) % w + w) % w;
+                const py = ((st.y + cy) % h + h) % h;
+                bctx.fillStyle = _rgba(pal.bone, st.alpha);
+                bctx.beginPath();
+                bctx.arc(px, py, st.r, 0, Math.PI * 2);
+                bctx.fill();
+            }
+        }
+        this._bgCanvas = bg;
+
+        // 2. Pre-baked astrolabe compass dial + 72 vernier ticks
+        const astR = Math.min(w, h) * 0.44;
+        const half = Math.ceil(astR + 14);
+        const dialSize = half * 2;
+        const dc = this._dialCanvas || document.createElement('canvas');
+        dc.width = Math.round(dialSize * dpr);
+        dc.height = Math.round(dialSize * dpr);
+        const dctx = dc.getContext('2d');
+        if (dctx) {
+            dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            dctx.clearRect(0, 0, dialSize, dialSize);
+            dctx.translate(half, half);
+            dctx.lineWidth = 1;
+            dctx.strokeStyle = cols.dialOuter;
+            dctx.beginPath();
+            dctx.arc(0, 0, astR, 0, Math.PI * 2);
+            dctx.stroke();
+
+            dctx.strokeStyle = cols.dialInner;
+            dctx.beginPath();
+            dctx.arc(0, 0, astR * 0.72, 0, Math.PI * 2);
+            dctx.stroke();
+
+            dctx.beginPath();
+            for (let deg = 0; deg < 72; deg++) {
+                if (deg % 6 === 0) continue;
+                const ang = (deg / 72) * Math.PI * 2;
+                dctx.moveTo(Math.cos(ang) * (astR - 3), Math.sin(ang) * (astR - 3));
+                dctx.lineTo(Math.cos(ang) * astR, Math.sin(ang) * astR);
+            }
+            dctx.strokeStyle = cols.tickMinor;
+            dctx.stroke();
+
+            dctx.beginPath();
+            for (let deg = 0; deg < 72; deg += 6) {
+                const ang = (deg / 72) * Math.PI * 2;
+                dctx.moveTo(Math.cos(ang) * (astR - 7), Math.sin(ang) * (astR - 7));
+                dctx.lineTo(Math.cos(ang) * (astR + 3), Math.sin(ang) * (astR + 3));
+            }
+            dctx.strokeStyle = cols.tickMajor;
+            dctx.stroke();
+        }
+        this._dialCanvas = dc;
+        this._dialHalf = half;
+    }
+
     _ensureDom() {
         if (!isBrowser || this._mounted) return true;
         this._root = document.getElementById('practice-chapters-view');
@@ -932,7 +1131,9 @@ class AstrolabeGalaxyController {
         `;
 
         this._canvas = this._stage.querySelector('.cg-canvas');
-        this._ctx = this._canvas && typeof this._canvas.getContext === 'function' ? this._canvas.getContext('2d') : null;
+        this._ctx = this._canvas && typeof this._canvas.getContext === 'function'
+            ? this._canvas.getContext('2d', { alpha: true, willReadFrequently: false })
+            : null;
         this._labelsLayer = this._stage.querySelector('.cg-labels-layer');
         this._searchInput = this._stage.querySelector('.cg-search-input');
         this._searchClearBtn = this._stage.querySelector('.cg-search-clear');
@@ -946,6 +1147,8 @@ class AstrolabeGalaxyController {
 
         if (!this._canvas || !this._ctx || !this._zoomControlsEl) return false;
 
+        this._stage.setAttribute('data-math-rendered', '1');
+        this._rebuildSprites();
         this._bindEvents();
         this._applyModeClasses();
         this._mounted = true;
@@ -1146,6 +1349,9 @@ class AstrolabeGalaxyController {
             if (typeof MutationObserver !== 'undefined') {
                 this._htmlObs = new MutationObserver(() => {
                     this._palette = this._readPalette();
+                    this._buildColorTable();
+                    this._rebuildSprites();
+                    this._rebuildStaticCanvases();
                     if (this._active && this.isGalaxyMode()) {
                         if (this.isReducedMotion()) this._stopLoop();
                         else this._startLoop();
@@ -1157,7 +1363,16 @@ class AstrolabeGalaxyController {
                     attributeFilter: ['data-ink', 'data-mode', 'class'],
                 });
 
-                this._modalObs = new MutationObserver(() => {
+                this._modalObs = new MutationObserver((records) => {
+                    let relevant = false;
+                    for (let i = 0; i < records.length; i++) {
+                        const t = records[i].target;
+                        if (t && t.classList && t.classList.contains('modal-overlay')) {
+                            relevant = true;
+                            break;
+                        }
+                    }
+                    if (!relevant) return;
                     const hasModal = !!document.querySelector('.modal-overlay.active');
                     this._modalPaused = hasModal;
                     if (hasModal) this._stopLoop();
@@ -1233,6 +1448,8 @@ class AstrolabeGalaxyController {
             this._morphPos = this._morphTarget;
             this._morphVel = 0;
         }
+        this._lastInteractMs = performance.now();
+        this._labelsDirty = true;
         this._activeSectorId = 'all';
         this._focusSector('all');
         this._applyModeClasses();
@@ -1244,6 +1461,8 @@ class AstrolabeGalaxyController {
         const next = typeof forceState === 'boolean' ? forceState : !this._flowMode;
         if (this._flowMode === next) return;
         this._flowMode = next;
+        this._lastInteractMs = performance.now();
+        this._labelsDirty = true;
         if (next) {
             this._lockedKey = null;
             this._renderInspector();
@@ -1298,7 +1517,8 @@ class AstrolabeGalaxyController {
 
         // Preserve selection & flow path only across same-subject updates
         const prevSubj = this._lastSubject;
-        if (prevSubj && prevSubj !== payload.subject) {
+        const subjChanged = prevSubj !== payload.subject;
+        if (prevSubj && subjChanged) {
             this._lockedKey = null;
             this._hoveredKey = null;
             this._activeSectorId = 'all';
@@ -1308,10 +1528,16 @@ class AstrolabeGalaxyController {
             this._camTarget = { x: 0, y: 0, zoom: 1 };
         }
         this._lastSubject = payload.subject;
+        if (subjChanged || !this._starSprites) {
+            this._buildColorTable();
+            this._rebuildSprites();
+            this._rebuildStaticCanvases();
+        }
 
         this._buildNodes();
         this._recomputeLayouts();
         this._syncLabelPool();
+        this._labelsDirty = true;
         this._renderSectorBar();
         this._renderGhostPill();
         this._renderEmptyState();
@@ -1427,6 +1653,8 @@ class AstrolabeGalaxyController {
             this._canvas.width = Math.round(w * dpr);
             this._canvas.height = Math.round(h * dpr);
             this._recomputeLayouts();
+            this._rebuildStaticCanvases();
+            this._labelsDirty = true;
         }
     }
 
@@ -1450,18 +1678,27 @@ class AstrolabeGalaxyController {
                 el.className = 'cg-label';
                 el.dataset.cgKey = nd.key;
                 el.innerHTML = `<span class="cg-lbl-name"></span><span class="cg-lbl-meta"></span>`;
+                el._nameEl = el.querySelector('.cg-lbl-name');
+                el._metaEl = el.querySelector('.cg-lbl-meta');
+                el._tx = null;
+                el._tier = null;
+                el._dim = null;
+                el._hov = null;
+                el._lck = null;
+                el._flw = null;
+                el._flwOrd = null;
+                el._txt = null;
                 this._labelsLayer.appendChild(el);
                 existing.set(nd.key, el);
             }
             el._fullText = nd.name;
             el._shortText = nd.shortName;
-            const nameEl = el.querySelector('.cg-lbl-name');
-            const metaEl = el.querySelector('.cg-lbl-meta');
+            const nameEl = el._nameEl;
+            const metaEl = el._metaEl;
             if (nameEl && nameEl.textContent !== nd.name) nameEl.textContent = nd.name;
             if (metaEl) {
-                if (nd.dueErrors > 0) metaEl.textContent = `${nd.dueErrors} due`;
-                else if (nd.qCount > 0) metaEl.textContent = `${nd.hitPct}%`;
-                else metaEl.textContent = '';
+                const nextMeta = nd.dueErrors > 0 ? `${nd.dueErrors} due` : (nd.qCount > 0 ? `${nd.hitPct}%` : '');
+                if (metaEl.textContent !== nextMeta) metaEl.textContent = nextMeta;
             }
             el.setAttribute('aria-label', `${nd.name}, ${nd.qCount} questions, ${nd.hitPct}% hit rate, health ${Math.round(nd.health)}%`);
             el.classList.toggle('is-mock', nd.isMock);
@@ -1476,7 +1713,9 @@ class AstrolabeGalaxyController {
             el._shortW = Math.max(36, shortMeasured || Math.min(148, (nd.shortName.length * 7.2) + 32));
             el._fullW = Math.max(el._shortW, fullMeasured || Math.min(220, (nd.name.length * 7.2) + 36));
             el._labelH = Math.max(20, hMeasured || 22);
+            el._txt = nd.name;
         }
+        this._labelsDirty = true;
     }
 
     _renderSectorBar() {
@@ -1599,6 +1838,8 @@ class AstrolabeGalaxyController {
         }
         if (this._searchClearBtn) this._searchClearBtn.hidden = !this._searchQuery.trim();
         this._recomputeSearchMatches();
+        this._lastInteractMs = performance.now();
+        this._labelsDirty = true;
         this._requestStaticRedraw();
     }
 
@@ -1653,6 +1894,8 @@ class AstrolabeGalaxyController {
             this._camSpringing = true;
         }
         this._inertia.active = false;
+        this._lastInteractMs = performance.now();
+        this._labelsDirty = true;
         this._requestStaticRedraw();
     }
 
@@ -1664,6 +1907,8 @@ class AstrolabeGalaxyController {
         } else {
             this._camSpringing = true;
         }
+        this._lastInteractMs = performance.now();
+        this._labelsDirty = true;
         this._requestStaticRedraw();
     }
 
@@ -1703,6 +1948,8 @@ class AstrolabeGalaxyController {
     _setHoveredKey(key) {
         if (this._hoveredKey === key) return;
         this._hoveredKey = key;
+        this._lastInteractMs = performance.now();
+        this._labelsDirty = true;
         if (key && window.FX?.wantHoverSound?.()) {
             try { window.FX.sound('hover'); } catch (_) {}
         }
@@ -1717,6 +1964,8 @@ class AstrolabeGalaxyController {
         } else {
             this._flowPath.push(key);
         }
+        this._lastInteractMs = performance.now();
+        this._labelsDirty = true;
         if (window.FX?.wantHaptic?.()) {
             try { window.FX.haptic('tap'); } catch (_) {}
         }
@@ -1726,6 +1975,7 @@ class AstrolabeGalaxyController {
 
     _handleStarActivate(nd, shiftKey, isTouch) {
         if (!nd) return;
+        this._lastInteractMs = performance.now();
         if (shiftKey && !this._flowMode) {
             this.toggleFlowMode(true);
         }
@@ -1738,6 +1988,7 @@ class AstrolabeGalaxyController {
                 this._openStar(nd);
             } else {
                 this._lockedKey = nd.key;
+                this._labelsDirty = true;
                 if (window.FX?.wantHaptic?.()) {
                     try { window.FX.haptic('tap'); } catch (_) {}
                 }
@@ -1765,6 +2016,7 @@ class AstrolabeGalaxyController {
         const sx = e.clientX - rect.left;
         const sy = e.clientY - rect.top;
         this._pointers.set(e.pointerId, { sx, sy, t: performance.now() });
+        this._lastInteractMs = performance.now();
         this._inertia.active = false;
         this._camSpringing = false;
 
@@ -1824,6 +2076,8 @@ class AstrolabeGalaxyController {
             this._cam.y = this._pinch.anchorWorld.y - (midSy - this._stageH * 0.5) / s;
             this._camTarget.x = this._cam.x;
             this._camTarget.y = this._cam.y;
+            this._lastInteractMs = performance.now();
+            this._labelsDirty = true;
             this._requestStaticRedraw();
             return;
         }
@@ -1853,6 +2107,8 @@ class AstrolabeGalaxyController {
                 this._camTarget.x = nx;
                 this._camTarget.y = ny;
                 const now = performance.now();
+                this._lastInteractMs = now;
+                this._labelsDirty = true;
                 this._drag.samples.push({ sx, sy, t: now });
                 if (this._drag.samples.length > 5) this._drag.samples.shift();
                 this._requestStaticRedraw();
@@ -1876,6 +2132,7 @@ class AstrolabeGalaxyController {
             const drag = this._drag;
             this._drag = null;
             this._canvas.style.cursor = 'grab';
+            this._lastInteractMs = performance.now();
 
             if (!drag.moved) {
                 const isTouch = e.pointerType === 'touch';
@@ -1884,6 +2141,7 @@ class AstrolabeGalaxyController {
                     this._handleStarActivate(hit, e.shiftKey, isTouch);
                 } else if (this._lockedKey) {
                     this._lockedKey = null;
+                    this._labelsDirty = true;
                     this._renderInspector();
                     this._requestStaticRedraw();
                 }
@@ -1908,6 +2166,7 @@ class AstrolabeGalaxyController {
                     this._cam.x = this._camTarget.x;
                     this._cam.y = this._camTarget.y;
                 }
+                this._labelsDirty = true;
                 this._requestStaticRedraw();
             }
         }
@@ -1930,6 +2189,8 @@ class AstrolabeGalaxyController {
         this._camTarget.x = this._cam.x;
         this._camTarget.y = this._cam.y;
         this._camSpringing = false;
+        this._lastInteractMs = performance.now();
+        this._labelsDirty = true;
         this._requestStaticRedraw();
     }
 
@@ -1939,6 +2200,8 @@ class AstrolabeGalaxyController {
         this._active = true;
         this.cancelWarp();
         this._palette = this._readPalette();
+        this._buildColorTable();
+        this._rebuildSprites();
         this._applyModeClasses();
 
         if (!this.isGalaxyMode()) {
@@ -1947,6 +2210,9 @@ class AstrolabeGalaxyController {
         }
 
         this._resizeCanvas();
+        this._rebuildStaticCanvases();
+        this._lastInteractMs = performance.now();
+        this._labelsDirty = true;
         const retName = opts && opts.returnFromChapter;
         const retKey = retName ? String(retName).trim().toLowerCase() : null;
         const retNode = retKey ? this._nodeByKey.get(retKey) : null;
@@ -2048,16 +2314,32 @@ class AstrolabeGalaxyController {
     }
 
     // ── Animation Loop & Rendering ──────────────────────────────────────────
+    _isInteractive(now) {
+        return this._camSpringing ||
+            Math.abs(this._morphPos - this._morphTarget) > 0.0005 ||
+            this._pointers.size > 0 ||
+            this._warpPhase !== 'idle' ||
+            this._arrivalKey !== null ||
+            this._birthKey !== null ||
+            (now - this._lastInteractMs) < 450;
+    }
+
     _startLoop() {
         if (!isBrowser || this._rafId || this.isReducedMotion() || !this._active || !this.isGalaxyMode() || this._modalPaused) {
             return;
         }
         this._lastFrameMs = performance.now();
+        this._lastDrawAtMs = 0;
         const tick = (now) => {
             this._rafId = 0;
             if (!this._active || !this.isGalaxyMode() || this._modalPaused || this.isReducedMotion()) return;
+            if (!this._isInteractive(now) && (now - this._lastDrawAtMs) < 31) {
+                this._rafId = requestAnimationFrame(tick);
+                return;
+            }
             const dt = Math.min(0.05, Math.max(0.001, (now - this._lastFrameMs) / 1000));
             this._lastFrameMs = now;
+            this._lastDrawAtMs = now;
             this._step(dt, now);
             this._draw(now);
             this._rafId = requestAnimationFrame(tick);
@@ -2076,6 +2358,7 @@ class AstrolabeGalaxyController {
         if (!isBrowser || !this._active || !this.isGalaxyMode()) return;
         if (!this._rafId) {
             const now = performance.now();
+            this._lastDrawAtMs = now;
             this._step(0.016, now);
             this._draw(now);
         }
@@ -2091,6 +2374,7 @@ class AstrolabeGalaxyController {
                 nd.x = _lerp(nd.cx, nd.ox, this._morphPos);
                 nd.y = _lerp(nd.cy, nd.oy, this._morphPos);
             }
+            this._labelsDirty = true;
         } else {
             this._morphPos = this._morphTarget;
             this._morphVel = 0;
@@ -2104,6 +2388,7 @@ class AstrolabeGalaxyController {
             this._cam.x = nx; this._cam.vx = vx;
             this._cam.y = ny; this._cam.vy = vy;
             this._cam.zoom = nz; this._cam.vZoom = vz;
+            this._labelsDirty = true;
             if (
                 Math.abs(nx - this._camTarget.x) < 0.25 && Math.abs(vx) < 0.5 &&
                 Math.abs(ny - this._camTarget.y) < 0.25 && Math.abs(vy) < 0.5 &&
@@ -2137,155 +2422,198 @@ class AstrolabeGalaxyController {
         const h = this._stageH;
         if (!ctx || !w || !h) return;
 
+        const t0 = performance.now();
         this._frameCount++;
-        const t = this.isReducedMotion() ? 0 : now / 1000;
+        const reduced = this.isReducedMotion();
+        const t = reduced ? 0 : now / 1000;
         const dpr = this._dpr;
         const pal = this._palette;
-        const subjRgb = this._subjectRgb();
+        const cols = this._colors || (this._buildColorTable(), this._colors);
+        if (!this._starSprites) this._rebuildSprites();
+        if (!this._bgCanvas || !this._dialCanvas) this._rebuildStaticCanvases();
+        const sprites = this._starSprites;
+        const subjRgb = cols.subj;
         const searchActive = this._searchMatches.size > 0 || _normText(this._searchQuery).length > 0;
         const activeKey = this._lockedKey || this._hoveredKey;
 
-        ctx.save();
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, h);
 
-        // Subtle subject nebula glow in center
+        // 1. Pre-baked nebula + deep starfield backdrop
+        if (this._bgCanvas) {
+            ctx.drawImage(this._bgCanvas, 0, 0, w, h);
+        }
+
+        // 2. Pre-baked engraved astrolabe compass dial
         const cx = w * 0.5;
         const cy = h * 0.5;
-        const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(w, h) * 0.58);
-        grad.addColorStop(0, _rgba(subjRgb, 0.055));
-        grad.addColorStop(0.5, _rgba(pal.ink, 0.02));
-        grad.addColorStop(1, 'rgba(4,5,9,0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, w, h);
-
-        // 1. Parallax deep star dust
-        for (let i = 0; i < BG_STARS.length; i++) {
-            const st = BG_STARS[i];
-            const px = ((st.x - this._cam.x * st.depth - this._pointerPar.x * st.depth * 3 + cx) % w + w) % w;
-            const py = ((st.y - this._cam.y * st.depth - this._pointerPar.y * st.depth * 3 + cy) % h + h) % h;
-            const tw = this.isReducedMotion() ? 1 : (0.78 + 0.22 * Math.sin(t * 0.9 + st.twinklePhase));
-            ctx.fillStyle = _rgba(pal.bone, st.alpha * tw);
-            ctx.beginPath();
-            ctx.arc(px, py, st.r, 0, Math.PI * 2);
-            ctx.fill();
+        if (this._dialCanvas) {
+            const dh = this._dialHalf;
+            ctx.save();
+            ctx.translate(cx - this._cam.x * 0.12, cy - this._cam.y * 0.12);
+            ctx.rotate(t * 0.008);
+            ctx.drawImage(this._dialCanvas, -dh, -dh, dh * 2, dh * 2);
+            ctx.restore();
         }
-
-        // 2. Engraved astrolabe compass ring
-        const astR = Math.min(w, h) * 0.44;
-        ctx.save();
-        ctx.translate(cx - this._cam.x * 0.12, cy - this._cam.y * 0.12);
-        ctx.rotate(t * 0.008);
-        ctx.strokeStyle = _rgba(pal.ink, 0.075);
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(0, 0, astR, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(0, 0, astR * 0.72, 0, Math.PI * 2);
-        ctx.strokeStyle = _rgba(pal.bone, 0.04);
-        ctx.stroke();
-        for (let deg = 0; deg < 72; deg++) {
-            const ang = (deg / 72) * Math.PI * 2;
-            const major = deg % 6 === 0;
-            const r1 = astR - (major ? 7 : 3);
-            const r2 = astR + (major ? 3 : 0);
-            ctx.beginPath();
-            ctx.moveTo(Math.cos(ang) * r1, Math.sin(ang) * r1);
-            ctx.lineTo(Math.cos(ang) * r2, Math.sin(ang) * r2);
-            ctx.strokeStyle = _rgba(pal.ink, major ? 0.14 : 0.06);
-            ctx.stroke();
-        }
-        ctx.restore();
 
         const constAlpha = Math.max(0, 1 - this._morphPos * 1.15);
         const orreryAlpha = Math.max(0, (this._morphPos - 0.1) / 0.9);
         const scale = this._fitScale * this._cam.zoom;
 
-        // 3. Constellations filaments + watermark sector titles
+        // 3. Batched Constellations filaments + watermark sector titles
         if (constAlpha > 0.01 && this._constLayout) {
             ctx.save();
             const hoveredUnit = activeKey ? this._nodeByKey.get(activeKey)?.unit.id : null;
-            for (const ed of this._constLayout.edges) {
+            const edges = this._constLayout.edges;
+            const idlePts = [];
+            const hlPts = [];
+            const chordPts = [];
+            const transitPts = [];
+            const beadsIdle = [];
+            const beadsHl = [];
+
+            for (let i = 0; i < edges.length; i++) {
+                const ed = edges[i];
                 const a = this._nodeByKey.get(ed.from);
                 const b = this._nodeByKey.get(ed.to);
                 if (!a || !b) continue;
                 const pa = this._worldToScreen(a.x, a.y);
                 const pb = this._worldToScreen(b.x, b.y);
                 const highlight = (this._activeSectorId === ed.unitId) || (hoveredUnit === ed.unitId);
-                let alpha = (highlight ? 0.42 : (ed.chord ? 0.08 : 0.15)) * constAlpha;
-                if (searchActive && !this._searchMatches.has(a.key) && !this._searchMatches.has(b.key)) alpha *= 0.25;
+                const dimmed = searchActive && !this._searchMatches.has(a.key) && !this._searchMatches.has(b.key);
 
-                ctx.beginPath();
-                ctx.moveTo(pa.x, pa.y);
-                ctx.lineTo(pb.x, pb.y);
-                if (ed.transit) ctx.setLineDash([4, 5]);
-                else ctx.setLineDash([]);
-                ctx.strokeStyle = _rgba(highlight ? pal.ink : subjRgb, alpha);
-                ctx.lineWidth = highlight ? 1.25 : 0.9;
-                ctx.stroke();
+                if (ed.transit) {
+                    transitPts.push(pa.x, pa.y, pb.x, pb.y);
+                } else if (dimmed) {
+                    chordPts.push(pa.x, pa.y, pb.x, pb.y);
+                } else if (highlight) {
+                    hlPts.push(pa.x, pa.y, pb.x, pb.y);
+                } else if (ed.chord) {
+                    chordPts.push(pa.x, pa.y, pb.x, pb.y);
+                } else {
+                    idlePts.push(pa.x, pa.y, pb.x, pb.y);
+                }
 
-                // Faint light bead gliding along active unit filaments
-                if (!this.isReducedMotion() && !ed.chord && (highlight || this._activeSectorId === 'all')) {
+                if (!reduced && !ed.chord && !dimmed && (highlight || this._activeSectorId === 'all')) {
                     const phase = ((t * 0.22 + (a.phase * 0.3)) % 1);
                     const bx = _lerp(pa.x, pb.x, phase);
                     const by = _lerp(pa.y, pb.y, phase);
-                    ctx.fillStyle = _rgba(pal.bone, (highlight ? 0.55 : 0.22) * constAlpha);
-                    ctx.beginPath();
-                    ctx.arc(bx, by, highlight ? 1.5 : 1.0, 0, Math.PI * 2);
-                    ctx.fill();
+                    if (highlight) beadsHl.push(bx, by);
+                    else beadsIdle.push(bx, by);
                 }
             }
-            ctx.setLineDash([]);
+
+            if (chordPts.length) {
+                ctx.globalAlpha = constAlpha;
+                ctx.strokeStyle = cols.edgeChord;
+                ctx.lineWidth = 0.9;
+                ctx.beginPath();
+                for (let i = 0; i < chordPts.length; i += 4) {
+                    ctx.moveTo(chordPts[i], chordPts[i + 1]);
+                    ctx.lineTo(chordPts[i + 2], chordPts[i + 3]);
+                }
+                ctx.stroke();
+            }
+            if (idlePts.length) {
+                ctx.globalAlpha = constAlpha;
+                ctx.strokeStyle = cols.edgeIdle;
+                ctx.lineWidth = 0.9;
+                ctx.beginPath();
+                for (let i = 0; i < idlePts.length; i += 4) {
+                    ctx.moveTo(idlePts[i], idlePts[i + 1]);
+                    ctx.lineTo(idlePts[i + 2], idlePts[i + 3]);
+                }
+                ctx.stroke();
+            }
+            if (hlPts.length) {
+                ctx.globalAlpha = constAlpha;
+                ctx.strokeStyle = cols.edgeHl;
+                ctx.lineWidth = 1.25;
+                ctx.beginPath();
+                for (let i = 0; i < hlPts.length; i += 4) {
+                    ctx.moveTo(hlPts[i], hlPts[i + 1]);
+                    ctx.lineTo(hlPts[i + 2], hlPts[i + 3]);
+                }
+                ctx.stroke();
+            }
+            if (transitPts.length) {
+                ctx.globalAlpha = constAlpha;
+                ctx.strokeStyle = cols.edgeIdle;
+                ctx.lineWidth = 0.9;
+                ctx.setLineDash([4, 5]);
+                ctx.beginPath();
+                for (let i = 0; i < transitPts.length; i += 4) {
+                    ctx.moveTo(transitPts[i], transitPts[i + 1]);
+                    ctx.lineTo(transitPts[i + 2], transitPts[i + 3]);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+            if (beadsIdle.length) {
+                ctx.globalAlpha = constAlpha;
+                ctx.fillStyle = cols.beadIdle;
+                ctx.beginPath();
+                for (let i = 0; i < beadsIdle.length; i += 2) {
+                    ctx.moveTo(beadsIdle[i] + 1, beadsIdle[i + 1]);
+                    ctx.arc(beadsIdle[i], beadsIdle[i + 1], 1.0, 0, Math.PI * 2);
+                }
+                ctx.fill();
+            }
+            if (beadsHl.length) {
+                ctx.globalAlpha = constAlpha;
+                ctx.fillStyle = cols.beadHl;
+                ctx.beginPath();
+                for (let i = 0; i < beadsHl.length; i += 2) {
+                    ctx.moveTo(beadsHl[i] + 1.5, beadsHl[i + 1]);
+                    ctx.arc(beadsHl[i], beadsHl[i + 1], 1.5, 0, Math.PI * 2);
+                }
+                ctx.fill();
+            }
 
             // Sector italic watermarks
+            ctx.globalAlpha = constAlpha;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.font = 'italic 500 18px "Cormorant Garamond", Georgia, serif';
             for (const sec of this._constLayout.sectors) {
                 const ps = this._worldToScreen(sec.cx, sec.cy);
                 const hl = this._activeSectorId === sec.id || hoveredUnit === sec.id;
-                ctx.fillStyle = _rgba(hl ? pal.ink : pal.bone, (hl ? 0.32 : 0.12) * constAlpha);
+                ctx.fillStyle = hl ? cols.secHl : cols.secIdle;
                 ctx.fillText(sec.label, ps.x, ps.y - 8);
             }
             ctx.restore();
         }
 
-        // 4. Orrery concentric tracks + Subject Core Star
+        // 4. Orrery concentric tracks + pre-baked Subject Core Star
         if (orreryAlpha > 0.01 && this._orreryLayout) {
             ctx.save();
+            ctx.globalAlpha = orreryAlpha;
             const origin = this._worldToScreen(0, 0);
+            ctx.font = '500 9px "IBM Plex Mono", ui-monospace, monospace';
+            ctx.textAlign = 'center';
             for (const ring of this._orreryLayout.rings) {
                 const rx = ring.radius * ring.aspect * scale;
                 const ry = ring.radius * scale;
                 ctx.beginPath();
                 ctx.ellipse(origin.x, origin.y, rx, ry, 0, 0, Math.PI * 2);
-                ctx.setLineDash(ring.dashed ? [4, 5] : []);
-                ctx.strokeStyle = _rgba(ring.id === 'priority' ? pal.crit : pal.ink, (ring.id === 'priority' ? 0.22 : 0.13) * orreryAlpha);
+                if (ring.dashed) ctx.setLineDash([4, 5]);
+                else ctx.setLineDash([]);
+                ctx.strokeStyle = ring.id === 'priority' ? cols.ringPrio : cols.ringOther;
                 ctx.lineWidth = 1;
                 ctx.stroke();
-
-                ctx.setLineDash([]);
-                ctx.font = '500 9px "IBM Plex Mono", ui-monospace, monospace';
-                ctx.textAlign = 'center';
-                ctx.fillStyle = _rgba(pal.bone, 0.32 * orreryAlpha);
+                ctx.fillStyle = cols.ringLbl;
                 ctx.fillText(ring.label, origin.x, origin.y - ry - 6);
             }
+            ctx.setLineDash([]);
 
-            // Central Subject Core Star
             const coreR = 16 * Math.min(1.2, Math.max(0.85, scale));
-            const coreGrad = ctx.createRadialGradient(origin.x, origin.y, 1, origin.x, origin.y, coreR * 2.4);
-            coreGrad.addColorStop(0, _rgba(pal.bone, 0.9 * orreryAlpha));
-            coreGrad.addColorStop(0.35, _rgba(subjRgb, 0.55 * orreryAlpha));
-            coreGrad.addColorStop(1, _rgba(subjRgb, 0));
-            ctx.fillStyle = coreGrad;
-            ctx.beginPath();
-            ctx.arc(origin.x, origin.y, coreR * 2.4, 0, Math.PI * 2);
-            ctx.fill();
+            if (sprites && sprites.core) {
+                const coreHalf = coreR * (64 / 22);
+                ctx.drawImage(sprites.core, origin.x - coreHalf, origin.y - coreHalf, coreHalf * 2, coreHalf * 2);
+            }
 
             ctx.font = '500 9.5px "IBM Plex Mono", ui-monospace, monospace';
-            ctx.textAlign = 'center';
-            ctx.fillStyle = _rgba(pal.bone, 0.68 * orreryAlpha);
+            ctx.fillStyle = cols.coreLbl;
             ctx.fillText(String(this._payload.subject || '').toUpperCase(), origin.x, origin.y + coreR + 14);
             ctx.restore();
         }
@@ -2293,10 +2621,11 @@ class AstrolabeGalaxyController {
         // 5. Flow Flight-Path Spline
         if (this._flowMode && this._flowPath.length > 0) {
             ctx.save();
-            const pts = this._flowPath
-                .map(k => this._nodeByKey.get(k))
-                .filter(Boolean)
-                .map(nd => this._worldToScreen(nd.x, nd.y));
+            const pts = [];
+            for (let i = 0; i < this._flowPath.length; i++) {
+                const nd = this._nodeByKey.get(this._flowPath[i]);
+                if (nd) pts.push(this._worldToScreen(nd.x, nd.y));
+            }
             if (pts.length >= 2) {
                 ctx.beginPath();
                 ctx.moveTo(pts[0].x, pts[0].y);
@@ -2309,10 +2638,10 @@ class AstrolabeGalaxyController {
                     const dy = cur.y - prev.y;
                     ctx.quadraticCurveTo(mx - dy * 0.14, my + dx * 0.14, cur.x, cur.y);
                 }
-                ctx.strokeStyle = _rgba(pal.flow, 0.72);
+                ctx.strokeStyle = cols.flowSpline;
                 ctx.lineWidth = 1.8;
                 ctx.setLineDash([6, 6]);
-                ctx.lineDashOffset = this.isReducedMotion() ? 0 : -t * 24;
+                ctx.lineDashOffset = reduced ? 0 : -t * 24;
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
@@ -2329,7 +2658,7 @@ class AstrolabeGalaxyController {
                 ctx.moveTo(w * 0.5, 24);
                 ctx.lineTo(p.x, p.y);
                 ctx.setLineDash([3, 5]);
-                ctx.strokeStyle = _rgba(pal.ink, 0.34);
+                ctx.strokeStyle = cols.beam;
                 ctx.lineWidth = 1;
                 ctx.stroke();
                 ctx.setLineDash([]);
@@ -2337,9 +2666,11 @@ class AstrolabeGalaxyController {
             }
         }
 
-        // 7. Draw Chapter Planetary Star-Nodes + gather DOM label inputs
-        const labelItems = [];
+        // 7. Draw Chapter Planetary Star-Nodes (pre-baked sprites + batched moons)
+        const labelItems = this._labelsDirty ? [] : null;
         const nodeScale = Math.min(1.25, Math.max(0.8, scale));
+        const critMoonPts = [];
+        const flowMoonPts = [];
 
         for (let i = 0; i < this._nodes.length; i++) {
             const nd = this._nodes[i];
@@ -2359,88 +2690,59 @@ class AstrolabeGalaxyController {
             const critical = !untouched && (nd.dueErrors > 0 || (nd.health < 45 && nd.hitPct < 60));
             const mastered = !untouched && !critical && nd.health >= 75 && (nd.doneFrac >= 0.7 || nd.hitPct >= 80);
 
-            let coreRgb = subjRgb;
-            if (critical) coreRgb = pal.crit;
-            else if (mastered) coreRgb = pal.bone;
-            if (isFlowSelected) coreRgb = pal.flow;
-
-            ctx.save();
             ctx.globalAlpha = dimFactor;
 
-            // Corona / Aura
-            if (!untouched) {
-                const pulse = (critical && !this.isReducedMotion()) ? (0.85 + 0.25 * Math.sin(t * 2.2 + nd.phase)) : 1;
-                const auraR = starR * (critical ? 2.5 : 2.15) * pulse;
-                const g = ctx.createRadialGradient(p.x, p.y, starR * 0.2, p.x, p.y, auraR);
-                g.addColorStop(0, _rgba(coreRgb, (critical ? 0.45 : 0.34) * pulse));
-                g.addColorStop(1, _rgba(coreRgb, 0));
-                ctx.fillStyle = g;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, auraR, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
             // Inclined planetary hairline ring (gently precessing)
-            ctx.save();
-            ctx.translate(p.x, p.y);
-            ctx.rotate(nd.ringTilt + (this.isReducedMotion() ? 0 : Math.sin(t * 0.3 + nd.phase) * 0.08));
+            const tilt = nd.ringTilt + (reduced ? 0 : Math.sin(t * 0.3 + nd.phase) * 0.08);
             ctx.beginPath();
-            ctx.ellipse(0, 0, starR * 1.78, starR * 0.56, 0, 0, Math.PI * 2);
-            ctx.strokeStyle = _rgba(isFlowSelected ? pal.flow : pal.bone, untouched ? 0.14 : 0.22);
+            ctx.ellipse(p.x, p.y, starR * 1.78, starR * 0.56, tilt, 0, Math.PI * 2);
+            ctx.strokeStyle = isFlowSelected ? cols.planetRingFlow : (untouched ? cols.planetRingUntouched : cols.planetRingIdle);
             ctx.lineWidth = 0.85;
             ctx.stroke();
-            ctx.restore();
 
             // Coverage resolution arc
             if (nd.doneFrac > 0.01) {
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, starR + 3.8, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * nd.doneFrac);
-                ctx.strokeStyle = _rgba(isFlowSelected ? pal.flow : pal.ink, 0.78);
+                ctx.strokeStyle = isFlowSelected ? cols.covArcFlow : cols.covArc;
                 ctx.lineWidth = 1.4;
                 ctx.stroke();
             }
 
-            // Core body (diamond comet for mocks, circle planet/star for syllabus)
+            // Core body (pre-baked 128x128 sprite for syllabus stars, rotated diamond for mocks)
             if (nd.isMock) {
                 ctx.save();
                 ctx.translate(p.x, p.y);
                 ctx.rotate(Math.PI * 0.25);
                 const dr = starR * 0.86;
-                ctx.fillStyle = untouched ? 'rgba(10,12,18,0.85)' : _rgba(coreRgb, 0.92);
-                ctx.strokeStyle = _rgba(pal.ink, 0.85);
+                ctx.fillStyle = untouched ? 'rgba(10,12,18,0.85)'
+                    : (isFlowSelected ? cols.mockFlowFill : (critical ? cols.mockCritFill : (mastered ? cols.mockMasterFill : cols.mockFill)));
+                ctx.strokeStyle = cols.mockStroke;
                 ctx.lineWidth = 1.1;
                 ctx.fillRect(-dr, -dr, dr * 2, dr * 2);
                 ctx.strokeRect(-dr, -dr, dr * 2, dr * 2);
                 ctx.restore();
-            } else {
+            } else if (untouched) {
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, starR, 0, Math.PI * 2);
-                if (untouched) {
-                    ctx.fillStyle = 'rgba(8, 10, 16, 0.88)';
-                    ctx.fill();
-                    ctx.strokeStyle = _rgba(subjRgb, 0.45);
-                    ctx.lineWidth = 1.1;
-                    ctx.stroke();
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
-                    ctx.fillStyle = _rgba(subjRgb, 0.55);
-                    ctx.fill();
-                } else {
-                    const bodyGrad = ctx.createRadialGradient(p.x - starR * 0.3, p.y - starR * 0.3, 1, p.x, p.y, starR);
-                    bodyGrad.addColorStop(0, _rgba(pal.bone, mastered ? 1 : 0.88));
-                    bodyGrad.addColorStop(0.55, _rgba(coreRgb, 0.92));
-                    bodyGrad.addColorStop(1, _rgba(coreRgb, 0.42));
-                    ctx.fillStyle = bodyGrad;
-                    ctx.fill();
-                    ctx.strokeStyle = _rgba(pal.bone, 0.35);
-                    ctx.lineWidth = 0.8;
-                    ctx.stroke();
-                }
+                ctx.fillStyle = 'rgba(8, 10, 16, 0.88)';
+                ctx.fill();
+                ctx.strokeStyle = cols.untouchedStroke;
+                ctx.lineWidth = 1.1;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = cols.untouchedDot;
+                ctx.fill();
+            } else if (sprites) {
+                const drawHalf = starR * (64 / 22);
+                const sprite = isFlowSelected ? sprites.flow : (critical ? sprites.crit : (mastered ? sprites.mastered : sprites.subj));
+                const ph = (critical && !reduced) ? drawHalf * (0.96 + 0.05 * Math.sin(t * 2.2 + nd.phase)) : drawHalf;
+                ctx.drawImage(sprite, p.x - ph, p.y - ph, ph * 2, ph * 2);
 
-                // 4-point diffraction glint on mastered stars
                 if (mastered) {
                     const sp = starR * 1.65;
-                    ctx.strokeStyle = _rgba(pal.bone, 0.65);
+                    ctx.strokeStyle = cols.glint;
                     ctx.lineWidth = 0.9;
                     ctx.beginPath();
                     ctx.moveTo(p.x - sp, p.y); ctx.lineTo(p.x + sp, p.y);
@@ -2449,34 +2751,26 @@ class AstrolabeGalaxyController {
                 }
             }
 
-            // Orbiting satellite moons (due Vault errors in crimson, Flow-ready spark in ice)
-            const dueMoons = Math.min(4, nd.dueErrors);
-            for (let m = 0; m < dueMoons; m++) {
-                const mOrbit = starR + 7.5;
-                const mAng = nd.phase + m * ((Math.PI * 2) / Math.max(1, dueMoons)) + t * 0.85;
-                const mx = p.x + Math.cos(mAng) * mOrbit;
-                const my = p.y + Math.sin(mAng) * mOrbit;
-                ctx.fillStyle = _rgba(pal.crit, 0.92);
-                ctx.beginPath();
-                ctx.arc(mx, my, 2.0, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            if (nd.flowCount > 0 && !isFlowSelected) {
-                const fOrbit = starR + 10.5;
-                const fAng = -nd.phase - t * 0.48;
-                const fx = p.x + Math.cos(fAng) * fOrbit;
-                const fy = p.y + Math.sin(fAng) * fOrbit;
-                ctx.fillStyle = _rgba(pal.flow, 0.78);
-                ctx.beginPath();
-                ctx.arc(fx, fy, 1.5, 0, Math.PI * 2);
-                ctx.fill();
+            // Collect satellite moon positions (drawn in 2 batched paths after loop)
+            if (isMatched) {
+                const dueMoons = Math.min(4, nd.dueErrors);
+                for (let m = 0; m < dueMoons; m++) {
+                    const mOrbit = starR + 7.5;
+                    const mAng = nd.phase + m * ((Math.PI * 2) / Math.max(1, dueMoons)) + t * 0.85;
+                    critMoonPts.push(p.x + Math.cos(mAng) * mOrbit, p.y + Math.sin(mAng) * mOrbit);
+                }
+                if (nd.flowCount > 0 && !isFlowSelected) {
+                    const fOrbit = starR + 10.5;
+                    const fAng = -nd.phase - t * 0.48;
+                    flowMoonPts.push(p.x + Math.cos(fAng) * fOrbit, p.y + Math.sin(fAng) * fOrbit);
+                }
             }
 
-            // Flow waypoint ring + index badge
+            // Flow waypoint ring
             if (isFlowSelected) {
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, starR + 7.5, 0, Math.PI * 2);
-                ctx.strokeStyle = _rgba(pal.flow, 0.95);
+                ctx.strokeStyle = cols.flowRing;
                 ctx.lineWidth = 1.6;
                 ctx.stroke();
             }
@@ -2485,7 +2779,7 @@ class AstrolabeGalaxyController {
             if (isHovered || isLocked || (searchActive && nd.key === this._topSearchKey)) {
                 const rr = starR + 9.5;
                 const b = 4.5;
-                ctx.strokeStyle = _rgba(isFlowSelected ? pal.flow : pal.ink, isLocked ? 0.95 : 0.72);
+                ctx.strokeStyle = isFlowSelected ? cols.reticleFlow : (isLocked ? cols.reticleLock : cols.reticleHover);
                 ctx.lineWidth = 1.25;
                 ctx.beginPath();
                 ctx.moveTo(p.x - rr, p.y - rr + b); ctx.lineTo(p.x - rr, p.y - rr); ctx.lineTo(p.x - rr + b, p.y - rr);
@@ -2496,7 +2790,7 @@ class AstrolabeGalaxyController {
             }
 
             // Arrival / birth radial ripple
-            if ((this._arrivalKey === nd.key || this._birthKey === nd.key) && !this.isReducedMotion()) {
+            if ((this._arrivalKey === nd.key || this._birthKey === nd.key) && !reduced) {
                 const endMs = this._arrivalKey === nd.key ? this._arrivalEndMs : this._birthEndMs;
                 const prog = _clamp(1 - (endMs - now) / 600, 0, 1);
                 const ripR = starR + 6 + prog * 28;
@@ -2507,53 +2801,106 @@ class AstrolabeGalaxyController {
                 ctx.stroke();
             }
 
-            ctx.restore();
-
-            const el = this._labelEls.get(nd.key);
-            labelItems.push({
-                key: nd.key,
-                sx: p.x,
-                sy: p.y,
-                starR,
-                fullW: el ? el._fullW : 100,
-                shortW: el ? el._shortW : 76,
-                labelH: el ? el._labelH : 22,
-                priority: nd.weight * 2 + (nd.dueErrors > 0 ? 0.4 : 0) + (nd.qCount > 0 ? 0.2 : 0),
-                forceVisible: isHovered || isLocked || isFlowSelected || (searchActive && isMatched),
-            });
+            if (labelItems) {
+                const el = this._labelEls.get(nd.key);
+                labelItems.push({
+                    key: nd.key,
+                    sx: p.x,
+                    sy: p.y,
+                    starR,
+                    fullW: el ? el._fullW : 100,
+                    shortW: el ? el._shortW : 76,
+                    labelH: el ? el._labelH : 22,
+                    priority: nd.weight * 2 + (nd.dueErrors > 0 ? 0.4 : 0) + (nd.qCount > 0 ? 0.2 : 0),
+                    forceVisible: isHovered || isLocked || isFlowSelected || (searchActive && isMatched),
+                });
+            }
         }
 
-        // 8. Collision-free DOM label layout
-        const safeInsets = {
-            left: 12,
-            right: 12,
-            top: 56,
-            bottom: this._flowMode ? 112 : (this._lockedKey ? 132 : 58),
-        };
-        const placements = resolveLabelCollisions(labelItems, { width: w, height: h }, safeInsets);
-        for (const nd of this._nodes) {
-            const el = this._labelEls.get(nd.key);
-            const pl = placements.get(nd.key);
-            if (!el || !pl) continue;
-            const isMatched = !searchActive || this._searchMatches.has(nd.key);
-            const flowIdx = this._flowMode ? this._flowPath.indexOf(nd.key) : -1;
-            const nameEl = el.querySelector('.cg-lbl-name');
-            const targetText = pl.mode === 'short' ? el._shortText : el._fullText;
-            if (nameEl && nameEl.textContent !== targetText) nameEl.textContent = targetText;
-
-            el.style.transform = `translate3d(${pl.x.toFixed(1)}px, ${pl.y.toFixed(1)}px, 0)`;
-            el.dataset.tier = pl.visible ? pl.mode : 'hidden';
-            el.tabIndex = pl.visible ? 0 : -1;
-            el.setAttribute('aria-hidden', pl.visible ? 'false' : 'true');
-            el.classList.toggle('is-dimmed', !isMatched);
-            el.classList.toggle('is-hovered', nd.key === this._hoveredKey);
-            el.classList.toggle('is-locked', nd.key === this._lockedKey);
-            el.classList.toggle('is-flow-picked', flowIdx >= 0);
-            if (flowIdx >= 0) el.dataset.flowOrder = String(flowIdx + 1).padStart(2, '0');
-            else delete el.dataset.flowOrder;
+        ctx.globalAlpha = 1;
+        if (critMoonPts.length) {
+            ctx.fillStyle = cols.critMoon;
+            ctx.beginPath();
+            for (let i = 0; i < critMoonPts.length; i += 2) {
+                ctx.moveTo(critMoonPts[i] + 2.0, critMoonPts[i + 1]);
+                ctx.arc(critMoonPts[i], critMoonPts[i + 1], 2.0, 0, Math.PI * 2);
+            }
+            ctx.fill();
+        }
+        if (flowMoonPts.length) {
+            ctx.fillStyle = cols.flowMoon;
+            ctx.beginPath();
+            for (let i = 0; i < flowMoonPts.length; i += 2) {
+                ctx.moveTo(flowMoonPts[i] + 1.5, flowMoonPts[i + 1]);
+                ctx.arc(flowMoonPts[i], flowMoonPts[i + 1], 1.5, 0, Math.PI * 2);
+            }
+            ctx.fill();
         }
 
-        ctx.restore();
+        // 8. Dirty-flagged, diffed DOM label updates (zero mutations during calm idle frames)
+        if (this._labelsDirty && labelItems) {
+            const safeInsets = {
+                left: 12,
+                right: 12,
+                top: 56,
+                bottom: this._flowMode ? 112 : (this._lockedKey ? 132 : 58),
+            };
+            const placements = resolveLabelCollisions(labelItems, { width: w, height: h }, safeInsets);
+            for (const nd of this._nodes) {
+                const el = this._labelEls.get(nd.key);
+                const pl = placements.get(nd.key);
+                if (!el || !pl) continue;
+                const isMatched = !searchActive || this._searchMatches.has(nd.key);
+                const flowIdx = this._flowMode ? this._flowPath.indexOf(nd.key) : -1;
+                const targetText = pl.mode === 'short' ? el._shortText : el._fullText;
+                if (el._nameEl && el._txt !== targetText) {
+                    el._nameEl.textContent = targetText;
+                    el._txt = targetText;
+                }
+
+                const nextTx = `translate3d(${pl.x.toFixed(1)}px, ${pl.y.toFixed(1)}px, 0)`;
+                if (el._tx !== nextTx) {
+                    el.style.transform = nextTx;
+                    el._tx = nextTx;
+                }
+                const nextTier = pl.visible ? pl.mode : 'hidden';
+                if (el._tier !== nextTier) {
+                    el.dataset.tier = nextTier;
+                    el.tabIndex = pl.visible ? 0 : -1;
+                    el.setAttribute('aria-hidden', pl.visible ? 'false' : 'true');
+                    el._tier = nextTier;
+                }
+                const nextDim = !isMatched;
+                if (el._dim !== nextDim) {
+                    el.classList.toggle('is-dimmed', nextDim);
+                    el._dim = nextDim;
+                }
+                const nextHov = nd.key === this._hoveredKey;
+                if (el._hov !== nextHov) {
+                    el.classList.toggle('is-hovered', nextHov);
+                    el._hov = nextHov;
+                }
+                const nextLck = nd.key === this._lockedKey;
+                if (el._lck !== nextLck) {
+                    el.classList.toggle('is-locked', nextLck);
+                    el._lck = nextLck;
+                }
+                const nextFlw = flowIdx >= 0;
+                const nextFlwOrd = nextFlw ? String(flowIdx + 1).padStart(2, '0') : null;
+                if (el._flw !== nextFlw || el._flwOrd !== nextFlwOrd) {
+                    el.classList.toggle('is-flow-picked', nextFlw);
+                    if (nextFlw) el.dataset.flowOrder = nextFlwOrd;
+                    else delete el.dataset.flowOrder;
+                    el._flw = nextFlw;
+                    el._flwOrd = nextFlwOrd;
+                }
+            }
+            this._labelsDirty = false;
+        }
+
+        const elapsed = performance.now() - t0;
+        this._lastDrawMs = elapsed;
+        this._avgDrawMs = this._avgDrawMs ? this._avgDrawMs * 0.85 + elapsed * 0.15 : elapsed;
     }
 
     getDebugState() {
@@ -2566,6 +2913,8 @@ class AstrolabeGalaxyController {
             nodeCount: this._nodes.length,
             frameCount: this._frameCount,
             rafRunning: !!this._rafId,
+            lastDrawMs: Number(this._lastDrawMs.toFixed(3)),
+            avgDrawMs: Number(this._avgDrawMs.toFixed(3)),
             morphPos: this._morphPos,
             cam: { ...this._cam },
             activeSectorId: this._activeSectorId,
