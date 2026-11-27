@@ -251,14 +251,18 @@ html[data-obs-screen="lunar"][data-mode="dusk"]      .obs-plate[data-screen="lun
   animation: obs-drift 40s ease-in-out infinite alternate;
   will-change: transform, opacity;
 }
-/* 3D Moon & Celestial Astrolabe on Arena Dashboard: soft-shaded sphere with dark
-   terminator needs slightly higher plate opacity than dense line engravings
-   while remaining calm and subordinate to foreground typography. */
-html[data-obs-screen="practice"][data-mode="night"]:not([data-obs-focus]) .obs-plate[data-screen="practice"][data-variant="night"],
+/* Celestial Star Constellation Planisphere on Practice & Microscope on Vault:
+   fine starlight filaments and engraved meridians read crisply at calm opacity
+   while staying completely subordinate to foreground typography. */
+html[data-obs-screen="practice"][data-mode="night"]:not([data-obs-focus]) .obs-plate[data-screen="practice"][data-variant="night"] {
+  opacity: .24;
+}
 html[data-obs-screen="vault"][data-mode="night"]:not([data-obs-focus])    .obs-plate[data-screen="vault"][data-variant="night"] {
   opacity: .14;
 }
-html[data-obs-screen="practice"][data-mode="dusk"]:not([data-obs-focus])  .obs-plate[data-screen="practice"][data-variant="dusk"],
+html[data-obs-screen="practice"][data-mode="dusk"]:not([data-obs-focus])  .obs-plate[data-screen="practice"][data-variant="dusk"] {
+  opacity: .28;
+}
 html[data-obs-screen="vault"][data-mode="dusk"]:not([data-obs-focus])     .obs-plate[data-screen="vault"][data-variant="dusk"] {
   opacity: .18;
 }

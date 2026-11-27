@@ -252,7 +252,11 @@
 //        Two-column Observatory Instrument Folio layout for #lockin-setup-modal,
 //        genuine Flow (starlight/brass) vs Hardcore (forge ember) reactive
 //        atmosphere, hairline stepper bay, rival dossier strip, and zero-scroll fit.
-const VERSION = 'jeemax-v131';
+// v132 - ATMOSPHERE DIMMING FIX & CELESTIAL CONSTELLATION ATLAS:
+//        Fix atmosphere.js data-obs-focus stuck-on bug (hasAttribute vs !!""),
+//        and replace Practice background moon plates with an intricate celestial
+//        star constellation planisphere (atmos-i-horizon-night/dusk.svg).
+const VERSION = 'jeemax-v132';
 
 const SHELL = [
   './',

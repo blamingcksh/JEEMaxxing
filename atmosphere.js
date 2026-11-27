@@ -111,13 +111,26 @@
   }
   function focusOn() {
     if (document.querySelector(LUNAR_SELECTORS)) return false;
-    return !!document.querySelector('.modal-overlay.active');
+    var overlays = document.querySelectorAll('.modal-overlay.active');
+    for (var i = 0; i < overlays.length; i++) {
+      var el = overlays[i];
+      if (el.style.display !== 'none' && !el.hidden) return true;
+    }
+    return false;
   }
   function sync() {
     var s = currentScreen();
     if (root.dataset.obsScreen !== s) root.dataset.obsScreen = s;
     var f = focusOn();
-    if (f !== !!root.dataset.obsFocus) { if (f) root.dataset.obsFocus = ''; else delete root.dataset.obsFocus; }
+    // Use hasAttribute (NOT !!root.dataset.obsFocus — Boolean("") is false,
+    // which previously left data-obs-focus="" stuck on <html> forever after
+    // the very first modal/practice opened, dimming background plates to 1.5%
+    // until the next full app reload).
+    var hasFocus = root.hasAttribute('data-obs-focus');
+    if (f !== hasFocus) {
+      if (f) root.setAttribute('data-obs-focus', '');
+      else root.removeAttribute('data-obs-focus');
+    }
   }
 
   /* ── Scroll: nav hairline flag + gentle parallax ── */
