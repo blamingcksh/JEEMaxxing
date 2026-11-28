@@ -269,7 +269,11 @@
 //        Remove Spotify Connect Deck & replace album haze with standalone
 //        procedural painterly OKLCH light-plates (chroma-wash.js/css) for
 //        Practice & Vault stages + Neural Flow v3 audio engine.
-const VERSION = 'jeemax-v135';
+// v136 - IOS LONG-SESSION AUDIO HARDENING:
+//        Explicit onended node disconnection (fixes 30m WebKit graph leak),
+//        bounded AudioParam timelines, NaN-safe linear sidechain, 2s silent
+//        WAV iOS session keepalive, and automatic stall/NaN self-heal watchdog.
+const VERSION = 'jeemax-v136';
 
 const SHELL = [
   './',

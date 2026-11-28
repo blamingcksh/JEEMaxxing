@@ -43,26 +43,26 @@ export const VIBES = Object.freeze({
         id: 'aperture',
         name: 'Aperture',
         label: 'APERTURE',
-        subtitle: 'Deep analytical flow · 108 BPM · Felt sub-thumps, rolling Moog bass & velvet brown air',
+        subtitle: 'Deep analytical flow · 108 BPM · Light felt pulse, warm melodic bass & airy velvet bed',
         bpm: 108,
         scale: [0, 2, 4, 6, 7, 9, 11, 14, 16], // Lydian Add9
         motifLen: 12,
         leadTimbre: 'prophetPluck',
         bassStyle: 'rolling',
         subStyle: 'steady',
-        neuralAmHz: 15.0,    // Low-Beta / SMR sustained attention peak
-        neuralAmDepth: 0.13,
-        atmosLevel: 0.14,
-        atmosCutoff: 480,
-        subLevel: 0.44,
-        bassLevel: 0.22,
-        padLevel: 0.21,
-        motifLevel: 0.115,
-        shimmerLevel: 0.26,
-        reverbWet: 0.44,
-        delayWet: 0.30,
-        percLevel: 0.030,
-        drive: 7.5,
+        neuralAmHz: 15.0,    // Subliminal Low-Beta / SMR sustained attention peak
+        neuralAmDepth: 0.08,
+        atmosLevel: 0.095,
+        atmosCutoff: 450,
+        subLevel: 0.30,
+        bassLevel: 0.16,
+        padLevel: 0.17,
+        motifLevel: 0.095,
+        shimmerLevel: 0.24,
+        reverbWet: 0.42,
+        delayWet: 0.28,
+        percLevel: 0.020,
+        drive: 3.5,
         accent: '#7dd3fc',
         chords: [
             { name: 'Imaj9',     pcs: [0, 4, 7, 11, 2],  next: [[1, 0.32], [3, 0.30], [4, 0.24], [5, 0.14]] },
@@ -77,26 +77,26 @@ export const VIBES = Object.freeze({
         id: 'aether',
         name: 'Aether',
         label: 'AETHER',
-        subtitle: 'Weightless drift · 84 BPM · Bowed analog pads, warm velvet ocean & celestial shimmer',
+        subtitle: 'Weightless drift · 84 BPM · Breathable analog pads, whisper ocean & celestial shimmer',
         bpm: 84,
         scale: [0, 2, 4, 6, 7, 9, 11, 14, 18], // Wide Lydian Maj9#11
         motifLen: 13,
         leadTimbre: 'feltCelesta',
         bassStyle: 'dronePulse',
         subStyle: 'heartbeat',
-        neuralAmHz: 10.0,    // Alpha relaxed conceptual insight
-        neuralAmDepth: 0.12,
-        atmosLevel: 0.19,
-        atmosCutoff: 410,
-        subLevel: 0.30,
-        bassLevel: 0.14,
-        padLevel: 0.27,
-        motifLevel: 0.088,
-        shimmerLevel: 0.44,
-        reverbWet: 0.62,
-        delayWet: 0.34,
-        percLevel: 0.010,
-        drive: 4.5,
+        neuralAmHz: 10.0,    // Subliminal Alpha relaxed conceptual insight
+        neuralAmDepth: 0.075,
+        atmosLevel: 0.125,
+        atmosCutoff: 390,
+        subLevel: 0.22,
+        bassLevel: 0.11,
+        padLevel: 0.21,
+        motifLevel: 0.075,
+        shimmerLevel: 0.38,
+        reverbWet: 0.56,
+        delayWet: 0.30,
+        percLevel: 0.008,
+        drive: 2.5,
         accent: '#c4b5fd',
         chords: [
             { name: 'Imaj9#11',  pcs: [0, 4, 7, 11, 6],  next: [[1, 0.35], [2, 0.35], [3, 0.30]] },
@@ -110,26 +110,26 @@ export const VIBES = Object.freeze({
         id: 'kinetic',
         name: 'Kinetic',
         label: 'KINETIC',
-        subtitle: 'Forward velocity · 122 BPM · Driving sub-kick, syncopated bass & Mixolydian arps',
+        subtitle: 'Forward velocity · 122 BPM · Crisp light pulse, buoyant bass & Mixolydian arps',
         bpm: 122,
         scale: [0, 2, 4, 7, 9, 10, 14, 16], // Bright Mixolydian Add9
         motifLen: 8,
         leadTimbre: 'analogArp',
         bassStyle: 'syncopated',
         subStyle: 'drive',
-        neuralAmHz: 16.5,    // Mid-Beta alertness & speed-solving velocity
-        neuralAmDepth: 0.14,
-        atmosLevel: 0.10,
-        atmosCutoff: 560,
-        subLevel: 0.50,
-        bassLevel: 0.25,
-        padLevel: 0.17,
-        motifLevel: 0.125,
-        shimmerLevel: 0.20,
-        reverbWet: 0.34,
-        delayWet: 0.28,
-        percLevel: 0.045,
-        drive: 10.5,
+        neuralAmHz: 16.5,    // Subliminal Mid-Beta alertness
+        neuralAmDepth: 0.085,
+        atmosLevel: 0.075,
+        atmosCutoff: 510,
+        subLevel: 0.35,
+        bassLevel: 0.18,
+        padLevel: 0.14,
+        motifLevel: 0.105,
+        shimmerLevel: 0.18,
+        reverbWet: 0.32,
+        delayWet: 0.26,
+        percLevel: 0.030,
+        drive: 5.0,
         accent: '#6ee7b7',
         chords: [
             { name: 'Iadd9',     pcs: [0, 4, 7, 2, 10],  next: [[1, 0.36], [2, 0.34], [3, 0.30]] },
@@ -143,26 +143,26 @@ export const VIBES = Object.freeze({
         id: 'solstice',
         name: 'Solstice',
         label: 'SOLSTICE',
-        subtitle: 'Golden analog warmth · 98 BPM · Vintage Rhodes tines, warm sub & sunlit Maj9 bloom',
+        subtitle: 'Golden analog warmth · 98 BPM · Vintage Rhodes tines, airy sub & sunlit Maj9 bloom',
         bpm: 98,
         scale: [0, 2, 4, 7, 9, 11, 14, 16], // Golden Major 9 / Pentatonic-Add9
         motifLen: 11,
         leadTimbre: 'vintageRhodes',
         bassStyle: 'warmGroove',
         subStyle: 'warm',
-        neuralAmHz: 10.8,    // Upper-Alpha luminous creative flow
-        neuralAmDepth: 0.11,
-        atmosLevel: 0.15,
-        atmosCutoff: 510,
-        subLevel: 0.38,
-        bassLevel: 0.20,
-        padLevel: 0.24,
-        motifLevel: 0.130,
-        shimmerLevel: 0.34,
-        reverbWet: 0.48,
-        delayWet: 0.34,
-        percLevel: 0.024,
-        drive: 6.5,
+        neuralAmHz: 10.8,    // Subliminal Upper-Alpha creative flow
+        neuralAmDepth: 0.075,
+        atmosLevel: 0.10,
+        atmosCutoff: 470,
+        subLevel: 0.27,
+        bassLevel: 0.15,
+        padLevel: 0.19,
+        motifLevel: 0.105,
+        shimmerLevel: 0.30,
+        reverbWet: 0.46,
+        delayWet: 0.30,
+        percLevel: 0.018,
+        drive: 3.0,
         accent: '#fcd34d',
         chords: [
             { name: 'Imaj9',     pcs: [0, 4, 7, 11, 2],  next: [[1, 0.36], [2, 0.34], [3, 0.30]] },
@@ -191,12 +191,12 @@ const SUB_GRIDS = {
     warm:      [1.0, 0, 0, 0,   0.78, 0, 0.26, 0,  0.92, 0, 0, 0,   0.80, 0, 0.32, 0],
 };
 
-// Rolling muted Moog bass velocity patterns per bassStyle
+// Breathable melodic bass velocity patterns (open air between notes — never heavy 16th-note club pressure)
 const BASS_GRIDS = {
-    rolling:    [0.95, 0.32, 0.58, 0.42,  0.22, 0.48, 0.74, 0.36,  0.90, 0.30, 0.64, 0.45,  0.26, 0.52, 0.78, 0.44],
-    dronePulse: [0.90, 0,    0,    0,     0,    0,    0.55, 0,     0.78, 0,    0,    0,     0,    0,    0.48, 0],
-    syncopated: [0.95, 0,    0.58, 0.76,  0,    0.44, 0.82, 0.34,  0.90, 0,    0.66, 0.72,  0,    0.50, 0.84, 0.42],
-    warmGroove: [0.92, 0,    0.42, 0,     0.35, 0,    0.72, 0.38,  0.86, 0,    0.54, 0,     0.40, 0,    0.74, 0.32],
+    rolling:    [0.86, 0,    0.42, 0,     0,    0,    0.64, 0,     0.80, 0,    0.48, 0,     0,    0,    0.66, 0],
+    dronePulse: [0.82, 0,    0,    0,     0,    0,    0.48, 0,     0.72, 0,    0,    0,     0,    0,    0.42, 0],
+    syncopated: [0.88, 0,    0,    0.58,  0,    0,    0.70, 0,     0.82, 0,    0.52, 0,     0,    0,    0.72, 0],
+    warmGroove: [0.84, 0,    0,    0,     0.38, 0,    0.62, 0,     0.78, 0,    0.44, 0,     0,    0,    0.64, 0],
 };
 
 // Organic micro-percussion velocity grids (16 steps — sparse silky offbeats, zero constant hiss)
@@ -296,6 +296,7 @@ let _crispNoiseBuffer = null;
 // Sequencer & Generative Arrangement State
 let _schedulerTimer = null;
 let _modTimer = null;
+let _watchdogTimer = null;
 let _nextStepTime = 0;
 let _stepCounter = 0;
 let _barCount = 0;
@@ -308,6 +309,15 @@ let _chapterEndBar = 18;
 let _swellFiredForBar = -1;
 let _sessionStartedAt = Date.now();
 let _lastSliderBumpAt = 0;
+
+// Long-session iOS/WebKit stability state (zero leaks, zero param-timeline bloat, stall self-heal)
+let _paramLast = Object.create(null);
+let _lastWatchTime = -1;
+let _stallCount = 0;
+let _rebuilds = 0;
+let _voicesCleaned = 0;
+let _iosKeepaliveUrl = null;
+let _rebuilding = false;
 
 // Session PRNG & evolutionary fingerprint
 let _rng = _mulberry32((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0);
@@ -558,25 +568,107 @@ function _setIosSessionType(type) {
     } catch (_) {}
 }
 
+/** Explicitly disconnect ephemeral voice nodes on end so iOS WebKit never accumulates dead graph inputs. */
+function _autoDisconnect(sourceNode, nodes) {
+    if (!sourceNode) return;
+    sourceNode.onended = () => {
+        _voicesCleaned += 1;
+        for (let i = 0; i < nodes.length; i++) {
+            const n = nodes[i];
+            if (!n) continue;
+            try { n.disconnect(); } catch (_) {}
+        }
+        try { sourceNode.onended = null; } catch (_) {}
+    };
+}
+
+/**
+ * Bounded AudioParam ramp: skips redundant updates (< eps) and cancels prior tails
+ * so WebKit's AudioParamTimeline never grows unbounded over multi-hour sessions.
+ */
+function _rampParam(key, param, target, now, tc, eps = 0.002) {
+    if (!param || !Number.isFinite(target) || !Number.isFinite(now)) return;
+    const prev = _paramLast[key];
+    if (prev !== undefined && Math.abs(target - prev) < eps) return;
+    _paramLast[key] = target;
+    try {
+        if (typeof param.cancelAndHoldAtTime === 'function') {
+            param.cancelAndHoldAtTime(now);
+        } else {
+            param.cancelScheduledValues(now);
+            const cur = Number.isFinite(param.value) ? param.value : target;
+            param.setValueAtTime(cur, now);
+        }
+        param.setTargetAtTime(target, now, tc);
+    } catch (_) {}
+}
+
+/** Generate a tiny 2-second 8 kHz silent WAV Blob URL so looping costs ~0% CPU on iOS. */
+function _getSilentLoopUrl() {
+    if (_iosKeepaliveUrl) return _iosKeepaliveUrl;
+    try {
+        if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+            const sampleRate = 8000;
+            const numSamples = sampleRate * 2; // 2s mono 8-bit unsigned silence (0x80)
+            const buf = new ArrayBuffer(44 + numSamples);
+            const view = new DataView(buf);
+            const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+            writeStr(0, 'RIFF');
+            view.setUint32(4, 36 + numSamples, true);
+            writeStr(8, 'WAVE');
+            writeStr(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, 1, true); // mono
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate, true);
+            view.setUint16(32, 1, true);
+            view.setUint16(34, 8, true); // 8-bit unsigned
+            writeStr(36, 'data');
+            view.setUint32(40, numSamples, true);
+            new Uint8Array(buf, 44).fill(128);
+            _iosKeepaliveUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+            return _iosKeepaliveUrl;
+        }
+    } catch (_) {}
+    return SILENT_WAV_URI;
+}
+
+function _syncIosKeepalive(active) {
+    if (!_iosUnlockAudio) return;
+    try {
+        if (active) {
+            if (_iosUnlockAudio.paused) {
+                const p = _iosUnlockAudio.play();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            }
+        } else if (!_iosUnlockAudio.paused) {
+            _iosUnlockAudio.pause();
+        }
+    } catch (_) {}
+}
+
 function _activateIosAudioSession() {
     _setIosSessionType('playback');
-
-    if (_iosSessionActivated || typeof document === 'undefined') return;
+    if (typeof document === 'undefined') return;
     try {
         if (!_iosUnlockAudio) {
             const el = document.createElement('audio');
             el.setAttribute('playsinline', '');
             el.setAttribute('webkit-playsinline', '');
+            el.loop = true;
             el.preload = 'auto';
-            el.src = SILENT_WAV_URI;
+            el.src = _getSilentLoopUrl();
             el.volume = 0.01;
             _iosUnlockAudio = el;
         }
-        const p = _iosUnlockAudio.play();
-        if (p && typeof p.then === 'function') {
-            p.then(() => { _iosSessionActivated = true; }).catch(() => {});
-        } else {
-            _iosSessionActivated = true;
+        if (_enabled && !document.hidden) {
+            const p = _iosUnlockAudio.play();
+            if (p && typeof p.then === 'function') {
+                p.then(() => { _iosSessionActivated = true; }).catch(() => {});
+            } else {
+                _iosSessionActivated = true;
+            }
         }
     } catch (_) {}
 }
@@ -587,8 +679,124 @@ function _playSilentPulse(ac) {
         const s = ac.createBufferSource();
         s.buffer = b;
         s.connect(ac.destination);
+        _autoDisconnect(s, [s]);
         s.start(0);
     } catch (_) {}
+}
+
+function _teardownGraph() {
+    _stopLoops();
+    const old = _ac;
+    _ac = null;
+    _graphBuilt = false;
+    _masterGain = null;
+    _toneFilter = null;
+    _duckBus = null;
+    _subDirectBus = null;
+    _sfxBus = null;
+    _warmthEq = null;
+    _tapeDrive = null;
+    _atmosGain = null;
+    _atmosLpA = null;
+    _atmosLpB = null;
+    _reverbSend = null;
+    _reverbWet = null;
+    _shimmerSend = null;
+    _shimmerWet = null;
+    _neuralAmBus = null;
+    _neuralAmOsc = null;
+    _neuralAmDepthGain = null;
+    _delaySend = null;
+    _delayWet = null;
+    _delayL = null;
+    _delayR = null;
+    _flatlineGain = null;
+    _analyserL = null;
+    _analyserR = null;
+    _velvetBrownBuffer = null;
+    _crispNoiseBuffer = null;
+    _paramLast = Object.create(null);
+    _lastWatchTime = -1;
+    _stallCount = 0;
+    if (old) {
+        try { old.close().catch(() => {}); } catch (_) {}
+    }
+}
+
+async function _recoverAudioContext() {
+    if (_rebuilding || !_enabled) return false;
+    if (typeof document !== 'undefined' && document.hidden) return false;
+    _rebuilding = true;
+    try {
+        _rebuilds += 1;
+        _teardownGraph();
+        _activateIosAudioSession();
+        const ac = _ensureContext();
+        if (!ac) return false;
+        if (ac.state !== 'running') {
+            try { await ac.resume(); } catch (_) {}
+            _playSilentPulse(ac);
+        }
+        _buildGraph();
+        if (ac.state === 'running') {
+            _nextPadBar = _barCount; // seamlessly re-bloom current voice-led chord
+            _startLoops();
+            _syncButtonUI();
+            return true;
+        }
+    } catch (_) {
+    } finally {
+        _rebuilding = false;
+    }
+    return false;
+}
+
+function _watchdogTick() {
+    if (!_enabled || !_ac || _rebuilding) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+
+    const st = _ac.state;
+    // 1. iOS Safari proprietary 'interrupted' or unexpected 'suspended' state -> auto-resume
+    if (st === 'interrupted' || st === 'suspended') {
+        _stallCount += 1;
+        try { _ac.resume().catch(() => {}); } catch (_) {}
+        _syncIosKeepalive(true);
+        if (_stallCount >= 3) _recoverAudioContext();
+        return;
+    }
+    if (st === 'closed') {
+        _recoverAudioContext();
+        return;
+    }
+
+    // 2. Detect WebKit CoreAudio silent clock freeze or NaN feedback poisoning
+    if (st === 'running' && _running) {
+        const curT = _ac.currentTime;
+        let hasNaN = false;
+        if (_analyserL) {
+            try {
+                const probe = new Float32Array(64);
+                _analyserL.getFloatTimeDomainData(probe);
+                for (let i = 0; i < probe.length; i++) {
+                    if (!Number.isFinite(probe[i])) { hasNaN = true; break; }
+                }
+            } catch (_) {}
+        }
+        if (hasNaN) {
+            _recoverAudioContext();
+            return;
+        }
+        if (_lastWatchTime >= 0 && Math.abs(curT - _lastWatchTime) < 0.05) {
+            _stallCount += 1;
+            if (_stallCount >= 2) {
+                _recoverAudioContext();
+                return;
+            }
+        } else {
+            _stallCount = 0;
+        }
+        _lastWatchTime = curT;
+    }
 }
 
 function _ensureContext() {
@@ -602,15 +810,25 @@ function _ensureContext() {
     try {
         ac.addEventListener('statechange', () => {
             if (_ac !== ac) return;
-            if (ac.state === 'running' && _enabled && !(typeof document !== 'undefined' && document.hidden)) {
+            const hidden = typeof document !== 'undefined' && document.hidden;
+            if (ac.state === 'running' && _enabled && !hidden) {
+                _stallCount = 0;
                 _buildGraph();
                 if (!_running) {
                     _startLoops();
-                    playBootIgnition();
+                    if (_rebuilds === 0) playBootIgnition();
                 } else {
                     _applyHealthModulation();
                 }
+                _syncIosKeepalive(true);
                 _syncButtonUI();
+            } else if ((ac.state === 'interrupted' || ac.state === 'suspended') && _enabled && !hidden) {
+                // Attempt immediate recovery after iOS notification / system interruption
+                setTimeout(() => {
+                    if (_ac === ac && _enabled && !(typeof document !== 'undefined' && document.hidden) && ac.state !== 'running') {
+                        try { ac.resume().catch(() => {}); } catch (_) {}
+                    }
+                }, 450);
             }
         });
     } catch (_) {}
@@ -809,35 +1027,35 @@ function _buildGraph() {
 
     const subGuard = ac.createBiquadFilter();
     subGuard.type = 'highpass';
-    subGuard.frequency.value = 32;
+    subGuard.frequency.value = 42; // removes infrasonic cabin-pressure rumble that causes headphone fatigue
 
     _warmthEq = ac.createBiquadFilter();
     _warmthEq.type = 'peaking';
-    _warmthEq.frequency.value = 110;
+    _warmthEq.frequency.value = 115;
     _warmthEq.Q.value = 0.85;
-    _warmthEq.gain.value = 3.5;
+    _warmthEq.gain.value = 1.2; // subtle presence on iPad speakers without heavy headphone bass bloat
 
     const clarityDip = ac.createBiquadFilter();
     clarityDip.type = 'peaking';
-    clarityDip.frequency.value = 310;
-    clarityDip.Q.value = 1.1;
-    clarityDip.gain.value = -1.8; // clears low-mid mud so bass + pads sit like a mastered record
+    clarityDip.frequency.value = 220;
+    clarityDip.Q.value = 0.9;
+    clarityDip.gain.value = -2.5; // relieves 180-280 Hz "heavy-on-head" ear-pressure band
 
     const airShelf = ac.createBiquadFilter();
     airShelf.type = 'highshelf';
-    airShelf.frequency.value = 6200;
-    airShelf.gain.value = -1.2; // prevents fatigue across 4-hour sessions
+    airShelf.frequency.value = 5800;
+    airShelf.gain.value = -1.6; // silky fatigue-free top end for 4+ hour sessions
 
     _tapeDrive = ac.createWaveShaper();
     _tapeDrive.curve = _makeTapeCurve(v.drive);
     try { _tapeDrive.oversample = '2x'; } catch (_) {}
 
     const comp = ac.createDynamicsCompressor();
-    comp.threshold.value = -15;
-    comp.knee.value = 18;
-    comp.ratio.value = 4.0;
-    comp.attack.value = 0.008;
-    comp.release.value = 0.19;
+    comp.threshold.value = -12;
+    comp.knee.value = 22;
+    comp.ratio.value = 2.5; // open breathable dynamics — never squashed club loudness
+    comp.attack.value = 0.012;
+    comp.release.value = 0.24;
 
     _masterGain = ac.createGain();
     _masterGain.gain.value = 0.0001;
@@ -1005,7 +1223,7 @@ function _buildGraph() {
 
     const atmosHp = ac.createBiquadFilter();
     atmosHp.type = 'highpass';
-    atmosHp.frequency.value = 54;
+    atmosHp.frequency.value = 90; // removes continuous low-frequency rumble completely
     atmosHp.Q.value = 0.55;
 
     // Two cascaded gentle lowpass filters (Q=0.5 -> zero resonant sibilance or harsh top-end)
@@ -1056,32 +1274,37 @@ function _buildGraph() {
 
 // ── Studio-Grade Synthesized Instruments ────────────────────────────────────
 
-/** Organic Felt-Mallet Sub-Thump with crisp beater knock & silky room sidechain pump. */
+/** Organic Felt-Mallet Sub-Thump with crisp beater knock & NaN-safe room sidechain pump. */
 function _schedSubThump(ac, time, vel, duckAmount, levelScale = 1.0) {
-    // 1. Sub body (clean tight sine sweep)
+    const t = Math.max(ac.currentTime + 0.004, time);
+    const out = _subDirectBus || _toneFilter;
+
+    // 1. Sub body (soft rounded heartbeat sweep — felt without ear-pressure slam)
     const osc = ac.createOscillator();
     const g = ac.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(108, time);
-    osc.frequency.exponentialRampToValueAtTime(45, time + 0.082);
-    osc.frequency.exponentialRampToValueAtTime(36, time + 0.22);
+    osc.frequency.setValueAtTime(94, t);
+    osc.frequency.exponentialRampToValueAtTime(46, t + 0.088);
+    osc.frequency.exponentialRampToValueAtTime(42, t + 0.21);
 
-    const peak = clamp(0.45 * vel * levelScale, 0.001, 0.58);
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(peak, time + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.27);
-    osc.connect(g).connect(_subDirectBus || _toneFilter);
+    const peak = clamp(0.32 * vel * levelScale, 0.001, 0.42);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.007);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    osc.connect(g).connect(out);
 
     // 2. Warm felt-mallet chest knock (audible on iPad & laptop speakers)
     const knock = ac.createOscillator();
     const kg = ac.createGain();
     knock.type = 'triangle';
-    knock.frequency.setValueAtTime(240, time);
-    knock.frequency.exponentialRampToValueAtTime(80, time + 0.048);
-    kg.gain.setValueAtTime(0.0001, time);
-    kg.gain.linearRampToValueAtTime(peak * 0.24, time + 0.003);
-    kg.gain.exponentialRampToValueAtTime(0.0001, time + 0.058);
-    knock.connect(kg).connect(_subDirectBus || _toneFilter);
+    knock.frequency.setValueAtTime(240, t);
+    knock.frequency.exponentialRampToValueAtTime(80, t + 0.048);
+    kg.gain.setValueAtTime(0.0001, t);
+    kg.gain.linearRampToValueAtTime(peak * 0.24, t + 0.003);
+    kg.gain.exponentialRampToValueAtTime(0.0001, t + 0.058);
+    knock.connect(kg).connect(out);
+
+    const cleanList = [osc, g, knock, kg];
 
     // 3. Soft 14ms low-passed felt beater transient (organic Nils Frahm / Kiasmos warmth)
     if (_crispNoiseBuffer) {
@@ -1092,147 +1315,123 @@ function _schedSubThump(ac, time, vel, duckAmount, levelScale = 1.0) {
         bp.frequency.value = 520;
         bp.Q.value = 1.4;
         const bg = ac.createGain();
-        bg.gain.setValueAtTime(0.0001, time);
-        bg.gain.linearRampToValueAtTime(peak * 0.14, time + 0.002);
-        bg.gain.exponentialRampToValueAtTime(0.0001, time + 0.018);
-        beater.connect(bp).connect(bg).connect(_subDirectBus || _toneFilter);
-        beater.start(time, _rng() * 0.2, 0.025);
+        bg.gain.setValueAtTime(0.0001, t);
+        bg.gain.linearRampToValueAtTime(peak * 0.14, t + 0.002);
+        bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.018);
+        beater.connect(bp).connect(bg).connect(out);
+        beater.start(t, _rng() * 0.2, 0.025);
+        cleanList.push(beater, bp, bg);
     }
 
-    // Subtle hall tap on chest knock only
-    const revTap = ac.createGain();
-    revTap.gain.value = 0.15;
-    kg.connect(revTap).connect(_reverbSend);
+    _autoDisconnect(osc, cleanList);
+    osc.start(t);
+    knock.start(t);
+    osc.stop(t + 0.29);
+    knock.stop(t + 0.068);
 
-    osc.start(time);
-    knock.start(time);
-    osc.stop(time + 0.30);
-    knock.stop(time + 0.07);
-
-    // Smooth hypnotic sidechain breathing on pink noise, pads, and reverb tail
+    // Smooth hypnotic sidechain breathing (linearRamp = 100% immune to WebKit zero-crossing NaN!)
     if (_duckBus && duckAmount > 0.03) {
-        const floor = clamp(1.0 - duckAmount * vel, 0.54, 0.96);
+        const floor = clamp(1.0 - duckAmount * vel, 0.56, 0.96);
         try {
-            _duckBus.gain.cancelScheduledValues(time);
-            _duckBus.gain.setValueAtTime(_duckBus.gain.value, time);
-            _duckBus.gain.linearRampToValueAtTime(floor, time + 0.016);
-            _duckBus.gain.exponentialRampToValueAtTime(1.0, time + 0.23);
+            const cur = clamp(Number.isFinite(_duckBus.gain.value) ? _duckBus.gain.value : 1.0, 0.15, 1.0);
+            _duckBus.gain.cancelScheduledValues(t);
+            _duckBus.gain.setValueAtTime(cur, t);
+            _duckBus.gain.linearRampToValueAtTime(floor, t + 0.016);
+            _duckBus.gain.linearRampToValueAtTime(1.0, t + 0.22);
         } catch (_) {}
     }
 }
 
-/** Hypnotic Rolling Muted Moog-Style Analog Bass (tight resonant filter pluck + clean sub). */
+/** Warm rounded melodic sub-bass (pure sine + soft triangle, zero harsh sawtooth pressure). */
 function _schedRollingBass(ac, time, freq, dur, vel, filterOpen = 0.5) {
+    const t = Math.max(ac.currentTime + 0.004, time);
     const sub = ac.createOscillator();
-    const saw = ac.createOscillator();
-    const tri = ac.createOscillator();
+    const warm = ac.createOscillator();
     const lp = ac.createBiquadFilter();
     const g = ac.createGain();
-    const subG = ac.createGain();
 
     sub.type = 'sine';
-    saw.type = 'sawtooth';
-    tri.type = 'triangle';
-    sub.frequency.setValueAtTime(freq, time);
-    saw.frequency.setValueAtTime(freq, time);
-    tri.frequency.setValueAtTime(freq * 2, time);
-    saw.detune.value = -5;
-    tri.detune.value = +4;
+    warm.type = 'triangle';
+    sub.frequency.setValueAtTime(freq, t);
+    warm.frequency.setValueAtTime(freq, t);
+    warm.detune.value = -4;
 
-    const fPeak = _nyquistSafe(ac, 260 + filterOpen * 540 * vel);
+    const fPeak = _nyquistSafe(ac, 220 + filterOpen * 340 * vel);
     lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(fPeak, time);
-    lp.frequency.exponentialRampToValueAtTime(Math.max(85, freq * 1.45), time + Math.min(dur, 0.22));
-    lp.Q.value = 2.4;
+    lp.frequency.setValueAtTime(fPeak, t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(90, freq * 1.4), t + Math.min(dur, 0.24));
+    lp.Q.value = 1.25;
 
-    const peak = clamp(0.18 * vel, 0.001, 0.28);
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(peak, time + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    const peak = clamp(0.14 * vel, 0.001, 0.21);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
-    subG.gain.value = 0.68;
-    const triG = ac.createGain();
-    triG.gain.value = 0.24;
-
-    sub.connect(subG).connect(lp);
-    saw.connect(lp);
-    tri.connect(triG).connect(lp);
+    sub.connect(lp);
+    warm.connect(lp);
     lp.connect(g).connect(_duckBus);
 
-    sub.start(time);
-    saw.start(time);
-    tri.start(time);
-    sub.stop(time + dur + 0.03);
-    saw.stop(time + dur + 0.03);
-    tri.stop(time + dur + 0.03);
+    _autoDisconnect(sub, [sub, warm, lp, g]);
+    sub.start(t);
+    warm.start(t);
+    sub.stop(t + dur + 0.03);
+    warm.stop(t + dur + 0.03);
 }
 
 /**
- * Lush Voice-Led Analog Ensemble Pad (3 detuned warm oscs + breathing resonant LPF envelope
- * + dedicated +12/+19 Octave Shimmer bow voice into Velvet Hall).
+ * Airy Voice-Led Analog Ensemble Pad (transparent triangle+sine per voice + breathing LPF
+ * + dedicated +12 Octave Shimmer bow voices, all explicitly disconnected on end).
  */
 function _schedAnalogEnsemblePad(ac, time, midiNotes, durSecs, level = 1.0, filterLift = 0.7, fastFirstBar = false) {
+    const t = Math.max(ac.currentTime + 0.004, time);
     const pans = [-0.68, 0.64, -0.32, 0.38];
     const attack = fastFirstBar ? Math.min(1.1, durSecs * 0.16) : Math.min(2.8, durSecs * 0.30);
     const release = Math.min(3.8, durSecs * 0.36);
 
     midiNotes.forEach((midi, idx) => {
         const freq = midiToFreq(midi);
-        const oSaw = ac.createOscillator();
         const oTri = ac.createOscillator();
-        const oSub = ac.createOscillator();
+        const oSin = ac.createOscillator();
         const lp = ac.createBiquadFilter();
         const pan = _createStereoPanner(ac, pans[idx % pans.length]);
         const g = ac.createGain();
 
-        oSaw.type = 'sawtooth';
         oTri.type = 'triangle';
-        oSub.type = 'sine';
-        oSaw.frequency.setValueAtTime(freq, time);
-        oTri.frequency.setValueAtTime(freq, time);
-        oSub.frequency.setValueAtTime(freq, time);
-        oSaw.detune.value = (idx % 2 === 0 ? -9 : 9);
-        oTri.detune.value = (idx % 2 === 0 ? 7 : -7);
+        oSin.type = 'sine';
+        oTri.frequency.setValueAtTime(freq, t);
+        oSin.frequency.setValueAtTime(freq, t);
+        oTri.detune.value = (idx % 2 === 0 ? -6 : 6);
+        oSin.detune.value = (idx % 2 === 0 ? 5 : -5);
 
-        // Breathing resonant Juno/Prophet filter sweep over the chord's life
         const startCut = _nyquistSafe(ac, 260 + idx * 70);
-        const peakCut = _nyquistSafe(ac, 680 + filterLift * 1050 + idx * 140);
-        const endCut = _nyquistSafe(ac, 310 + idx * 60);
+        const peakCut = _nyquistSafe(ac, 620 + filterLift * 880 + idx * 120);
+        const endCut = _nyquistSafe(ac, 300 + idx * 60);
         lp.type = 'lowpass';
-        lp.Q.value = 1.35;
-        lp.frequency.setValueAtTime(startCut, time);
-        lp.frequency.exponentialRampToValueAtTime(peakCut, time + durSecs * 0.48);
-        lp.frequency.exponentialRampToValueAtTime(endCut, time + durSecs);
+        lp.Q.value = 0.85;
+        lp.frequency.setValueAtTime(startCut, t);
+        lp.frequency.exponentialRampToValueAtTime(peakCut, t + durSecs * 0.48);
+        lp.frequency.exponentialRampToValueAtTime(endCut, t + durSecs);
 
-        const sawG = ac.createGain();
-        sawG.gain.value = 0.42;
-        const triG = ac.createGain();
-        triG.gain.value = 0.55;
-        const sinG = ac.createGain();
-        sinG.gain.value = 0.48;
+        const voicePeak = clamp(0.034 * level * (idx >= 2 ? 0.85 : 1.0), 0.0008, 0.065);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(voicePeak, t + attack);
+        g.gain.setValueAtTime(voicePeak, t + Math.max(attack + 0.25, durSecs - release));
+        g.gain.exponentialRampToValueAtTime(0.0001, t + durSecs + 0.25);
 
-        const voicePeak = clamp(0.036 * level * (idx >= 2 ? 0.85 : 1.0), 0.0008, 0.075);
-        g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(voicePeak, time + attack);
-        g.gain.setValueAtTime(voicePeak, time + Math.max(attack + 0.25, durSecs - release));
-        g.gain.exponentialRampToValueAtTime(0.0001, time + durSecs + 0.25);
-
-        oSaw.connect(sawG).connect(lp);
-        oTri.connect(triG).connect(lp);
-        oSub.connect(sinG).connect(lp);
+        oTri.connect(lp);
+        oSin.connect(lp);
         lp.connect(pan).connect(g);
         g.connect(_neuralAmBus || _duckBus);
         g.connect(_reverbSend);
 
-        oSaw.start(time);
-        oTri.start(time);
-        oSub.start(time);
-        oSaw.stop(time + durSecs + 0.35);
-        oTri.stop(time + durSecs + 0.35);
-        oSub.stop(time + durSecs + 0.35);
+        _autoDisconnect(oTri, [oTri, oSin, lp, pan, g]);
+        oTri.start(t);
+        oSin.start(t);
+        oTri.stop(t + durSecs + 0.35);
+        oSin.stop(t + durSecs + 0.35);
     });
 
-    // True Octave-Up (+12 & +19) Bowed Shimmer Halo Voice
+    // True Octave-Up (+12) Bowed Shimmer Halo Voices
     if (_shimmerSend && midiNotes.length >= 3) {
         const shimPitches = [midiNotes[2] + 12, midiNotes[3] + 12];
         shimPitches.forEach((sm, idx) => {
@@ -1240,41 +1439,42 @@ function _schedAnalogEnsemblePad(ac, time, midiNotes, durSecs, level = 1.0, filt
             const pan = _createStereoPanner(ac, idx === 0 ? -0.48 : 0.48);
             const sg = ac.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(midiToFreq(sm), time);
+            osc.frequency.setValueAtTime(midiToFreq(sm), t);
             osc.detune.value = idx === 0 ? -4 : 4;
             const sPeak = clamp(0.022 * level * (0.5 + 0.5 * filterLift), 0.0005, 0.055);
-            sg.gain.setValueAtTime(0.0001, time);
-            sg.gain.linearRampToValueAtTime(sPeak, time + Math.min(2.2, durSecs * 0.35));
-            sg.gain.exponentialRampToValueAtTime(0.0001, time + durSecs + 0.2);
+            sg.gain.setValueAtTime(0.0001, t);
+            sg.gain.linearRampToValueAtTime(sPeak, t + Math.min(2.2, durSecs * 0.35));
+            sg.gain.exponentialRampToValueAtTime(0.0001, t + durSecs + 0.2);
             osc.connect(pan).connect(sg).connect(_shimmerSend);
-            osc.start(time);
-            osc.stop(time + durSecs + 0.3);
+            _autoDisconnect(osc, [osc, pan, sg]);
+            osc.start(t);
+            osc.stop(t + durSecs + 0.3);
         });
     }
 }
 
 /** Vibe-specific lead motif voice (Prophet felt-pluck / Celesta / Analog Arp / Vintage Rhodes). */
 function _schedMotifVoice(ac, time, freq, vel, panPos, timbre, filterOpen = 0.7) {
+    const t = Math.max(ac.currentTime + 0.004, time);
     const pan = _createStereoPanner(ac, panPos);
     const g = ac.createGain();
 
     if (timbre === 'feltCelesta') {
-        // Delicate felt-piano / celesta harmonic bloom (Aether)
         const car = ac.createOscillator();
         const over = ac.createOscillator();
         const ovG = ac.createGain();
         car.type = 'sine';
         over.type = 'triangle';
-        car.frequency.setValueAtTime(freq, time);
-        over.frequency.setValueAtTime(freq * 2, time);
-        ovG.gain.setValueAtTime(0.18 * vel, time);
-        ovG.gain.exponentialRampToValueAtTime(0.001, time + 0.45);
+        car.frequency.setValueAtTime(freq, t);
+        over.frequency.setValueAtTime(freq * 2, t);
+        ovG.gain.setValueAtTime(0.18 * vel, t);
+        ovG.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
 
         const dur = 2.4;
         const peak = clamp(0.068 * vel, 0.0006, 0.12);
-        g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(peak, time + 0.022);
-        g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(peak, t + 0.022);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
         car.connect(pan);
         over.connect(ovG).connect(pan);
@@ -1284,48 +1484,49 @@ function _schedMotifVoice(ac, time, freq, vel, panPos, timbre, filterOpen = 0.7)
         g.connect(_delaySend);
         if (_shimmerSend) g.connect(_shimmerSend);
 
-        car.start(time); over.start(time);
-        car.stop(time + dur + 0.06); over.stop(time + dur + 0.06);
+        _autoDisconnect(car, [car, over, ovG, pan, g]);
+        car.start(t); over.start(t);
+        car.stop(t + dur + 0.06); over.stop(t + dur + 0.06);
         return;
     }
 
     if (timbre === 'vintageRhodes') {
-        // Warm vintage Rhodes / wood kalimba tine (Solstice)
         const car = ac.createOscillator();
         const mod = ac.createOscillator();
         const modG = ac.createGain();
         car.type = 'sine';
         mod.type = 'sine';
-        car.frequency.setValueAtTime(freq, time);
-        mod.frequency.setValueAtTime(freq * 2.0, time);
-        modG.gain.setValueAtTime(freq * 0.78 * vel, time);
-        modG.gain.exponentialRampToValueAtTime(1.0, time + 0.22);
+        car.frequency.setValueAtTime(freq, t);
+        mod.frequency.setValueAtTime(freq * 2.0, t);
+        modG.gain.setValueAtTime(freq * 0.78 * vel, t);
+        modG.gain.exponentialRampToValueAtTime(1.0, t + 0.22);
 
         const dur = 1.45;
         const peak = clamp(0.095 * vel, 0.0006, 0.16);
-        g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(peak, time + 0.006);
-        g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(peak, t + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
         mod.connect(modG).connect(car.frequency);
         car.connect(pan).connect(g);
         g.connect(_duckBus);
         g.connect(_reverbSend);
         g.connect(_delaySend);
-        car.start(time); mod.start(time);
-        car.stop(time + dur + 0.05); mod.stop(time + dur + 0.05);
+
+        _autoDisconnect(car, [car, mod, modG, pan, g]);
+        car.start(t); mod.start(t);
+        car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
         return;
     }
 
-    // Prophet / Felt-Piano Pluck (Aperture) or Crisp Resonant Arp (Kinetic)
     const isArp = timbre === 'analogArp';
     const o1 = ac.createOscillator();
     const o2 = ac.createOscillator();
     const lp = ac.createBiquadFilter();
     o1.type = 'sawtooth';
     o2.type = 'triangle';
-    o1.frequency.setValueAtTime(freq, time);
-    o2.frequency.setValueAtTime(freq, time);
+    o1.frequency.setValueAtTime(freq, t);
+    o2.frequency.setValueAtTime(freq, t);
     o1.detune.value = isArp ? -6 : -4;
     o2.detune.value = isArp ? +6 : +4;
 
@@ -1333,14 +1534,14 @@ function _schedMotifVoice(ac, time, freq, vel, panPos, timbre, filterOpen = 0.7)
     const cutEnd = _nyquistSafe(ac, isArp ? 320 : 250);
     lp.type = 'lowpass';
     lp.Q.value = isArp ? 2.8 : 2.1;
-    lp.frequency.setValueAtTime(cutStart, time);
-    lp.frequency.exponentialRampToValueAtTime(cutEnd, time + (isArp ? 0.11 : 0.16));
+    lp.frequency.setValueAtTime(cutStart, t);
+    lp.frequency.exponentialRampToValueAtTime(cutEnd, t + (isArp ? 0.11 : 0.16));
 
     const dur = isArp ? 0.42 : 0.78;
     const peak = clamp((isArp ? 0.092 : 0.088) * vel, 0.0006, 0.16);
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(peak, time + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
     o1.connect(lp);
     o2.connect(lp);
@@ -1349,7 +1550,8 @@ function _schedMotifVoice(ac, time, freq, vel, panPos, timbre, filterOpen = 0.7)
     g.connect(_delaySend);
     g.connect(_reverbSend);
 
-    // Subtle organic felt-hammer transient for Aperture
+    const cleanList = [o1, o2, lp, pan, g];
+
     if (!isArp && _crispNoiseBuffer) {
         const tap = ac.createBufferSource();
         tap.buffer = _crispNoiseBuffer;
@@ -1358,19 +1560,22 @@ function _schedMotifVoice(ac, time, freq, vel, panPos, timbre, filterOpen = 0.7)
         bp.frequency.value = 1650;
         bp.Q.value = 1.6;
         const tg = ac.createGain();
-        tg.gain.setValueAtTime(0.0001, time);
-        tg.gain.linearRampToValueAtTime(peak * 0.22, time + 0.002);
-        tg.gain.exponentialRampToValueAtTime(0.0001, time + 0.014);
+        tg.gain.setValueAtTime(0.0001, t);
+        tg.gain.linearRampToValueAtTime(peak * 0.22, t + 0.002);
+        tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.014);
         tap.connect(bp).connect(tg).connect(pan);
-        tap.start(time, _rng() * 0.2, 0.02);
+        tap.start(t, _rng() * 0.2, 0.02);
+        cleanList.push(tap, bp, tg);
     }
 
-    o1.start(time); o2.start(time);
-    o1.stop(time + dur + 0.04); o2.stop(time + dur + 0.04);
+    _autoDisconnect(o1, cleanList);
+    o1.start(t); o2.start(t);
+    o1.stop(t + dur + 0.04); o2.stop(t + dur + 0.04);
 }
 
 /** Soft stereo organic wood-rim micro-click (panned into ping-pong delay). */
 function _schedMicroRim(ac, time, vel, panPos) {
+    const t = Math.max(ac.currentTime + 0.004, time);
     const osc = ac.createOscillator();
     const bp = ac.createBiquadFilter();
     const pan = _createStereoPanner(ac, panPos);
@@ -1378,28 +1583,30 @@ function _schedMicroRim(ac, time, vel, panPos) {
 
     const base = 920 + _rng() * 480;
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(base, time);
-    osc.frequency.exponentialRampToValueAtTime(base * 0.58, time + 0.028);
+    osc.frequency.setValueAtTime(base, t);
+    osc.frequency.exponentialRampToValueAtTime(base * 0.58, t + 0.028);
     bp.type = 'bandpass';
     bp.frequency.value = base * 1.1;
     bp.Q.value = 2.6;
 
     const peak = clamp(0.052 * vel, 0.0004, 0.09);
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(peak, time + 0.002);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.036);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.036);
 
     osc.connect(bp).connect(pan).connect(g);
     g.connect(_duckBus);
     g.connect(_delaySend);
     g.connect(_reverbSend);
-    osc.start(time);
-    osc.stop(time + 0.045);
+    _autoDisconnect(osc, [osc, bp, pan, g]);
+    osc.start(t);
+    osc.stop(t + 0.045);
 }
 
 /** Ultra-soft silky high-air shaker brush (sparse offbeats, zero harsh 3kHz hiss). */
 function _schedVelvetShaker(ac, time, vel, panPos) {
     if (!_crispNoiseBuffer) return;
+    const t = Math.max(ac.currentTime + 0.004, time);
     const src = ac.createBufferSource();
     src.buffer = _crispNoiseBuffer;
     const bp = ac.createBiquadFilter();
@@ -1410,18 +1617,20 @@ function _schedVelvetShaker(ac, time, vel, panPos) {
     const g = ac.createGain();
 
     const peak = clamp(0.014 * vel, 0.0002, 0.026);
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(peak, time + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.042);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.042);
 
     src.connect(bp).connect(pan).connect(g);
     g.connect(_duckBus);
-    src.start(time, _rng() * 0.25, 0.05);
+    _autoDisconnect(src, [src, bp, pan, g]);
+    src.start(t, _rng() * 0.25, 0.05);
 }
 
 /** 2-Bar Warm Velvet Ocean Swell right into a clean chapter drop (zero harsh hiss). */
 function _schedBreathSwell(ac, time, durSecs, level = 1.0) {
     if (!_velvetBrownBuffer) return;
+    const t = Math.max(ac.currentTime + 0.004, time);
     const src = ac.createBufferSource();
     src.buffer = _velvetBrownBuffer;
     src.loop = true;
@@ -1429,19 +1638,20 @@ function _schedBreathSwell(ac, time, durSecs, level = 1.0) {
     const lp = ac.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = 0.85;
-    lp.frequency.setValueAtTime(180, time);
-    lp.frequency.exponentialRampToValueAtTime(_nyquistSafe(ac, 980), time + durSecs);
+    lp.frequency.setValueAtTime(180, t);
+    lp.frequency.exponentialRampToValueAtTime(_nyquistSafe(ac, 980), t + durSecs);
 
     const g = ac.createGain();
     const peak = clamp(0.085 * level, 0.001, 0.14);
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(peak, time + durSecs * 0.92);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + durSecs + 0.12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + durSecs * 0.92);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + durSecs + 0.12);
 
     src.connect(lp).connect(g);
     g.connect(_reverbSend);
     g.connect(_duckBus);
-    src.start(time, _rng() * 14.0, durSecs + 0.16);
+    _autoDisconnect(src, [src, lp, g]);
+    src.start(t, _rng() * 14.0, durSecs + 0.16);
 }
 
 // ── Sample-Accurate Generative Arrangement Sequencer ────────────────────────
@@ -1532,12 +1742,12 @@ function _scheduleStep(stepIndex, time) {
         subVel = 0.32;
     }
     if (subVel > 0 && subScale > 0.06) {
-        const thumpScale = (vibe.subLevel / 0.44) * subScale * studySubTrim;
-        const duckAmt = (inVoid ? 0.30 : 0.18) * clamp(subScale, 0.2, 1.3);
+        const thumpScale = (vibe.subLevel / 0.30) * subScale * studySubTrim;
+        const duckAmt = (inVoid ? 0.20 : 0.13) * clamp(subScale, 0.2, 1.2);
         _schedSubThump(_ac, time, subVel, duckAmt, thumpScale);
     }
 
-    // 2. Rolling Muted Moog-Style Bassline (anchored to active chord root/fifth)
+    // 2. Breathable Melodic Sub-Bass (anchored to active chord root/fifth)
     const bassGrid = BASS_GRIDS[vibe.bassStyle] || BASS_GRIDS.rolling;
     const bassVel = bassGrid[step];
     if (bassVel > 0 && bassScale > 0.12) {
@@ -1547,8 +1757,8 @@ function _scheduleStep(stepIndex, time) {
         let bMidi = _rootMidi() + bassPc;
         while (bMidi > 46) bMidi -= 12;
         while (bMidi < 31) bMidi += 12;
-        const bDur = vibe.bassStyle === 'dronePulse' ? stepSecs * 4.5 : (step % 4 === 0 ? stepSecs * 1.9 : stepSecs * 1.15);
-        const bLevel = (vibe.bassLevel / 0.22) * bassVel * bassScale * (inVoid ? 1.0 : 0.82);
+        const bDur = vibe.bassStyle === 'dronePulse' ? stepSecs * 4.5 : (step % 4 === 0 ? stepSecs * 2.1 : stepSecs * 1.4);
+        const bLevel = (vibe.bassLevel / 0.16) * bassVel * bassScale * (inVoid ? 1.0 : 0.80);
         _schedRollingBass(_ac, time, midiToFreq(bMidi), bDur, bLevel, filterOpen);
     }
 
@@ -1588,16 +1798,18 @@ function _schedulerTick() {
         _nextStepTime = _ac.currentTime + 0.05;
         return;
     }
-    if (_nextStepTime < _ac.currentTime - 0.25) {
-        _nextStepTime = _ac.currentTime + 0.04;
+    // Snap cleanly forward if JS timers were throttled by iOS inactivity (never schedule stacked past hits)
+    if (_nextStepTime < _ac.currentTime - 0.04) {
+        _nextStepTime = _ac.currentTime + 0.02;
     }
     const stepSecs = _stepSecs();
-    while (_nextStepTime < _ac.currentTime + SCHEDULE_AHEAD_SECS) {
-        // Subtle 4% groove swing on odd 16th notes
+    let scheduled = 0;
+    while (_nextStepTime < _ac.currentTime + SCHEDULE_AHEAD_SECS && scheduled < 2) {
         const swing = (_stepCounter % 2 === 1) ? stepSecs * 0.04 : 0;
-        _scheduleStep(_stepCounter, _nextStepTime + swing);
+        _scheduleStep(_stepCounter, Math.max(_ac.currentTime + 0.008, _nextStepTime + swing));
         _nextStepTime += stepSecs;
         _stepCounter += 1;
+        scheduled += 1;
     }
 }
 
@@ -1610,19 +1822,20 @@ function _applyHealthModulation() {
     const hidden = typeof document !== 'undefined' && document.hidden;
 
     if (!_enabled || hidden) {
-        _masterGain.gain.setTargetAtTime(0.0001, now, 0.12);
+        _rampParam('master', _masterGain.gain, 0.0001, now, 0.12, 0.0001);
+        _syncIosKeepalive(false);
         return;
     }
 
     if (v.flatlined) {
-        _masterGain.gain.setTargetAtTime(0.26, now, 0.25);
-        _toneFilter.frequency.setTargetAtTime(_nyquistSafe(_ac, 320), now, 0.3);
-        if (_atmosGain) _atmosGain.gain.setTargetAtTime(0.02, now, 0.3);
-        if (_flatlineGain) _flatlineGain.gain.setTargetAtTime(0.032, now, 0.35);
+        _rampParam('master', _masterGain.gain, 0.26, now, 0.25, 0.005);
+        _rampParam('tone', _toneFilter.frequency, _nyquistSafe(_ac, 320), now, 0.3, 12);
+        if (_atmosGain) _rampParam('atmos', _atmosGain.gain, 0.02, now, 0.3, 0.003);
+        if (_flatlineGain) _rampParam('flatline', _flatlineGain.gain, 0.032, now, 0.35, 0.002);
         return;
     }
 
-    if (_flatlineGain) _flatlineGain.gain.setTargetAtTime(0.0001, now, 0.15);
+    if (_flatlineGain) _rampParam('flatline', _flatlineGain.gain, 0.0001, now, 0.15, 0.0005);
 
     const vibe = _vibe();
     const inVoid = _isVoidActive();
@@ -1630,47 +1843,52 @@ function _applyHealthModulation() {
     const tide = _macroTide();
     const chap = CHAPTER_SPEC[_chapter] || CHAPTER_SPEC.lock;
 
-    let targetVol = inVoid ? 0.68 : (v.frozen ? 0.48 : 0.50);
+    let targetVol = inVoid ? 0.46 : (v.frozen ? 0.34 : 0.36);
     let targetCutoff = inVoid
-        ? (3800 + chap.filter * 2400)
-        : (2650 - studyCtx.cocoon * 600 + studyCtx.bloom * 1100);
-    let atmosTarget = vibe.atmosLevel * (inVoid ? (0.88 + 0.16 * tide) : (0.92 + studyCtx.cocoon * 0.22));
-    let atmosCut = vibe.atmosCutoff * (inVoid ? (0.92 + 0.16 * tide) : (0.88 - studyCtx.cocoon * 0.10));
+        ? (3600 + chap.filter * 2200)
+        : (2550 - studyCtx.cocoon * 500 + studyCtx.bloom * 1000);
+    let atmosTarget = vibe.atmosLevel * (inVoid ? (0.88 + 0.16 * tide) : (0.92 + studyCtx.cocoon * 0.18));
+    let atmosCut = vibe.atmosCutoff * (inVoid ? (0.92 + 0.16 * tide) : (0.88 - studyCtx.cocoon * 0.08));
 
-    // Rapid Neural AM depth gently deepens during active solving & Deep-Think Cocoon (>60s)
+    // Subliminal Neural AM depth (7-12.5% -> gentle phase-locking, zero headphone flutter fatigue)
     const amDepth = clamp(
-        vibe.neuralAmDepth + (studyCtx.solving ? 0.05 : 0) + studyCtx.cocoon * 0.04,
-        0.06,
-        0.24
+        vibe.neuralAmDepth + (studyCtx.solving ? 0.025 : 0) + studyCtx.cocoon * 0.02,
+        0.05,
+        0.13
     );
 
     if (_pactPreviewActive) {
         const pv = clamp(_pactPreviewValue, 0, 100);
         const norm = pv / 100;
-        targetVol = 0.44 + norm * 0.30;
-        targetCutoff = pv <= 30 ? 1500 : (pv <= 62 ? 3200 : (pv <= 97 ? 5400 : 7200));
-        atmosTarget = vibe.atmosLevel * (0.78 + norm * 0.30);
-        atmosCut = vibe.atmosCutoff * (0.85 + norm * 0.35);
+        targetVol = 0.32 + norm * 0.24;
+        targetCutoff = pv <= 30 ? 1500 : (pv <= 62 ? 3200 : (pv <= 97 ? 5200 : 6800));
+        atmosTarget = vibe.atmosLevel * (0.78 + norm * 0.28);
+        atmosCut = vibe.atmosCutoff * (0.85 + norm * 0.32);
     }
 
-    _masterGain.gain.setTargetAtTime(targetVol, now, 0.24);
-    _toneFilter.frequency.setTargetAtTime(_nyquistSafe(_ac, targetCutoff), now, 0.26);
-    if (_atmosGain) _atmosGain.gain.setTargetAtTime(atmosTarget, now, 0.32);
-    if (_atmosLpA) _atmosLpA.frequency.setTargetAtTime(_nyquistSafe(_ac, atmosCut), now, 0.35);
-    if (_atmosLpB) _atmosLpB.frequency.setTargetAtTime(_nyquistSafe(_ac, atmosCut * 1.18), now, 0.35);
-    if (_neuralAmBus) _neuralAmBus.gain.setTargetAtTime(1.0 - amDepth * 0.5, now, 0.35);
-    if (_neuralAmDepthGain) _neuralAmDepthGain.gain.setTargetAtTime(amDepth * 0.5, now, 0.35);
-    if (_neuralAmOsc) _neuralAmOsc.frequency.setTargetAtTime(vibe.neuralAmHz, now, 0.4);
+    _rampParam('master', _masterGain.gain, targetVol, now, 0.24, 0.006);
+    _rampParam('tone', _toneFilter.frequency, _nyquistSafe(_ac, targetCutoff), now, 0.26, 25);
+    if (_atmosGain) _rampParam('atmos', _atmosGain.gain, atmosTarget, now, 0.32, 0.004);
+    if (_atmosLpA) _rampParam('atmosLpA', _atmosLpA.frequency, _nyquistSafe(_ac, atmosCut), now, 0.35, 10);
+    if (_atmosLpB) _rampParam('atmosLpB', _atmosLpB.frequency, _nyquistSafe(_ac, atmosCut * 1.18), now, 0.35, 10);
+    if (_neuralAmBus) _rampParam('amBus', _neuralAmBus.gain, 1.0 - amDepth * 0.5, now, 0.35, 0.003);
+    if (_neuralAmDepthGain) _rampParam('amDepth', _neuralAmDepthGain.gain, amDepth * 0.5, now, 0.35, 0.003);
+    if (_neuralAmOsc) _rampParam('amHz', _neuralAmOsc.frequency, vibe.neuralAmHz, now, 0.4, 0.05);
 }
 
 function _startLoops() {
     if (_running || !_ac) return;
     _running = true;
     _nextStepTime = _ac.currentTime + 0.05;
+    _lastWatchTime = _ac.currentTime;
+    _stallCount = 0;
     if (_schedulerTimer) clearInterval(_schedulerTimer);
     _schedulerTimer = setInterval(_schedulerTick, LOOKAHEAD_MS);
     if (_modTimer) clearInterval(_modTimer);
-    _modTimer = setInterval(_applyHealthModulation, 320);
+    _modTimer = setInterval(_applyHealthModulation, 1000);
+    if (_watchdogTimer) clearInterval(_watchdogTimer);
+    _watchdogTimer = setInterval(_watchdogTick, 4000);
+    _syncIosKeepalive(true);
     _applyHealthModulation();
 }
 
@@ -1678,6 +1896,8 @@ function _stopLoops() {
     _running = false;
     if (_schedulerTimer) { clearInterval(_schedulerTimer); _schedulerTimer = null; }
     if (_modTimer) { clearInterval(_modTimer); _modTimer = null; }
+    if (_watchdogTimer) { clearInterval(_watchdogTimer); _watchdogTimer = null; }
+    _syncIosKeepalive(false);
 }
 
 // ── UI Sync (Void HUD & Settings Vibe Picker) ───────────────────────────────
@@ -1756,9 +1976,7 @@ export function setAudioEnabled(on) {
     if (_enabled) {
         unlockAudio();
     } else if (_ac && _masterGain) {
-        try {
-            _masterGain.gain.setTargetAtTime(0.0001, _ac.currentTime, 0.08);
-        } catch (_) {}
+        _rampParam('master', _masterGain.gain, 0.0001, _ac.currentTime, 0.08, 0.0001);
         _stopLoops();
     }
     return _enabled;
@@ -1807,17 +2025,17 @@ export function setVibe(id) {
             const now = _ac.currentTime;
             const step = _stepSecs();
             try {
-                if (_atmosGain) _atmosGain.gain.setTargetAtTime(vibe.atmosLevel, now, 0.35);
-                if (_atmosLpA) _atmosLpA.frequency.setTargetAtTime(_nyquistSafe(_ac, vibe.atmosCutoff), now, 0.35);
-                if (_atmosLpB) _atmosLpB.frequency.setTargetAtTime(_nyquistSafe(_ac, vibe.atmosCutoff * 1.18), now, 0.35);
-                if (_neuralAmOsc) _neuralAmOsc.frequency.setTargetAtTime(vibe.neuralAmHz, now, 0.4);
-                if (_neuralAmBus) _neuralAmBus.gain.setTargetAtTime(1.0 - vibe.neuralAmDepth * 0.5, now, 0.35);
-                if (_neuralAmDepthGain) _neuralAmDepthGain.gain.setTargetAtTime(vibe.neuralAmDepth * 0.5, now, 0.35);
-                if (_reverbWet) _reverbWet.gain.setTargetAtTime(vibe.reverbWet, now, 0.35);
-                if (_shimmerWet) _shimmerWet.gain.setTargetAtTime(vibe.shimmerLevel, now, 0.35);
-                if (_delayWet) _delayWet.gain.setTargetAtTime(vibe.delayWet, now, 0.35);
-                if (_delayL) _delayL.delayTime.setTargetAtTime(clamp(step * 3, 0.06, 1.45), now, 0.25);
-                if (_delayR) _delayR.delayTime.setTargetAtTime(clamp(step * 3, 0.06, 1.45), now, 0.25);
+                if (_atmosGain) _rampParam('atmos', _atmosGain.gain, vibe.atmosLevel, now, 0.35, 0.001);
+                if (_atmosLpA) _rampParam('atmosLpA', _atmosLpA.frequency, _nyquistSafe(_ac, vibe.atmosCutoff), now, 0.35, 1);
+                if (_atmosLpB) _rampParam('atmosLpB', _atmosLpB.frequency, _nyquistSafe(_ac, vibe.atmosCutoff * 1.18), now, 0.35, 1);
+                if (_neuralAmOsc) _rampParam('amHz', _neuralAmOsc.frequency, vibe.neuralAmHz, now, 0.4, 0.01);
+                if (_neuralAmBus) _rampParam('amBus', _neuralAmBus.gain, 1.0 - vibe.neuralAmDepth * 0.5, now, 0.35, 0.001);
+                if (_neuralAmDepthGain) _rampParam('amDepth', _neuralAmDepthGain.gain, vibe.neuralAmDepth * 0.5, now, 0.35, 0.001);
+                if (_reverbWet) _rampParam('revWet', _reverbWet.gain, vibe.reverbWet, now, 0.35, 0.001);
+                if (_shimmerWet) _rampParam('shimWet', _shimmerWet.gain, vibe.shimmerLevel, now, 0.35, 0.001);
+                if (_delayWet) _rampParam('delWet', _delayWet.gain, vibe.delayWet, now, 0.35, 0.001);
+                if (_delayL) _rampParam('delL', _delayL.delayTime, clamp(step * 3, 0.06, 1.45), now, 0.25, 0.001);
+                if (_delayR) _rampParam('delR', _delayR.delayTime, clamp(step * 3, 0.06, 1.45), now, 0.25, 0.001);
                 if (_tapeDrive) _tapeDrive.curve = _makeTapeCurve(vibe.drive);
             } catch (_) {}
             _applyHealthModulation();
@@ -1874,6 +2092,7 @@ export function playClick() {
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
     osc.connect(g).connect(_sfxBus || ac.destination);
     if (_reverbSend) g.connect(_reverbSend);
+    _autoDisconnect(osc, [osc, g]);
     osc.start(now);
     osc.stop(now + 0.058);
 
@@ -1889,6 +2108,7 @@ export function playClick() {
         ng.gain.linearRampToValueAtTime(0.05, now + 0.002);
         ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
         src.connect(bp).connect(ng).connect(_sfxBus || ac.destination);
+        _autoDisconnect(src, [src, bp, ng]);
         src.start(now, Math.random() * 0.2, 0.028);
     }
 }
@@ -1909,6 +2129,7 @@ export function playChamberLoad() {
     sg.gain.linearRampToValueAtTime(0.28, now + 0.08);
     sg.gain.exponentialRampToValueAtTime(0.0001, now + 0.30);
     sub.connect(sg).connect(_sfxBus || ac.destination);
+    _autoDisconnect(sub, [sub, sg]);
     sub.start(now + 0.07);
     sub.stop(now + 0.33);
 
@@ -2212,6 +2433,7 @@ export function playPactSeal(sliderValue) {
     dg.gain.exponentialRampToValueAtTime(0.0001, now + 0.50);
     drop.connect(dg).connect(_sfxBus || ac.destination);
     if (_reverbSend) dg.connect(_reverbSend);
+    _autoDisconnect(drop, [drop, dg]);
     drop.start(now);
     drop.stop(now + 0.54);
 
@@ -2253,18 +2475,19 @@ export function onSolveResult(isCorrect, streak = 1) {
     return true;
 }
 
-/** Briefly duck the ambient bed so heavy UI SFX cut cleanly through. */
+/** Briefly duck the ambient bed so heavy UI SFX cut cleanly through (NaN-safe linear ramp). */
 export function duck(secs = 0.75, floor = 0.32) {
     if (!_enabled || !_ac || !_duckBus || _ac.state !== 'running') return;
     try {
         const now = _ac.currentTime;
         const hold = clamp(Number(secs) || 0.75, 0.15, 3.0);
         const rawFloor = Number(floor);
-        const targetFloor = Number.isFinite(rawFloor) ? clamp(rawFloor, 0.05, 0.92) : 0.32;
+        const targetFloor = Number.isFinite(rawFloor) ? clamp(rawFloor, 0.08, 0.92) : 0.32;
+        const cur = clamp(Number.isFinite(_duckBus.gain.value) ? _duckBus.gain.value : 1.0, 0.08, 1.0);
         _duckBus.gain.cancelScheduledValues(now);
-        _duckBus.gain.setValueAtTime(_duckBus.gain.value, now);
+        _duckBus.gain.setValueAtTime(cur, now);
         _duckBus.gain.linearRampToValueAtTime(targetFloor, now + 0.025);
-        _duckBus.gain.exponentialRampToValueAtTime(1.0, now + hold);
+        _duckBus.gain.linearRampToValueAtTime(1.0, now + hold);
     } catch (_) {}
 }
 
@@ -2323,6 +2546,8 @@ export function getDiagnostics() {
         neuralAmDepth: _neuralAmDepthGain ? Number((_neuralAmDepthGain.gain.value * 2).toFixed(3)) : _vibe().neuralAmDepth,
         flowPlateau: _lastSolvingActive,
         cocoonLevel: Number(_lastCocoonLevel.toFixed(3)),
+        voicesCleaned: _voicesCleaned,
+        rebuilds: _rebuilds,
         ctxState: _ac ? _ac.state : 'uncreated',
         rmsL, rmsR, stereoDiff, peak,
         subEnergy, midEnergy, airEnergy,
@@ -2389,10 +2614,23 @@ function _bindUnlockGestures() {
     document.addEventListener('keydown', onGesture, { capture: true, passive: true });
 
     const onForeground = () => {
-        if (_enabled && _ac && !(typeof document !== 'undefined' && document.hidden)) {
-            if (_ac.state !== 'running') {
-                try { _ac.resume().catch(() => {}); } catch (_) {}
+        if (_enabled && !(typeof document !== 'undefined' && document.hidden)) {
+            _activateIosAudioSession();
+            if (_ac) {
+                if (_ac.state === 'closed') {
+                    _recoverAudioContext();
+                    return;
+                }
+                if (_ac.state !== 'running') {
+                    try { _ac.resume().catch(() => {}); } catch (_) {}
+                }
+                if (_ac.state === 'running' && !_running) {
+                    _startLoops();
+                }
             }
+            _syncIosKeepalive(true);
+        } else {
+            _syncIosKeepalive(false);
         }
         _applyHealthModulation();
     };
