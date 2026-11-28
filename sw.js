@@ -273,7 +273,12 @@
 //        Explicit onended node disconnection (fixes 30m WebKit graph leak),
 //        bounded AudioParam timelines, NaN-safe linear sidechain, 2s silent
 //        WAV iOS session keepalive, and automatic stall/NaN self-heal watchdog.
-const VERSION = 'jeemax-v136';
+// v137 - UNIFIED STUDIO SFX ENGINE & MARIO BLEND:
+//        Replace all harsh/sawtooth/metallic UI, solve, mode, and timer SFX
+//        with a unified Circle-of-Fifths + Velvet Hall studio palette in
+//        heartbeat-audio.js, and blend Mario Recap/Coin via smooth bed ducking
+//        without modifying any Mario sounds.
+const VERSION = 'jeemax-v137';
 
 const SHELL = [
   './',

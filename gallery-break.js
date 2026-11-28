@@ -1102,6 +1102,11 @@ function _chime() {
   const peak = 0.06 * (_fxVol() / 0.7);
   if (!_wantSound() || peak <= 0.0002) return;
   try {
+    if (window.HeartbeatAudio && typeof window.HeartbeatAudio.playUiSfx === 'function') {
+      if (window.HeartbeatAudio.playUiSfx('galleryChime')) return;
+    }
+  } catch (_) { /* fallback below */ }
+  try {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     const ctx = new AC();

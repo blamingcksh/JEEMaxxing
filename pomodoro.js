@@ -763,14 +763,18 @@ export function initAudioContext() {
     }
 }
 
-// Heavy Underground Bunker Steel Gong — dark metallic resonance on Pact / block completion.
+// Warm Resonant Singing Bowl / Studio Bell on Pact & Pomodoro block completion.
 export function playBell() {
     if (window.FX && !window.FX.wantSound()) return;
+    try { if (window.FocusSound && window.FocusSound.duck) window.FocusSound.duck(); } catch (_) {}
+    try {
+        if (window.HeartbeatAudio && typeof window.HeartbeatAudio.playUiSfx === 'function') {
+            if (window.HeartbeatAudio.playUiSfx('bell')) return;
+        }
+    } catch (_) {}
+
     initAudioContext();
     if (!bellAudioCtx) return;
-
-    try { if (window.FocusSound && window.FocusSound.duck) window.FocusSound.duck(); } catch (_) {}
-    try { if (window.HeartbeatAudio && window.HeartbeatAudio.duck) window.HeartbeatAudio.duck(1.6); } catch (_) {}
 
     const vol = (window.FX && window.FX.prefs && typeof window.FX.prefs.volume === 'number')
         ? window.FX.prefs.volume : 0.7;
@@ -778,46 +782,39 @@ export function playBell() {
     const floor = 0.0001;
     const now = bellAudioCtx.currentTime;
 
-    // 1. Iron hammer sub-impact
-    const sub = bellAudioCtx.createOscillator();
-    const subG = bellAudioCtx.createGain();
-    sub.type = 'sine';
-    sub.frequency.setValueAtTime(118, now);
-    sub.frequency.exponentialRampToValueAtTime(42, now + 0.25);
-    subG.gain.setValueAtTime(floor, now);
-    subG.gain.linearRampToValueAtTime(0.28 * vol, now + 0.008);
-    subG.gain.exponentialRampToValueAtTime(floor, now + 0.55);
-    sub.connect(subG).connect(bellAudioCtx.destination);
-    sub.start(now); sub.stop(now + 0.58);
-
-    // 2. Dark metallic FM steel gong (A2 fundamental + E3 fifth + inharmonic 2.756 overtone)
-    const partials = [
-        { f: 110.00, ratio: 2.756, depth: 0.75, g: 0.19, dur: 2.35 },
-        { f: 164.81, ratio: 1.414, depth: 0.50, g: 0.12, dur: 2.60 },
+    // Warm harmonic singing-bowl chord (pure integer/detuned harmonics, zero harsh metal clang)
+    const tones = [
+        { f: 293.66, g: 0.12, dur: 2.4, at: 0 },
+        { f: 295.10, g: 0.06, dur: 2.2, at: 0 },
+        { f: 440.00, g: 0.08, dur: 2.1, at: 0.02 },
+        { f: 587.33, g: 0.055, dur: 1.8, at: 0.16 },
+        { f: 880.00, g: 0.032, dur: 1.5, at: 0.18 },
     ];
-    for (const p of partials) {
-        const car = bellAudioCtx.createOscillator();
-        const mod = bellAudioCtx.createOscillator();
-        const mg = bellAudioCtx.createGain();
+    for (const p of tones) {
+        const t = now + p.at;
+        const osc = bellAudioCtx.createOscillator();
         const gain = bellAudioCtx.createGain();
-        car.type = 'sine'; mod.type = 'sine';
-        car.frequency.setValueAtTime(p.f, now);
-        mod.frequency.setValueAtTime(p.f * p.ratio, now);
-        mg.gain.setValueAtTime(p.f * p.depth, now);
-        mg.gain.exponentialRampToValueAtTime(1, now + p.dur * 0.75);
-        gain.gain.setValueAtTime(floor, now);
-        gain.gain.linearRampToValueAtTime(p.g * vol, now + 0.012);
-        gain.gain.exponentialRampToValueAtTime(floor, now + p.dur);
-        mod.connect(mg).connect(car.frequency);
-        car.connect(gain).connect(bellAudioCtx.destination);
-        car.start(now); mod.start(now);
-        car.stop(now + p.dur + 0.05); mod.stop(now + p.dur + 0.05);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(p.f, t);
+        gain.gain.setValueAtTime(floor, t);
+        gain.gain.linearRampToValueAtTime(p.g * vol, t + 0.018);
+        gain.gain.exponentialRampToValueAtTime(floor, t + p.dur);
+        osc.connect(gain).connect(bellAudioCtx.destination);
+        osc.onended = () => { try { osc.disconnect(); gain.disconnect(); } catch (_) {} };
+        osc.start(t);
+        osc.stop(t + p.dur + 0.06);
     }
 }
 
-// Heavy Vault Door Seal + Reactor Ignition played when starting a study / Pact block.
+// Uplifting Warm Harmonic Swell + Resolving Fifth played when starting a study / Pact block.
 export function playStartChime() {
     if (window.FX && !window.FX.wantSound()) return;
+    try {
+        if (window.HeartbeatAudio && typeof window.HeartbeatAudio.playUiSfx === 'function') {
+            if (window.HeartbeatAudio.playUiSfx('startChime')) return;
+        }
+    } catch (_) {}
+
     initAudioContext();
     if (!bellAudioCtx) return;
 
@@ -826,29 +823,20 @@ export function playStartChime() {
     if (vol <= 0) return;
     const floor = 0.0001;
     const now = bellAudioCtx.currentTime;
-    try { if (window.HeartbeatAudio && window.HeartbeatAudio.duck) window.HeartbeatAudio.duck(0.9); } catch (_) {}
 
-    // Deep pressurized power-up swell (A1 -> A2) through sweeping low-pass filter
-    const lp = bellAudioCtx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(160, now);
-    lp.frequency.exponentialRampToValueAtTime(680, now + 0.45);
-    lp.frequency.exponentialRampToValueAtTime(140, now + 1.15);
-    lp.Q.value = 3.0;
-    lp.connect(bellAudioCtx.destination);
-
-    [55.0, 110.0].forEach((freq, idx) => {
+    [293.66, 369.99, 440.0].forEach((freq, idx) => {
+        const t = now + idx * 0.075;
         const osc = bellAudioCtx.createOscillator();
         const g = bellAudioCtx.createGain();
-        osc.type = idx === 0 ? 'sawtooth' : 'triangle';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.09);
-        osc.frequency.exponentialRampToValueAtTime(freq * 1.5, now + 0.55);
-        g.gain.setValueAtTime(floor, now + idx * 0.09);
-        g.gain.linearRampToValueAtTime((idx === 0 ? 0.16 : 0.12) * vol, now + idx * 0.09 + 0.04);
-        g.gain.exponentialRampToValueAtTime(floor, now + 1.15);
-        osc.connect(g).connect(lp);
-        osc.start(now + idx * 0.09);
-        osc.stop(now + 1.2);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(floor, t);
+        g.gain.linearRampToValueAtTime(0.085 * vol, t + 0.016);
+        g.gain.exponentialRampToValueAtTime(floor, t + 0.68);
+        osc.connect(g).connect(bellAudioCtx.destination);
+        osc.onended = () => { try { osc.disconnect(); g.disconnect(); } catch (_) {} };
+        osc.start(t);
+        osc.stop(t + 0.72);
     });
 }
 

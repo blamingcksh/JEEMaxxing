@@ -1248,6 +1248,9 @@ class RetroSoundEngine {
             this._jingle = playSmbJingle(ctx, id, v);
             const dur = this._jingle && Number.isFinite(this._jingle.duration) ? this._jingle.duration : 0;
             this._jingleEndAt = dur > 0 ? (performance.now() + dur * 1000) : 0;
+            if (typeof window !== 'undefined' && window.HeartbeatAudio && typeof window.HeartbeatAudio.duck === 'function') {
+                window.HeartbeatAudio.duck(Math.min(3.0, Math.max(1.2, dur + 0.4)), 0.14);
+            }
         } catch (_) {}
     }
 
@@ -1491,6 +1494,12 @@ class MarioRecapScene {
         if (this.parchment) this.overlay.classList.add('is-parchment');
         if (this.nonBlocking) this.overlay.classList.add('is-nonblocking');
         document.body.appendChild(this.overlay);
+        // Smoothly glide Flow ambient bed into a warm velvet whisper underneath Mario without altering Mario's sound
+        try {
+            if (wantMarioSound() && typeof window !== 'undefined' && window.HeartbeatAudio && typeof window.HeartbeatAudio.setRecapDuck === 'function') {
+                window.HeartbeatAudio.setRecapDuck(true);
+            }
+        } catch (_) {}
         this.resize();
         this.overlay.addEventListener('click', this.onClick);
         if (this.pillEl) {
@@ -4259,6 +4268,11 @@ class MarioRecapScene {
         if (this.sfx && typeof this.sfx.stopJingle === 'function') {
             this.sfx.stopJingle();
         }
+        try {
+            if (typeof window !== 'undefined' && window.HeartbeatAudio && typeof window.HeartbeatAudio.setRecapDuck === 'function') {
+                window.HeartbeatAudio.setRecapDuck(false);
+            }
+        } catch (_) {}
         cancelAnimationFrame(this.raf);
         this.raf = 0;
         if (this.finishTimer) {

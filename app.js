@@ -10891,46 +10891,30 @@ function _playModeClickRipple(e, btn) {
     ripple.addEventListener('animationend', () => ripple.remove());
 }
 
-// ── Mode-engage sound cue (Buckshot industrial seal / steel slam) ──────────
+// ── Mode-engage sound cue (unified studio harmonic swell / controlled 808 lock) ──
 function _playModeSound(mode) {
     if (!window.FX || !window.FX.wantSound()) return;
     try {
+        const cue = mode === 'flow' ? 'modeFlow' : 'modeHardcore';
+        if (window.HeartbeatAudio?.playUiSfx?.(cue)) return;
         const ctx = _sharedSfxCtx();
         if (!ctx) return;
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        try { window.HeartbeatAudio?.duck?.(0.5); } catch (_) {}
-
-        const osc = ctx.createOscillator();
-        const lp = ctx.createBiquadFilter();
-        const gain = ctx.createGain();
-        lp.type = 'lowpass';
-        if (mode === 'flow') {
-            // Pressurized chamber seal + cold metallic latch
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(110, now);
-            osc.frequency.exponentialRampToValueAtTime(164.81, now + 0.18);
-            lp.frequency.setValueAtTime(220, now);
-            lp.frequency.exponentialRampToValueAtTime(640, now + 0.16);
-            lp.Q.value = 2.6;
-            gain.gain.setValueAtTime(0.0001, now);
-            gain.gain.linearRampToValueAtTime(0.16 * v, now + 0.015);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
-        } else {
-            // Hardcore: heavy steel guillotine slam + distorted sub-drop
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(175, now);
-            osc.frequency.exponentialRampToValueAtTime(34, now + 0.22);
-            lp.frequency.setValueAtTime(760, now);
-            lp.frequency.exponentialRampToValueAtTime(120, now + 0.24);
-            lp.Q.value = 3.8;
-            gain.gain.setValueAtTime(0.0001, now);
-            gain.gain.linearRampToValueAtTime(0.28 * v, now + 0.006);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
-            try { window.HeartbeatAudio?.playChamberLoad?.(); } catch (_) {}
-        }
-        osc.connect(lp).connect(gain).connect(ctx.destination);
-        osc.start(now); osc.stop(now + 0.38);
+        const freqs = mode === 'flow' ? [293.66, 369.99, 440.0] : [146.83, 220.0, 440.0];
+        freqs.forEach((f, i) => {
+            const osc = ctx.createOscillator();
+            const g = ctx.createGain();
+            osc.type = i === 0 ? 'sine' : 'triangle';
+            const t = now + i * 0.032;
+            osc.frequency.setValueAtTime(f, t);
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime((mode === 'flow' ? 0.075 : 0.095) * v, t + 0.012);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+            osc.connect(g).connect(ctx.destination);
+            osc.onended = () => { try { osc.disconnect(); g.disconnect(); } catch (_) {} };
+            osc.start(t); osc.stop(t + 0.37);
+        });
     } catch (_) { /* audio not available */ }
 }
 
@@ -13369,87 +13353,63 @@ function _spawnCritSparks(anchorEl) {
 function _pqPlayHoldTick(isCritArmed) {
     if (window.FX && !window.FX.wantSound()) return;
     try {
+        if (window.HeartbeatAudio?.playUiSfx?.('holdTick', { crit: !!isCritArmed })) return;
         const ctx = _sharedSfxCtx();
         if (!ctx) return;
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        const peak = 0.048 * v;
-        _sfxNoiseBurst(ctx, now, 0.014, isCritArmed ? 3400 : 2400, 3.8, peak);
         const osc = ctx.createOscillator();
         const g = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(isCritArmed ? 660 : 480, now);
-        osc.frequency.exponentialRampToValueAtTime(isCritArmed ? 330 : 240, now + 0.016);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(isCritArmed ? 880 : 659.25, now);
         g.gain.setValueAtTime(0.0001, now);
-        g.gain.linearRampToValueAtTime(peak, now + 0.002);
-        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
+        g.gain.linearRampToValueAtTime(0.045 * v, now + 0.003);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.028);
         osc.connect(g).connect(ctx.destination);
+        osc.onended = () => { try { osc.disconnect(); g.disconnect(); } catch (_) {} };
         osc.start(now);
-        osc.stop(now + 0.022);
+        osc.stop(now + 0.032);
     } catch (_) {}
 }
 
-// Critical Hit Impact: 12ms dry firing-pin snap + 30ms breath + heavy sub-bass slam & steel harmonic
+// Critical Hit Impact: unified crystalline felt transient + warm sub-bloom + wide Maj9 shimmer
 function playSuperSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
+        try { window.HeartbeatAudio?.onSolveResult?.(true, Math.max(3, AppState.practiceCorrectStreak || 3)); } catch (_) {}
+        if (window.HeartbeatAudio?.playUiSfx?.('super')) return;
         const ctx = _sharedSfxCtx();
         if (!ctx) return;
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        try { window.HeartbeatAudio?.duck?.(0.95); } catch (_) {}
-        try { window.HeartbeatAudio?.onSolveResult?.(true, Math.max(3, AppState.practiceCorrectStreak || 3)); } catch (_) {}
+        const t0 = now + 0.032;
 
-        // 1. Crisp 12ms firing-pin transient
-        _sfxNoiseBurst(ctx, now, 0.014, 4200, 4.2, 0.15 * v);
-        const pin = ctx.createOscillator();
-        const pinG = ctx.createGain();
-        pin.type = 'triangle';
-        pin.frequency.setValueAtTime(920, now);
-        pin.frequency.exponentialRampToValueAtTime(240, now + 0.012);
-        pinG.gain.setValueAtTime(0.0001, now);
-        pinG.gain.linearRampToValueAtTime(0.14 * v, now + 0.002);
-        pinG.gain.exponentialRampToValueAtTime(0.0001, now + 0.014);
-        pin.connect(pinG).connect(ctx.destination);
-        pin.start(now); pin.stop(now + 0.018);
-
-        // 2. 30ms psychoacoustic breath gap before the drop (t0 = now + 0.042)
-        const t0 = now + 0.042;
         const sub = ctx.createOscillator();
         const subG = ctx.createGain();
         sub.type = 'sine';
-        sub.frequency.setValueAtTime(94, t0);
-        sub.frequency.exponentialRampToValueAtTime(30, t0 + 0.34);
+        sub.frequency.setValueAtTime(118, t0);
+        sub.frequency.exponentialRampToValueAtTime(46, t0 + 0.26);
         subG.gain.setValueAtTime(0.0001, t0);
-        subG.gain.linearRampToValueAtTime(0.34 * v, t0 + 0.008);
-        subG.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.48);
+        subG.gain.linearRampToValueAtTime(0.18 * v, t0 + 0.008);
+        subG.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.38);
         sub.connect(subG).connect(ctx.destination);
-        sub.start(t0); sub.stop(t0 + 0.50);
+        sub.onended = () => { try { sub.disconnect(); subG.disconnect(); } catch (_) {} };
+        sub.start(t0); sub.stop(t0 + 0.42);
 
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.frequency.setValueAtTime(380, t0);
-        lp.frequency.exponentialRampToValueAtTime(2200, t0 + 0.12);
-        lp.frequency.exponentialRampToValueAtTime(320, t0 + 0.72);
-        lp.Q.value = 2.6;
-        lp.connect(ctx.destination);
-
-        [110.0, 164.81, 220.0, 329.63].forEach((f, i) => {
+        [293.66, 369.99, 440.0, 554.37].forEach((f, i) => {
             const osc = ctx.createOscillator();
             const g = ctx.createGain();
-            osc.type = i % 2 === 0 ? 'triangle' : 'sawtooth';
-            const startAt = t0 + i * 0.018;
+            osc.type = i === 0 ? 'triangle' : 'sine';
+            const startAt = t0 + i * 0.022;
             osc.frequency.setValueAtTime(f, startAt);
-            osc.detune.value = (i % 2 === 0 ? -5 : 5);
             g.gain.setValueAtTime(0.0001, startAt);
-            g.gain.linearRampToValueAtTime((i < 2 ? 0.11 : 0.085) * v, startAt + 0.009);
-            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.76);
-            osc.connect(g).connect(lp);
+            g.gain.linearRampToValueAtTime(0.08 * v, startAt + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.65);
+            osc.connect(g).connect(ctx.destination);
+            osc.onended = () => { try { osc.disconnect(); g.disconnect(); } catch (_) {} };
             osc.start(startAt);
-            osc.stop(t0 + 0.79);
+            osc.stop(t0 + 0.68);
         });
-
-        _sfxNoiseBurst(ctx, t0, 0.032, 2200, 2.8, 0.14 * v);
     } catch (e) { /* ignore */ }
 }
 
@@ -13497,113 +13457,85 @@ function showSupercharged(opts = {}) {
     if ((!opts || opts.allowOverheat !== false) && Math.random() < 0.15 && typeof activateOverheat === 'function') activateOverheat();  // gameplay — never gated
 }
 
-// Streak-escalating mechanical fifth + bolt lock (semitone climb across 1..6)
+// Streak-climbing luminous harmonic Rhodes/celesta interval (harmonically locked to live Flow key)
 function playCorrectSound(streak) {
     if (window.FX && !window.FX.wantSound()) return;
     try {
+        const st = Math.max(1, Number(streak != null ? streak : (AppState.practiceCorrectStreak || 1)) || 1);
+        try { window.HeartbeatAudio?.onSolveResult?.(true, st); } catch (_) {}
+        if (window.HeartbeatAudio?.playUiSfx?.('correct', { streak: st })) return;
         const ctx = _sharedSfxCtx();
         if (!ctx) return;
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        try { window.HeartbeatAudio?.duck?.(0.55); } catch (_) {}
-
-        const st = Math.max(1, Number(streak != null ? streak : (AppState.practiceCorrectStreak || 1)) || 1);
-        try { window.HeartbeatAudio?.onSolveResult?.(true, st); } catch (_) {}
         const semis = [0, 2, 4, 7, 9, 12];
         const mult = Math.pow(2, semis[Math.min(5, st - 1)] / 12);
 
-        // Tight sub confirmation punch
         const sub = ctx.createOscillator();
         const subG = ctx.createGain();
         sub.type = 'sine';
-        sub.frequency.setValueAtTime(118, now);
-        sub.frequency.exponentialRampToValueAtTime(48, now + 0.14);
+        sub.frequency.setValueAtTime(112, now);
+        sub.frequency.exponentialRampToValueAtTime(54, now + 0.12);
         subG.gain.setValueAtTime(0.0001, now);
-        subG.gain.linearRampToValueAtTime(0.24 * v, now + 0.005);
-        subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+        subG.gain.linearRampToValueAtTime(0.12 * v, now + 0.006);
+        subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
         sub.connect(subG).connect(ctx.destination);
-        sub.start(now); sub.stop(now + 0.24);
+        sub.onended = () => { try { sub.disconnect(); subG.disconnect(); } catch (_) {} };
+        sub.start(now); sub.stop(now + 0.21);
 
-        // Ascending metallic FM fifth scaled cleanly with streak
-        [220.0 * mult, 329.63 * mult].forEach((freq, i) => {
-            const t = now + i * 0.055;
-            const car = ctx.createOscillator();
-            const mod = ctx.createOscillator();
-            const mg = ctx.createGain();
-            const g = ctx.createGain();
-            car.type = 'sine'; mod.type = 'sine';
-            car.frequency.setValueAtTime(freq, t);
-            mod.frequency.setValueAtTime(freq * 1.414, t);
-            mg.gain.setValueAtTime(freq * 0.55, t);
-            mg.gain.exponentialRampToValueAtTime(1, t + 0.34);
-            g.gain.setValueAtTime(0.0001, t);
-            g.gain.linearRampToValueAtTime((i === 0 ? 0.13 : 0.11) * v, t + 0.006);
-            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
-            mod.connect(mg).connect(car.frequency);
-            car.connect(g).connect(ctx.destination);
-            car.start(t); mod.start(t);
-            car.stop(t + 0.40); mod.stop(t + 0.40);
+        [440.0 * mult, 659.25 * mult].forEach((freq, i) => {
+            const t = now + i * 0.056;
+            const o1 = ctx.createOscillator();
+            const o2 = ctx.createOscillator();
+            const g1 = ctx.createGain();
+            const g2 = ctx.createGain();
+            o1.type = 'sine'; o2.type = 'sine';
+            o1.frequency.setValueAtTime(freq, t);
+            o2.frequency.setValueAtTime(freq * 2, t);
+            g1.gain.setValueAtTime(0.0001, t);
+            g1.gain.linearRampToValueAtTime((i === 0 ? 0.09 : 0.085) * v, t + 0.008);
+            g1.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+            g2.gain.setValueAtTime(0.0001, t);
+            g2.gain.linearRampToValueAtTime(0.02 * v, t + 0.006);
+            g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+            o1.connect(g1).connect(ctx.destination);
+            o2.connect(g2).connect(ctx.destination);
+            o1.onended = () => { try { o1.disconnect(); g1.disconnect(); o2.disconnect(); g2.disconnect(); } catch (_) {} };
+            o1.start(t); o2.start(t);
+            o1.stop(t + 0.42); o2.stop(t + 0.20);
         });
-
-        _sfxNoiseBurst(ctx, now, 0.018, 3400, 3.6, 0.11 * v);
     } catch (e) { /* ignore */ }
 }
 
-// Dry damped mechanical misfire (~180ms, clean tactile stop without harsh sawtooth screech)
+// Calm, tilt-proof muted marimba/felt double-knock (zero harsh buzz or vacuum drop)
 function playWrongSound() {
     if (window.FX && !window.FX.wantSound()) return;
     try {
+        try { window.HeartbeatAudio?.onSolveResult?.(false, 0); } catch (_) {}
+        if (window.HeartbeatAudio?.playUiSfx?.('wrong')) return;
         const ctx = _sharedSfxCtx();
         if (!ctx) return;
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
-        try { window.HeartbeatAudio?.duck?.(0.62, 0.02); } catch (_) {}
-        try { window.HeartbeatAudio?.onSolveResult?.(false, 0); } catch (_) {}
 
-        // 1. Dull dry pin tick
-        _sfxNoiseBurst(ctx, now, 0.014, 1800, 2.8, 0.10 * v);
-
-        // 2. Low-passed graphite/wood mechanical body knock + damped sub thump
-        const t = now + 0.018;
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.frequency.setValueAtTime(360, t);
-        lp.frequency.exponentialRampToValueAtTime(110, t + 0.13);
-        lp.Q.value = 1.4;
-        lp.connect(ctx.destination);
-
-        const body = ctx.createOscillator();
-        const bodyG = ctx.createGain();
-        body.type = 'triangle';
-        body.frequency.setValueAtTime(145, t);
-        body.frequency.exponentialRampToValueAtTime(62, t + 0.13);
-        bodyG.gain.setValueAtTime(0.0001, t);
-        bodyG.gain.linearRampToValueAtTime(0.22 * v, t + 0.006);
-        bodyG.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
-        body.connect(bodyG).connect(lp);
-        body.start(t); body.stop(t + 0.155);
-
-        const sub = ctx.createOscillator();
-        const subG = ctx.createGain();
-        sub.type = 'sine';
-        sub.frequency.setValueAtTime(92, t);
-        sub.frequency.exponentialRampToValueAtTime(40, t + 0.18);
-        subG.gain.setValueAtTime(0.0001, t);
-        subG.gain.linearRampToValueAtTime(0.20 * v, t + 0.006);
-        subG.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-        sub.connect(subG).connect(ctx.destination);
-        sub.start(t); sub.stop(t + 0.195);
-
-        const tap = ctx.createOscillator();
-        const tapG = ctx.createGain();
-        tap.type = 'triangle';
-        tap.frequency.setValueAtTime(185, t);
-        tap.frequency.exponentialRampToValueAtTime(155, t + 0.09);
-        tapG.gain.setValueAtTime(0.0001, t);
-        tapG.gain.linearRampToValueAtTime(0.06 * v, t + 0.004);
-        tapG.gain.exponentialRampToValueAtTime(0.0001, t + 0.10);
-        tap.connect(tapG).connect(lp);
-        tap.start(t); tap.stop(t + 0.11);
+        [246.94, 196.0].forEach((freq, i) => {
+            const t = now + i * 0.076;
+            const osc = ctx.createOscillator();
+            const lp = ctx.createBiquadFilter();
+            const g = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, t);
+            osc.frequency.exponentialRampToValueAtTime(freq * 0.94, t + 0.13);
+            lp.type = 'lowpass';
+            lp.frequency.value = 460;
+            lp.Q.value = 0.7;
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime((i === 0 ? 0.10 : 0.085) * v, t + 0.007);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + (i === 0 ? 0.12 : 0.16));
+            osc.connect(lp).connect(g).connect(ctx.destination);
+            osc.onended = () => { try { osc.disconnect(); lp.disconnect(); g.disconnect(); } catch (_) {} };
+            osc.start(t); osc.stop(t + 0.19);
+        });
     } catch (e) { /* ignore audio errors */ }
 }
 

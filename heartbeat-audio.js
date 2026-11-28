@@ -267,6 +267,7 @@ let _lastVitals = null;
 let _masterGain = null;
 let _toneFilter = null;
 let _duckBus = null;
+let _bedDuckGain = null;
 let _subDirectBus = null;
 let _sfxBus = null;
 let _warmthEq = null;
@@ -326,14 +327,16 @@ let _tidePhases = [_rng() * Math.PI * 2, _rng() * Math.PI * 2, _rng() * Math.PI 
 let _tempoOffsetBpm = (_rng() - 0.5) * 2.0; // subtle ±1 BPM unique session fingerprint
 let _motifCell = [];
 
-// Pact preview & live neural-flow solve state
+// Pact preview, Mario recap blend & live neural-flow solve state
 let _pactPreviewActive = false;
 let _pactPreviewValue = 72;
+let _recapDuckActive = false;
 let _solveBloomUntil = 0;
 let _solveBloomStrength = 0;
 let _lastCocoonLevel = 0;
 let _lastSolvingActive = false;
 let _plateauNextModBar = 112;
+const _fallbackSfxMap = typeof WeakMap === 'function' ? new WeakMap() : null;
 
 // ── Vibe, Pitch, Voice-Leading & Motif Evolution Engines ────────────────────
 function _vibe() {
@@ -692,6 +695,7 @@ function _teardownGraph() {
     _masterGain = null;
     _toneFilter = null;
     _duckBus = null;
+    _bedDuckGain = null;
     _subDirectBus = null;
     _sfxBus = null;
     _warmthEq = null;
@@ -1063,6 +1067,11 @@ function _buildGraph() {
     _duckBus = ac.createGain();
     _duckBus.gain.value = 1.0;
 
+    // Dedicated music-bed ducking bus (separate from kick sidechain so UI SFX & Mario Recap
+    // glide the ambient bed smoothly down without fighting rhythmic pumping or ducking SFX)
+    _bedDuckGain = ac.createGain();
+    _bedDuckGain.gain.value = _recapDuckActive ? 0.14 : 1.0;
+
     // Direct sub-kick bus bypasses _duckBus so kicks punch cleanly while pumping the room around them
     _subDirectBus = ac.createGain();
     _subDirectBus.gain.value = 1.0;
@@ -1180,9 +1189,10 @@ function _buildGraph() {
     delRevTap.gain.value = 0.28;
     _delayWet.connect(delRevTap).connect(_reverbSend);
 
-    // Master Chain Wiring
+    // Master Chain Wiring (Music Bed goes through _bedDuckGain; _sfxBus enters cleanly at _warmthEq)
     _duckBus.connect(_toneFilter);
-    _toneFilter.connect(subGuard);
+    _toneFilter.connect(_bedDuckGain);
+    _bedDuckGain.connect(subGuard);
     subGuard.connect(_warmthEq);
     _warmthEq.connect(clarityDip);
     clarityDip.connect(airShelf);
@@ -1866,6 +1876,12 @@ function _applyHealthModulation() {
         atmosCut = vibe.atmosCutoff * (0.85 + norm * 0.32);
     }
 
+    // During Mario Recap, soften the Flow horizon like a warm velvet curtain so Mario's iconic
+    // NES jingles sit crystal-clear on top with zero key clash (and never touch Mario's sound).
+    if (_recapDuckActive) {
+        targetCutoff = Math.min(targetCutoff, 980);
+    }
+
     _rampParam('master', _masterGain.gain, targetVol, now, 0.24, 0.006);
     _rampParam('tone', _toneFilter.frequency, _nyquistSafe(_ac, targetCutoff), now, 0.26, 25);
     if (_atmosGain) _rampParam('atmos', _atmosGain.gain, atmosTarget, now, 0.32, 0.004);
@@ -2055,62 +2071,581 @@ export function cycleVibe() {
     return setVibe(next);
 }
 
-// ── Tactile Precision SFX, Layered Pact Slider Bass Bumps & Pact Seal ───────
+// ── Tactile Precision SFX, Unified Studio UI/Solve Engine & Pact Seal ───────
 
-function _resolveSfxCtx() {
+function _ensureFallbackSfxBus(fxAc) {
+    if (!fxAc) return null;
+    const cached = _fallbackSfxMap ? _fallbackSfxMap.get(fxAc) : fxAc.__jmaxFallbackSfx;
+    if (cached) return cached;
+
+    const out = fxAc.createGain();
+    out.gain.value = 0.96;
+
+    const hp = fxAc.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 50;
+
+    const warmth = fxAc.createBiquadFilter();
+    warmth.type = 'peaking';
+    warmth.frequency.value = 118;
+    warmth.Q.value = 0.85;
+    warmth.gain.value = 1.0;
+
+    const clarity = fxAc.createBiquadFilter();
+    clarity.type = 'peaking';
+    clarity.frequency.value = 220;
+    clarity.Q.value = 0.9;
+    clarity.gain.value = -2.2;
+
+    const air = fxAc.createBiquadFilter();
+    air.type = 'highshelf';
+    air.frequency.value = 5600;
+    air.gain.value = -1.8;
+
+    const comp = fxAc.createDynamicsCompressor();
+    comp.threshold.value = -14;
+    comp.knee.value = 20;
+    comp.ratio.value = 2.5;
+    comp.attack.value = 0.008;
+    comp.release.value = 0.18;
+
+    out.connect(hp);
+    hp.connect(warmth);
+    warmth.connect(clarity);
+    clarity.connect(air);
+    air.connect(comp);
+    comp.connect(fxAc.destination);
+
+    // Lightweight 1.15s stereo Mini Velvet Room so SFX stay lush even when Flow music is muted
+    let rev = null;
+    try {
+        const sr = fxAc.sampleRate;
+        const secs = 1.15;
+        const len = Math.floor(sr * secs);
+        const ir = fxAc.createBuffer(2, len, sr);
+        for (let c = 0; c < 2; c++) {
+            const data = ir.getChannelData(c);
+            let lp = 0, hpS = 0;
+            for (let i = 0; i < len; i++) {
+                const t = i / len;
+                const bloom = Math.min(1, (i / sr) / 0.018);
+                const env = Math.pow(1 - t, 2.35) * bloom;
+                const raw = (Math.random() + Math.random() - 1) * env;
+                const damp = (c === 0 ? 0.34 : 0.31) * Math.pow(1 - t, 1.2) + 0.05;
+                lp += (raw - lp) * damp;
+                hpS += (lp - hpS) * 0.02;
+                data[i] = (lp - hpS) * 1.35;
+            }
+        }
+        const conv = fxAc.createConvolver();
+        conv.buffer = ir;
+        const revSend = fxAc.createGain();
+        revSend.gain.value = 0.85;
+        const revWet = fxAc.createGain();
+        revWet.gain.value = 0.32;
+        revSend.connect(conv);
+        conv.connect(revWet);
+        revWet.connect(clarity);
+        rev = revSend;
+    } catch (_) { rev = null; }
+
+    const nLen = Math.max(64, Math.floor(fxAc.sampleRate * 0.35));
+    const noise = fxAc.createBuffer(1, nLen, fxAc.sampleRate);
+    const ch = noise.getChannelData(0);
+    for (let i = 0; i < nLen; i++) ch[i] = Math.random() * 2 - 1;
+
+    const bundle = { out, rev, noise };
+    if (_fallbackSfxMap) _fallbackSfxMap.set(fxAc, bundle);
+    else fxAc.__jmaxFallbackSfx = bundle;
+    return bundle;
+}
+
+function _resolveSfxCtx(opts = {}) {
+    const ignoreFxGate = Boolean(opts && opts.ignoreFxGate);
+    let fxVol = 0.7;
+    try {
+        if (typeof window !== 'undefined' && window.FX) {
+            if (!ignoreFxGate && typeof window.FX.wantSound === 'function' && !window.FX.wantSound()) {
+                return null;
+            }
+            if (typeof window.FX.vol === 'function') fxVol = window.FX.vol();
+        }
+    } catch (_) {}
+    if (opts && typeof opts.vol === 'number' && Number.isFinite(opts.vol)) {
+        fxVol = clamp(opts.vol, 0, 1);
+    }
+    if (fxVol <= 0.001) return null;
+
     if (_enabled) {
         const ac = _buildGraph();
-        if (ac && ac.state === 'running') {
-            return { ac, out: _sfxBus || ac.destination, rev: _reverbSend, del: _delaySend, shim: _shimmerSend, isFxFallback: false };
+        if (ac && ac.state !== 'closed') {
+            if (ac.state !== 'running') {
+                try { ac.resume().catch(() => {}); } catch (_) {}
+            }
+            const mCur = (_masterGain && Number.isFinite(_masterGain.gain.value) && _masterGain.gain.value > 0.08)
+                ? _masterGain.gain.value : 0.38;
+            const gainScale = clamp((fxVol / 0.7) * (0.44 / clamp(mCur, 0.24, 0.55)), 0, 2.0);
+            return {
+                ac,
+                out: _sfxBus || ac.destination,
+                rev: _reverbSend,
+                del: _delaySend,
+                shim: _shimmerSend,
+                noise: _crispNoiseBuffer,
+                gainScale,
+                isFxFallback: false,
+            };
         }
     }
     try {
-        if (typeof window !== 'undefined' && window.FX && typeof window.FX.wantSound === 'function' && window.FX.wantSound()) {
+        if (typeof window !== 'undefined' && window.FX) {
             const fxAc = typeof window.FX.ctx === 'function' ? window.FX.ctx() : null;
-            if (fxAc && fxAc.state === 'running') {
-                return { ac: fxAc, out: fxAc.destination, rev: null, del: null, shim: null, isFxFallback: true };
+            if (fxAc && fxAc.state !== 'closed') {
+                if (fxAc.state !== 'running') {
+                    try { fxAc.resume().catch(() => {}); } catch (_) {}
+                }
+                const fb = _ensureFallbackSfxBus(fxAc);
+                const gainScale = clamp((fxVol / 0.7) * 0.56, 0, 1.25);
+                return {
+                    ac: fxAc,
+                    out: fb ? fb.out : fxAc.destination,
+                    rev: fb ? fb.rev : null,
+                    del: null,
+                    shim: null,
+                    noise: fb ? fb.noise : null,
+                    gainScale,
+                    isFxFallback: true,
+                };
             }
         }
     } catch (_) {}
     return null;
 }
 
-/** Tactile damped ceramic switch click. */
-export function playClick() {
-    if (!_enabled) return;
-    const ac = _buildGraph();
-    if (!ac || ac.state !== 'running') return;
-    const now = ac.currentTime;
+function _sfxConnectSends(ctxInfo, srcNode, cleanList, revAmt, delAmt, shimAmt) {
+    const { ac, out, rev, del, shim } = ctxInfo;
+    srcNode.connect(out);
+    if (rev && revAmt > 0.01) {
+        const rg = ac.createGain();
+        rg.gain.value = clamp(revAmt, 0, 1.0);
+        srcNode.connect(rg).connect(rev);
+        cleanList.push(rg);
+    }
+    if (del && delAmt > 0.01) {
+        const dg = ac.createGain();
+        dg.gain.value = clamp(delAmt, 0, 0.85);
+        srcNode.connect(dg).connect(del);
+        cleanList.push(dg);
+    }
+    if (shim && shimAmt > 0.01) {
+        const sg = ac.createGain();
+        sg.gain.value = clamp(shimAmt, 0, 0.85);
+        srcNode.connect(sg).connect(shim);
+        cleanList.push(sg);
+    }
+}
+
+/** Pure fatigue-free tonal voice (sine/triangle only, soft attack, explicit onended disconnect). */
+function _sfxTone(ctxInfo, p) {
+    const { ac, gainScale } = ctxInfo;
+    const t = Math.max(ac.currentTime, p.start != null ? p.start : ac.currentTime);
+    const dur = Math.max(0.016, p.dur || 0.12);
+    const atk = clamp(p.atk != null ? p.atk : 0.005, 0.003, dur * 0.45);
+    const peak = clamp((p.amp != null ? p.amp : 0.10) * gainScale, 0.0002, 0.42);
 
     const osc = ac.createOscillator();
-    const g = ac.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(165, now);
-    osc.frequency.exponentialRampToValueAtTime(62, now + 0.036);
-    g.gain.setValueAtTime(0.0001, now);
-    g.gain.linearRampToValueAtTime(0.14, now + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
-    osc.connect(g).connect(_sfxBus || ac.destination);
-    if (_reverbSend) g.connect(_reverbSend);
-    _autoDisconnect(osc, [osc, g]);
-    osc.start(now);
-    osc.stop(now + 0.058);
+    osc.type = p.type === 'triangle' ? 'triangle' : 'sine';
+    const f1 = Math.max(36, p.freq || 440);
+    osc.frequency.setValueAtTime(f1, t);
+    if (p.freq2) osc.frequency.exponentialRampToValueAtTime(Math.max(36, p.freq2), t + dur);
 
-    if (_crispNoiseBuffer) {
-        const src = ac.createBufferSource();
-        src.buffer = _crispNoiseBuffer;
-        const bp = ac.createBiquadFilter();
-        bp.type = 'bandpass';
-        bp.frequency.value = 2600;
-        bp.Q.value = 1.8;
-        const ng = ac.createGain();
-        ng.gain.setValueAtTime(0.0001, now);
-        ng.gain.linearRampToValueAtTime(0.05, now + 0.002);
-        ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
-        src.connect(bp).connect(ng).connect(_sfxBus || ac.destination);
-        _autoDisconnect(src, [src, bp, ng]);
-        src.start(now, Math.random() * 0.2, 0.028);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + atk);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    const cleanList = [osc, g];
+    let chain = osc;
+    if (p.lpFreq && p.lpFreq > 0) {
+        const lp = ac.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.Q.value = clamp(p.lpQ || 0.72, 0.5, 1.4);
+        lp.frequency.setValueAtTime(_nyquistSafe(ac, p.lpFreq), t);
+        if (p.lpFreq2) lp.frequency.exponentialRampToValueAtTime(_nyquistSafe(ac, Math.max(80, p.lpFreq2)), t + dur);
+        chain.connect(lp);
+        chain = lp;
+        cleanList.push(lp);
     }
+    const pan = _createStereoPanner(ac, p.pan || 0);
+    chain.connect(pan);
+    pan.connect(g);
+    cleanList.push(pan);
+
+    _sfxConnectSends(ctxInfo, g, cleanList, p.revAmt || 0, p.delAmt || 0, p.shimAmt || 0);
+    _autoDisconnect(osc, cleanList);
+    osc.start(t);
+    osc.stop(t + dur + 0.04);
+}
+
+/** Luminous warm Rhodes / Celesta harmonic note (pure 1x + soft 2x/3x overtones, zero metallic clang). */
+function _sfxRhodes(ctxInfo, p) {
+    const { ac, gainScale } = ctxInfo;
+    const t = Math.max(ac.currentTime, p.start != null ? p.start : ac.currentTime);
+    const dur = Math.max(0.04, p.dur || 0.30);
+    const freq = Math.max(80, p.freq || 587.33);
+    const peak = clamp((p.amp != null ? p.amp : 0.09) * gainScale, 0.0002, 0.34);
+
+    const o1 = ac.createOscillator();
+    const o2 = ac.createOscillator();
+    const g1 = ac.createGain();
+    const g2 = ac.createGain();
+    const sum = ac.createGain();
+    const pan = _createStereoPanner(ac, p.pan || 0);
+
+    o1.type = 'sine';
+    o2.type = 'sine';
+    o1.frequency.setValueAtTime(freq, t);
+    o2.frequency.setValueAtTime(freq * 2.0, t);
+
+    const atk = clamp(p.atk != null ? p.atk : 0.006, 0.003, 0.03);
+    g1.gain.setValueAtTime(0.0001, t);
+    g1.gain.linearRampToValueAtTime(peak, t + atk);
+    g1.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    const ovAmp = clamp(peak * (p.overtone != null ? p.overtone : 0.24), 0.0001, 0.14);
+    const ovDur = Math.max(0.035, dur * 0.44);
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.linearRampToValueAtTime(ovAmp, t + atk);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + ovDur);
+
+    o1.connect(g1).connect(sum);
+    o2.connect(g2).connect(sum);
+    sum.connect(pan);
+
+    const cleanList = [o1, o2, g1, g2, sum, pan];
+    _sfxConnectSends(ctxInfo, pan, cleanList, p.revAmt != null ? p.revAmt : 0.38, p.delAmt || 0, p.shimAmt || 0);
+    _autoDisconnect(o1, cleanList);
+    o1.start(t); o2.start(t);
+    o1.stop(t + dur + 0.05); o2.stop(t + ovDur + 0.05);
+}
+
+/** Silky paper/felt air breath (low-Q warm bandpass, zero piercing hiss). */
+function _sfxAir(ctxInfo, p) {
+    if (!ctxInfo.noise) return;
+    const { ac, gainScale } = ctxInfo;
+    const t = Math.max(ac.currentTime, p.start != null ? p.start : ac.currentTime);
+    const dur = Math.max(0.012, p.dur || 0.04);
+    const peak = clamp((p.amp != null ? p.amp : 0.025) * gainScale, 0.0001, 0.12);
+
+    const src = ac.createBufferSource();
+    src.buffer = ctxInfo.noise;
+    const bp = ac.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = clamp(p.bpQ || 0.85, 0.5, 1.6);
+    bp.frequency.setValueAtTime(_nyquistSafe(ac, p.bpFreq || 1650), t);
+    if (p.bpFreq2) bp.frequency.exponentialRampToValueAtTime(_nyquistSafe(ac, Math.max(180, p.bpFreq2)), t + dur);
+
+    const pan = _createStereoPanner(ac, p.pan || 0);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + Math.min(0.008, dur * 0.35));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    src.connect(bp).connect(pan).connect(g);
+    const cleanList = [src, bp, pan, g];
+    _sfxConnectSends(ctxInfo, g, cleanList, p.revAmt != null ? p.revAmt : 0.22, 0, 0);
+    _autoDisconnect(src, cleanList);
+    src.start(t, Math.random() * 0.16, dur + 0.025);
+}
+
+/**
+ * Unified Studio UI, Gameplay & Timer SFX Engine.
+ * Every interaction across the entire app shares the live Circle-of-Fifths scale,
+ * Velvet Hall acoustic space, warmth/clarity EQ, and zero-leak cleanup.
+ */
+export function playUiSfx(name, opts = {}) {
+    const ctxInfo = _resolveSfxCtx(opts);
+    if (!ctxInfo) return false;
+    const now = ctxInfo.ac.currentTime;
+
+    switch (name) {
+        case 'click':
+            _sfxTone(ctxInfo, { freq: 255, freq2: 108, dur: 0.040, amp: 0.125, atk: 0.003, revAmt: 0.16 });
+            _sfxAir(ctxInfo, { dur: 0.014, amp: 0.030, bpFreq: 1850, bpQ: 1.0, revAmt: 0.12 });
+            return true;
+
+        case 'soft':
+            _sfxTone(ctxInfo, { freq: 225, freq2: 126, dur: 0.048, amp: 0.088, atk: 0.005, revAmt: 0.20 });
+            _sfxAir(ctxInfo, { dur: 0.015, amp: 0.018, bpFreq: 1450, bpQ: 0.9, revAmt: 0.14 });
+            return true;
+
+        case 'tick':
+            _sfxTone(ctxInfo, { freq: 285, freq2: 162, dur: 0.022, amp: 0.068, atk: 0.003, revAmt: 0.12 });
+            _sfxTone(ctxInfo, { freq: _scaleFreq(4, 3), dur: 0.032, amp: 0.068, atk: 0.003, revAmt: 0.18 });
+            return true;
+
+        case 'hover':
+            _sfxTone(ctxInfo, { freq: _scaleFreq(4, 3) * 1.25, dur: 0.022, amp: 0.024, atk: 0.004, revAmt: 0.24 });
+            return true;
+
+        case 'blip':
+            _sfxRhodes(ctxInfo, { freq: _scaleFreq(2, 3), dur: 0.068, amp: 0.078, overtone: 0.20, revAmt: 0.28 });
+            return true;
+
+        case 'select':
+            _sfxTone(ctxInfo, { freq: 310, freq2: 175, dur: 0.036, amp: 0.072, atk: 0.003, revAmt: 0.16 });
+            _sfxRhodes(ctxInfo, { freq: _scaleFreq(2, 3), start: now + 0.003, dur: 0.092, amp: 0.076, overtone: 0.22, revAmt: 0.28 });
+            return true;
+
+        case 'toggle':
+            _sfxTone(ctxInfo, { freq: 240, freq2: 148, dur: 0.028, amp: 0.068, atk: 0.003, revAmt: 0.16 });
+            _sfxRhodes(ctxInfo, { freq: _scaleFreq(4, 3), start: now + 0.022, dur: 0.068, amp: 0.074, overtone: 0.20, revAmt: 0.28 });
+            return true;
+
+        case 'tab':
+            // Silky luminous harmonic fifth glide + whisper paper turn (replaces sawtooth bandpass fart!)
+            _sfxRhodes(ctxInfo, { freq: _scaleFreq(0, 3), start: now, dur: 0.115, amp: 0.068, atk: 0.007, pan: -0.18, overtone: 0.20, revAmt: 0.40 });
+            _sfxRhodes(ctxInfo, { freq: _scaleFreq(4, 3), start: now + 0.034, dur: 0.175, amp: 0.062, atk: 0.008, pan: 0.18, overtone: 0.22, revAmt: 0.44, delAmt: 0.10 });
+            _sfxAir(ctxInfo, { start: now, dur: 0.058, amp: 0.020, bpFreq: 1350, bpFreq2: 2050, bpQ: 0.72, revAmt: 0.28 });
+            return true;
+
+        case 'modalClose':
+            // Calm descending felt hush + soft low-passed air exhale
+            _sfxTone(ctxInfo, { freq: _scaleFreq(4, 2), freq2: _scaleFreq(0, 2), dur: 0.125, amp: 0.082, atk: 0.007, revAmt: 0.34 });
+            _sfxAir(ctxInfo, { start: now + 0.004, dur: 0.092, amp: 0.022, bpFreq: 920, bpFreq2: 390, bpQ: 0.68, revAmt: 0.26 });
+            return true;
+
+        case 'delete':
+            // Clean damped warm wood/marimba descending two-note drop (zero buzzy sawtooth!)
+            _sfxTone(ctxInfo, { freq: 152, freq2: 74, dur: 0.082, amp: 0.088, atk: 0.005, revAmt: 0.18 });
+            _sfxTone(ctxInfo, { type: 'triangle', freq: _scaleFreq(2, 2), freq2: _scaleFreq(2, 2) * 0.94, start: now, dur: 0.11, amp: 0.086, atk: 0.006, lpFreq: 560, lpFreq2: 280, pan: 0.12, revAmt: 0.24 });
+            _sfxTone(ctxInfo, { freq: _scaleFreq(0, 2) * 0.89, freq2: _scaleFreq(0, 2) * 0.84, start: now + 0.042, dur: 0.145, amp: 0.082, atk: 0.006, pan: -0.12, revAmt: 0.26 });
+            return true;
+
+        case 'confirm':
+            _sfxTone(ctxInfo, { freq: 124, freq2: 58, dur: 0.095, amp: 0.135, atk: 0.005, revAmt: 0.20 });
+            _sfxRhodes(ctxInfo, { freq: _scaleFreq(0, 3), start: now + 0.008, dur: 0.24, amp: 0.092, pan: -0.20, overtone: 0.24, revAmt: 0.42, delAmt: 0.14 });
+            _sfxRhodes(ctxInfo, { freq: _scaleFreq(4, 3), start: now + 0.056, dur: 0.32, amp: 0.094, pan: 0.22, overtone: 0.26, revAmt: 0.46, delAmt: 0.18 });
+            return true;
+
+        case 'success':
+            duck(0.55, 0.55);
+            _sfxTone(ctxInfo, { freq: 120, freq2: 54, dur: 0.18, amp: 0.155, atk: 0.006, revAmt: 0.24 });
+            [0, 2, 4].forEach((deg, idx) => {
+                _sfxRhodes(ctxInfo, {
+                    freq: _scaleFreq(deg, 3),
+                    start: now + 0.012 + idx * 0.058,
+                    dur: 0.36 + idx * 0.08,
+                    amp: 0.096,
+                    pan: (idx - 1) * 0.28,
+                    overtone: 0.26,
+                    revAmt: 0.50,
+                    delAmt: 0.22,
+                    shimAmt: idx === 2 ? 0.24 : 0,
+                });
+            });
+            return true;
+
+        case 'modeFlow':
+            duck(0.45, 0.58);
+            _sfxTone(ctxInfo, { freq: 98, freq2: 56, dur: 0.20, amp: 0.145, atk: 0.010, revAmt: 0.28 });
+            [0, 2, 4].forEach((deg, idx) => {
+                _sfxRhodes(ctxInfo, {
+                    freq: _scaleFreq(deg, idx === 2 ? 3 : 2),
+                    start: now + idx * 0.044,
+                    dur: 0.42,
+                    amp: 0.095,
+                    pan: (idx - 1) * 0.26,
+                    overtone: 0.22,
+                    revAmt: 0.50,
+                    delAmt: 0.18,
+                    shimAmt: 0.22,
+                });
+            });
+            return true;
+
+        case 'modeHardcore':
+            duck(0.65, 0.42);
+            _sfxTone(ctxInfo, { freq: 136, freq2: 44, dur: 0.28, amp: 0.24, atk: 0.005, revAmt: 0.28 });
+            _sfxTone(ctxInfo, { type: 'triangle', freq: _rootHz() * 2, dur: 0.30, amp: 0.115, atk: 0.006, lpFreq: 1100, lpFreq2: 260, pan: -0.18, revAmt: 0.34 });
+            _sfxTone(ctxInfo, { type: 'triangle', freq: _rootHz() * 3, dur: 0.32, amp: 0.095, atk: 0.006, lpFreq: 1200, lpFreq2: 290, pan: 0.18, revAmt: 0.34 });
+            _sfxRhodes(ctxInfo, { freq: _scaleFreq(4, 3), start: now + 0.032, dur: 0.34, amp: 0.096, pan: -0.24, overtone: 0.28, revAmt: 0.48, delAmt: 0.20 });
+            _sfxRhodes(ctxInfo, { freq: _scaleFreq(6, 3), start: now + 0.072, dur: 0.40, amp: 0.092, pan: 0.24, overtone: 0.26, revAmt: 0.50, delAmt: 0.22 });
+            return true;
+
+        case 'holdTick': {
+            const isCrit = Boolean(opts && opts.crit);
+            _sfxTone(ctxInfo, { freq: 270, freq2: 155, dur: 0.018, amp: 0.052, atk: 0.003, revAmt: 0.12 });
+            _sfxTone(ctxInfo, { freq: isCrit ? _scaleFreq(6, 3) : _scaleFreq(4, 3), dur: 0.028, amp: 0.060, atk: 0.003, revAmt: 0.20 });
+            return true;
+        }
+
+        case 'correct': {
+            const st = clamp(Number(opts && opts.streak) || 1, 1, 6);
+            const baseDeg = st - 1;
+            const octBase = st >= 5 ? 3 : 2;
+            const octHi = 3;
+            duck(0.48, 0.56);
+            // Soft rounded felt chest confirm
+            _sfxTone(ctxInfo, { freq: 114, freq2: 54, dur: 0.145, amp: 0.155, atk: 0.005, revAmt: 0.22 });
+            // Luminous harmonic Rhodes interval climbing cleanly with streak in the active Flow key
+            _sfxRhodes(ctxInfo, {
+                freq: _scaleFreq(baseDeg, octBase + (st >= 5 ? 0 : 1)),
+                start: now + 0.004,
+                dur: 0.34,
+                amp: 0.105,
+                pan: -0.22,
+                overtone: 0.25,
+                revAmt: 0.48,
+                delAmt: 0.20,
+            });
+            _sfxRhodes(ctxInfo, {
+                freq: _scaleFreq(baseDeg + 2, octHi),
+                start: now + 0.058,
+                dur: 0.44,
+                amp: 0.112,
+                pan: 0.26,
+                overtone: 0.28,
+                revAmt: 0.52,
+                delAmt: 0.24,
+                shimAmt: st >= 3 ? 0.22 : 0,
+            });
+            if (st >= 3) {
+                _sfxRhodes(ctxInfo, {
+                    freq: _scaleFreq(baseDeg + 4, octHi),
+                    start: now + 0.112,
+                    dur: 0.50,
+                    amp: 0.088,
+                    pan: 0,
+                    overtone: 0.24,
+                    revAmt: 0.56,
+                    delAmt: 0.26,
+                    shimAmt: 0.30,
+                });
+            }
+            return true;
+        }
+
+        case 'super': {
+            // Critical Hit / Tier Up: crystalline felt-pin sparkle -> 26ms breath -> warm sub bloom + stereo Maj9 shimmer
+            duck(0.85, 0.40);
+            _sfxTone(ctxInfo, { freq: _scaleFreq(4, 4), dur: 0.032, amp: 0.068, atk: 0.003, revAmt: 0.30 });
+            _sfxAir(ctxInfo, { dur: 0.018, amp: 0.034, bpFreq: 2200, bpQ: 1.0, revAmt: 0.20 });
+
+            const t0 = now + 0.036;
+            _sfxTone(ctxInfo, { freq: 126, freq2: 44, start: t0, dur: 0.36, amp: 0.24, atk: 0.007, revAmt: 0.30 });
+            const chord = [
+                { deg: 0, oct: 2, pan: -0.44, amp: 0.105 },
+                { deg: 2, oct: 3, pan: -0.16, amp: 0.100 },
+                { deg: 4, oct: 3, pan: 0.18, amp: 0.102 },
+                { deg: 6, oct: 3, pan: 0.46, amp: 0.094 },
+            ];
+            chord.forEach((n, idx) => {
+                _sfxRhodes(ctxInfo, {
+                    freq: _scaleFreq(n.deg, n.oct),
+                    start: t0 + idx * 0.022,
+                    dur: 0.72,
+                    amp: n.amp,
+                    pan: n.pan,
+                    overtone: 0.28,
+                    revAmt: 0.58,
+                    delAmt: 0.30,
+                    shimAmt: 0.38,
+                });
+            });
+            return true;
+        }
+
+        case 'wrong':
+            // Calm, tilt-proof muted low marimba/felt double-knock (never a buzzer, fart, or 2% silence drop!)
+            duck(0.42, 0.50);
+            _sfxTone(ctxInfo, { freq: 108, freq2: 64, start: now, dur: 0.092, amp: 0.092, atk: 0.005, revAmt: 0.18 });
+            _sfxTone(ctxInfo, {
+                type: 'triangle',
+                freq: _scaleFreq(2, 2),
+                freq2: _scaleFreq(2, 2) * 0.96,
+                start: now,
+                dur: 0.115,
+                amp: 0.118,
+                atk: 0.006,
+                lpFreq: 480,
+                lpFreq2: 260,
+                pan: -0.10,
+                revAmt: 0.22,
+            });
+            _sfxTone(ctxInfo, {
+                type: 'triangle',
+                freq: _scaleFreq(0, 2),
+                freq2: _scaleFreq(0, 2) * 0.94,
+                start: now + 0.078,
+                dur: 0.165,
+                amp: 0.108,
+                atk: 0.007,
+                lpFreq: 440,
+                lpFreq2: 210,
+                pan: 0.10,
+                revAmt: 0.26,
+            });
+            return true;
+
+        case 'bell': {
+            // Warm hand-hammered studio singing bowl / resonant glass bell (zero metallic 2.756/1.414 clang!)
+            duck(1.5, 0.34);
+            const fRoot = _scaleFreq(0, 2);
+            const fFifth = _scaleFreq(4, 2);
+            const fOct = _scaleFreq(0, 3);
+            const fHiFifth = _scaleFreq(4, 3);
+            _sfxTone(ctxInfo, { freq: fRoot, start: now, dur: 2.55, amp: 0.125, atk: 0.018, pan: -0.18, revAmt: 0.65, shimAmt: 0.36 });
+            _sfxTone(ctxInfo, { freq: fRoot * 1.0045, start: now, dur: 2.35, amp: 0.068, atk: 0.022, pan: 0.18, revAmt: 0.65 });
+            _sfxTone(ctxInfo, { freq: fFifth, start: now + 0.018, dur: 2.25, amp: 0.088, atk: 0.018, pan: 0.24, revAmt: 0.64, shimAmt: 0.42 });
+            _sfxRhodes(ctxInfo, { freq: fOct, start: now + 0.17, dur: 1.85, amp: 0.072, atk: 0.016, pan: -0.26, overtone: 0.20, revAmt: 0.66, delAmt: 0.22, shimAmt: 0.45 });
+            _sfxRhodes(ctxInfo, { freq: fHiFifth, start: now + 0.24, dur: 1.65, amp: 0.056, atk: 0.016, pan: 0.28, overtone: 0.18, revAmt: 0.66, delAmt: 0.22, shimAmt: 0.45 });
+            return true;
+        }
+
+        case 'startChime':
+            // Uplifting warm harmonic swell + resolving fifth for starting a focus block
+            duck(0.85, 0.45);
+            _sfxTone(ctxInfo, { freq: _rootHz() * 2, freq2: _rootHz() * 3, start: now, dur: 0.36, amp: 0.115, atk: 0.042, revAmt: 0.48 });
+            [0, 2, 4].forEach((deg, idx) => {
+                _sfxRhodes(ctxInfo, {
+                    freq: _scaleFreq(deg, idx === 2 ? 3 : 2),
+                    start: now + 0.03 + idx * 0.078,
+                    dur: 0.68,
+                    amp: 0.095,
+                    pan: (idx - 1) * 0.30,
+                    overtone: 0.22,
+                    revAmt: 0.56,
+                    delAmt: 0.24,
+                    shimAmt: idx === 2 ? 0.32 : 0.16,
+                });
+            });
+            return true;
+
+        case 'galleryChime':
+            [0, 2, 4].forEach((deg, idx) => {
+                _sfxRhodes(ctxInfo, {
+                    freq: _scaleFreq(deg, 3),
+                    start: now + idx * 0.115,
+                    dur: 1.25,
+                    amp: 0.074,
+                    atk: 0.018,
+                    pan: (idx - 1) * 0.32,
+                    overtone: 0.16,
+                    revAmt: 0.62,
+                    shimAmt: 0.34,
+                });
+            });
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+/** Tactile damped ceramic switch click. */
+export function playClick() {
+    if (playUiSfx('click', { ignoreFxGate: true })) return;
 }
 
 /** Warm 3-stage harmonic lock sound (Pact / Heartbeat feed). */
@@ -2156,6 +2691,7 @@ export function playBootIgnition() {
     g.gain.exponentialRampToValueAtTime(0.0001, now + 1.25);
     osc.connect(g).connect(_sfxBus || ac.destination);
     if (_reverbSend) g.connect(_reverbSend);
+    _autoDisconnect(osc, [osc, g]);
     osc.start(now);
     osc.stop(now + 1.3);
 
@@ -2186,6 +2722,7 @@ export function playFlatlineDrop() {
     g.gain.exponentialRampToValueAtTime(0.0001, now + 1.1);
     osc.connect(lp).connect(g).connect(_sfxBus || ac.destination);
     if (_reverbSend) g.connect(_reverbSend);
+    _autoDisconnect(osc, [osc, lp, g]);
     osc.start(now);
     osc.stop(now + 1.15);
 }
@@ -2210,7 +2747,7 @@ export function playSliderBump(value, prevValue, opts = {}) {
         try { unlockAudio(); } catch (_) {}
     }
 
-    const ctxInfo = _resolveSfxCtx();
+    const ctxInfo = _resolveSfxCtx({ ignoreFxGate: _enabled });
     if (!ctxInfo) return;
     const { ac, out, rev, del, shim, isFxFallback } = ctxInfo;
     const now = ac.currentTime;
@@ -2235,6 +2772,7 @@ export function playSliderBump(value, prevValue, opts = {}) {
     subG.gain.linearRampToValueAtTime(subAmp, now + 0.004);
     subG.gain.exponentialRampToValueAtTime(0.0001, now + (0.12 + norm * 0.08));
     sub.connect(subG).connect(out);
+    _autoDisconnect(sub, [sub, subG]);
     sub.start(now);
     sub.stop(now + 0.22);
 
@@ -2254,6 +2792,7 @@ export function playSliderBump(value, prevValue, opts = {}) {
         mg.gain.linearRampToValueAtTime(0.11 * scale, now + 0.004);
         mg.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
         moog.connect(mlp).connect(mg).connect(out);
+        _autoDisconnect(moog, [moog, mlp, mg]);
         moog.start(now);
         moog.stop(now + 0.14);
     }
@@ -2283,11 +2822,14 @@ export function playSliderBump(value, prevValue, opts = {}) {
     pOsc.connect(pLp).connect(pG).connect(out);
     if (rev) pG.connect(rev);
     if (del && isUp) pG.connect(del);
+    const pClean = [pOsc, pLp, pG];
     if (shim && isUp && next >= 63) {
         const st = ac.createGain();
         st.gain.value = 0.45;
         pG.connect(st).connect(shim);
+        pClean.push(st);
     }
+    _autoDisconnect(pOsc, pClean);
     pOsc.start(now);
     pOsc.stop(now + 0.30);
 
@@ -2305,6 +2847,7 @@ export function playSliderBump(value, prevValue, opts = {}) {
                 kg.gain.linearRampToValueAtTime(0.28 * scale, now + 0.004);
                 kg.gain.exponentialRampToValueAtTime(0.0001, now + 0.21);
                 k.connect(kg).connect(out);
+                _autoDisconnect(k, [k, kg]);
                 k.start(now); k.stop(now + 0.23);
                 try { if (window.FX?.haptic) window.FX.haptic([7]); } catch (_) {}
             } else if (nextZone === 2) {
@@ -2319,6 +2862,7 @@ export function playSliderBump(value, prevValue, opts = {}) {
                 kg.gain.exponentialRampToValueAtTime(0.0001, now + 0.29);
                 k.connect(kg).connect(out);
                 if (rev) kg.connect(rev);
+                _autoDisconnect(k, [k, kg]);
                 k.start(now); k.stop(now + 0.31);
 
                 if (rev && !isFxFallback) {
@@ -2341,6 +2885,7 @@ export function playSliderBump(value, prevValue, opts = {}) {
                 dg.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
                 drop.connect(dg).connect(out);
                 if (rev) dg.connect(rev);
+                _autoDisconnect(drop, [drop, dg]);
                 drop.start(now); drop.stop(now + 0.45);
 
                 // Crunchy warm analog saw/brass stab (root + fifth)
@@ -2360,13 +2905,14 @@ export function playSliderBump(value, prevValue, opts = {}) {
                     sg.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
                     sOsc.connect(slp).connect(sg).connect(out);
                     if (rev) sg.connect(rev);
+                    _autoDisconnect(sOsc, [sOsc, slp, sg]);
                     sOsc.start(now); sOsc.stop(now + 0.35);
                 });
 
                 // Stereo air punch burst
-                if (_crispNoiseBuffer) {
+                if (ctxInfo.noise) {
                     const nSrc = ac.createBufferSource();
-                    nSrc.buffer = _crispNoiseBuffer;
+                    nSrc.buffer = ctxInfo.noise;
                     const nBp = ac.createBiquadFilter();
                     nBp.type = 'bandpass';
                     nBp.frequency.value = 1800;
@@ -2377,6 +2923,7 @@ export function playSliderBump(value, prevValue, opts = {}) {
                     nG.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
                     nSrc.connect(nBp).connect(nG).connect(out);
                     if (rev) nG.connect(rev);
+                    _autoDisconnect(nSrc, [nSrc, nBp, nG]);
                     nSrc.start(now, 0, 0.11);
                 }
 
@@ -2398,6 +2945,7 @@ export function playSliderBump(value, prevValue, opts = {}) {
             rg.gain.linearRampToValueAtTime(0.16 * scale, now + 0.006);
             rg.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
             rel.connect(rg).connect(out);
+            _autoDisconnect(rel, [rel, rg]);
             rel.start(now); rel.stop(now + 0.18);
         }
     }
@@ -2475,19 +3023,43 @@ export function onSolveResult(isCorrect, streak = 1) {
     return true;
 }
 
-/** Briefly duck the ambient bed so heavy UI SFX cut cleanly through (NaN-safe linear ramp). */
+/**
+ * Smooth sustained velvet duck while Mario Recap is on screen so Mario's iconic
+ * untouched NES jingles & coins blend cleanly with zero harmonic clash, then
+ * bloom gently back into full Flow when Mario closes.
+ */
+export function setRecapDuck(active) {
+    _recapDuckActive = Boolean(active);
+    if (_ac && _bedDuckGain && _ac.state === 'running') {
+        try {
+            const now = _ac.currentTime;
+            const cur = clamp(Number.isFinite(_bedDuckGain.gain.value) ? _bedDuckGain.gain.value : 1.0, 0.08, 1.0);
+            const target = _recapDuckActive ? 0.14 : 1.0;
+            const dur = _recapDuckActive ? 0.42 : 1.15;
+            _bedDuckGain.gain.cancelScheduledValues(now);
+            _bedDuckGain.gain.setValueAtTime(cur, now);
+            _bedDuckGain.gain.linearRampToValueAtTime(target, now + dur);
+        } catch (_) {}
+    }
+    _applyHealthModulation();
+    return _recapDuckActive;
+}
+
+/** Briefly duck the ambient bed so SFX & Mario coins sit cleanly in the pocket (NaN-safe linear ramp). */
 export function duck(secs = 0.75, floor = 0.32) {
-    if (!_enabled || !_ac || !_duckBus || _ac.state !== 'running') return;
+    const bus = _bedDuckGain || _duckBus;
+    if (!_enabled || !_ac || !bus || _ac.state !== 'running') return;
     try {
         const now = _ac.currentTime;
         const hold = clamp(Number(secs) || 0.75, 0.15, 3.0);
         const rawFloor = Number(floor);
-        const targetFloor = Number.isFinite(rawFloor) ? clamp(rawFloor, 0.08, 0.92) : 0.32;
-        const cur = clamp(Number.isFinite(_duckBus.gain.value) ? _duckBus.gain.value : 1.0, 0.08, 1.0);
-        _duckBus.gain.cancelScheduledValues(now);
-        _duckBus.gain.setValueAtTime(cur, now);
-        _duckBus.gain.linearRampToValueAtTime(targetFloor, now + 0.025);
-        _duckBus.gain.linearRampToValueAtTime(1.0, now + hold);
+        const restTarget = _recapDuckActive ? 0.14 : 1.0;
+        const targetFloor = Number.isFinite(rawFloor) ? Math.min(restTarget, clamp(rawFloor, 0.08, 0.92)) : Math.min(restTarget, 0.32);
+        const cur = clamp(Number.isFinite(bus.gain.value) ? bus.gain.value : restTarget, 0.08, 1.0);
+        bus.gain.cancelScheduledValues(now);
+        bus.gain.setValueAtTime(cur, now);
+        bus.gain.linearRampToValueAtTime(targetFloor, now + 0.025);
+        bus.gain.linearRampToValueAtTime(restTarget, now + hold);
     } catch (_) {}
 }
 
@@ -2689,6 +3261,7 @@ export const HeartbeatAudio = {
     setVibe,
     cycleVibe,
     playClick,
+    playUiSfx,
     playChamberLoad,
     playBootIgnition,
     playFlatlineDrop,
@@ -2696,6 +3269,7 @@ export const HeartbeatAudio = {
     setPactPreview,
     playPactSeal,
     onSolveResult,
+    setRecapDuck,
     duck,
     getDiagnostics,
 };
