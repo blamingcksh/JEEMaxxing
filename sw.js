@@ -278,7 +278,11 @@
 //        with a unified Circle-of-Fifths + Velvet Hall studio palette in
 //        heartbeat-audio.js, and blend Mario Recap/Coin via smooth bed ducking
 //        without modifying any Mario sounds.
-const VERSION = 'jeemax-v137';
+// v138 - GEM DUMP QELO PRESERVATION:
+//        Fix app.js Gem dump ingestion so T5/T6/T7 qElo stamps (1800-2550) are
+//        not crushed to 1800 by the chapter-ceiling clamp, preserving 1.35u/1.75u
+//        Heartbeat unit weights.
+const VERSION = 'jeemax-v138';
 
 const SHELL = [
   './',

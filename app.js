@@ -4002,7 +4002,7 @@ function _compileDumpObject(obj) {
         else type = 'text';
     }
 
-    const qEloNum = Number(pick('qElo'));
+    const qEloNum = Number(pick('qElo', 'qelo', 'q_elo'));
     const gemQElo = (Number.isFinite(qEloNum) && qEloNum >= 800 && qEloNum <= 2550) ? Math.round(qEloNum) : null;
     const tgtNum = Number(pick('targetTimeMins'));
     const gemTargetTime = (Number.isFinite(tgtNum) && tgtNum > 0 && tgtNum <= 60) ? Math.round(tgtNum) : null;
@@ -4046,6 +4046,7 @@ function _compileDumpObject(obj) {
         // Placement (subject/chapter) is owned by saveAllQuestions — the
         // session context ALWAYS wins there; the Gem's own stamps survive as
         // gemSubject/gemChapter provenance (mock routing reads gemSubject).
+        subject: _normalizeSubjectKey(AppState.currentSubject || 'physics'),
         chapter: (typeof AppState.currentChapter === 'string' && AppState.currentChapter.trim())
             ? AppState.currentChapter.trim() : null,
         gemSubject: _normalizeSubjectKey(String(pick('subject', 'gemSubject') || '')),
@@ -4338,13 +4339,9 @@ export async function processGemTextDump() {
             if (stat && stat.suspiciousDistribution) it.stampBatchSuspiciousDistribution = true;
             if (stat && stat.suspiciousStdev) it.stampBatchSuspiciousStdev = true;
 
-            // Chapter-ceiling guard now checks the DESTINATION chapter (where the
-            // question actually lands), not the Gem's source chapter.
-            const priorAvg = _getChapterAvgElo(it.subject, it.chapter);
-            if (typeof it.qElo === 'number' && Math.abs(it.qElo - priorAvg) > 600) {
-                it.qElo = Math.round(priorAvg + 600 * Math.sign(it.qElo - priorAvg));
-                it.tags = (it.tags || []).concat(['over-chapter-ceiling']);
-            }
+            // Preserve valid Gem-stamped qElo ([800, 2550]) intact: the old ±600
+            // chapter-ceiling clamp crushed T5/T6/T7 stamps down to 1800 on
+            // empty or Mains-level chapters, stripping Heartbeat 1.35u/1.75u weights.
         }
 
         // Belt-and-suspenders: flag (never block) rows whose math still fails
