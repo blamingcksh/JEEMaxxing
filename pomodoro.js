@@ -1925,18 +1925,34 @@ function _mountEntrySlider() {
         typeof IntersectionObserver !== 'function' || typeof ResizeObserver !== 'function') return;
     try { host.innerHTML = ''; } catch (_) {}
     try {
+        let lastEntrySliderVal = _entrySliderValue();
         const api = mountFlowSlider(host, {
-            value: _entrySliderValue(),
+            value: lastEntrySliderVal,
             label: 'Practice intensity',
             describe: (v) => flowDescribeValue(v),
             onInput: (v) => {
+                const prev = lastEntrySliderVal;
+                const next = clampFlowValue(v);
+                lastEntrySliderVal = next;
                 try {
-                    if (typeof window.__setFlowSlider === 'function') window.__setFlowSlider(v);
-                    else if (window.AppState) window.AppState.flowSlider = clampFlowValue(v);
+                    if (typeof window.__setFlowSlider === 'function') window.__setFlowSlider(next);
+                    else if (window.AppState) window.AppState.flowSlider = next;
                 } catch (_) {}
+                if (next !== prev) {
+                    try {
+                        if (typeof window !== 'undefined' && window.HeartbeatAudio) {
+                            if (typeof window.HeartbeatAudio.playSliderBump === 'function') {
+                                window.HeartbeatAudio.playSliderBump(next, prev, { context: 'pact' });
+                            }
+                            if (typeof window.HeartbeatAudio.setPactPreview === 'function') {
+                                window.HeartbeatAudio.setPactPreview(true, next);
+                            }
+                        }
+                    } catch (_) {}
+                }
                 _syncLockinIntensityUI();
                 if (_lockinSliderApi && typeof _lockinSliderApi.setHardcore === 'function') {
-                    _lockinSliderApi.setHardcore(v >= HARDCORE_THRESHOLD);
+                    _lockinSliderApi.setHardcore(next >= HARDCORE_THRESHOLD);
                 }
             },
         });
@@ -2142,6 +2158,11 @@ export function openLockinSetupModal(mode, context, onConfirmStart) {
 
     _mountEntrySlider();
     _syncLockinIntensityUI();
+    try {
+        if (typeof window !== 'undefined' && window.HeartbeatAudio && typeof window.HeartbeatAudio.setPactPreview === 'function') {
+            window.HeartbeatAudio.setPactPreview(true, _entrySliderValue());
+        }
+    } catch (_) {}
 
     _syncLockinPresetActive();
     _renderLockinTimeline();
@@ -2182,6 +2203,11 @@ export function closeLockinSetupModal() {
         el.classList.remove('active');
         setTimeout(() => { if (!el.classList.contains('active')) el.style.display = 'none'; }, 250);
     }
+    try {
+        if (typeof window !== 'undefined' && window.HeartbeatAudio && typeof window.HeartbeatAudio.setPactPreview === 'function') {
+            window.HeartbeatAudio.setPactPreview(false);
+        }
+    } catch (_) {}
     _destroyEntrySlider();
     _lockinOnConfirm = null;
 }
@@ -2191,8 +2217,9 @@ export function confirmLockinSetup() {
     const study = _clamp(_inputVal('lockin-grind'), 5, 180);
     const chill = _clamp(_inputVal('lockin-chill'), 1, 60);
     const rounds = _clamp(_inputVal('lockin-rounds'), 1, 8);
+    const pactIntensity = _entrySliderValue();
     // The dial wins: whatever the rail currently shows is what we enter.
-    lockinSession.mode = flowModeForValue(_entrySliderValue());
+    lockinSession.mode = flowModeForValue(pactIntensity);
     lockinSession.studyMins = study;
     lockinSession.breakMins = chill;
     lockinSession.totalSessions = rounds;
@@ -2228,7 +2255,13 @@ export function confirmLockinSetup() {
     closeLockinSetupModal();
     _removePaceGlow();
     initAudioContext();
-    playStartChime();
+    let sealed = false;
+    try {
+        if (typeof window !== 'undefined' && window.HeartbeatAudio && typeof window.HeartbeatAudio.playPactSeal === 'function') {
+            sealed = Boolean(window.HeartbeatAudio.playPactSeal(pactIntensity));
+        }
+    } catch (_) {}
+    if (!sealed) playStartChime();
     _startLockinStudy();
 
     if (cb) { try { cb(lockinSession); } catch (e) { console.warn('[lockin] confirm callback failed', e); } }

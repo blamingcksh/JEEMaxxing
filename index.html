@@ -417,6 +417,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
                         <button type="button" class="hb-pill-btn" id="hb-vitals-btn"><span class="hb-pill-dot"></span><span>VITALS</span></button>
                         <button type="button" class="hb-pill-btn" id="hb-pact-btn"><span>PACT</span></button>
                         <button type="button" class="hb-pill-btn is-audio-on" id="hb-audio-btn" aria-pressed="true"><span class="hb-audio-dot"></span><span class="hb-audio-lbl">AUDIO</span></button>
+                        <button type="button" class="hb-pill-btn hb-vibe-btn" id="hb-vibe-btn" data-vibe="aperture" title="Aperture — Deep analytical flow (tap to switch vibe)"><span class="hb-vibe-dot"></span><span class="hb-vibe-lbl">APERTURE</span></button>
                         <button type="button" class="hb-pill-btn" id="hb-nav-btn" aria-label="Navigation menu"><span>≡</span></button>
                     </div>
                     <nav class="hb-subjects hb-controls" aria-label="Select subject">
@@ -611,6 +612,18 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <div class="settings-card" id="fx-settings-card">
     <h3><svg class="g"><use href="#g-gauge"></use></svg>Audio &amp; Visual FX</h3>
     <p class="box-desc">Tune the dopamine. Sound, motion and haptics are fully modular. Turning off <b>Visual FX</b> also calms the UI for photosensitivity / low‑power (it mirrors your OS reduced‑motion setting on first load).</p>
+    <div class="fx-row fx-row--vibe">
+        <div class="fx-vibe-head">
+            <span class="fx-row-label"><svg class="g"><use href="#g-volume"></use></svg> Focus Soundscape</span>
+            <span class="hb-vibe-desc" id="hb-vibe-desc">Deep analytical flow · 108 BPM · Lydian stereo pink noise &amp; warm sub-thumps</span>
+        </div>
+        <div class="hb-vibe-pills" id="hb-vibe-picker" role="group" aria-label="Focus Soundscape Vibe">
+            <button type="button" class="hb-vibe-chip active" data-hb-vibe="aperture" aria-pressed="true">Aperture</button>
+            <button type="button" class="hb-vibe-chip" data-hb-vibe="aether" aria-pressed="false">Aether</button>
+            <button type="button" class="hb-vibe-chip" data-hb-vibe="kinetic" aria-pressed="false">Kinetic</button>
+            <button type="button" class="hb-vibe-chip" data-hb-vibe="solstice" aria-pressed="false">Solstice</button>
+        </div>
+    </div>
     <div class="fx-row"><span class="fx-row-label"><svg class="g"><use href="#g-volume"></use></svg> Sound Effects</span><label class="fx-switch"><input type="checkbox" id="fx-sound"><span class="fx-slider"></span></label></div>
     <div class="fx-row"><span class="fx-row-label"><svg class="g"><use href="#g-trophy"></use></svg> Mario Recap Sounds</span><label class="fx-switch"><input type="checkbox" id="fx-mario-sound"><span class="fx-slider"></span></label></div>
     <div class="fx-row"><span class="fx-row-label"><svg class="g"><use href="#g-sliders"></use></svg> UI Volume</span><input type="range" id="fx-volume" class="fx-range" min="0" max="100" value="70"></div>

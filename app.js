@@ -11047,7 +11047,13 @@ function _mountLiveFlowSlider() {
             value: AppState.flowSlider,
             label: 'Practice intensity',
             describe: (v) => _flowDescribeValue(v),
-            onInput: (v) => { _applyFlowSlider(v); },
+            onInput: (v) => {
+                const prev = clampFlowValue(AppState.flowSlider);
+                const next = _applyFlowSlider(v);
+                if (next !== prev) {
+                    try { window.HeartbeatAudio?.playSliderBump?.(next, prev, { context: 'live' }); } catch (_) {}
+                }
+            },
         });
     } catch (e) {
         console.warn('[flow-slider] live mount failed', e);
