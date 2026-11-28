@@ -61,9 +61,7 @@
   function unlock() {
     if (!prefs.sound && !wantMarioSound()) return;
     try {
-      var _spYielding = (window.HeartbeatAudio && window.HeartbeatAudio.isSpotifyYielding && window.HeartbeatAudio.isSpotifyYielding()) || (window.SpotifyDeck && window.SpotifyDeck.isConnected && window.SpotifyDeck.isConnected());
-      var _desiredSession = _spYielding ? 'ambient' : 'playback';
-      if (navigator.audioSession && 'type' in navigator.audioSession && navigator.audioSession.type !== _desiredSession) navigator.audioSession.type = _desiredSession;
+      if (navigator.audioSession && 'type' in navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback';
     } catch (e) {}
     var c = ctx();
     if (c && c.state !== 'running') { try { c.resume(); } catch (e) {} }

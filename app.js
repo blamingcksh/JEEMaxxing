@@ -8228,7 +8228,7 @@ function _pqBindHold() {
         const submitBtn = document.getElementById('practice-submit-btn');
         const isSubmitBtn = submitBtn && (submitBtn === e.target || submitBtn.contains(e.target));
 
-        const interactive = e.target.closest('button, input, textarea, select, a, .mcq-option, .skip-popover, #practice-image-lightbox, .pq-corner, .flow-slider-dock, .sp-float-pill');
+        const interactive = e.target.closest('button, input, textarea, select, a, .mcq-option, .skip-popover, #practice-image-lightbox, .pq-corner, .flow-slider-dock');
         if (interactive && !isSubmitBtn && !isSingleMcqOptHold) {
             return;
         }
@@ -13398,6 +13398,7 @@ function playSuperSound() {
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
         try { window.HeartbeatAudio?.duck?.(0.95); } catch (_) {}
+        try { window.HeartbeatAudio?.onSolveResult?.(true, Math.max(3, AppState.practiceCorrectStreak || 3)); } catch (_) {}
 
         // 1. Crisp 12ms firing-pin transient
         _sfxNoiseBurst(ctx, now, 0.014, 4200, 4.2, 0.15 * v);
@@ -13507,6 +13508,7 @@ function playCorrectSound(streak) {
         try { window.HeartbeatAudio?.duck?.(0.55); } catch (_) {}
 
         const st = Math.max(1, Number(streak != null ? streak : (AppState.practiceCorrectStreak || 1)) || 1);
+        try { window.HeartbeatAudio?.onSolveResult?.(true, st); } catch (_) {}
         const semis = [0, 2, 4, 7, 9, 12];
         const mult = Math.pow(2, semis[Math.min(5, st - 1)] / 12);
 
@@ -13556,6 +13558,7 @@ function playWrongSound() {
         const v = (window.FX && typeof window.FX.vol === 'function') ? window.FX.vol() : 0.7;
         const now = ctx.currentTime;
         try { window.HeartbeatAudio?.duck?.(0.62, 0.02); } catch (_) {}
+        try { window.HeartbeatAudio?.onSolveResult?.(false, 0); } catch (_) {}
 
         // 1. Dull dry pin tick
         _sfxNoiseBurst(ctx, now, 0.014, 1800, 2.8, 0.10 * v);

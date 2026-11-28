@@ -1,0 +1,197 @@
+/* ============================================================================
+   chroma-wash.css — Generative Painterly Light-Plate Wash (Practice & Vault)
+   ----------------------------------------------------------------------------
+   Only active inside Practice (#practice-modal.pq-stage) and Vault Review
+   (#sr-practice-overlay.pq-stage) plus their attached diagrams (.pq-qa-media).
+   Uses dual A/B slots with a slow 6.5s crossfade and counter-drifting layers
+   so shifts feel atmospheric and never pull attention away from problem solving.
+   ============================================================================ */
+
+.cw-stage-wash {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 1.1s ease;
+}
+
+body:not(.immersive-active) .cw-stage-wash {
+    mix-blend-mode: color;
+}
+
+body.immersive-active .cw-stage-wash {
+    mix-blend-mode: normal;
+}
+
+#practice-modal.pq-stage:not(.active) .cw-stage-wash {
+    display: none;
+}
+
+.cw-stage-wash.is-active {
+    opacity: 1;
+}
+
+/* Dual A/B crossfade slots — 6.5s melt so colour changes never startle */
+.cw-slot {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 6.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+    will-change: opacity;
+}
+
+.cw-slot.is-shown {
+    opacity: 1;
+}
+
+.cw-layer {
+    position: absolute;
+    inset: -18%;
+    background-size: cover;
+    background-position: center;
+    will-change: transform;
+}
+
+.cw-slot-a .cw-layer {
+    background-image: var(--cw-plate-a);
+}
+
+.cw-slot-b .cw-layer {
+    background-image: var(--cw-plate-b);
+}
+
+/* Counter-drifting light layers keep sculpted prism/aurora/watercolor geometry alive */
+.cw-layer-1 {
+    animation: cwDriftA 31s ease-in-out infinite alternate;
+}
+
+.cw-layer-2 {
+    animation: cwDriftB 43s ease-in-out infinite alternate;
+}
+
+/* Parchment Light Mode: luminance-safe stained-glass / washi paper tint */
+body:not(.immersive-active) .cw-layer-1 {
+    opacity: 0.40;
+    filter: blur(74px) saturate(1.65);
+}
+
+body:not(.immersive-active) .cw-layer-2 {
+    opacity: 0.24;
+    filter: blur(88px) saturate(1.55);
+}
+
+/* Immersive Dark Mode: rich atmospheric aurora behind crisp light text */
+body.immersive-active .cw-layer-1 {
+    opacity: 0.20;
+    filter: blur(72px) saturate(1.48);
+}
+
+body.immersive-active .cw-layer-2 {
+    opacity: 0.12;
+    filter: blur(88px) saturate(1.42);
+}
+
+/* ── Attached Practice / Vault Diagram Colour Buff (luminance-safe over paper) ── */
+html.cw-wash-active #practice-modal.pq-stage .pq-qa-media,
+html.cw-wash-active #sr-practice-overlay.pq-stage .pq-qa-media,
+html.cw-wash-active #sr-practice-overlay.pq-stage .sr-question-media:not(.pq-qa-media *) {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    border-radius: 12px;
+}
+
+html.cw-wash-active #practice-modal.pq-stage .pq-qa-media::before,
+html.cw-wash-active #sr-practice-overlay.pq-stage .pq-qa-media::before,
+html.cw-wash-active #sr-practice-overlay.pq-stage .sr-question-media:not(.pq-qa-media *)::before {
+    content: "";
+    position: absolute;
+    inset: -32%;
+    background-image: var(--cw-plate-active);
+    background-size: cover;
+    background-position: center;
+    filter: blur(78px) saturate(1.65);
+    mix-blend-mode: color;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.48;
+    transition: opacity 1.1s ease;
+}
+
+html.cw-wash-active body.immersive-active #practice-modal.pq-stage .pq-qa-media,
+html.cw-wash-active body.immersive-active #sr-practice-overlay.pq-stage .pq-qa-media,
+html.cw-wash-active body.immersive-active #sr-practice-overlay.pq-stage .sr-question-media:not(.pq-qa-media *) {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.48), inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+html.cw-wash-active body.immersive-active #practice-modal.pq-stage .pq-qa-media::before,
+html.cw-wash-active body.immersive-active #sr-practice-overlay.pq-stage .pq-qa-media::before,
+html.cw-wash-active body.immersive-active #sr-practice-overlay.pq-stage .sr-question-media:not(.pq-qa-media *)::before {
+    opacity: 0.50;
+}
+
+html.cw-wash-active #practice-modal.pq-stage .pq-qa-media img,
+html.cw-wash-active #practice-modal.pq-stage #practice-modal-img,
+html.cw-wash-active #sr-practice-overlay.pq-stage .pq-qa-media img,
+html.cw-wash-active #sr-practice-overlay.pq-stage #sr-question-img,
+html.cw-wash-active #sr-practice-overlay.pq-stage #sr-question-diagram-img {
+    position: relative;
+    z-index: 1;
+    mix-blend-mode: multiply !important;
+    filter: contrast(1.09) !important;
+}
+
+@keyframes cwDriftA {
+    0%   { transform: translate3d(-4.5%, -3%, 0) scale(1.06) rotate(-1.5deg); }
+    100% { transform: translate3d(4.5%, 3.5%, 0) scale(1.16) rotate(2deg); }
+}
+
+@keyframes cwDriftB {
+    0%   { transform: translate3d(4.5%, -4%, 0) scale(1.13) rotate(2.2deg); }
+    100% { transform: translate3d(-5%, 4%, 0) scale(1.04) rotate(-1.8deg); }
+}
+
+/* Calm / Reduced-Motion: keep still painterly wash without drift animation */
+html.fx-effects-off .cw-layer-1,
+html.fx-effects-off .cw-layer-2 {
+    animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cw-layer-1,
+    .cw-layer-2 {
+        animation: none !important;
+    }
+    .cw-slot {
+        transition-duration: 1.5s;
+    }
+}
+
+/* Compact inline shuffle control in Settings -> Audio & Visual FX */
+.cw-settings-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cw-shuffle-btn {
+    appearance: none;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--text-secondary, rgba(226, 232, 240, 0.82));
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.cw-shuffle-btn:hover {
+    background: rgba(255, 255, 255, 0.11);
+    border-color: rgba(255, 255, 255, 0.28);
+    color: #fff;
+}

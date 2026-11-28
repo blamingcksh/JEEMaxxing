@@ -812,7 +812,7 @@ function _srBindHold(overlay) {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (_drawerState.resultLocked) return;
 
-        const interactive = e.target.closest('button, input, textarea, select, a, .sr-mcq-option, .sr-conf-btn, .sr-friction-pill, .sr-toggle-btn, .pq-corner, .sr-top-meta, .sr-meta-toggle-btn, .sr-meta-drawer, .sr-self-btn, .pq-peep-btn, .sr-top-time-btn, .sp-float-pill, .sr-hint-toggle, .sr-tagedit-x, .sr-tagedit-sugg');
+        const interactive = e.target.closest('button, input, textarea, select, a, .sr-mcq-option, .sr-conf-btn, .sr-friction-pill, .sr-toggle-btn, .pq-corner, .sr-top-meta, .sr-meta-toggle-btn, .sr-meta-drawer, .sr-self-btn, .pq-peep-btn, .sr-top-time-btn, .sr-hint-toggle, .sr-tagedit-x, .sr-tagedit-sugg');
         const cb = document.getElementById('sr-confirm-btn') || document.getElementById('sr-reveal-answer-btn');
         const isConfirmBtn = cb && (cb === e.target || cb.contains(e.target));
         if (interactive && !isConfirmBtn) return;
@@ -1086,6 +1086,7 @@ export function openPracticeDrawer(qId, opts) {
         // Parchment by default; only carry Roast over if the user toggled it this session.
         document.body.classList.toggle('immersive-active', _keepRoast);
     } catch (_) {}
+    try { if (_wasOpen && window.ChromaWash && window.ChromaWash.notifyQuestionStep) window.ChromaWash.notifyQuestionStep('vault-' + qId); } catch (_) {}
     const isRoast = typeof document !== 'undefined' && document.body.classList.contains('immersive-active');
 
     const mediaHtml = _renderQuestionMedia(q);

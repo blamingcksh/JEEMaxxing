@@ -18,14 +18,16 @@
  *       * Rolling muted Moog-style melodic bassline + felt-mallet sub-thump + organic wood/velvet micro-percussion
  *       * 5-Chapter generative arrangement director (ignition → lock → ascent → peak → exhale) with
  *         2-bar pink-noise breath risers, clean drops, and Circle-of-Fifths modulation during Exhale tides
- *   - Tactile Pact Sign Flow Slider audio:
- *       * Zone-scaled layered bass bumps, Moog plucks, Lydian plucks, 98+ 808 Hardcore drops,
- *         live Pact room sound-system reactivity, and resolving Pact Seal bloom
+ *   - Neuroscience-grade Flow State Engine (v3):
+ *       * Rapid Neural Amplitude Modulation (Woods et al. 2024): subtle phase-coherent 15–16.5 Hz Low-Beta/SMR
+ *         (Aperture, Kinetic) and 10–10.8 Hz Alpha (Aether, Solstice) AM woven into the stereo pad/reverb/shimmer
+ *         space (never on bass or noise, zero harsh binaural whine)
+ *       * Solving-Mode Flow Plateau: suppresses mid-question beat drop-outs & risers while actively solving
+ *       * Deep-Think Auto-Cocoon: >60s into a hard problem, progressively softens foreground plucks & deepens
+ *         Beta/Alpha AM + velvet brown masking; subtle harmonic Solve Bloom on correct answers & streaks
  */
 
 const PREFS_KEY = 'jeemax_hb_audio_v1';
-const SPOTIFY_YIELD_KEY = 'jeemax_spotify_yield_v1';
-const SPOTIFY_TOKENS_KEY = 'jeemax_spotify_tokens_v1';
 
 const SCHEDULE_AHEAD_SECS = 0.14;
 const LOOKAHEAD_MS = 25;
@@ -48,6 +50,8 @@ export const VIBES = Object.freeze({
         leadTimbre: 'prophetPluck',
         bassStyle: 'rolling',
         subStyle: 'steady',
+        neuralAmHz: 15.0,    // Low-Beta / SMR sustained attention peak
+        neuralAmDepth: 0.13,
         atmosLevel: 0.14,
         atmosCutoff: 480,
         subLevel: 0.44,
@@ -80,6 +84,8 @@ export const VIBES = Object.freeze({
         leadTimbre: 'feltCelesta',
         bassStyle: 'dronePulse',
         subStyle: 'heartbeat',
+        neuralAmHz: 10.0,    // Alpha relaxed conceptual insight
+        neuralAmDepth: 0.12,
         atmosLevel: 0.19,
         atmosCutoff: 410,
         subLevel: 0.30,
@@ -111,6 +117,8 @@ export const VIBES = Object.freeze({
         leadTimbre: 'analogArp',
         bassStyle: 'syncopated',
         subStyle: 'drive',
+        neuralAmHz: 16.5,    // Mid-Beta alertness & speed-solving velocity
+        neuralAmDepth: 0.14,
         atmosLevel: 0.10,
         atmosCutoff: 560,
         subLevel: 0.50,
@@ -142,6 +150,8 @@ export const VIBES = Object.freeze({
         leadTimbre: 'vintageRhodes',
         bassStyle: 'warmGroove',
         subStyle: 'warm',
+        neuralAmHz: 10.8,    // Upper-Alpha luminous creative flow
+        neuralAmDepth: 0.11,
         atmosLevel: 0.15,
         atmosCutoff: 510,
         subLevel: 0.38,
@@ -240,23 +250,10 @@ function _savePrefs(enabled, vibe) {
     } catch (_) {}
 }
 
-function _loadInitialSpotifyYield() {
-    try {
-        if (typeof localStorage !== 'undefined') {
-            const explicit = localStorage.getItem(SPOTIFY_YIELD_KEY);
-            if (explicit === '1') return true;
-            if (explicit === '0') return false;
-            if (localStorage.getItem(SPOTIFY_TOKENS_KEY)) return true;
-        }
-    } catch (_) {}
-    return false;
-}
-
 // ── Module State ────────────────────────────────────────────────────────────
 const _initPrefs = _loadPrefs();
 let _enabled = _initPrefs.enabled;
 let _vibeId = _initPrefs.vibe;
-let _spotifyYield = _loadInitialSpotifyYield();
 
 let _ac = null;
 let _graphBuilt = false;
@@ -281,6 +278,9 @@ let _reverbSend = null;
 let _reverbWet = null;
 let _shimmerSend = null;
 let _shimmerWet = null;
+let _neuralAmBus = null;
+let _neuralAmOsc = null;
+let _neuralAmDepthGain = null;
 let _delaySend = null;
 let _delayWet = null;
 let _delayL = null;
@@ -316,9 +316,14 @@ let _tidePhases = [_rng() * Math.PI * 2, _rng() * Math.PI * 2, _rng() * Math.PI 
 let _tempoOffsetBpm = (_rng() - 0.5) * 2.0; // subtle ±1 BPM unique session fingerprint
 let _motifCell = [];
 
-// Pact preview state
+// Pact preview & live neural-flow solve state
 let _pactPreviewActive = false;
 let _pactPreviewValue = 72;
+let _solveBloomUntil = 0;
+let _solveBloomStrength = 0;
+let _lastCocoonLevel = 0;
+let _lastSolvingActive = false;
+let _plateauNextModBar = 112;
 
 // ── Vibe, Pitch, Voice-Leading & Motif Evolution Engines ────────────────────
 function _vibe() {
@@ -554,10 +559,6 @@ function _setIosSessionType(type) {
 }
 
 function _activateIosAudioSession() {
-    if (_spotifyYield) {
-        _setIosSessionType('ambient');
-        return;
-    }
     _setIosSessionType('playback');
 
     if (_iosSessionActivated || typeof document === 'undefined') return;
@@ -601,11 +602,6 @@ function _ensureContext() {
     try {
         ac.addEventListener('statechange', () => {
             if (_ac !== ac) return;
-            if (_spotifyYield) {
-                _applyHealthModulation();
-                _syncButtonUI();
-                return;
-            }
             if (ac.state === 'running' && _enabled && !(typeof document !== 'undefined' && document.hidden)) {
                 _buildGraph();
                 if (!_running) {
@@ -760,6 +756,40 @@ function _isVoidActive() {
     } catch (_) { return true; }
 }
 
+/**
+ * Inspect live problem-solving state without creating hard circular imports:
+ *   - solving: #practice-modal is open and current question is not yet submitted
+ *   - cocoon: 0..1 deep-think depth ramping smoothly from 60s -> 150s on a hard question
+ *   - bloom: 0..1 decaying harmonic lift after cracking a question
+ */
+function _readStudyContext() {
+    let solving = false;
+    let questionSecs = 0;
+    let streak = 0;
+    try {
+        if (typeof document !== 'undefined') {
+            const pm = document.getElementById('practice-modal');
+            if (pm && pm.classList && pm.classList.contains('active')) {
+                const st = (typeof window !== 'undefined' && window.AppState) ? window.AppState : null;
+                const idx = st ? (st.currentPracticeIndex || 0) : 0;
+                const submitted = Boolean(st && st.practiceSubmittedFlags && st.practiceSubmittedFlags[idx]);
+                solving = !submitted;
+                questionSecs = st ? Math.max(0, Number(st.practiceSeconds) || 0) : 0;
+                streak = st ? Math.max(0, Number(st.practiceCorrectStreak) || 0) : 0;
+            }
+        }
+    } catch (_) {}
+
+    const cocoon = solving ? clamp((questionSecs - 60) / 90, 0, 1) : 0;
+    const nowMs = Date.now();
+    const bloom = (_solveBloomUntil > nowMs)
+        ? clamp(((_solveBloomUntil - nowMs) / 4500) * _solveBloomStrength, 0, 1)
+        : 0;
+    _lastCocoonLevel = cocoon;
+    _lastSolvingActive = solving;
+    return { solving, questionSecs, streak, cocoon, bloom };
+}
+
 // ── Studio DSP Graph Construction ───────────────────────────────────────────
 function _buildGraph() {
     const ac = _ensureContext();
@@ -825,7 +855,22 @@ function _buildGraph() {
     _sfxBus.gain.value = 0.94;
     _sfxBus.connect(_warmthEq);
 
-    // 1. Diffused 3.6s Stereo Velvet Hall Convolver
+    // 1. Rapid Neural AM Focus Bus (phase-coherent 10-16.5 Hz AM woven ONLY into stereo hall/pad/shimmer)
+    // Modulates gain smoothly around (1 - depth/2) ± (depth/2) -> zero harsh binaural whine, zero bass wobble.
+    _neuralAmBus = ac.createGain();
+    _neuralAmBus.gain.value = 1.0 - v.neuralAmDepth * 0.5;
+
+    _neuralAmOsc = ac.createOscillator();
+    _neuralAmOsc.type = 'sine';
+    _neuralAmOsc.frequency.value = v.neuralAmHz;
+
+    _neuralAmDepthGain = ac.createGain();
+    _neuralAmDepthGain.gain.value = v.neuralAmDepth * 0.5;
+    _neuralAmOsc.connect(_neuralAmDepthGain).connect(_neuralAmBus.gain);
+    _neuralAmOsc.start();
+    _neuralAmBus.connect(_duckBus);
+
+    // 2. Diffused 3.6s Stereo Velvet Hall Convolver (routed through _neuralAmBus for subtle neural phase-locking)
     const reverb = _createVelvetHallReverb(ac);
     _reverbWet = ac.createGain();
     _reverbWet.gain.value = v.reverbWet;
@@ -833,7 +878,7 @@ function _buildGraph() {
     _reverbSend.gain.value = 0.82;
     _reverbSend.connect(reverb);
     reverb.connect(_reverbWet);
-    _reverbWet.connect(_duckBus);
+    _reverbWet.connect(_neuralAmBus);
 
     // 2. True Stereo Chorus-Modulated Octave Shimmer Halo (merged L/R into Velvet Hall)
     _shimmerSend = ac.createGain();
@@ -1176,7 +1221,7 @@ function _schedAnalogEnsemblePad(ac, time, midiNotes, durSecs, level = 1.0, filt
         oTri.connect(triG).connect(lp);
         oSub.connect(sinG).connect(lp);
         lp.connect(pan).connect(g);
-        g.connect(_duckBus);
+        g.connect(_neuralAmBus || _duckBus);
         g.connect(_reverbSend);
 
         oSaw.start(time);
@@ -1408,22 +1453,35 @@ function _scheduleStep(stepIndex, time) {
     const step = stepIndex % 16;
     const bar = Math.floor(stepIndex / 16);
     const inVoid = _isVoidActive();
+    const studyCtx = _readStudyContext();
+    const inFlowPlateau = studyCtx.solving && !_pactPreviewActive;
     const tide = _macroTide();
     const stepSecs = _stepSecs();
 
     // Bar boundary housekeeping: arrangement chapters, motif evolution, voice-led pad, risers
     if (step === 0) {
         _barCount = bar;
-        if (bar >= _chapterEndBar) {
-            _advanceChapter(bar);
+        if (inFlowPlateau) {
+            // Solving-Mode Flow Plateau: no abrupt exhale drop-outs or 2-bar risers mid-question;
+            // still modulates gently around the Circle of Fifths every ~112 bars for endless non-repetition.
+            if (bar >= _plateauNextModBar) {
+                const dir = _rng() < 0.72 ? 1 : -1;
+                _cofIndex = (_cofIndex + dir + COF_ROOT_MIDI.length) % COF_ROOT_MIDI.length;
+                _plateauNextModBar = bar + 96 + Math.floor(_rng() * 48);
+                _mutateMotifCell();
+            }
+        } else {
+            if (bar >= _chapterEndBar) {
+                _advanceChapter(bar);
+            }
+            // Trigger 2-bar velvet breath riser before Exhale/Ignition drops into Lock/Ascent (Void/idle only)
+            if ((_chapter === 'exhale' || _chapter === 'ignition') && bar === _chapterEndBar - 2 && _swellFiredForBar !== bar) {
+                _swellFiredForBar = bar;
+                _schedBreathSwell(_ac, time, 32 * stepSecs, inVoid ? 1.0 : 0.45);
+            }
         }
         if (bar > 0 && bar % 4 === 0) {
             _mutateMotifCell();
-        }
-        // Trigger 2-bar velvet breath riser before Exhale/Ignition drops into Lock/Ascent
-        if ((_chapter === 'exhale' || _chapter === 'ignition') && bar === _chapterEndBar - 2 && _swellFiredForBar !== bar) {
-            _swellFiredForBar = bar;
-            _schedBreathSwell(_ac, time, 32 * stepSecs, inVoid ? 1.0 : 0.55);
         }
         // Trigger smooth voice-led overlapping analog ensemble pad every 6..8 bars
         if (bar >= _nextPadBar) {
@@ -1432,19 +1490,22 @@ function _scheduleStep(stepIndex, time) {
             _nextPadBar = bar + holdBars;
             _advanceChordMarkov();
             const chap = CHAPTER_SPEC[_chapter] || CHAPTER_SPEC.lock;
-            const padLv = vibe.padLevel * 5.2 * chap.pad * (0.82 + 0.24 * tide) * (inVoid ? 1.0 : 0.88);
-            _schedAnalogEnsemblePad(_ac, time, _voicingMidi, holdBars * 16 * stepSecs, padLv, chap.filter * (0.7 + 0.3 * tide), isFirst);
+            const padLift = inFlowPlateau ? (0.70 - studyCtx.cocoon * 0.16 + studyCtx.bloom * 0.25) : chap.filter * (0.7 + 0.3 * tide);
+            const padLv = vibe.padLevel * 5.2 * (inFlowPlateau ? 0.94 : chap.pad) * (0.84 + 0.20 * tide) * (inVoid ? 1.0 : 0.90);
+            _schedAnalogEnsemblePad(_ac, time, _voicingMidi, holdBars * 16 * stepSecs, padLv, padLift, isFirst);
         }
     }
 
     const chap = CHAPTER_SPEC[_chapter] || CHAPTER_SPEC.lock;
 
-    // Live Pact Preview scaling across the 4 zones (0..100)
-    let subScale = chap.sub;
-    let bassScale = chap.bass;
-    let motifScale = chap.motif;
-    let percScale = chap.perc;
-    let filterOpen = chap.filter * (0.65 + 0.35 * tide);
+    // Live Pact Preview or Solving-Mode Flow Plateau + Deep-Think Auto-Cocoon scaling
+    let subScale = inFlowPlateau ? 0.88 : chap.sub;
+    let bassScale = inFlowPlateau ? (0.84 - studyCtx.cocoon * 0.16) : chap.bass;
+    let motifScale = inFlowPlateau ? (0.54 - studyCtx.cocoon * 0.36 + studyCtx.bloom * 0.35) : chap.motif;
+    let percScale = inFlowPlateau ? (0.24 - studyCtx.cocoon * 0.20) : chap.perc;
+    let filterOpen = inFlowPlateau
+        ? clamp(0.66 - studyCtx.cocoon * 0.22 + studyCtx.bloom * 0.28, 0.32, 1.0)
+        : chap.filter * (0.65 + 0.35 * tide);
 
     if (_pactPreviewActive) {
         const pv = clamp(_pactPreviewValue, 0, 100);
@@ -1459,10 +1520,10 @@ function _scheduleStep(stepIndex, time) {
         }
     }
 
-    // In active solving, keep sub-thump, rolling bass & pink sky rich, gently tuck busy high motifs/perc
-    const studyMotifTrim = inVoid ? 1.0 : 0.56;
-    const studyPercTrim = inVoid ? 1.0 : 0.38;
-    const studySubTrim = inVoid ? 1.0 : 0.84;
+    // In active solving (Flow Plateau), plateau values already trim motifs/perc cleanly
+    const studyMotifTrim = (inVoid || inFlowPlateau) ? 1.0 : 0.56;
+    const studyPercTrim = (inVoid || inFlowPlateau) ? 1.0 : 0.38;
+    const studySubTrim = (inVoid || inFlowPlateau) ? 1.0 : 0.84;
 
     // 1. Felt-Mallet Sub-Thump + Sidechain Breathing
     const subGrid = SUB_GRIDS[vibe.subStyle] || SUB_GRIDS.steady;
@@ -1522,7 +1583,7 @@ function _scheduleStep(stepIndex, time) {
 }
 
 function _schedulerTick() {
-    if (!_running || !_enabled || _spotifyYield || !_ac || _ac.state !== 'running') return;
+    if (!_running || !_enabled || !_ac || _ac.state !== 'running') return;
     if (typeof document !== 'undefined' && document.hidden) {
         _nextStepTime = _ac.currentTime + 0.05;
         return;
@@ -1548,8 +1609,8 @@ function _applyHealthModulation() {
     const now = _ac.currentTime;
     const hidden = typeof document !== 'undefined' && document.hidden;
 
-    if (!_enabled || _spotifyYield || hidden) {
-        _masterGain.gain.setTargetAtTime(0.0001, now, _spotifyYield ? 0.08 : 0.12);
+    if (!_enabled || hidden) {
+        _masterGain.gain.setTargetAtTime(0.0001, now, 0.12);
         return;
     }
 
@@ -1565,13 +1626,23 @@ function _applyHealthModulation() {
 
     const vibe = _vibe();
     const inVoid = _isVoidActive();
+    const studyCtx = _readStudyContext();
     const tide = _macroTide();
     const chap = CHAPTER_SPEC[_chapter] || CHAPTER_SPEC.lock;
 
     let targetVol = inVoid ? 0.68 : (v.frozen ? 0.48 : 0.50);
-    let targetCutoff = inVoid ? (3800 + chap.filter * 2400) : 2650;
-    let atmosTarget = vibe.atmosLevel * (inVoid ? (0.88 + 0.16 * tide) : 0.92);
-    let atmosCut = vibe.atmosCutoff * (inVoid ? (0.92 + 0.16 * tide) : 0.88);
+    let targetCutoff = inVoid
+        ? (3800 + chap.filter * 2400)
+        : (2650 - studyCtx.cocoon * 600 + studyCtx.bloom * 1100);
+    let atmosTarget = vibe.atmosLevel * (inVoid ? (0.88 + 0.16 * tide) : (0.92 + studyCtx.cocoon * 0.22));
+    let atmosCut = vibe.atmosCutoff * (inVoid ? (0.92 + 0.16 * tide) : (0.88 - studyCtx.cocoon * 0.10));
+
+    // Rapid Neural AM depth gently deepens during active solving & Deep-Think Cocoon (>60s)
+    const amDepth = clamp(
+        vibe.neuralAmDepth + (studyCtx.solving ? 0.05 : 0) + studyCtx.cocoon * 0.04,
+        0.06,
+        0.24
+    );
 
     if (_pactPreviewActive) {
         const pv = clamp(_pactPreviewValue, 0, 100);
@@ -1587,6 +1658,9 @@ function _applyHealthModulation() {
     if (_atmosGain) _atmosGain.gain.setTargetAtTime(atmosTarget, now, 0.32);
     if (_atmosLpA) _atmosLpA.frequency.setTargetAtTime(_nyquistSafe(_ac, atmosCut), now, 0.35);
     if (_atmosLpB) _atmosLpB.frequency.setTargetAtTime(_nyquistSafe(_ac, atmosCut * 1.18), now, 0.35);
+    if (_neuralAmBus) _neuralAmBus.gain.setTargetAtTime(1.0 - amDepth * 0.5, now, 0.35);
+    if (_neuralAmDepthGain) _neuralAmDepthGain.gain.setTargetAtTime(amDepth * 0.5, now, 0.35);
+    if (_neuralAmOsc) _neuralAmOsc.frequency.setTargetAtTime(vibe.neuralAmHz, now, 0.4);
 }
 
 function _startLoops() {
@@ -1613,29 +1687,19 @@ function _syncButtonUI() {
 
     const btn = document.getElementById('hb-audio-btn');
     if (btn) {
-        btn.classList.toggle('is-spotify-yield', _spotifyYield);
-        if (_spotifyYield) {
-            btn.classList.remove('is-audio-on');
-            btn.classList.add('is-audio-off');
-            btn.setAttribute('aria-pressed', 'false');
-            btn.title = 'Flow audio yielded to Spotify — tap to take over';
-            const lbl = btn.querySelector('.hb-audio-lbl');
-            if (lbl) lbl.textContent = 'VOID OFF';
-        } else {
-            btn.classList.toggle('is-audio-on', _enabled);
-            btn.classList.toggle('is-audio-off', !_enabled);
-            btn.setAttribute('aria-pressed', _enabled ? 'true' : 'false');
-            btn.title = _enabled ? 'Flow audio on — tap to mute' : 'Flow audio muted — tap to enable';
-            const lbl = btn.querySelector('.hb-audio-lbl');
-            if (lbl) lbl.textContent = _enabled ? 'AUDIO' : 'MUTED';
-        }
+        btn.classList.toggle('is-audio-on', _enabled);
+        btn.classList.toggle('is-audio-off', !_enabled);
+        btn.setAttribute('aria-pressed', _enabled ? 'true' : 'false');
+        btn.title = _enabled ? 'Flow audio on — tap to mute' : 'Flow audio muted — tap to enable';
+        const lbl = btn.querySelector('.hb-audio-lbl');
+        if (lbl) lbl.textContent = _enabled ? 'AUDIO' : 'MUTED';
     }
 
     const vibeBtn = document.getElementById('hb-vibe-btn');
     if (vibeBtn) {
         vibeBtn.dataset.vibe = vibe.id;
         vibeBtn.style.setProperty('--hb-vibe-accent', vibe.accent);
-        vibeBtn.classList.toggle('is-dimmed', !_enabled || _spotifyYield);
+        vibeBtn.classList.toggle('is-dimmed', !_enabled);
         vibeBtn.title = `${vibe.name} — ${vibe.subtitle} (tap to switch)`;
         const vLbl = vibeBtn.querySelector('.hb-vibe-lbl');
         if (vLbl) vLbl.textContent = vibe.label;
@@ -1657,10 +1721,6 @@ function _syncButtonUI() {
 // ── Public Lifecycle & Vibe Controls ────────────────────────────────────────
 export async function unlockAudio() {
     if (!_enabled) return false;
-    if (_spotifyYield) {
-        _activateIosAudioSession();
-        return false;
-    }
     _activateIosAudioSession();
     const ac = _ensureContext();
     if (!ac) return false;
@@ -1676,7 +1736,6 @@ export async function unlockAudio() {
     if (resumePromise) {
         try { await resumePromise; } catch (_) {}
     }
-    if (_spotifyYield) return false;
     if (ac.state === 'running') {
         if (!_running) {
             _startLoops();
@@ -1694,7 +1753,7 @@ export function setAudioEnabled(on) {
     _enabled = Boolean(on);
     _savePrefs(_enabled, _vibeId);
     _syncButtonUI();
-    if (_enabled && !_spotifyYield) {
+    if (_enabled) {
         unlockAudio();
     } else if (_ac && _masterGain) {
         try {
@@ -1705,49 +1764,7 @@ export function setAudioEnabled(on) {
     return _enabled;
 }
 
-export function setSpotifyYield(active) {
-    const next = Boolean(active);
-    const changed = next !== _spotifyYield;
-    _spotifyYield = next;
-    try {
-        if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(SPOTIFY_YIELD_KEY, next ? '1' : '0');
-        }
-    } catch (_) {}
-    if (next) {
-        _setIosSessionType('ambient');
-        if (_ac && _masterGain) {
-            try {
-                _masterGain.gain.setTargetAtTime(0.0001, _ac.currentTime, 0.08);
-            } catch (_) {}
-        }
-        _stopLoops();
-        _syncButtonUI();
-    } else {
-        _syncButtonUI();
-        if (_enabled && (changed || !_running)) {
-            unlockAudio();
-        }
-    }
-    return _spotifyYield;
-}
-
-export function isSpotifyYielding() {
-    return _spotifyYield;
-}
-
 export function toggleAudio() {
-    if (_spotifyYield) {
-        setSpotifyYield(false);
-        setAudioEnabled(true);
-        try {
-            if (typeof window !== 'undefined' && window.SpotifyDeck && typeof window.SpotifyDeck.onVoidAudioReclaimed === 'function') {
-                window.SpotifyDeck.onVoidAudioReclaimed();
-            }
-        } catch (_) {}
-        playClick();
-        return true;
-    }
     const next = setAudioEnabled(!_enabled);
     if (next) playClick();
     return next;
@@ -1777,8 +1794,13 @@ export function setVibe(id) {
     _voicingMidi = _voiceLeadChord(vibe.chords[0].pcs, _rootMidi(), _voicingMidi);
     _nextPadBar = _barCount; // invite the new vibe's pad cleanly on the very next bar
     _syncButtonUI();
+    try {
+        if (typeof window !== 'undefined' && typeof CustomEvent === 'function') {
+            window.dispatchEvent(new CustomEvent('hb:vibe-change', { detail: { vibe: _vibeId } }));
+        }
+    } catch (_) {}
 
-    if (_enabled && !_spotifyYield) {
+    if (_enabled) {
         if (!_ac || _ac.state !== 'running') {
             unlockAudio();
         } else if (_graphBuilt) {
@@ -1788,6 +1810,9 @@ export function setVibe(id) {
                 if (_atmosGain) _atmosGain.gain.setTargetAtTime(vibe.atmosLevel, now, 0.35);
                 if (_atmosLpA) _atmosLpA.frequency.setTargetAtTime(_nyquistSafe(_ac, vibe.atmosCutoff), now, 0.35);
                 if (_atmosLpB) _atmosLpB.frequency.setTargetAtTime(_nyquistSafe(_ac, vibe.atmosCutoff * 1.18), now, 0.35);
+                if (_neuralAmOsc) _neuralAmOsc.frequency.setTargetAtTime(vibe.neuralAmHz, now, 0.4);
+                if (_neuralAmBus) _neuralAmBus.gain.setTargetAtTime(1.0 - vibe.neuralAmDepth * 0.5, now, 0.35);
+                if (_neuralAmDepthGain) _neuralAmDepthGain.gain.setTargetAtTime(vibe.neuralAmDepth * 0.5, now, 0.35);
                 if (_reverbWet) _reverbWet.gain.setTargetAtTime(vibe.reverbWet, now, 0.35);
                 if (_shimmerWet) _shimmerWet.gain.setTargetAtTime(vibe.shimmerLevel, now, 0.35);
                 if (_delayWet) _delayWet.gain.setTargetAtTime(vibe.delayWet, now, 0.35);
@@ -1815,7 +1840,7 @@ export function cycleVibe() {
 // ── Tactile Precision SFX, Layered Pact Slider Bass Bumps & Pact Seal ───────
 
 function _resolveSfxCtx() {
-    if (_enabled && !_spotifyYield) {
+    if (_enabled) {
         const ac = _buildGraph();
         if (ac && ac.state === 'running') {
             return { ac, out: _sfxBus || ac.destination, rev: _reverbSend, del: _delaySend, shim: _shimmerSend, isFxFallback: false };
@@ -1834,7 +1859,7 @@ function _resolveSfxCtx() {
 
 /** Tactile damped ceramic switch click. */
 export function playClick() {
-    if (!_enabled || _spotifyYield) return;
+    if (!_enabled) return;
     const ac = _buildGraph();
     if (!ac || ac.state !== 'running') return;
     const now = ac.currentTime;
@@ -1870,7 +1895,7 @@ export function playClick() {
 
 /** Warm 3-stage harmonic lock sound (Pact / Heartbeat feed). */
 export function playChamberLoad() {
-    if (!_enabled || _spotifyYield) return;
+    if (!_enabled) return;
     const ac = _buildGraph();
     if (!ac || ac.state !== 'running') return;
     const now = ac.currentTime;
@@ -1895,7 +1920,7 @@ export function playChamberLoad() {
 
 /** Luminous warm sub-bloom + voice-led Maj9 shimmer on audio ignition. */
 export function playBootIgnition() {
-    if (!_enabled || _spotifyYield) return;
+    if (!_enabled) return;
     const ac = _buildGraph();
     if (!ac || ac.state !== 'running') return;
     const now = ac.currentTime;
@@ -1921,7 +1946,7 @@ export function playBootIgnition() {
 
 /** Soft low power-down drop on 0.0h Flatline. */
 export function playFlatlineDrop() {
-    if (!_enabled || _spotifyYield) return;
+    if (!_enabled) return;
     const ac = _buildGraph();
     if (!ac || ac.state !== 'running') return;
     const now = ac.currentTime;
@@ -1960,7 +1985,7 @@ export function playSliderBump(value, prevValue, opts = {}) {
     if (!zoneChanged && !hitEdge && nowMs - _lastSliderBumpAt < 42) return;
     _lastSliderBumpAt = nowMs;
 
-    if (_enabled && !_spotifyYield && (!_ac || _ac.state !== 'running')) {
+    if (_enabled && (!_ac || _ac.state !== 'running')) {
         try { unlockAudio(); } catch (_) {}
     }
 
@@ -2170,7 +2195,7 @@ export function setPactPreview(active, value) {
 export function playPactSeal(sliderValue) {
     const val = clamp(Math.round(Number(sliderValue) || 72), 0, 100);
     const isHardcore = val >= 98;
-    if (!_enabled || _spotifyYield) return false;
+    if (!_enabled) return false;
     const ac = _buildGraph();
     if (!ac || ac.state !== 'running') return false;
 
@@ -2200,9 +2225,37 @@ export function playPactSeal(sliderValue) {
     return true;
 }
 
+/**
+ * Subtle musical Solve Bloom when cracking a problem (reinforces flow channel without breaking trance).
+ * Wrong answers stay calm and tilt-proof (no gloomy drop).
+ */
+export function onSolveResult(isCorrect, streak = 1) {
+    if (!isCorrect) {
+        _solveBloomUntil = 0;
+        _solveBloomStrength = 0;
+        return false;
+    }
+    const st = clamp(Number(streak) || 1, 1, 8);
+    _solveBloomStrength = clamp(0.65 + (st - 1) * 0.08, 0.65, 1.0);
+    _solveBloomUntil = Date.now() + 4500;
+    _applyHealthModulation();
+
+    if (!_enabled || !_ac || _ac.state !== 'running' || !_graphBuilt) return false;
+    try {
+        const now = _ac.currentTime;
+        const timbre = _vibe().leadTimbre;
+        // Soft harmonically locked Maj9 shimmer halo behind the win SFX
+        const notes = st >= 3 ? [2, 4, 6] : [2, 4];
+        notes.forEach((deg, idx) => {
+            _schedMotifVoice(_ac, now + 0.14 + idx * 0.065, _scaleFreq(deg, 3), 0.42 * _solveBloomStrength, (idx - 1) * 0.38, timbre, 0.92);
+        });
+    } catch (_) {}
+    return true;
+}
+
 /** Briefly duck the ambient bed so heavy UI SFX cut cleanly through. */
 export function duck(secs = 0.75, floor = 0.32) {
-    if (!_enabled || _spotifyYield || !_ac || !_duckBus || _ac.state !== 'running') return;
+    if (!_enabled || !_ac || !_duckBus || _ac.state !== 'running') return;
     try {
         const now = _ac.currentTime;
         const hold = clamp(Number(secs) || 0.75, 0.15, 3.0);
@@ -2266,6 +2319,10 @@ export function getDiagnostics() {
         voicingMidi: _voicingMidi.slice(),
         motifLen: _motifCell.length,
         tide: _macroTide(),
+        neuralAmHz: _vibe().neuralAmHz,
+        neuralAmDepth: _neuralAmDepthGain ? Number((_neuralAmDepthGain.gain.value * 2).toFixed(3)) : _vibe().neuralAmDepth,
+        flowPlateau: _lastSolvingActive,
+        cocoonLevel: Number(_lastCocoonLevel.toFixed(3)),
         ctxState: _ac ? _ac.state : 'uncreated',
         rmsL, rmsR, stereoDiff, peak,
         subEnergy, midEnergy, airEnergy,
@@ -2317,7 +2374,7 @@ function _bindUnlockGestures() {
     _boundGestures = true;
 
     const onGesture = (e) => {
-        if (!_enabled || _spotifyYield) return;
+        if (!_enabled) return;
         const target = e && e.target;
         if (target && typeof target.closest === 'function' && target.closest('#hb-audio-btn, #hb-vibe-btn')) return;
         if (!_ac || _ac.state !== 'running' || !_running) {
@@ -2332,11 +2389,6 @@ function _bindUnlockGestures() {
     document.addEventListener('keydown', onGesture, { capture: true, passive: true });
 
     const onForeground = () => {
-        if (_spotifyYield) {
-            _setIosSessionType('ambient');
-            _applyHealthModulation();
-            return;
-        }
         if (_enabled && _ac && !(typeof document !== 'undefined' && document.hidden)) {
             if (_ac.state !== 'running') {
                 try { _ac.resume().catch(() => {}); } catch (_) {}
@@ -2393,8 +2445,6 @@ export const HeartbeatAudio = {
     toggle: toggleAudio,
     setEnabled: setAudioEnabled,
     isEnabled: isAudioEnabled,
-    setSpotifyYield,
-    isSpotifyYielding,
     VIBES,
     getVibe,
     getVibes,
@@ -2407,6 +2457,7 @@ export const HeartbeatAudio = {
     playSliderBump,
     setPactPreview,
     playPactSeal,
+    onSolveResult,
     duck,
     getDiagnostics,
 };

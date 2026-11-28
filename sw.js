@@ -265,7 +265,11 @@
 //        Pre-baked offscreen nebula/dial/star sprites, batched canvas paths,
 //        dirty-flagged diffed DOM label updates (zero idle mutations),
 //        adaptive 30fps idle cadence, and removal of live HUD backdrop-filter.
-const VERSION = 'jeemax-v134';
+// v135 - NEURAL FLOW AUDIO & GENERATIVE CHROMA WASH:
+//        Remove Spotify Connect Deck & replace album haze with standalone
+//        procedural painterly OKLCH light-plates (chroma-wash.js/css) for
+//        Practice & Vault stages + Neural Flow v3 audio engine.
+const VERSION = 'jeemax-v135';
 
 const SHELL = [
   './',
@@ -274,12 +278,10 @@ const SHELL = [
   './heartbeat.css',
   './heartbeat.js',
   './heartbeat-audio.js',
+  './chroma-wash.css',
+  './chroma-wash.js',
   './chapter-galaxy.js',
   './styles-chapter-galaxy.css',
-  './spotify.css',
-  './spotify-auth.js',
-  './spotify-api.js',
-  './spotify-deck.js',
   './styles.css',
   './styles-daily.css',
   './styles-retention.css',
@@ -421,13 +423,10 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Never touch Drive / Gemini / Spotify endpoints.
+  // Never touch Drive / Gemini endpoints.
   if (
     url.origin === 'https://www.googleapis.com' ||
-    url.origin === 'https://generativelanguage.googleapis.com' ||
-    url.origin === 'https://api.spotify.com' ||
-    url.origin === 'https://accounts.spotify.com' ||
-    url.origin === 'https://i.scdn.co'
+    url.origin === 'https://generativelanguage.googleapis.com'
   ) {
     return;
   }

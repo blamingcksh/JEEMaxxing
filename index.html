@@ -83,7 +83,7 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
 <link rel="stylesheet" href="slider-resident.css">
 <link rel="stylesheet" href="styles-modes.css">
 <link rel="stylesheet" href="heartbeat.css">
-<link rel="stylesheet" href="spotify.css">
+<link rel="stylesheet" href="chroma-wash.css">
 <link rel="stylesheet" href="styles-chapter-galaxy.css">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 </head>
@@ -622,6 +622,13 @@ try{(function(){var _s=(window.navigator&&window.navigator.standalone===true);tr
             <button type="button" class="hb-vibe-chip" data-hb-vibe="aether" aria-pressed="false">Aether</button>
             <button type="button" class="hb-vibe-chip" data-hb-vibe="kinetic" aria-pressed="false">Kinetic</button>
             <button type="button" class="hb-vibe-chip" data-hb-vibe="solstice" aria-pressed="false">Solstice</button>
+        </div>
+    </div>
+    <div class="fx-row">
+        <span class="fx-row-label"><svg class="g"><use href="#g-spark"></use></svg> Ambient Colour Wash</span>
+        <div class="cw-settings-actions">
+            <button type="button" class="cw-shuffle-btn" id="cw-shuffle" title="Roll a fresh painterly colour wash">Shuffle</button>
+            <label class="fx-switch"><input type="checkbox" id="cw-enabled" checked><span class="fx-slider"></span></label>
         </div>
     </div>
     <div class="fx-row"><span class="fx-row-label"><svg class="g"><use href="#g-volume"></use></svg> Sound Effects</span><label class="fx-switch"><input type="checkbox" id="fx-sound"><span class="fx-slider"></span></label></div>
@@ -1442,7 +1449,7 @@ window.clearMatrixFilters = function () {
 <!-- 4-Pillar Accountability Checkpoint System — self-mounting (hub, control
      panel, lockdown overlays, toasts are all injected at runtime) -->
 <script type="module" src="./checkpoint.js"></script>
-<script type="module" src="./spotify-deck.js"></script>
+<script type="module" src="./chroma-wash.js"></script>
 <script type="module" src="./fx.js"></script>
 <script src="theme.js" defer></script>
 <!-- Observatory glyph sprite (emoji → line glyphs) + atmosphere runtime (sky, plates) -->
