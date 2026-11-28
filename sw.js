@@ -288,7 +288,10 @@
 //        lens streak, DoF bokeh, 3-subject harmonic bands, cryo sleep-freeze
 //        aurora, volumetric core aura, singularity boot ignition, and iPad
 //        orbital inertia + tap shockwave.
-const VERSION = 'jeemax-v139';
+// v140 - ANALOG WARMTH & OVERTONE STRETCH:
+//        Add zero-node per-note analog detune drift and subtle 2.0025x tine/
+//        overtone stretch to heartbeat-audio.js pad & motif voices.
+const VERSION = 'jeemax-v140';
 
 const SHELL = [
   './',

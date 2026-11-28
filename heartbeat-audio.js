@@ -1406,12 +1406,13 @@ function _schedAnalogEnsemblePad(ac, time, midiNotes, durSecs, level = 1.0, filt
         const pan = _createStereoPanner(ac, pans[idx % pans.length]);
         const g = ac.createGain();
 
+        const drift = (Math.random() - 0.5) * 4.5;
         oTri.type = 'triangle';
         oSin.type = 'sine';
         oTri.frequency.setValueAtTime(freq, t);
         oSin.frequency.setValueAtTime(freq, t);
-        oTri.detune.value = (idx % 2 === 0 ? -6 : 6);
-        oSin.detune.value = (idx % 2 === 0 ? 5 : -5);
+        oTri.detune.value = (idx % 2 === 0 ? -6 : 6) + drift;
+        oSin.detune.value = (idx % 2 === 0 ? 5 : -5) + drift * 0.7;
 
         const startCut = _nyquistSafe(ac, 260 + idx * 70);
         const peakCut = _nyquistSafe(ac, 620 + filterLift * 880 + idx * 120);
@@ -1450,7 +1451,7 @@ function _schedAnalogEnsemblePad(ac, time, midiNotes, durSecs, level = 1.0, filt
             const sg = ac.createGain();
             osc.type = 'sine';
             osc.frequency.setValueAtTime(midiToFreq(sm), t);
-            osc.detune.value = idx === 0 ? -4 : 4;
+            osc.detune.value = (idx === 0 ? -4 : 4) + (Math.random() - 0.5) * 3.5;
             const sPeak = clamp(0.022 * level * (0.5 + 0.5 * filterLift), 0.0005, 0.055);
             sg.gain.setValueAtTime(0.0001, t);
             sg.gain.linearRampToValueAtTime(sPeak, t + Math.min(2.2, durSecs * 0.35));
@@ -1473,10 +1474,13 @@ function _schedMotifVoice(ac, time, freq, vel, panPos, timbre, filterOpen = 0.7)
         const car = ac.createOscillator();
         const over = ac.createOscillator();
         const ovG = ac.createGain();
+        const drift = (Math.random() - 0.5) * 4.0;
         car.type = 'sine';
         over.type = 'triangle';
         car.frequency.setValueAtTime(freq, t);
-        over.frequency.setValueAtTime(freq * 2, t);
+        over.frequency.setValueAtTime(freq * 2.0025, t);
+        car.detune.value = drift;
+        over.detune.value = drift;
         ovG.gain.setValueAtTime(0.18 * vel, t);
         ovG.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
 
@@ -1504,10 +1508,13 @@ function _schedMotifVoice(ac, time, freq, vel, panPos, timbre, filterOpen = 0.7)
         const car = ac.createOscillator();
         const mod = ac.createOscillator();
         const modG = ac.createGain();
+        const drift = (Math.random() - 0.5) * 4.0;
         car.type = 'sine';
         mod.type = 'sine';
         car.frequency.setValueAtTime(freq, t);
-        mod.frequency.setValueAtTime(freq * 2.0, t);
+        mod.frequency.setValueAtTime(freq * 2.0025, t);
+        car.detune.value = drift;
+        mod.detune.value = drift;
         modG.gain.setValueAtTime(freq * 0.78 * vel, t);
         modG.gain.exponentialRampToValueAtTime(1.0, t + 0.22);
 
@@ -1533,12 +1540,13 @@ function _schedMotifVoice(ac, time, freq, vel, panPos, timbre, filterOpen = 0.7)
     const o1 = ac.createOscillator();
     const o2 = ac.createOscillator();
     const lp = ac.createBiquadFilter();
+    const drift = (Math.random() - 0.5) * 4.5;
     o1.type = 'sawtooth';
     o2.type = 'triangle';
     o1.frequency.setValueAtTime(freq, t);
     o2.frequency.setValueAtTime(freq, t);
-    o1.detune.value = isArp ? -6 : -4;
-    o2.detune.value = isArp ? +6 : +4;
+    o1.detune.value = (isArp ? -6 : -4) + drift;
+    o2.detune.value = (isArp ? 6 : 4) + drift;
 
     const cutStart = _nyquistSafe(ac, (isArp ? 3200 : 2400) * (0.55 + 0.55 * filterOpen));
     const cutEnd = _nyquistSafe(ac, isArp ? 320 : 250);
