@@ -72,8 +72,8 @@ const SPECTRUM_STOPS = [
     { r: 0.10, name: 'AMBER ARC',        core: [1.0, 0.96, 0.88],  edge: [1.0, 0.54, 0.16],  accent: [1.0, 0.78, 0.36], css: '#ff9436' },
     { r: 0.27, name: 'UV LASER',         core: [0.99, 0.95, 1.0],  edge: [0.64, 0.32, 1.0],  accent: [0.34, 0.86, 1.0], css: '#a864ff' },
     { r: 0.53, name: 'ION SILVER',       core: [0.97, 0.98, 1.0],  edge: [0.46, 0.56, 0.98], accent: [0.72, 0.62, 1.0], css: '#86a2ff' },
-    { r: 0.80, name: 'XENON WHITE',      core: [1.0, 0.995, 0.985], edge: [0.58, 0.82, 1.0], accent: [0.85, 0.92, 1.0], css: '#bce4ff' },
-    { r: 1.00, name: 'XENON WHITE',      core: [1.0, 0.995, 0.985], edge: [0.58, 0.82, 1.0], accent: [0.85, 0.92, 1.0], css: '#e6f4ff' },
+    { r: 0.80, name: 'XENON WHITE',      core: [1.0, 0.995, 0.985], edge: [0.34, 0.72, 1.0], accent: [0.66, 0.88, 1.0], css: '#bce4ff' },
+    { r: 1.00, name: 'XENON WHITE',      core: [1.0, 0.995, 0.985], edge: [0.34, 0.72, 1.0], accent: [0.66, 0.88, 1.0], css: '#e6f4ff' },
 ];
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -240,6 +240,7 @@ let _clockTimer = null;
 let _bootTimer = null;
 let _bootStartedAt = 0;
 let _pulseBoost = 0;
+let _pendingShockwave = false;
 let _flatlineActive = false;
 let _flatlineWipeDone = false;
 let _flatlineStartedAt = 0;
@@ -937,6 +938,7 @@ export function recordProblemUnit(q, kind = 'solve', opts = {}) {
     _hb.daily.effectiveUnits[subj] = round2((_hb.daily.effectiveUnits[subj] || 0) + effectiveWeight);
     const hoursAdded = _applyDailyRechargeDelta();
     _pulseBoost = 1.0;
+    _pendingShockwave = true;
     try { HeartbeatAudio.playChamberLoad(); } catch (_) {}
     _saveState();
     _refreshHudAndVitals();
@@ -967,6 +969,7 @@ export function recordPactBlock(mins, subj) {
     _hb.daily.pactMins = round2((_hb.daily.pactMins || 0) + cleanMins);
     const hoursAdded = _applyDailyRechargeDelta();
     _pulseBoost = 1.0;
+    _pendingShockwave = true;
     try { HeartbeatAudio.playChamberLoad(); } catch (_) {}
     _saveState();
     _refreshHudAndVitals();
@@ -1249,6 +1252,8 @@ function genAizawaFlux(count, rng) {
     const positions = new Float32Array(count * 3);
     const flows = new Float32Array(count * 3);
     const phases = new Float32Array(count);
+    const bands = new Float32Array(count);
+    const skeletonPairs = [];
 
     const a = 0.95 + (rng() - 0.5) * 0.04;
     const b = 0.70 + (rng() - 0.5) * 0.04;
@@ -1289,8 +1294,13 @@ function genAizawaFlux(count, rng) {
             }
         }
 
+        let prevStreamIdx = -1;
+        let prevPx = 0, prevPy = 0, prevPz = 0;
+        const bandId = s % 3;
+
         for (let p = 0; p < perStream && idx < count; p++) {
             let vx = 0, vy = 0, vz = 0;
+            let didReset = false;
             for (let sub = 0; sub < 4; sub++) {
                 const [k1x, k1y, k1z] = deriv(x, y, z);
                 const [k2x, k2y, k2z] = deriv(x + 0.5 * dt * k1x, y + 0.5 * dt * k1y, z + 0.5 * dt * k1z);
@@ -1301,21 +1311,31 @@ function genAizawaFlux(count, rng) {
                 z += (dt / 6) * (k1z + 2 * k2z + 2 * k3z + k4z);
                 if (!Number.isFinite(x) || Math.abs(x) > 6 || Math.abs(y) > 6 || Math.abs(z) > 6) {
                     x = 0.1; y = 0.05; z = 0.0;
+                    didReset = true;
                 }
                 vx = k1x; vy = k1y; vz = k1z;
             }
-            positions[idx * 3] = x;
-            positions[idx * 3 + 1] = z - 0.65;
-            positions[idx * 3 + 2] = y;
+            const px = x, py = z - 0.65, pz = y;
+            positions[idx * 3] = px;
+            positions[idx * 3 + 1] = py;
+            positions[idx * 3 + 2] = pz;
             const [fx, fy, fz] = normalizeVec3(vx, vz, vy);
             flows[idx * 3] = fx;
             flows[idx * 3 + 1] = fy;
             flows[idx * 3 + 2] = fz;
             phases[idx] = (s / streams + p / perStream) % 1;
+            bands[idx] = bandId;
+
+            if (prevStreamIdx >= 0 && !didReset) {
+                const d = Math.hypot(px - prevPx, py - prevPy, pz - prevPz);
+                if (d < 0.25) skeletonPairs.push(prevStreamIdx, idx);
+            }
+            prevStreamIdx = idx;
+            prevPx = px; prevPy = py; prevPz = pz;
             idx++;
         }
     }
-    return { positions, flows, phases };
+    return { positions, flows, phases, bands, skeletonIndices: new Uint16Array(skeletonPairs) };
 }
 
 function normalizeAndBuildScatter(positions, flows, count, rng) {
@@ -1479,7 +1499,7 @@ function buildNeighborGraph(positions, flows, count, rng) {
 
 function buildAizawaManifold(seed = 2049) {
     const rng = createRng(seed);
-    const { positions, flows, phases } = genAizawaFlux(POINT_COUNT, rng);
+    const { positions, flows, phases, bands, skeletonIndices } = genAizawaFlux(POINT_COUNT, rng);
     const scatterDirs = normalizeAndBuildScatter(positions, flows, POINT_COUNT, rng);
     const { tightNeighbors, arcNeighbors } = buildNeighborGraph(positions, flows, POINT_COUNT, rng);
     return {
@@ -1490,6 +1510,8 @@ function buildAizawaManifold(seed = 2049) {
         scatterDirs,
         flowDirs: flows,
         phases,
+        bands,
+        skeletonIndices,
         tightNeighbors,
         arcNeighbors,
     };
@@ -1506,6 +1528,73 @@ void main() {
     gl_Position = vec4(p, 0.0, 1.0);
 }`;
 
+const SKELETON_VERT = `#version 300 es
+precision highp float;
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aFlow;
+layout(location = 2) in float aPhase;
+layout(location = 3) in float aBand;
+uniform mat4 uViewProj;
+uniform float uTime;
+uniform float uBeatPulse;
+uniform float uIgnition;
+uniform float uScale;
+uniform vec3 uRippleOrigin;
+uniform float uRippleRadius;
+uniform float uRippleStrength;
+out float vPhase;
+out float vBand;
+out float vDepth;
+out float vRipple;
+void main() {
+    float ig = 0.04 + 0.96 * uIgnition;
+    vec3 p = aPos * uScale * ig;
+    float breath = 1.0 + uBeatPulse * 0.038 + sin(uTime * 0.9 + aPhase * 6.283185) * 0.012;
+    p = p * breath + aFlow * (sin(uTime * 1.35 + aPhase * 18.8495) * 0.014 * ig);
+    float rDist = length(p - uRippleOrigin);
+    float ring = exp(-pow((rDist - uRippleRadius) / 0.24, 2.0)) * uRippleStrength;
+    p += normalize(p + vec3(1e-4, 2e-4, -1e-4)) * (ring * 0.12);
+    vec4 clip = uViewProj * vec4(p, 1.0);
+    gl_Position = clip;
+    vPhase = aPhase;
+    vBand = aBand;
+    vDepth = clip.w;
+    vRipple = ring;
+}`;
+
+const SKELETON_FRAG = `#version 300 es
+precision highp float;
+in float vPhase;
+in float vBand;
+in float vDepth;
+in float vRipple;
+uniform float uTime;
+uniform float uLuminescence;
+uniform float uSkeletonAlpha;
+uniform float uFreezeMix;
+uniform vec3 uSubjBalance;
+uniform vec3 uColorCore;
+uniform vec3 uColorEdge;
+uniform vec3 uColorAccent;
+out vec4 fragColor;
+void main() {
+    if (vDepth <= 0.08) discard;
+    float w0 = step(vBand, 0.5);
+    float w1 = step(0.5, vBand) * step(vBand, 1.5);
+    float w2 = step(1.5, vBand);
+    float bandBal = w0 * uSubjBalance.x + w1 * uSubjBalance.y + w2 * uSubjBalance.z;
+    float minBal = min(uSubjBalance.x, min(uSubjBalance.y, uSubjBalance.z));
+    vec3 subjCol = w0 * vec3(0.40, 0.86, 1.0) + w1 * vec3(0.74, 0.50, 1.0) + w2 * vec3(1.0, 0.80, 0.46);
+    vec3 baseCol = mix(uColorEdge, uColorAccent, fract(vPhase * 2.31));
+    vec3 col = mix(baseCol, subjCol, (1.0 - minBal) * 0.55);
+    col = mix(col, vec3(0.32, 0.90, 0.80), uFreezeMix * 0.65);
+    float shimmer = 0.62 + 0.38 * sin(vPhase * 36.0 - uTime * 2.1);
+    float balGain = mix(0.35, 1.15, bandBal);
+    float depthAtten = clamp(3.1 / max(vDepth, 0.9), 0.30, 1.25);
+    float alpha = uSkeletonAlpha * shimmer * balGain * depthAtten * (0.65 + 0.45 * uLuminescence) + vRipple * 0.32;
+    fragColor = vec4((col + uColorCore * vRipple * 0.85) * alpha, 1.0);
+}`;
+
 const BEAM_VERT = `#version 300 es
 precision highp float;
 layout(location = 0) in vec2 aQuad;
@@ -1514,79 +1603,104 @@ layout(location = 2) in vec3 aP1;
 layout(location = 3) in float aEnergy;
 layout(location = 4) in float aWidth;
 layout(location = 5) in float aTint;
+layout(location = 6) in float aCurve;
 uniform mat4 uViewProj;
 uniform vec2 uResolution;
 uniform float uDpr;
 uniform float uLuminescence;
-out vec2 vLocal;
-out float vSegLen;
+uniform float uTime;
+uniform float uBeatPulse;
+uniform float uIgnition;
+uniform float uCamDist;
+uniform vec3 uRippleOrigin;
+uniform float uRippleRadius;
+uniform float uRippleStrength;
+out float vAcross;
 out float vHalfPx;
 out float vEnergy;
 out float vWidth;
 out float vTint;
 out float vDepth;
 out float vAlong;
+out float vCoc;
+vec3 evalBeamPos(float t, vec3 p0, vec3 p1, float curve) {
+    float ig = 0.04 + 0.96 * uIgnition;
+    float breath = 1.0 + uBeatPulse * 0.038;
+    vec3 p = mix(p0, p1, t) * ig * breath;
+    vec3 radDir = normalize(p + vec3(1e-4, 2e-4, -1e-4));
+    float arc = sin(t * 3.14159265) * curve * ig;
+    float vib = step(0.10, curve) * sin(t * 18.8495 + uTime * 22.0) * sin(t * 3.14159265) * 0.012;
+    p += radDir * (arc + vib);
+    float rDist = length(p - uRippleOrigin);
+    float ring = exp(-pow((rDist - uRippleRadius) / 0.24, 2.0)) * uRippleStrength;
+    p += radDir * (ring * 0.12);
+    return p;
+}
 void main() {
-    vec4 c0 = uViewProj * vec4(aP0, 1.0);
-    vec4 c1 = uViewProj * vec4(aP1, 1.0);
-    if (c0.w <= 0.08 || c1.w <= 0.08) {
+    float t = aQuad.x;
+    vec4 clip = uViewProj * vec4(evalBeamPos(t, aP0, aP1, aCurve), 1.0);
+    if (clip.w <= 0.08) {
         gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         vEnergy = 0.0;
         return;
     }
-    vec2 ndc0 = c0.xy / c0.w;
-    vec2 ndc1 = c1.xy / c1.w;
+    vec4 cPrev = uViewProj * vec4(evalBeamPos(max(0.0, t - 0.035), aP0, aP1, aCurve), 1.0);
+    vec4 cNext = uViewProj * vec4(evalBeamPos(min(1.0, t + 0.035), aP0, aP1, aCurve), 1.0);
     vec2 halfRes = uResolution * 0.5;
-    vec2 px0 = ndc0 * halfRes;
-    vec2 px1 = ndc1 * halfRes;
-    vec2 delta = px1 - px0;
-    float segLen = length(delta);
-    vec2 dir = segLen > 0.001 ? delta / segLen : vec2(1.0, 0.0);
+    vec2 px = (clip.xy / clip.w) * halfRes;
+    vec2 dir = vec2(1.0, 0.0);
+    if (cPrev.w > 0.08 && cNext.w > 0.08) {
+        vec2 delta = (cNext.xy / cNext.w - cPrev.xy / cPrev.w) * halfRes;
+        float len = length(delta);
+        if (len > 0.001) dir = delta / len;
+    }
     vec2 norm = vec2(-dir.y, dir.x);
+    float coc = clamp(abs(clip.w - uCamDist) / 1.5, 0.0, 1.0);
     float lumScale = 0.72 + 0.38 * uLuminescence;
-    float halfPx = (1.35 + aWidth * (1.1 + aEnergy * 1.8) * lumScale) * uDpr;
-    float ext = (aQuad.x * 2.0 - 1.0) * halfPx;
-    vec2 posPx = mix(px0, px1, aQuad.x) + dir * ext + norm * (aQuad.y * halfPx);
+    float halfPx = (1.35 + aWidth * (1.15 + aEnergy * 1.85) * lumScale + coc * 1.8) * uDpr;
+    vec2 posPx = px + norm * (aQuad.y * halfPx);
     gl_Position = vec4(posPx / halfRes, 0.0, 1.0);
-    vLocal = vec2(aQuad.x * segLen + ext, aQuad.y * halfPx);
-    vSegLen = segLen;
+    vAcross = aQuad.y;
     vHalfPx = halfPx;
     vEnergy = aEnergy;
     vWidth = aWidth;
     vTint = aTint;
-    vDepth = mix(c0.w, c1.w, aQuad.x);
-    vAlong = aQuad.x;
+    vDepth = clip.w;
+    vAlong = t;
+    vCoc = coc;
 }`;
 
 const BEAM_FRAG = `#version 300 es
 precision highp float;
-in vec2 vLocal;
-in float vSegLen;
+in float vAcross;
 in float vHalfPx;
 in float vEnergy;
 in float vWidth;
 in float vTint;
 in float vDepth;
 in float vAlong;
+in float vCoc;
 uniform float uDpr;
 uniform float uLuminescence;
+uniform float uFreezeMix;
 uniform vec3 uColorCore;
 uniform vec3 uColorEdge;
 uniform vec3 uColorAccent;
 out vec4 fragColor;
 void main() {
     if (vEnergy <= 0.002) discard;
-    float cx = clamp(vLocal.x, 0.0, vSegLen);
-    float distPx = length(vec2(vLocal.x - cx, vLocal.y)) / max(uDpr, 1.0);
-    float coreSigma = 0.28 + vWidth * (0.24 + vEnergy * 0.22);
-    float haloSigma = 0.85 + vWidth * (0.95 + uLuminescence * 0.55);
-    float core = exp(-(distPx * distPx) / (coreSigma * coreSigma));
+    float distPx = abs(vAcross) * (vHalfPx / max(uDpr, 1.0));
+    float coreSigma = 0.26 + vWidth * (0.24 + vEnergy * 0.22) + vCoc * 0.55;
+    float haloSigma = 0.85 + vWidth * (0.95 + uLuminescence * 0.55) + vCoc * 1.15;
+    float core = exp(-(distPx * distPx) / (coreSigma * coreSigma)) / (1.0 + vCoc * 1.1);
     float halo = exp(-distPx / haloSigma);
-    float tipBoost = mix(0.55, 1.45, smoothstep(0.0, 1.0, vAlong));
-    float energyPow = pow(vEnergy, 1.28) * tipBoost;
+    float endCap = smoothstep(0.0, 0.07, vAlong) * smoothstep(1.0, 0.93, vAlong);
+    float tipBoost = mix(0.45, 1.55, smoothstep(0.0, 1.0, vAlong)) * endCap;
+    float energyPow = pow(vEnergy, 1.25) * tipBoost;
     float depthAtten = clamp(3.3 / max(vDepth, 0.9), 0.38, 1.35);
     vec3 tintCol = mix(uColorEdge, uColorAccent, clamp(vTint, 0.0, 1.0));
-    vec3 col = (uColorCore * core * 2.8 + tintCol * halo * 0.24) * energyPow * uLuminescence * depthAtten;
+    tintCol = mix(tintCol, vec3(0.32, 0.92, 0.82), uFreezeMix * 0.50);
+    vec3 col = (uColorCore * core * 2.85 + tintCol * halo * 0.26) * energyPow * uLuminescence * depthAtten;
     fragColor = vec4(col, 1.0);
 }`;
 
@@ -1595,15 +1709,34 @@ precision highp float;
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in float aFlash;
 layout(location = 2) in float aPhase;
+layout(location = 3) in vec3 aFlow;
+layout(location = 4) in float aBand;
 uniform mat4 uViewProj;
 uniform float uDpr;
 uniform float uLuminescence;
 uniform float uDormantAlpha;
+uniform float uTime;
+uniform float uBeatPulse;
+uniform float uIgnition;
+uniform float uCamDist;
+uniform vec3 uRippleOrigin;
+uniform float uRippleRadius;
+uniform float uRippleStrength;
 out float vFlash;
 out float vPhase;
 out float vDepth;
+out float vBand;
+out float vCoc;
+out float vRipple;
 void main() {
-    vec4 clip = uViewProj * vec4(aPos, 1.0);
+    float ig = 0.04 + 0.96 * uIgnition;
+    vec3 p = aPos * ig;
+    float breath = 1.0 + uBeatPulse * 0.038 + sin(uTime * 0.9 + aPhase * 6.283185) * 0.012;
+    p = p * breath + aFlow * (sin(uTime * 1.35 + aPhase * 18.8495) * 0.014 * ig);
+    float rDist = length(p - uRippleOrigin);
+    float ring = exp(-pow((rDist - uRippleRadius) / 0.24, 2.0)) * uRippleStrength;
+    p += normalize(p + vec3(1e-4, 2e-4, -1e-4)) * (ring * 0.12);
+    vec4 clip = uViewProj * vec4(p, 1.0);
     if (clip.w <= 0.08) {
         gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         gl_PointSize = 0.0;
@@ -1611,13 +1744,17 @@ void main() {
         return;
     }
     gl_Position = clip;
+    float coc = clamp(abs(clip.w - uCamDist) / 1.45, 0.0, 1.0);
     float distScale = clamp(2.8 / clip.w, 0.45, 2.1);
     float baseSize = 1.8 + uDormantAlpha * 10.0;
     float flashSize = aFlash * (9.5 + uLuminescence * 4.5);
-    gl_PointSize = (baseSize + flashSize) * distScale * uDpr;
+    gl_PointSize = (baseSize + flashSize + coc * 3.0 + ring * 5.5) * distScale * uDpr;
     vFlash = aFlash;
     vPhase = aPhase;
     vDepth = clip.w;
+    vBand = aBand;
+    vCoc = coc;
+    vRipple = ring;
 }`;
 
 const NODE_FRAG = `#version 300 es
@@ -1625,8 +1762,13 @@ precision highp float;
 in float vFlash;
 in float vPhase;
 in float vDepth;
+in float vBand;
+in float vCoc;
+in float vRipple;
 uniform float uLuminescence;
 uniform float uDormantAlpha;
+uniform float uFreezeMix;
+uniform vec3 uSubjBalance;
 uniform vec3 uColorCore;
 uniform vec3 uColorEdge;
 uniform vec3 uColorAccent;
@@ -1637,12 +1779,23 @@ void main() {
     if (r2 > 1.0) discard;
     float r = sqrt(r2);
     float depthAtten = clamp(3.2 / max(vDepth, 0.9), 0.35, 1.3);
+    float w0 = step(vBand, 0.5);
+    float w1 = step(0.5, vBand) * step(vBand, 1.5);
+    float w2 = step(1.5, vBand);
+    float bandBal = w0 * uSubjBalance.x + w1 * uSubjBalance.y + w2 * uSubjBalance.z;
+    float minBal = min(uSubjBalance.x, min(uSubjBalance.y, uSubjBalance.z));
+    vec3 subjCol = w0 * vec3(0.40, 0.86, 1.0) + w1 * vec3(0.74, 0.50, 1.0) + w2 * vec3(1.0, 0.80, 0.46);
     vec3 baseCol = mix(uColorEdge, uColorAccent, fract(vPhase * 1.73));
-    float dormant = exp(-r2 * 8.5) * uDormantAlpha * 0.45;
-    float spikeCore = exp(-r2 * 22.0);
-    float spikeHalo = exp(-r * 5.2);
-    float crossGlint = (exp(-abs(uv.x) * 28.0) + exp(-abs(uv.y) * 28.0)) * exp(-r * 4.4) * 0.42;
-    float flashStrength = pow(vFlash, 1.35) * (1.8 + uLuminescence * 2.1);
+    baseCol = mix(baseCol, subjCol, (1.0 - minBal) * 0.52);
+    baseCol = mix(baseCol, vec3(0.32, 0.90, 0.80), uFreezeMix * 0.58);
+    float balGain = mix(0.40, 1.15, bandBal);
+    float dofSoft = 1.0 / (1.0 + vCoc * 1.35);
+    float dormant = exp(-r2 * mix(8.5, 4.2, vCoc)) * uDormantAlpha * 0.50 * balGain;
+    float spikeCore = exp(-r2 * mix(22.0, 8.0, vCoc)) * dofSoft;
+    float spikeHalo = exp(-r * mix(5.2, 3.0, vCoc));
+    float crossGlint = (exp(-abs(uv.x) * 28.0) + exp(-abs(uv.y) * 28.0)) * exp(-r * 4.4) * 0.42 * (1.0 - vCoc * 0.7);
+    float activeFlash = vFlash + vRipple * 1.25;
+    float flashStrength = pow(max(activeFlash, 0.0), 1.35) * (1.8 + uLuminescence * 2.1);
     vec3 col = baseCol * dormant +
         (uColorCore * (spikeCore * 2.4 + crossGlint) + baseCol * spikeHalo * 0.85) * flashStrength;
     fragColor = vec4(col * depthAtten, 1.0);
@@ -1697,11 +1850,15 @@ uniform vec2 uTexelSize;
 out vec4 fragColor;
 void main() {
     vec2 d = uTexelSize;
-    vec3 sum = texture(uTex, vUv).rgb * 0.5;
-    sum += texture(uTex, vUv + vec2(-d.x, -d.y)).rgb * 0.125;
-    sum += texture(uTex, vUv + vec2( d.x, -d.y)).rgb * 0.125;
-    sum += texture(uTex, vUv + vec2(-d.x,  d.y)).rgb * 0.125;
-    sum += texture(uTex, vUv + vec2( d.x,  d.y)).rgb * 0.125;
+    vec3 sum = texture(uTex, vUv).rgb * 0.25;
+    sum += texture(uTex, vUv + vec2(-d.x,  0.0)).rgb * 0.125;
+    sum += texture(uTex, vUv + vec2( d.x,  0.0)).rgb * 0.125;
+    sum += texture(uTex, vUv + vec2( 0.0, -d.y)).rgb * 0.125;
+    sum += texture(uTex, vUv + vec2( 0.0,  d.y)).rgb * 0.125;
+    sum += texture(uTex, vUv + vec2(-d.x, -d.y)).rgb * 0.0625;
+    sum += texture(uTex, vUv + vec2( d.x, -d.y)).rgb * 0.0625;
+    sum += texture(uTex, vUv + vec2(-d.x,  d.y)).rgb * 0.0625;
+    sum += texture(uTex, vUv + vec2( d.x,  d.y)).rgb * 0.0625;
     fragColor = vec4(sum, 1.0);
 }`;
 
@@ -1714,11 +1871,16 @@ uniform float uRadius;
 out vec4 fragColor;
 void main() {
     vec2 d = uTexelSize * uRadius;
-    vec3 sum = texture(uTex, vUv + vec2(-d.x, -d.y)).rgb;
+    vec3 sum = texture(uTex, vUv).rgb * 4.0;
+    sum += texture(uTex, vUv + vec2(-d.x,  0.0)).rgb * 2.0;
+    sum += texture(uTex, vUv + vec2( d.x,  0.0)).rgb * 2.0;
+    sum += texture(uTex, vUv + vec2( 0.0, -d.y)).rgb * 2.0;
+    sum += texture(uTex, vUv + vec2( 0.0,  d.y)).rgb * 2.0;
+    sum += texture(uTex, vUv + vec2(-d.x, -d.y)).rgb;
     sum += texture(uTex, vUv + vec2( d.x, -d.y)).rgb;
     sum += texture(uTex, vUv + vec2(-d.x,  d.y)).rgb;
     sum += texture(uTex, vUv + vec2( d.x,  d.y)).rgb;
-    fragColor = vec4(sum * 0.25, 1.0);
+    fragColor = vec4(sum * 0.0625, 1.0);
 }`;
 
 const COMPOSITE_FRAG = `#version 300 es
@@ -1726,9 +1888,18 @@ precision highp float;
 in vec2 vUv;
 uniform sampler2D uTrailTex;
 uniform sampler2D uBloomTex;
+uniform sampler2D uStreakTex;
+uniform float uStreakTexelX;
+uniform float uAspect;
 uniform float uBloomStrength;
 uniform float uLuminescence;
 uniform float uTime;
+uniform float uBeatPulse;
+uniform float uFreezeMix;
+uniform float uPactMix;
+uniform float uIgnition;
+uniform vec3 uColorEdge;
+uniform vec3 uColorAccent;
 out vec4 fragColor;
 vec3 acesToneMap(vec3 x) {
     return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
@@ -1746,11 +1917,37 @@ void main() {
     float g = texture(uTrailTex, vUv).g;
     float b = texture(uTrailTex, vUv - disp).b;
     vec3 hdr = vec3(r, g, b) + texture(uBloomTex, vUv).rgb * uBloomStrength;
+
+    // Anamorphic horizontal Xenon lens streak
+    float stepX = uStreakTexelX * 2.6;
+    vec3 streak = texture(uStreakTex, vUv).rgb * 0.28;
+    streak += (texture(uStreakTex, vUv + vec2(stepX, 0.0)).rgb + texture(uStreakTex, vUv - vec2(stepX, 0.0)).rgb) * 0.20;
+    streak += (texture(uStreakTex, vUv + vec2(stepX * 2.0, 0.0)).rgb + texture(uStreakTex, vUv - vec2(stepX * 2.0, 0.0)).rgb) * 0.11;
+    streak += (texture(uStreakTex, vUv + vec2(stepX * 3.0, 0.0)).rgb + texture(uStreakTex, vUv - vec2(stepX * 3.0, 0.0)).rgb) * 0.05;
+    vec3 streakTint = mix(mix(uColorEdge, uColorAccent, 0.5), vec3(0.36, 0.92, 0.84), uFreezeMix * 0.65);
+    hdr += streak * streakTint * (0.22 + uLuminescence * 0.15 + uBeatPulse * 0.10);
+
+    // Subtle volumetric core aura & caustic mist inside torus cavity
+    vec2 ac = vec2(centered.x * uAspect, centered.y);
+    float rad = length(ac);
+    float ang = atan(ac.y, ac.x);
+    float caustic = 0.78 + 0.22 * sin(ang * 3.0 + uTime * 0.7) * cos(rad * 12.0 - uTime * 1.1);
+    float auraStrength = exp(-rad * 4.4) * (0.055 + 0.065 * uLuminescence + 0.045 * uBeatPulse) * uIgnition * caustic;
+    vec3 auraCol = mix(mix(uColorEdge, uColorAccent, 0.45), vec3(0.24, 0.85, 0.76), uFreezeMix * 0.72);
+    hdr += auraCol * auraStrength;
+
+    // Whisper-thin optical containment halo while locked into an active Pact
+    if (uPactMix > 0.01) {
+        float ringDist = abs(rad - 0.36);
+        float pactRing = exp(-ringDist * ringDist * 14000.0) * uPactMix * (0.14 + 0.05 * sin(ang * 6.0 - uTime * 1.4));
+        hdr += mix(uColorAccent, vec3(0.45, 0.94, 0.80), 0.55) * pactRing;
+    }
+
     float vig = 1.0 - smoothstep(0.32, 1.15, r2 * 1.45);
     hdr *= mix(0.65, 1.0, vig);
     hdr += vec3(0.0022, 0.0026, 0.0042) * vig;
     vec3 srgb = pow(acesToneMap(hdr), vec3(1.0 / 2.2));
-    float grain = (hash12(gl_FragCoord.xy + fract(uTime * 17.3) * 193.0) - 0.5) * 0.011;
+    float grain = (hash12(gl_FragCoord.xy + fract(uTime * 17.3) * 193.0) - 0.5) * 0.010;
     fragColor = vec4(clamp(srgb + grain, 0.0, 1.0), 1.0);
 }`;
 
@@ -1827,7 +2024,8 @@ class KLSRWebGL2Renderer {
         this.height = 1;
         this.dpr = 1;
         this.trailIdx = 0;
-        this.instanceStrideFloats = 9;
+        this.skeletonCount = 0;
+        this.instanceStrideFloats = 10;
         this.instanceData = new Float32Array(this.maxSegments * this.instanceStrideFloats);
         this._initShaders();
         this._initBuffers();
@@ -1836,10 +2034,21 @@ class KLSRWebGL2Renderer {
 
     _initShaders() {
         const gl = this.gl;
+        this.skeletonProg = createProgram(gl, SKELETON_VERT, SKELETON_FRAG);
+        this.skeletonU = getUniforms(gl, this.skeletonProg, [
+            'uViewProj', 'uTime', 'uBeatPulse', 'uIgnition', 'uScale', 'uLuminescence', 'uSkeletonAlpha', 'uFreezeMix',
+            'uRippleOrigin', 'uRippleRadius', 'uRippleStrength', 'uSubjBalance', 'uColorCore', 'uColorEdge', 'uColorAccent',
+        ]);
         this.beamProg = createProgram(gl, BEAM_VERT, BEAM_FRAG);
-        this.beamU = getUniforms(gl, this.beamProg, ['uViewProj', 'uResolution', 'uDpr', 'uLuminescence', 'uColorCore', 'uColorEdge', 'uColorAccent']);
+        this.beamU = getUniforms(gl, this.beamProg, [
+            'uViewProj', 'uResolution', 'uDpr', 'uLuminescence', 'uTime', 'uBeatPulse', 'uIgnition', 'uCamDist',
+            'uFreezeMix', 'uRippleOrigin', 'uRippleRadius', 'uRippleStrength', 'uColorCore', 'uColorEdge', 'uColorAccent',
+        ]);
         this.nodeProg = createProgram(gl, NODE_VERT, NODE_FRAG);
-        this.nodeU = getUniforms(gl, this.nodeProg, ['uViewProj', 'uDpr', 'uLuminescence', 'uDormantAlpha', 'uColorCore', 'uColorEdge', 'uColorAccent']);
+        this.nodeU = getUniforms(gl, this.nodeProg, [
+            'uViewProj', 'uDpr', 'uLuminescence', 'uDormantAlpha', 'uTime', 'uBeatPulse', 'uIgnition', 'uCamDist',
+            'uFreezeMix', 'uRippleOrigin', 'uRippleRadius', 'uRippleStrength', 'uSubjBalance', 'uColorCore', 'uColorEdge', 'uColorAccent',
+        ]);
         this.persistProg = createProgram(gl, FULLSCREEN_VERT, PERSIST_FRAG);
         this.persistU = getUniforms(gl, this.persistProg, ['uSceneTex', 'uPrevTrailTex', 'uDecay']);
         this.threshProg = createProgram(gl, FULLSCREEN_VERT, THRESHOLD_FRAG);
@@ -1849,7 +2058,10 @@ class KLSRWebGL2Renderer {
         this.upProg = createProgram(gl, FULLSCREEN_VERT, UPSAMPLE_FRAG);
         this.upU = getUniforms(gl, this.upProg, ['uTex', 'uTexelSize', 'uRadius']);
         this.compProg = createProgram(gl, FULLSCREEN_VERT, COMPOSITE_FRAG);
-        this.compU = getUniforms(gl, this.compProg, ['uTrailTex', 'uBloomTex', 'uBloomStrength', 'uLuminescence', 'uTime']);
+        this.compU = getUniforms(gl, this.compProg, [
+            'uTrailTex', 'uBloomTex', 'uStreakTex', 'uStreakTexelX', 'uAspect', 'uBloomStrength',
+            'uLuminescence', 'uTime', 'uBeatPulse', 'uFreezeMix', 'uPactMix', 'uIgnition', 'uColorEdge', 'uColorAccent',
+        ]);
     }
 
     _initBuffers() {
@@ -1858,9 +2070,19 @@ class KLSRWebGL2Renderer {
         this.beamVao = gl.createVertexArray();
         gl.bindVertexArray(this.beamVao);
 
+        const segs = 8;
+        const quadVerts = new Float32Array((segs + 1) * 4);
+        for (let i = 0; i <= segs; i++) {
+            const t = i / segs;
+            quadVerts[i * 4] = t;
+            quadVerts[i * 4 + 1] = -1;
+            quadVerts[i * 4 + 2] = t;
+            quadVerts[i * 4 + 3] = 1;
+        }
+        this.beamQuadVertCount = (segs + 1) * 2;
         this.quadVbo = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, -1, 1, -1, 0, 1, 1, 1]), gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
@@ -1873,6 +2095,7 @@ class KLSRWebGL2Renderer {
         gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 1, gl.FLOAT, false, stride, 24); gl.vertexAttribDivisor(3, 1);
         gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 1, gl.FLOAT, false, stride, 28); gl.vertexAttribDivisor(4, 1);
         gl.enableVertexAttribArray(5); gl.vertexAttribPointer(5, 1, gl.FLOAT, false, stride, 32); gl.vertexAttribDivisor(5, 1);
+        gl.enableVertexAttribArray(6); gl.vertexAttribPointer(6, 1, gl.FLOAT, false, stride, 36); gl.vertexAttribDivisor(6, 1);
 
         this.nodeVao = gl.createVertexArray();
         gl.bindVertexArray(this.nodeVao);
@@ -1890,12 +2113,39 @@ class KLSRWebGL2Renderer {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.nodePhaseVbo);
         gl.bufferData(gl.ARRAY_BUFFER, this.nodeCount * 4, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 0, 0);
+
+        this.nodeFlowVbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.nodeFlowVbo);
+        gl.bufferData(gl.ARRAY_BUFFER, this.nodeCount * 3 * 4, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 3, gl.FLOAT, false, 0, 0);
+
+        this.nodeBandVbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.nodeBandVbo);
+        gl.bufferData(gl.ARRAY_BUFFER, this.nodeCount * 4, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 1, gl.FLOAT, false, 0, 0);
+
+        this.skeletonVao = gl.createVertexArray();
+        gl.bindVertexArray(this.skeletonVao);
+        this.skeletonPosVbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.skeletonPosVbo);
+        gl.bufferData(gl.ARRAY_BUFFER, this.nodeCount * 3 * 4, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.nodeFlowVbo);
+        gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.nodePhaseVbo);
+        gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.nodeBandVbo);
+        gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 1, gl.FLOAT, false, 0, 0);
+        this.skeletonIbo = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.skeletonIbo);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, 4, gl.STATIC_DRAW);
+
         gl.bindVertexArray(null);
     }
 
     resize() {
         const gl = this.gl;
-        this.dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 1.5);
+        this.dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 2.0);
         const w = Math.max(2, Math.floor(((typeof window !== 'undefined' && window.innerWidth) || 800) * this.dpr));
         const h = Math.max(2, Math.floor(((typeof window !== 'undefined' && window.innerHeight) || 600) * this.dpr));
         if (w === this.width && h === this.height && this.sceneFBO) return;
@@ -1913,7 +2163,7 @@ class KLSRWebGL2Renderer {
 
         this.bloomMips = [];
         let bw = w, bh = h;
-        for (let level = 0; level < 4; level++) {
+        for (let level = 0; level < 5; level++) {
             bw = Math.max(2, bw >> 1); bh = Math.max(2, bh >> 1);
             this.bloomMips.push(createRenderTarget(gl, bw, bh, this.useFloat));
         }
@@ -1937,12 +2187,39 @@ class KLSRWebGL2Renderer {
         this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, phases);
     }
 
+    uploadFlows(flows) {
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.nodeFlowVbo);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, flows);
+    }
+
+    uploadBands(bands) {
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.nodeBandVbo);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, bands);
+    }
+
+    uploadSkeletonPositions(basePositions) {
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.skeletonPosVbo);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, basePositions);
+    }
+
+    uploadSkeleton(indices) {
+        if (!indices || !indices.length) return;
+        this.skeletonCount = indices.length;
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.skeletonIbo);
+        this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, indices, this.gl.STATIC_DRAW);
+    }
+
     uploadNodePositions(nodePositions) {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.nodePosVbo);
         this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, nodePositions);
     }
 
-    render({ viewProj, nodeFlashes, segmentCount, luminescence, persistence, dormantAlpha, spec, time, dt }) {
+    render({
+        viewProj, nodeFlashes, segmentCount, luminescence, persistence, dormantAlpha,
+        spec, time, dt, beatPulse = 0, ignition = 1, camDist = 3.05,
+        freezeMix = 0, pactMix = 0, skeletonAlpha = 0.14, skeletonScale = 1.0,
+        subjBalance = [1, 1, 1], rippleOrigin = [0, 0, 0], rippleRadius = 0, rippleStrength = 0,
+    }) {
         const gl = this.gl;
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.sceneFBO.fbo);
         gl.viewport(0, 0, this.width, this.height);
@@ -1951,6 +2228,27 @@ class KLSRWebGL2Renderer {
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE);
 
+        if (this.skeletonCount > 0 && skeletonAlpha > 0.002) {
+            gl.useProgram(this.skeletonProg);
+            gl.uniformMatrix4fv(this.skeletonU.uViewProj, false, viewProj);
+            gl.uniform1f(this.skeletonU.uTime, time);
+            gl.uniform1f(this.skeletonU.uBeatPulse, beatPulse);
+            gl.uniform1f(this.skeletonU.uIgnition, ignition);
+            gl.uniform1f(this.skeletonU.uScale, skeletonScale);
+            gl.uniform1f(this.skeletonU.uLuminescence, luminescence);
+            gl.uniform1f(this.skeletonU.uSkeletonAlpha, skeletonAlpha);
+            gl.uniform1f(this.skeletonU.uFreezeMix, freezeMix);
+            gl.uniform3fv(this.skeletonU.uRippleOrigin, rippleOrigin);
+            gl.uniform1f(this.skeletonU.uRippleRadius, rippleRadius);
+            gl.uniform1f(this.skeletonU.uRippleStrength, rippleStrength);
+            gl.uniform3fv(this.skeletonU.uSubjBalance, subjBalance);
+            gl.uniform3fv(this.skeletonU.uColorCore, spec.core);
+            gl.uniform3fv(this.skeletonU.uColorEdge, spec.edge);
+            gl.uniform3fv(this.skeletonU.uColorAccent, spec.accent);
+            gl.bindVertexArray(this.skeletonVao);
+            gl.drawElements(gl.LINES, this.skeletonCount, gl.UNSIGNED_SHORT, 0);
+        }
+
         gl.bindBuffer(gl.ARRAY_BUFFER, this.nodeFlashVbo);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, nodeFlashes);
         gl.useProgram(this.nodeProg);
@@ -1958,6 +2256,15 @@ class KLSRWebGL2Renderer {
         gl.uniform1f(this.nodeU.uDpr, this.dpr);
         gl.uniform1f(this.nodeU.uLuminescence, luminescence);
         gl.uniform1f(this.nodeU.uDormantAlpha, dormantAlpha);
+        gl.uniform1f(this.nodeU.uTime, time);
+        gl.uniform1f(this.nodeU.uBeatPulse, beatPulse);
+        gl.uniform1f(this.nodeU.uIgnition, ignition);
+        gl.uniform1f(this.nodeU.uCamDist, camDist);
+        gl.uniform1f(this.nodeU.uFreezeMix, freezeMix);
+        gl.uniform3fv(this.nodeU.uRippleOrigin, rippleOrigin);
+        gl.uniform1f(this.nodeU.uRippleRadius, rippleRadius);
+        gl.uniform1f(this.nodeU.uRippleStrength, rippleStrength);
+        gl.uniform3fv(this.nodeU.uSubjBalance, subjBalance);
         gl.uniform3fv(this.nodeU.uColorCore, spec.core);
         gl.uniform3fv(this.nodeU.uColorEdge, spec.edge);
         gl.uniform3fv(this.nodeU.uColorAccent, spec.accent);
@@ -1973,11 +2280,19 @@ class KLSRWebGL2Renderer {
             gl.uniform2f(this.beamU.uResolution, this.width, this.height);
             gl.uniform1f(this.beamU.uDpr, this.dpr);
             gl.uniform1f(this.beamU.uLuminescence, luminescence);
+            gl.uniform1f(this.beamU.uTime, time);
+            gl.uniform1f(this.beamU.uBeatPulse, beatPulse);
+            gl.uniform1f(this.beamU.uIgnition, ignition);
+            gl.uniform1f(this.beamU.uCamDist, camDist);
+            gl.uniform1f(this.beamU.uFreezeMix, freezeMix);
+            gl.uniform3fv(this.beamU.uRippleOrigin, rippleOrigin);
+            gl.uniform1f(this.beamU.uRippleRadius, rippleRadius);
+            gl.uniform1f(this.beamU.uRippleStrength, rippleStrength);
             gl.uniform3fv(this.beamU.uColorCore, spec.core);
             gl.uniform3fv(this.beamU.uColorEdge, spec.edge);
             gl.uniform3fv(this.beamU.uColorAccent, spec.accent);
             gl.bindVertexArray(this.beamVao);
-            gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+            gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, this.beamQuadVertCount, count);
         }
 
         gl.disable(gl.BLEND);
@@ -2030,14 +2345,24 @@ class KLSRWebGL2Renderer {
         }
         gl.disable(gl.BLEND);
 
+        const streakMip = this.bloomMips[2] || this.bloomMips[this.bloomMips.length - 1];
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, this.width, this.height);
         gl.useProgram(this.compProg);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dstTrail.tex); gl.uniform1i(this.compU.uTrailTex, 0);
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, mip0.tex); gl.uniform1i(this.compU.uBloomTex, 1);
-        gl.uniform1f(this.compU.uBloomStrength, 0.24 + luminescence * 0.28);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, streakMip.tex); gl.uniform1i(this.compU.uStreakTex, 2);
+        gl.uniform1f(this.compU.uStreakTexelX, 1.0 / Math.max(1, streakMip.width));
+        gl.uniform1f(this.compU.uAspect, this.width / Math.max(1, this.height));
+        gl.uniform1f(this.compU.uBloomStrength, 0.22 + luminescence * 0.22);
         gl.uniform1f(this.compU.uLuminescence, luminescence);
         gl.uniform1f(this.compU.uTime, time);
+        gl.uniform1f(this.compU.uBeatPulse, beatPulse);
+        gl.uniform1f(this.compU.uFreezeMix, freezeMix);
+        gl.uniform1f(this.compU.uPactMix, pactMix);
+        gl.uniform1f(this.compU.uIgnition, ignition);
+        gl.uniform3fv(this.compU.uColorEdge, spec.edge);
+        gl.uniform3fv(this.compU.uColorAccent, spec.accent);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.bindVertexArray(null);
     }
@@ -2048,7 +2373,7 @@ class KLSR2DFallbackRenderer {
         this.canvas = canvas;
         this.maxSegments = maxSegments;
         this.nodeCount = nodeCount;
-        this.instanceStrideFloats = 9;
+        this.instanceStrideFloats = 10;
         this.instanceData = new Float32Array(maxSegments * this.instanceStrideFloats);
         this.ctx = canvas.getContext ? canvas.getContext('2d') : null;
         this.nodePositions = new Float32Array(nodeCount * 3);
@@ -2066,6 +2391,10 @@ class KLSR2DFallbackRenderer {
         this.ctx.fillRect(0, 0, this.width, this.height);
     }
     uploadPhases() {}
+    uploadFlows() {}
+    uploadBands() {}
+    uploadSkeletonPositions() {}
+    uploadSkeleton() {}
     uploadNodePositions(pos) { this.nodePositions.set(pos); }
     render({ viewProj, segmentCount, luminescence, persistence, spec }) {
         const ctx = this.ctx;
@@ -2141,10 +2470,10 @@ function mat4Mul(a, b) {
 }
 
 function _createVoidEngine(canvas) {
-    const MAX_SEGMENTS = 320;
-    const MAX_RUNNERS = 5;
-    const CHAIN_CAP = 18;
-    const MAX_RICOCHETS = 48;
+    const MAX_SEGMENTS = 512;
+    const MAX_RUNNERS = 10;
+    const CHAIN_CAP = 20;
+    const MAX_RICOCHETS = 72;
 
     let renderer;
     try {
@@ -2156,21 +2485,39 @@ function _createVoidEngine(canvas) {
     const manifold = buildAizawaManifold(2049);
     const activePositions = new Float32Array(POINT_COUNT * 3);
     const nodeFlashes = new Float32Array(POINT_COUNT);
-    const ricochetSegments = Array.from({ length: MAX_RICOCHETS }, () => ({ a: 0, b: 0, energy: 0, width: 1, tint: 0 }));
+    const ricochetSegments = Array.from({ length: MAX_RICOCHETS }, () => ({ a: 0, b: 0, energy: 0, width: 1, tint: 0, curve: 0.22 }));
     let ricochetWriteIdx = 0;
     let lastSpread = -1;
 
     const cam = {
-        yaw: 0.45, pitch: 0.22, dist: 2.55,
-        targetYaw: 0.45, targetPitch: 0.22, targetDist: 2.55,
+        yaw: 0.45, pitch: 0.22, dist: 3.05,
+        targetYaw: 0.45, targetPitch: 0.22, targetDist: 3.05,
+        velYaw: 0, velPitch: 0,
         mouseX: 0, mouseY: 0, dragging: false, lastX: 0, lastY: 0,
     };
+
+    const ripple = {
+        origin: [0, 0, 0],
+        radius: 0,
+        strength: 0,
+    };
+
+    let freezeMix = 0;
+    let pactMix = 0;
+
+    function triggerShockwave(origin = [0, 0, 0], strength = 1.0) {
+        ripple.origin[0] = origin[0];
+        ripple.origin[1] = origin[1];
+        ripple.origin[2] = origin[2];
+        ripple.radius = 0.02;
+        ripple.strength = strength;
+    }
 
     const runners = Array.from({ length: MAX_RUNNERS }, (_, i) => ({
         mode: 'SNAP', curr: 0, prev: 0, next: 1,
         hopAccum: Math.random() * 0.5, burstRemaining: 6 + (i % 5) * 2, holdTimer: 0,
-        speedMult: 0.84 + (i / MAX_RUNNERS) * 0.36, tint: i / MAX_RUNNERS, chainHead: 0,
-        chain: Array.from({ length: CHAIN_CAP }, () => ({ a: 0, b: 0, energy: 0, width: 1, tint: 0 })),
+        speedMult: 0.80 + (i / MAX_RUNNERS) * 0.40, tint: i / MAX_RUNNERS, chainHead: 0,
+        chain: Array.from({ length: CHAIN_CAP }, () => ({ a: 0, b: 0, energy: 0, width: 1, tint: 0, curve: 0.04 })),
     }));
 
     function updatePositions(spread) {
@@ -2178,7 +2525,7 @@ function _createVoidEngine(canvas) {
         lastSpread = spread;
         const base = manifold.basePositions, scatter = manifold.scatterDirs;
         const scale = 0.86 + spread * 0.42;
-        const disp = spread * 0.62;
+        const disp = spread * 0.30;
         for (let i = 0; i < POINT_COUNT * 3; i++) {
             activePositions[i] = base[i] * scale + scatter[i] * disp;
         }
@@ -2216,11 +2563,17 @@ function _createVoidEngine(canvas) {
     }
     updatePositions(0.50);
     renderer.uploadPhases(manifold.phases);
+    renderer.uploadFlows(manifold.flowDirs);
+    renderer.uploadBands(manifold.bands);
+    renderer.uploadSkeleton(manifold.skeletonIndices);
+    renderer.uploadSkeletonPositions(manifold.basePositions);
 
-    // Orbit & zoom pointer controls
+    // Orbit, zoom, inertia & tap-shockwave pointer controls
     if (typeof canvas.addEventListener === 'function') {
         const activePointers = new Map();
         let lastPinch = 0;
+        let lastMoveTime = 0;
+        let downPointer = null;
         const pinchDist = () => {
             const pts = Array.from(activePointers.values());
             return pts.length < 2 ? 0 : Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
@@ -2229,6 +2582,13 @@ function _createVoidEngine(canvas) {
             activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
             cam.dragging = activePointers.size === 1;
             cam.lastX = e.clientX; cam.lastY = e.clientY;
+            cam.velYaw = 0; cam.velPitch = 0;
+            lastMoveTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            if (activePointers.size === 1) {
+                downPointer = { id: e.pointerId, x: e.clientX, y: e.clientY, t: lastMoveTime };
+            } else {
+                downPointer = null;
+            }
             if (activePointers.size === 2) lastPinch = pinchDist();
             try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
         });
@@ -2240,16 +2600,47 @@ function _createVoidEngine(canvas) {
             if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
             if (activePointers.size === 2) {
                 const dist = pinchDist();
-                if (lastPinch > 0) cam.targetDist = clamp(cam.targetDist + (lastPinch - dist) * 0.0065, 1.35, 5.2);
+                if (lastPinch > 0) cam.targetDist = clamp(cam.targetDist + (lastPinch - dist) * 0.0065, 1.55, 5.5);
                 lastPinch = dist;
+                downPointer = null;
             } else if (cam.dragging && activePointers.size === 1) {
+                const nowT = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                const dtDrag = clamp((nowT - lastMoveTime) * 0.001, 0.004, 0.05);
+                lastMoveTime = nowT;
                 const dx = e.clientX - cam.lastX, dy = e.clientY - cam.lastY;
                 cam.lastX = e.clientX; cam.lastY = e.clientY;
-                cam.targetYaw -= dx * 0.0055;
-                cam.targetPitch = clamp(cam.targetPitch + dy * 0.0055, -1.35, 1.35);
+                const dYaw = -dx * 0.0055;
+                const dPitch = dy * 0.0055;
+                cam.targetYaw += dYaw;
+                cam.targetPitch = clamp(cam.targetPitch + dPitch, -1.35, 1.35);
+                cam.velYaw = lerp(cam.velYaw, clamp(dYaw / dtDrag, -6.0, 6.0), 0.55);
+                cam.velPitch = lerp(cam.velPitch, clamp(dPitch / dtDrag, -4.0, 4.0), 0.55);
             }
         });
         const endDrag = (e) => {
+            if (downPointer && downPointer.id === e.pointerId && e.type === 'pointerup') {
+                const nowT = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                const moveDist = Math.hypot(e.clientX - downPointer.x, e.clientY - downPointer.y);
+                if (moveDist < 12 && (nowT - downPointer.t) < 380) {
+                    const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth || 800, height: window.innerHeight || 600 };
+                    const nx = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
+                    const ny = -(((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 - 1);
+                    const aspect = Math.max(0.1, rect.width / Math.max(1, rect.height));
+                    const halfH = Math.tan((46 * Math.PI) / 360) * cam.dist;
+                    const vx = nx * halfH * aspect;
+                    const vy = ny * halfH;
+                    const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+                    const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+                    const wx = cy * vx + sy * sp * vy;
+                    const wy = cp * vy;
+                    const wz = -sy * vx + cy * sp * vy;
+                    const wLen = Math.hypot(wx, wy, wz);
+                    const clampS = wLen > 0.85 ? (0.85 / wLen) : 1.0;
+                    triggerShockwave([wx * clampS, wy * clampS, wz * clampS], 1.0);
+                    _pulseBoost = Math.max(_pulseBoost, 0.35);
+                }
+            }
+            downPointer = null;
             activePointers.delete(e.pointerId);
             if (activePointers.size < 2) lastPinch = 0;
             if (activePointers.size === 1) {
@@ -2261,7 +2652,7 @@ function _createVoidEngine(canvas) {
         canvas.addEventListener('pointercancel', endDrag);
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
-            cam.targetDist = clamp(cam.targetDist + e.deltaY * 0.0014, 1.35, 5.2);
+            cam.targetDist = clamp(cam.targetDist + e.deltaY * 0.0014, 1.55, 5.5);
         }, { passive: false });
     }
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -2281,10 +2672,16 @@ function _createVoidEngine(canvas) {
                 klsrLuminescence: 0.35 + 0.55 * collapse,
                 klsrPersistence: 0.35 + 0.35 * collapse,
                 spread: 0.01 * collapse,
+                ignition: 1.0,
+                sleepFrozen: false,
+                pactFrozen: false,
+                subjBalance: [1, 1, 1],
                 spec: SPECTRUM_STOPS[0],
             };
         }
         const bootElapsed = Math.max(0, (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _bootStartedAt);
+        const igT = clamp(bootElapsed / 1050, 0, 1);
+        const ignition = 1 - Math.pow(1 - igT, 4);
         let bootBlend = 0; // 1 = max ignition, 0 = real-time live state
         if (bootElapsed < BOOT_HOLD_MS) {
             bootBlend = 1.0;
@@ -2294,6 +2691,12 @@ function _createVoidEngine(canvas) {
             bootBlend = 1.0 - eased;
         }
 
+        const floors = (vitals.leash && vitals.leash.floors) || { physics: DAILY_UNIT_TARGET, chemistry: DAILY_UNIT_TARGET, maths: DAILY_UNIT_TARGET };
+        const hasAnyUnits = (vitals.units.physics + vitals.units.chemistry + vitals.units.maths) > 0.01;
+        const pP = hasAnyUnits ? clamp(vitals.units.physics / Math.max(1, floors.physics), 0, 1) : vitals.luminescence;
+        const pC = hasAnyUnits ? clamp(vitals.units.chemistry / Math.max(1, floors.chemistry), 0, 1) : vitals.luminescence;
+        const pM = hasAnyUnits ? clamp(vitals.units.maths / Math.max(1, floors.maths), 0, 1) : vitals.luminescence;
+
         const peakSpec = SPECTRUM_STOPS[SPECTRUM_STOPS.length - 1];
         const boost = _pulseBoost * 0.35;
         return {
@@ -2301,6 +2704,14 @@ function _createVoidEngine(canvas) {
             klsrLuminescence: lerp(vitals.klsrLuminescence, 1.90, bootBlend) + boost,
             klsrPersistence: lerp(vitals.klsrPersistence, 0.88, bootBlend),
             spread: lerp(vitals.spread, 0.50, bootBlend),
+            ignition,
+            sleepFrozen: Boolean(vitals.sleepFrozen),
+            pactFrozen: Boolean(vitals.pactFrozen),
+            subjBalance: [
+                lerp(pP, 1.0, bootBlend),
+                lerp(pC, 1.0, bootBlend),
+                lerp(pM, 1.0, bootBlend),
+            ],
             spec: {
                 core: lerpVec3(vitals.spectrum.core, peakSpec.core, bootBlend),
                 edge: lerpVec3(vitals.spectrum.edge, peakSpec.edge, bootBlend),
@@ -2321,10 +2732,34 @@ function _createVoidEngine(canvas) {
         if (_pulseBoost > 0.001) _pulseBoost *= Math.exp(-dt * 2.8);
         else _pulseBoost = 0;
 
+        if (_pendingShockwave) {
+            _pendingShockwave = false;
+            triggerShockwave([0, 0, 0], 1.15);
+        }
+        if (ripple.strength > 0.002) {
+            ripple.radius += dt * 1.95;
+            ripple.strength *= Math.exp(-dt * 2.4);
+        } else {
+            ripple.strength = 0;
+        }
+
         const vp = computeVisualParams(now);
+        const stateBlend = 1 - Math.exp(-dt * 2.8);
+        freezeMix = lerp(freezeMix, vp.sleepFrozen ? 1.0 : 0.0, stateBlend);
+        pactMix = lerp(pactMix, vp.pactFrozen ? 1.0 : 0.0, stateBlend);
+
         updatePositions(vp.spread);
 
-        if (!cam.dragging) cam.targetYaw += dt * (0.14 + vp.speed * 0.045);
+        const orbitMult = lerp(1.0, 0.32, freezeMix);
+        if (!cam.dragging) {
+            cam.targetYaw += (cam.velYaw + (0.14 + vp.speed * 0.045) * orbitMult) * dt;
+            cam.targetPitch = clamp(cam.targetPitch + cam.velPitch * dt, -1.35, 1.35);
+            const damp = Math.exp(-dt * 3.2);
+            cam.velYaw *= damp;
+            cam.velPitch *= damp;
+            if (Math.abs(cam.velYaw) < 0.001) cam.velYaw = 0;
+            if (Math.abs(cam.velPitch) < 0.001) cam.velPitch = 0;
+        }
         cam.yaw += (cam.targetYaw + cam.mouseX * 0.12 - cam.yaw) * Math.min(1, dt * 6.5);
         cam.pitch += (cam.targetPitch - cam.mouseY * 0.1 - cam.pitch) * Math.min(1, dt * 6.5);
         cam.dist += (cam.targetDist - cam.dist) * Math.min(1, dt * 7.5);
@@ -2346,23 +2781,24 @@ function _createVoidEngine(canvas) {
         }
 
         // Lub-dub biological cardiac micro-cadence layered over base speed
-        const bpm = 42 + vp.speed * 68;
+        const bpm = (42 + vp.speed * 68) * lerp(1.0, 0.52, freezeMix);
         const beatPhase = ((timeSec * (bpm / 60)) % 1.0);
         const lub = Math.exp(-Math.pow((beatPhase - 0.12) / 0.07, 2));
         const dub = Math.exp(-Math.pow((beatPhase - 0.30) / 0.08, 2)) * 0.72;
-        const cardiacPulse = 0.68 + 0.55 * (lub + dub);
+        const beatWave = lub + dub;
+        const cardiacPulse = 0.68 + 0.55 * beatWave;
 
-        const activeCount = clamp(Math.round(1 + vp.speed * 3.8), 1, MAX_RUNNERS);
-        const baseHopsPerSec = (14.0 + vp.speed * 86.0) * cardiacPulse;
+        const activeCount = clamp(Math.round(2 + vp.speed * 7.6), 2, MAX_RUNNERS);
+        const baseHopsPerSec = (14.0 + vp.speed * 86.0) * cardiacPulse * lerp(1.0, 0.34, freezeMix);
 
         const inst = renderer.instanceData;
         let writeCount = 0;
-        const pushInstance = (a, b, energy, width, tint) => {
+        const pushInstance = (a, b, energy, width, tint, curve = 0.04) => {
             if (writeCount >= MAX_SEGMENTS) return;
             const a3 = a * 3, b3 = b * 3, o = writeCount * renderer.instanceStrideFloats;
             inst[o] = activePositions[a3]; inst[o + 1] = activePositions[a3 + 1]; inst[o + 2] = activePositions[a3 + 2];
             inst[o + 3] = activePositions[b3]; inst[o + 4] = activePositions[b3 + 1]; inst[o + 5] = activePositions[b3 + 2];
-            inst[o + 6] = energy; inst[o + 7] = width; inst[o + 8] = tint;
+            inst[o + 6] = energy; inst[o + 7] = width; inst[o + 8] = tint; inst[o + 9] = curve;
             writeCount++;
         };
 
@@ -2390,6 +2826,7 @@ function _createVoidEngine(canvas) {
                         const target = manifold.arcNeighbors[runner.curr * manifold.arcK + Math.floor(Math.random() * manifold.arcK)];
                         const rs = ricochetSegments[ricochetWriteIdx];
                         rs.a = runner.curr; rs.b = target; rs.energy = 1.35; rs.width = 1.15; rs.tint = (runner.tint + 0.15) % 1;
+                        rs.curve = 0.18 + Math.random() * 0.16;
                         ricochetWriteIdx = (ricochetWriteIdx + 1) % MAX_RICOCHETS;
                         nodeFlashes[target] = Math.min(1.35, nodeFlashes[target] + 1.25);
                         runner.prev = runner.curr; runner.curr = target; runner.next = pickNextNode(target, runner.prev, vp.spread);
@@ -2402,7 +2839,7 @@ function _createVoidEngine(canvas) {
                     runner.hopAccum -= 1.0; runner.burstRemaining--; subHops++;
                     const fromIdx = runner.curr, toIdx = runner.next;
                     const cs = runner.chain[runner.chainHead];
-                    cs.a = fromIdx; cs.b = toIdx; cs.energy = 1.15; cs.width = 1.0; cs.tint = runner.tint;
+                    cs.a = fromIdx; cs.b = toIdx; cs.energy = 1.15; cs.width = 1.0; cs.tint = runner.tint; cs.curve = 0.04;
                     runner.chainHead = (runner.chainHead + 1) % CHAIN_CAP;
                     nodeFlashes[toIdx] = Math.min(1.35, nodeFlashes[toIdx] + 1.25);
                     runner.prev = fromIdx; runner.curr = toIdx; runner.next = pickNextNode(toIdx, fromIdx, vp.spread);
@@ -2421,17 +2858,25 @@ function _createVoidEngine(canvas) {
                 const headBoost = age === 0 && runner.mode === 'SNAP' ? 1.45 : 1.0;
                 const tailTaper = Math.pow(1.0 - age / CHAIN_CAP, 1.1);
                 const w = age === 0 ? 1.18 : Math.max(0.45, 0.95 - age * 0.035);
-                pushInstance(seg.a, seg.b, seg.energy * headBoost * tailTaper, w, seg.tint);
+                pushInstance(seg.a, seg.b, seg.energy * headBoost * tailTaper, w, seg.tint, seg.curve);
             }
         }
 
         for (let i = 0; i < MAX_RICOCHETS && writeCount < MAX_SEGMENTS; i++) {
             const s = ricochetSegments[i];
-            if (s.energy > 0.015) pushInstance(s.a, s.b, s.energy, s.width, s.tint);
+            if (s.energy > 0.015) pushInstance(s.a, s.b, s.energy, s.width, s.tint, s.curve);
         }
 
         const dormantAlpha = 0.018 + Math.min(0.025, vp.spread * 0.02);
         const effectiveFboPersistence = 0.18 + Math.pow(vp.klsrPersistence, 2.2) * 0.56;
+        const skeletonAlpha = clamp((0.08 + vp.klsrLuminescence * 0.065) * (0.85 + 0.25 * freezeMix), 0.05, 0.20);
+        const skeletonScale = 0.86 + vp.spread * 0.42;
+        const renderSpec = freezeMix > 0.005 ? {
+            core: lerpVec3(vp.spec.core, [0.94, 1.0, 0.99], freezeMix * 0.7),
+            edge: lerpVec3(vp.spec.edge, [0.28, 0.88, 0.78], freezeMix * 0.75),
+            accent: lerpVec3(vp.spec.accent, [0.48, 0.84, 1.0], freezeMix * 0.75),
+        } : vp.spec;
+
         renderer.render({
             viewProj,
             nodeFlashes,
@@ -2439,9 +2884,20 @@ function _createVoidEngine(canvas) {
             luminescence: vp.klsrLuminescence,
             persistence: effectiveFboPersistence,
             dormantAlpha,
-            spec: vp.spec,
+            spec: renderSpec,
             time: timeSec,
             dt,
+            beatPulse: beatWave + _pulseBoost * 0.5,
+            ignition: vp.ignition,
+            camDist: cam.dist,
+            freezeMix,
+            pactMix,
+            skeletonAlpha,
+            skeletonScale,
+            subjBalance: vp.subjBalance,
+            rippleOrigin: ripple.origin,
+            rippleRadius: ripple.radius,
+            rippleStrength: ripple.strength,
         });
     }
 
@@ -2709,6 +3165,7 @@ function _startBootIntro() {
     const voidEl = document.getElementById('heartbeat-void');
     if (!voidEl) return;
     _bootStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    _pendingShockwave = true;
     voidEl.classList.remove('hb-ready');
     voidEl.classList.add('hb-booting');
     if (_bootTimer) clearTimeout(_bootTimer);

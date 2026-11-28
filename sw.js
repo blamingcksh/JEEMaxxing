@@ -282,7 +282,13 @@
 //        Fix app.js Gem dump ingestion so T5/T6/T7 qElo stamps (1800-2550) are
 //        not crushed to 1800 by the chapter-ceiling clamp, preserving 1.35u/1.75u
 //        Heartbeat unit weights.
-const VERSION = 'jeemax-v138';
+// v139 - KLSR AIZAWA CINEMA OPTICS & TOUCH PHYSICS:
+//        Upgrade heartbeat.js WebGL2 renderer with gossamer streamline skeleton,
+//        subdivided curved laser ribbons, 9-tap tent bloom + anamorphic Xenon
+//        lens streak, DoF bokeh, 3-subject harmonic bands, cryo sleep-freeze
+//        aurora, volumetric core aura, singularity boot ignition, and iPad
+//        orbital inertia + tap shockwave.
+const VERSION = 'jeemax-v139';
 
 const SHELL = [
   './',
